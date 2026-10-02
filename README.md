@@ -149,6 +149,13 @@ The benchmark (`bench/`, NanoCut vs Manifold C++/C# and CGAL on identical nm-gri
 how they were verified are described in [docs/performance.md](docs/performance.md) and
 [bench/README.md](bench/README.md).
 
+A GPU is used for previews, not for the exact result. `src/Stykker.NanoCut.Gpu` previews a whole toolpath as a Z-map
+(one height per grid cell) with two interchangeable backends: `Cpu` in plain C#, and `Cuda` on an optional native
+kernel. On an RTX 5070 Ti the 876-step pocket-large previews in 2.5 ms wall against 4.66 s for the exact kernel; the CPU
+backend alone needs 286 ms and runs everywhere, CI and browser included. The preview deviates by 0.106 %, almost all of it
+a property of the height field that no grid size removes. Measurements and the recommendation:
+[docs/gpu-findings.md](docs/gpu-findings.md). One page: [bench/results-2026-10-03-gpu.html](bench/results-2026-10-03-gpu.html).
+
 ## Processes: acting shape + motion
 
 ```csharp
@@ -184,6 +191,8 @@ src/Stykker.NanoCut.Core/         Vec2/Vec3 (1 nm), Int384, predicates, Plane3/H
 src/Stykker.NanoCut.Geometry2D/   Region2, exact Boolean kernel, arcs, offset, Minkowski, penetration
 src/Stykker.NanoCut.Geometry3D/   Solid, exact plane-based Boolean kernel, primitives, extrude/revolve, hull, sweeps, .ncs, STL, buffers
 src/Stykker.NanoCut.Cutting/      Motion2/3, Process2/3, Lathe, ToolShape; Tool/ToolPath/Cutter (3D), Tool2/ToolPath2/Cutter2 (2D)
+src/Stykker.NanoCut.Gpu/        optional Z-map preview: Cpu backend (reference), Cuda backend via LibraryImport; the exact kernel never uses it
+src/Stykker.NanoCut.Gpu.Native/ optional CUDA C kernel and C API (zmap.cu), built by nvcc through build.ps1/build.sh, not part of dotnet build
 js/nanocut-three/                 three.js adapter (@stykker/nanocut-three)
 js/nanocut-babylon/               Babylon.js adapter (@stykker/nanocut-babylon)
 samples/Stykker.NanoCut.Demo/     interactive Blazor WebAssembly demo (scenes, machines with jog/G-code, self test)

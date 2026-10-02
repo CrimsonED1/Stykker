@@ -2,9 +2,10 @@
 
 This is a summary of the optimisation rounds, with how each was verified and what was learned. Measurements per round
 are in [bench/README.md](../bench/README.md). The one-page results are
-[bench/results-2026-10-02-round4.html](../bench/results-2026-10-02-round4.html) (cloud) and
-[bench/results-2026-10-02.html](../bench/results-2026-10-02.html) (local Ryzen run). The question "Rust or C?" is covered
-in [native-speed-plan.md](native-speed-plan.md).
+[bench/results-2026-10-02-round4.html](../bench/results-2026-10-02-round4.html) (cloud),
+[bench/results-2026-10-02.html](../bench/results-2026-10-02.html) (local Ryzen run) and
+[bench/results-2026-10-03-gpu.html](../bench/results-2026-10-03-gpu.html) (GPU preview on an RTX 5070 Ti). The question
+"Rust or C?" is covered in [native-speed-plan.md](native-speed-plan.md).
 
 ## Benchmark
 
@@ -77,7 +78,37 @@ part of the suite: `tests/Stykker.NanoCut.Tests/OptimizationVerification*Tests.c
   - `Face3.Split` rejects non-convex input.
   - Introselect replaces plain quickselect.
 
-All 162 tests and the 4 oracle tests are green.
+All 177 tests and the 4 oracle tests are green.
+
+## GPU prototype: Z-map preview
+
+A separate effort on branch `feature/server-gpu`, and deliberately not part of the exact kernel: the preview is a height
+field (one height per grid cell) that every ball step lowers, and the exact 3D kernel gets no GPU dependency at all. Two
+interchangeable backends sit behind `IZMapBackend` – `Cpu` in plain C# as the reference, `Cuda` through `LibraryImport`
+into an optional `nvcc`-built `nanocut_gpu`, which CI never builds.
+
+pocket-large, 876 steps in one call, warm, best of 3, on an RTX 5070 Ti / Ryzen 7 5800X3D (local numbers, not comparable
+to the 4-core container tables above):
+
+| | Time for all 876 steps | per step | Remaining volume (mm³) |
+| --- | ---: | ---: | ---: |
+| Exact kernel | 4 655 ms | 5,31 ms | 84 860,612636583 |
+| Z-map, CPU backend, 16 threads | 286 ms | 0,327 ms | 84 770,457226 |
+| Z-map, CUDA, kernel only | 1,5 ms | 0,0017 ms | 84 770,457226 |
+| Z-map, CUDA, wall with transfers | 2,5 ms | 0,0029 ms | 84 770,457226 |
+
+**How it was verified:** the CPU backend against analytic volumes (a straight capsule into a flat block), and the CUDA
+backend against the CPU backend cell by cell. That comparison found a real bug the CPU-only tests had missed – for a
+horizontal step the discriminant of the stationary point is exactly zero in theory, but computed as the difference of two
+float32 products of size 4·d²·w2² it came out slightly negative about half the time and the step was dropped for that
+cell. Both backends had it; both discriminants are clamped at zero now, and
+`GpuZMapTests.LongHorizontalStepIsNotDroppedByFloatCancellation` pins it.
+
+The −0,106 % deviation splits into three independent causes: tool model −0,016 %, representation −0,090 %, grid
++0,0005 %. The representation error is a property of the height field (it cannot keep the thin roof of material above the
+tool's crown) and does not shrink with a finer grid – the analytic integral gives 76,825 mm³ against 76,713 mm³ measured.
+So 512 × 384 is enough for a preview, and a stock-remainder check must not be decided on one. Full measurements and the
+recommendation (worth it for a preview a person watches, not for the exact result): [gpu-findings.md](gpu-findings.md).
 
 ## Lessons learned
 
@@ -100,10 +131,19 @@ All 162 tests and the 4 oracle tests are green.
   consider ReadyToRun.
 - **Fair comparison:** C++ Manifold uses TBB (about 2.9 cores), so a single-threaded NanoCut against it compares
   different things.
+- **A second implementation is a test.** Writing the same minimum over a segment in C# and in CUDA C and comparing cell
+  by cell found a float-cancellation bug that the CPU-only tests could not see. Compare two implementations wherever the
+  cost of the second one is low.
+- **On a GPU, the read-back can dominate the kernel.** Per-step calls on the Z-map cost 450× the batched call, but only
+  5.9 ms of that is launch overhead (about 5 µs per launch) – the rest is 876 copies of 3 MB because the call returns the
+  height field. Who decides whether data comes back is an API decision, not a kernel one.
+- **A fixed-size representation sets an accuracy floor.** One height per column cannot represent overhangs, so no grid
+  size buys that error down. Measure the floor before buying resolution.
 
 ## Open
 
 - Fixed costs per cut for short tasks: C++ is still 1.3–2.3× faster there.
 - Exact face sweep for 3D rotations, which today use hulls of poses and small steps (see [processes.md](processes.md)).
-- Server mode and a GPU prototype: separate effort on branch `feature/server-gpu`. The GPU is meant for previews and
-  batch queries; the exact kernel stays on the CPU.
+- Server mode: the second half of the plan behind [server-gpu-plan.md](server-gpu-plan.md), still unbuilt. The GPU half is
+  done and measured above; what is still missing there is the caller's choice about read-back, batch queries and pinned
+  host memory. The exact kernel stays on the CPU either way.
