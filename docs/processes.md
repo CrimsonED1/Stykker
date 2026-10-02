@@ -20,6 +20,7 @@ rotary table) is handled with `Motion2.Relative` / `Motion3.Relative` (workpiece
 | `ToolShape.Revolved/BallNoseMill/Extruded/FromConvexParts` | acting 3D shapes as unions of convex parts |
 | `ToolShape.SawBlade`, `ToolShape.SawBladeTeeth` | circular saw blade: core disc + one convex trapezoid prism per tooth |
 | `SpinningTool.Disc/Symmetric/SawBlade/Prismatic/Toothed/Asymmetric` | tools spinning about their z-axis at a given rpm (see below) |
+| `GrindingWheel.Random/FromGrains` | grinding wheel with discrete abrasive grains (see below) |
 
 ## Motions
 
@@ -92,6 +93,52 @@ Measured (net10.0, one core; browser = Blazor interpreter without AOT; times var
 Limits: the spindle speed is constant and the tool is rigid (no run-out, deflection or wear); the teeth are not set
 (use `toothThicknessMm` for a wider kerf); the planar engine requires a feed exactly in the tool plane (checked at 17
 points per segment, otherwise the spatial engine is used).
+
+## Grinding with individual grains
+
+`GrindingWheel` is a non-cutting bond (radius, width) carrying abrasive grains. `GrindingWheel.Random(radius, width,
+count, grainSize, protrusionMean, protrusionSigma, rpm, seed)` places them at uniform random angles and axial positions,
+with a uniformly random orientation and a protrusion drawn from a normal distribution (clamped to [0, grain size]); the
+same seed always gives the same wheel. Each grain is a small octahedron (convex, grid vertices) whose outermost vertex
+(the tip) lies exactly on bond radius + protrusion. `GrindingWheel.FromGrains` places grains explicitly.
+
+`GrindingSimulation` moves every grain on its own trochoid, pose(t) = feed(t) ∘ spin(t):
+
+1. **Planning:** the grain's bounding sphere is sampled at ≤ 0.25° of spindle rotation; every interval in which it is
+   inside the workpiece's bounding box becomes a *pass*. Grains that never get near the workpiece cost nothing.
+2. **Cutting:** all passes of all grains are cut in time order with `Process3` (convex hulls of consecutive grain poses,
+   step ≤ 2 · `SweepNm` ÷ grain diameter – a few dozen hulls per pass because the grain is tiny). A grain therefore only
+   removes what the grains before it left: the removed volume of a pass is the grain's chip.
+3. **Measurement per pass:** removed volume; the largest depth of the grain tip below the surface it meets (sampled
+   48 times along the pass on the workpiece before the pass) as undeformed chip thickness h_cu; the contact angles
+   (radial direction from −z towards +x) where the tip is in material. Per grain: passes, active passes, total volume,
+   max h_cu, angle range; overall: active grains and their ratio.
+4. **Workpiece cells:** the workpiece is split into a grid of cells in x and y (default twice the grain size), so a pass
+   only touches the cells under its path. `Cells` holds them, `Workpiece` unites them on demand, `VolumeMm3` sums them.
+
+`SurfaceProfile` samples the top surface (largest z on a vertical line, from the exact face planes) along a line, e.g. a
+section perpendicular to the feed, and `SurfaceProfile.Roughness` returns Ra (mean absolute deviation from the mean line)
+and Rz (peak to valley over the whole line – one sampling length, not the five-length average of ISO 4287).
+
+```csharp
+var wheel = GrindingWheel.Random(radiusMm: 10, widthMm: 1, grainCount: 60, grainSizeMm: 0.15,
+                                 protrusionMeanMm: 0.04, protrusionSigmaMm: 0.015, rpm: 3000, seed: 1);
+var sim = new GrindingSimulation(block, wheel, feed, SpinningTool.Durations(feed, 20), Tolerance.Budget(2.1, 50, 2000));
+sim.Run();                                                       // or AdvanceTo(t) frame by frame
+var (ra, rz) = SurfaceProfile.Roughness(new SurfaceProfile(sim.Cells).Line(0.4, -0.4, 0.4, 0.4, 301));
+```
+
+Checks (tests/GrindingTests.cs): a single grain with protrusion p under a bond c above the surface cuts a scratch whose
+lowest point is p − c within 1 nm (20.0000 µm), with h_cu = 19.9995 µm and contact angles ±5° (√(2 · 0.02 / 5) rad);
+grains short of the surface stay inactive; a seed reproduces wheel and result exactly.
+
+Measured (demo default: Ø20 × 1 mm wheel, 60 grains of 150 µm, protrusion 40 ± 15 µm, 3000 rpm, 20 mm/s, 0.8 mm feed,
+path error 2 µm): 118 passes, 80 of them cutting, 42 of 60 grains active, Ra 9.7 µm, Rz 55 µm; 1.6 s native, 15 s in the
+browser without AOT. 100 grains over 2 mm feed (380 passes): 2.4–4 s native. The cost per pass (≈ 6–10 ms native) is the
+Boolean of a handful of hulls with the cells under it; finer path errors add hulls and faces.
+
+Limits: grains are rigid octahedra (no fracture, wear or ploughing / elastic deflection), the bond never cuts, chips are
+geometric (undeformed); h_cu is sampled along the tip path, not integrated over the whole grain.
 
 ## Measured (net10.0, one core)
 

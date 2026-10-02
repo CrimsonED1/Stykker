@@ -10,7 +10,9 @@ namespace Stykker.NanoCut.Cutting;
 /// grains, so a grain only removes what earlier grains left. Per pass the removed volume, the largest depth of the
 /// grain tip below the surface it meets (undeformed chip thickness) and the contact angles are recorded.
 /// <para>
-/// Use <see cref="AdvanceTo"/> to compute step by step (e.g. frames for playback) or <see cref="Run"/> for all.
+/// The workpiece is split into cells (a grid in x and y, see <see cref="Cells"/>): a pass only touches the few cells
+/// under its path, so the cost of a cut does not grow with all the scratches made elsewhere. Use
+/// <see cref="AdvanceTo"/> to compute step by step (e.g. frames for playback) or <see cref="Run"/> for all.
 /// </para>
 /// </summary>
 public sealed class GrindingSimulation
@@ -87,10 +89,13 @@ public sealed class GrindingSimulation
     /// <param name="segmentSeconds">Duration of each feed segment (see <see cref="SpinningTool.Durations"/>).</param>
     /// <param name="tol">Tolerance (chord, sweep); the sweep error should be small against the chip thickness.</param>
     /// <param name="startSeconds">Process time at the start (spindle phase).</param>
-    public GrindingSimulation(Solid workpiece, GrindingWheel wheel, Motion3 feed, IReadOnlyList<double> segmentSeconds, Tolerance? tol, double startSeconds = 0)
+    /// <param name="cellMm">Cell size of the workpiece grid in x and y; default twice the largest grain size.</param>
+    public GrindingSimulation(Solid workpiece, GrindingWheel wheel, Motion3 feed, IReadOnlyList<double> segmentSeconds, Tolerance? tol,
+        double startSeconds = 0, double? cellMm = null)
     {
         if (segmentSeconds.Count != feed.Segments.Count) throw new ArgumentException("One duration per feed segment required.", nameof(segmentSeconds));
-        Workpiece = workpiece;
+        _cells = Split(workpiece, cellMm ?? 2 * wheel.Grains.Max(g => g.SizeMm));
+        _initialVolume = _cells.Sum(c => c.VolumeMm3);
         _wheel = wheel;
         _feed = feed;
         _durations = [.. segmentSeconds];
@@ -104,8 +109,33 @@ public sealed class GrindingSimulation
         foreach (var p in _passes) _grains[p.Grain].Passes++;
     }
 
-    /// <summary>The workpiece after all passes cut so far.</summary>
-    public Solid Workpiece { get; private set; }
+    private Solid[] _cells;
+    private readonly double _initialVolume;
+    private Solid? _union;
+
+    /// <summary>The workpiece cells after all passes cut so far (together they form the workpiece).</summary>
+    public IReadOnlyList<Solid> Cells => _cells;
+
+    /// <summary>The workpiece after all passes cut so far: the union of the <see cref="Cells"/> (computed on demand, expensive).</summary>
+    public Solid Workpiece
+    {
+        get
+        {
+            if (_union is not null) return _union;
+            var level = _cells.ToList();
+            while (level.Count > 1)
+            {
+                var next = new List<Solid>();
+                for (int i = 0; i + 1 < level.Count; i += 2) next.Add(level[i] | level[i + 1]);
+                if (level.Count % 2 == 1) next.Add(level[^1]);
+                level = next;
+            }
+            return _union = level.Count == 0 ? Solid.Empty : level[0];
+        }
+    }
+
+    /// <summary>Current workpiece volume in mm³ (sum over the cells).</summary>
+    public double VolumeMm3 => _cells.Sum(c => c.VolumeMm3);
 
     /// <summary>Process time reached so far.</summary>
     public double Seconds { get; private set; }
@@ -126,7 +156,7 @@ public sealed class GrindingSimulation
     public double ActiveRatio => (double)ActiveGrains / _grains.Length;
 
     /// <summary>Total removed volume so far in mm³.</summary>
-    public double RemovedMm3 => _grains.Sum(g => g.RemovedMm3);
+    public double RemovedMm3 => _initialVolume - VolumeMm3;
 
     /// <summary>Convex hull pieces swept by all grain passes so far.</summary>
     public int Hulls { get; private set; }
@@ -206,33 +236,50 @@ public sealed class GrindingSimulation
         int pieces = Math.Max(1, (int)Math.Ceiling(Math.Abs(_wheel.Spindle.AngleAt(t1) - _wheel.Spindle.AngleAt(t0)) / (Math.PI / 4)));
         var motion = Motion3.Sequence([.. Enumerable.Range(0, pieces).Select(j =>
             Motion3.Custom(u => PoseAt(t0 + (t1 - t0) * (j + u) / pieces)))]);
-        var before = Workpiece;
-        var after = Process3.Cut([before], _grainTools[pass.Grain], motion, _tol, out var stats)[0];
+        var before = _cells;
+        var after = Process3.Cut(before, _grainTools[pass.Grain], motion, _tol, out var stats, 64);
         Hulls += stats.Hulls;
         pass.Done = true;
-        if (!ReferenceEquals(after, before))
+        var changed = Enumerable.Range(0, before.Length).Where(i => !ReferenceEquals(before[i], after[i])).ToArray();
+        if (changed.Length == 0) return;
+        _cells = after;
+        _union = null;
+        double removed = changed.Sum(i => before[i].VolumeMm3 - after[i].VolumeMm3);
+        if (removed <= 1e-15) return;
+        pass.RemovedMm3 = removed;
+        MeasureChip(pass, grain, changed.Select(i => before[i]));
+        var r = _grains[pass.Grain];
+        r.ActivePasses++;
+        r.RemovedMm3 += removed;
+        r.MaxChipThicknessMm = Math.Max(r.MaxChipThicknessMm, pass.ChipThicknessMm);
+        if (!double.IsNaN(pass.EntryAngleDeg))
         {
-            double removed = before.VolumeMm3 - after.VolumeMm3;
-            if (removed > 1e-15)
-            {
-                pass.RemovedMm3 = removed;
-                MeasureChip(pass, grain, before);
-                var r = _grains[pass.Grain];
-                r.ActivePasses++;
-                r.RemovedMm3 += removed;
-                r.MaxChipThicknessMm = Math.Max(r.MaxChipThicknessMm, pass.ChipThicknessMm);
-                if (!double.IsNaN(pass.EntryAngleDeg))
-                {
-                    r.EntryAngleDeg = double.IsNaN(r.EntryAngleDeg) ? pass.EntryAngleDeg : Math.Min(r.EntryAngleDeg, pass.EntryAngleDeg);
-                    r.ExitAngleDeg = double.IsNaN(r.ExitAngleDeg) ? pass.ExitAngleDeg : Math.Max(r.ExitAngleDeg, pass.ExitAngleDeg);
-                }
-            }
-            Workpiece = after;
+            r.EntryAngleDeg = double.IsNaN(r.EntryAngleDeg) ? pass.EntryAngleDeg : Math.Min(r.EntryAngleDeg, pass.EntryAngleDeg);
+            r.ExitAngleDeg = double.IsNaN(r.ExitAngleDeg) ? pass.ExitAngleDeg : Math.Max(r.ExitAngleDeg, pass.ExitAngleDeg);
         }
     }
 
+    private static Solid[] Split(Solid workpiece, double cellMm)
+    {
+        if (workpiece.BoundsMm is not { } b || !(cellMm > 0)) return [workpiece];
+        int nx = Math.Max(1, (int)Math.Ceiling((b.MaxX - b.MinX) / cellMm - 1e-9));
+        int ny = Math.Max(1, (int)Math.Ceiling((b.MaxY - b.MinY) / cellMm - 1e-9));
+        if (nx * ny == 1 || nx * ny > 4096) return [workpiece];
+        var cells = new List<Solid>();
+        for (int i = 0; i < nx; i++)
+            for (int j = 0; j < ny; j++)
+            {
+                var box = Solid.Box(
+                    Vec3.Mm(i == 0 ? b.MinX - 1 : b.MinX + i * cellMm, j == 0 ? b.MinY - 1 : b.MinY + j * cellMm, b.MinZ - 1),
+                    Vec3.Mm(i == nx - 1 ? b.MaxX + 1 : b.MinX + (i + 1) * cellMm, j == ny - 1 ? b.MaxY + 1 : b.MinY + (j + 1) * cellMm, b.MaxZ + 1));
+                var cell = workpiece & box;
+                if (!cell.IsEmpty) cells.Add(cell);
+            }
+        return [.. cells];
+    }
+
     // Tip depth below the surface before the pass, sampled along the tip's path.
-    private void MeasureChip(Pass pass, GrindingWheel.Grain grain, Solid before)
+    private void MeasureChip(Pass pass, GrindingWheel.Grain grain, IEnumerable<Solid> before)
     {
         var surface = new SurfaceProfile(before);
         const int samples = 48;

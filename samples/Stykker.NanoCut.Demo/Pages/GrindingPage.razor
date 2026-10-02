@@ -1,0 +1,380 @@
+@page "/grinding"
+@using System.Diagnostics
+@using Stykker.NanoCut.Cutting
+@using Stykker.NanoCut.Geometry3D
+@inject Viewer Viewer
+@implements IAsyncDisposable
+
+<div class="scene">
+    <section class="stage">
+        <header class="stage-head">
+            <div>
+                <h1>Grinding grains: where and how single grains cut</h1>
+                <p class="desc">A small wheel carries abrasive grains (octahedra) at random positions, orientations and protrusions.
+                    Each grain follows its own trochoid (spindle + feed) and only cuts while it is inside the workpiece; the passes of
+                    all grains are cut in time order, so every grain removes only what the grains before it left. Grains that removed
+                    material turn orange. The view is zoomed to the contact zone; the bond (grey) does not cut.</p>
+            </div>
+            <div class="engine">
+                <button class="@(_engine == "three" ? "on" : "")" @onclick='() => SwitchEngine("three")'>three.js</button>
+                <button class="@(_engine == "babylon" ? "on" : "")" @onclick='() => SwitchEngine("babylon")'>Babylon.js</button>
+            </div>
+        </header>
+        <div id="viewport" class="viewport"></div>
+    </section>
+
+    <aside class="panel">
+        <h2>Playback</h2>
+        <div class="actions">
+            @if (_playing)
+            {
+                <button class="run" @onclick="Pause">Pause</button>
+            }
+            else
+            {
+                <button class="run" disabled="@(_frames.Count < 2 || _computing)" @onclick="Play">Play</button>
+            }
+            <button class="ghost" disabled="@(_frames.Count < 2)" @onclick="Rewind">Rewind</button>
+        </div>
+        <label class="param"><span>Display speed</span>
+            <select value="@_factor.ToString(CultureInfo.InvariantCulture)" @onchange="OnFactor">
+                <option value="0.01">1/100</option>
+                <option value="0.002">1/500</option>
+                <option value="0.001">1/1000</option>
+                <option value="0.0002">1/5000</option>
+            </select>
+        </label>
+        <input class="scrub" type="range" min="0" max="1000" step="1" value="@SliderValue" @oninput="OnScrub" disabled="@(_frames.Count < 2)" />
+        <div class="dro">
+            <div><span>t</span>@F(_simTime * 1000, "0.00") ms</div>
+            <div><span>X</span>@F(FeedX(_simTime), "0.000")</div>
+            <div><span>rev</span>@F(_rpm / 60 * _simTime, "0.00")</div>
+        </div>
+
+        <h2>Wheel</h2>
+        <label class="param"><span>Diameter / width</span>
+            <span class="num"><input type="number" step="1" @bind="_diameter" /><input type="number" step="0.1" @bind="_width" /><em>mm</em></span></label>
+        <label class="param"><span>Grains</span><span class="num"><input type="number" step="10" @bind="_grainCount" /><em></em></span></label>
+        <label class="param"><span>Grain size</span><span class="num"><input type="number" step="10" @bind="_grainUm" /><em>µm</em></span></label>
+        <label class="param"><span>Protrusion mean / σ</span>
+            <span class="num"><input type="number" step="5" @bind="_protrusionUm" /><input type="number" step="1" @bind="_sigmaUm" /><em>µm</em></span></label>
+        <label class="param"><span>Seed</span><span class="num"><input type="number" step="1" @bind="_seed" /><em></em></span></label>
+
+        <h2>Process</h2>
+        <label class="param"><span>Spindle speed</span><span class="num"><input type="number" step="100" @bind="_rpm" /><em>rpm</em></span></label>
+        <label class="param"><span>Feed speed</span><span class="num"><input type="number" step="5" @bind="_feed" /><em>mm/s</em></span></label>
+        <label class="param"><span>Depth of cut</span><span class="num"><input type="number" step="5" @bind="_depthUm" /><em>µm</em></span></label>
+        <label class="param"><span>Grinding length</span><span class="num"><input type="number" step="0.1" @bind="_length" /><em>mm</em></span></label>
+        <label class="param"><span>Path error</span><span class="num"><input type="number" step="0.5" @bind="_sweepUm" /><em>µm</em></span></label>
+        <p class="desc">Workpiece 1.5 × 0.8 × 0.3 mm; the wheel axis is Y, the feed runs along +X. Depth of cut = how far a grain of mean
+            protrusion reaches below the surface. Cost grows with grains × revolutions: about 0.1 s per grain pass in the browser without AOT, 10 ms natively.</p>
+        <div class="actions">
+            <button class="run" disabled="@_computing" @onclick="Compute">@(_computing ? "Computing…" : "Compute grinding")</button>
+            @if (_computing)
+            {
+                <button class="ghost" @onclick="() => _cancel = true">Stop</button>
+            }
+        </div>
+        @if (_error is not null)
+        {
+            <div class="error">@_error</div>
+        }
+
+        <h2>Metrics</h2>
+        <table class="metrics">
+            <tr><td>Cutting speed</td><td>@F(Math.PI * _diameter * _rpm / 60000, "0.##") m/s</td></tr>
+            <tr><td>Feed per revolution</td><td>@F(_feed / (_rpm / 60) * 1000, "0.#") µm</td></tr>
+            <tr><td>Active grains</td><td>@(_sim?.ActiveGrains ?? 0) / @_grainCount (@F((_sim?.ActiveRatio ?? 0) * 100, "0") %)</td></tr>
+            <tr><td>Grain passes</td><td>@(_sim?.Passes.Count(p => p.Done) ?? 0) / @(_sim?.Passes.Count ?? 0) (@(_sim?.Passes.Count(p => p.RemovedMm3 > 0) ?? 0) cutting)</td></tr>
+            <tr><td>Removed volume</td><td>@F((_sim?.RemovedMm3 ?? 0) * 1e9, "0") µm³</td></tr>
+            <tr><td>Max. chip thickness</td><td>@F(MaxChip * 1000, "0.00") µm</td></tr>
+            <tr><td>Compute time</td><td>@_computeMs ms</td></tr>
+        </table>
+
+        <h2>Surface profile (section x = @F(ProfileX, "0.00") mm)</h2>
+        @if (_profile.Length > 1)
+        {
+            <table class="metrics">
+                <tr><td>Ra</td><td>@F(_ra * 1000, "0.000") µm</td></tr>
+                <tr><td>Rz (peak to valley)</td><td>@F(_rz * 1000, "0.000") µm</td></tr>
+            </table>
+            <svg class="plot" viewBox="0 0 300 110" role="img" aria-label="Surface profile across the ground width">
+                <line x1="0" y1="@F(ProfileY(0), "0.0")" x2="300" y2="@F(ProfileY(0), "0.0")" class="plot-base" />
+                <polyline points="@ProfilePoints" class="plot-line" />
+                <text x="2" y="10" class="plot-label">z = 0</text>
+                <text x="2" y="106" class="plot-label">@F(-_profileDepth * 1000, "0.0") µm</text>
+                <text x="298" y="106" text-anchor="end" class="plot-label">y −0.4 … 0.4 mm</text>
+            </svg>
+        }
+        else
+        {
+            <p class="desc">Compute to see the profile.</p>
+        }
+
+        <h2>Chip thickness per cutting pass</h2>
+        @if (_histogram.Length > 0)
+        {
+            <div class="hist">
+                @for (int i = 0; i < _histogram.Length; i++)
+                {
+                    int count = _histogram[i];
+                    <div class="hist-bar" title="@($"{F(i * _binUm, "0.0")}–{F((i + 1) * _binUm, "0.0")} µm: {count} passes")">
+                        <i style="height:@F(100.0 * count / Math.Max(1, _histogram.Max()), "0")%"></i>
+                    </div>
+                }
+            </div>
+            <div class="hist-axis"><span>0</span><span>@F(_histogram.Length * _binUm, "0.#") µm</span></div>
+
+            <h2>Most active grains</h2>
+            <table class="results">
+                <tr><th>Grain</th><th>Protr. µm</th><th>Passes</th><th>µm³</th><th>h max µm</th><th>Angle °</th></tr>
+                @foreach (var g in _sim!.Grains.Where(g => g.Active).OrderByDescending(g => g.RemovedMm3).Take(10))
+                {
+                    <tr><td>@g.Index</td><td>@F(_wheel!.Grains[g.Index].ProtrusionMm * 1000, "0.0")</td><td>@g.ActivePasses/@g.Passes</td>
+                        <td>@F(g.RemovedMm3 * 1e9, "0")</td><td>@F(g.MaxChipThicknessMm * 1000, "0.00")</td>
+                        <td>@F(g.EntryAngleDeg, "0.0") … @F(g.ExitAngleDeg, "0.0")</td></tr>
+                }
+            </table>
+        }
+    </aside>
+</div>
+
+@code {
+    private sealed record Frame(double Time, MeshBuffers Mesh, MeshBuffers Active, MeshBuffers Inactive);
+
+    private static readonly Pose3 AxisAlongY = Pose3.Rotation(-Math.PI / 2, 1, 0, 0);
+    private static readonly double[] ToolAxis = [0, 0, 1];
+    private const double BlockLength = 1.5;
+
+    private string _engine = "three";
+    private double _diameter = 20, _width = 1, _grainUm = 150, _protrusionUm = 40, _sigmaUm = 15;
+    private int _grainCount = 60, _seed = 1;
+    private double _rpm = 3000, _feed = 20, _depthUm = 20, _length = 0.8, _sweepUm = 2;
+    private double _factor = 0.001;
+
+    private GrindingWheel? _wheel;
+    private GrindingSimulation? _sim;
+    private MeshBuffers[] _grainMeshes = [];
+    private double _x0, _zCenter, _endTime;
+    private readonly List<Frame> _frames = [];
+    private int _shownFrame = -1;
+    private double _simTime;
+    private long _computeMs;
+    private bool _attached, _computing, _cancel, _playing;
+    private string? _error;
+    private double[] _profile = [];
+    private double _ra, _rz, _profileDepth = 0.05, _binUm = 1;
+    private int[] _histogram = [];
+
+    private static string F(double v, string format) => double.IsNaN(v) ? "–" : v.ToString(format, CultureInfo.InvariantCulture);
+
+    private double FeedX(double t) => _x0 + _feed * t;
+    private double MaxChip => _sim is null ? 0 : _sim.Grains.Max(g => g.MaxChipThicknessMm);
+    private double ProfileX => Math.Clamp(_x0 + _length - 0.1, 0.05, BlockLength - 0.05);
+    private int SliderValue => _frames.Count < 2 || _endTime <= 0 ? 0 : (int)Math.Round(1000 * _simTime / _endTime);
+    private double ProfileY(double zMm) => 8 + 94 * (-zMm / _profileDepth);
+
+    private string ProfilePoints => string.Join(" ", _profile.Select((z, i) =>
+        $"{F(300.0 * i / (_profile.Length - 1), "0.0")},{F(ProfileY(double.IsNaN(z) ? 0 : z), "0.0")}"));
+
+    protected override void OnInitialized() => Setup();
+
+    private void Setup()
+    {
+        if (!(_feed > 0) || !(_length > 0) || !(_rpm > 0)) throw new ArgumentException("Feed, length and speed must be positive.");
+        double r = _diameter / 2;
+        _wheel = GrindingWheel.Random(r, _width, Math.Clamp(_grainCount, 1, 2000), _grainUm / 1000, _protrusionUm / 1000, _sigmaUm / 1000, _rpm, _seed);
+        _grainMeshes = _wheel.Grains.Select(g => g.Shape.ToMeshBuffers(OriginMode.Absolute)).ToArray();
+        _zCenter = r + (_protrusionUm - _depthUm) / 1000;     // a grain of mean protrusion reaches depth-of-cut deep
+        _x0 = -0.3;
+        _endTime = _length / _feed;
+        _sim = null;
+        _frames.Clear();
+        var block = Block();
+        _frames.Add(new Frame(0, block.ToMeshBuffers(OriginMode.Absolute), MeshBuffers.Concat([]), MeshBuffers.Concat(_grainMeshes)));
+        _shownFrame = -1;
+        _simTime = 0;
+        _computeMs = 0;
+        _profile = [];
+        _histogram = [];
+    }
+
+    private static Solid Block() => Solid.Box(Vec3.Mm(0, -0.4, -0.3), Vec3.Mm(BlockLength, 0.4, 0));
+
+    private Motion3 FeedMotion() =>
+        Motion3.Compose(Motion3.Linear(Vec3.Mm(_x0, 0, _zCenter), Vec3.Mm(_x0 + _length, 0, _zCenter)), Motion3.Fixed(AxisAlongY));
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_attached) return;
+        await Viewer.Attach("viewport", _engine);
+        _attached = true;
+        await ShowTool();
+        await ShowAt(0, fit: true);
+    }
+
+    private double[] PoseAt(double t)
+    {
+        var q = AxisAlongY.Quaternion();
+        return [FeedX(t), 0, _zCenter, q.X, q.Y, q.Z, q.W];
+    }
+
+    private double Angle(double t) => _rpm * 2 * Math.PI / 60 * t;
+
+    private async Task ShowTool()
+    {
+        await Viewer.SetTool(_wheel!.Bond(Tolerance.Budget(totalUm: 2.1, chordNm: 1000)).ToMeshBuffers(OriginMode.Absolute), "#9aa3ad", 0.35, PoseAt(_simTime));
+        await Viewer.SetToolSpin(ToolAxis, 0, Angle(_simTime));
+    }
+
+    private async Task ShowAt(double t, bool fit = false)
+    {
+        int frame = 0;
+        while (frame + 1 < _frames.Count && _frames[frame + 1].Time <= t + 1e-12) frame++;
+        if (frame != _shownFrame || fit)
+        {
+            var f = _frames[frame];
+            await Viewer.Clear();
+            await Viewer.AddMesh("Workpiece", f.Mesh, "#9fb4c8", 1);
+            await Viewer.SetToolParts([(f.Active, "#ff8a3d", 1.0), (f.Inactive, "#5f6670", 1.0)]);
+            _shownFrame = frame;
+        }
+        await Viewer.SetToolPose(PoseAt(t));
+        if (fit) await Viewer.Fit("spin", [-0.4, -0.6, -0.35, BlockLength + 0.1, 0.6, 0.25]);
+    }
+
+    private async Task Compute()
+    {
+        _playing = false;
+        _error = null;
+        try { Setup(); }
+        catch (Exception ex) { _error = ex.Message; return; }
+        _computing = true;
+        _cancel = false;
+        await ShowTool();
+        await ShowAt(0, fit: true);
+        StateHasChanged();
+        await Task.Delay(20);
+        try
+        {
+            var clock = Stopwatch.StartNew();
+            var feed = FeedMotion();
+            var tol = Tolerance.Budget(totalUm: _sweepUm + 0.051, chordNm: 50, sweepNm: Math.Max(0.01, _sweepUm) * 1000);
+            _sim = new GrindingSimulation(Block(), _wheel!, feed, SpinningTool.Durations(feed, _feed), tol);
+            const int frames = 16;
+            for (int i = 1; i <= frames && !_cancel; i++)
+            {
+                double t = _endTime * i / frames;
+                _sim.AdvanceTo(i == frames ? double.PositiveInfinity : t);
+                var active = _sim.Grains.Where(g => g.Active).Select(g => _grainMeshes[g.Index]);
+                var inactive = _sim.Grains.Where(g => !g.Active).Select(g => _grainMeshes[g.Index]);
+                _frames.Add(new Frame(t, MeshBuffers.Concat(_sim.Cells.Select(c => c.ToMeshBuffers(OriginMode.Absolute))),
+                    MeshBuffers.Concat(active), MeshBuffers.Concat(inactive)));
+                _computeMs = clock.ElapsedMilliseconds;
+                _simTime = t;
+                await ShowAt(t);
+                await Viewer.SetToolSpin(ToolAxis, 0, Angle(t));
+                StateHasChanged();
+                await Task.Delay(1);
+            }
+            Analyse();
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally
+        {
+            _computing = false;
+            StateHasChanged();
+        }
+    }
+
+    private void Analyse()
+    {
+        if (_sim is null) return;
+        _profile = new SurfaceProfile(_sim.Cells).Line(ProfileX, -0.4, ProfileX, 0.4, 301);
+        (_ra, _rz) = SurfaceProfile.Roughness(_profile);
+        double low = _profile.Where(z => !double.IsNaN(z)).DefaultIfEmpty(0).Min();
+        _profileDepth = Math.Max(0.002, -low * 1.1);
+        var chips = _sim.Passes.Where(p => p.RemovedMm3 > 0).Select(p => p.ChipThicknessMm * 1000).ToArray();
+        if (chips.Length == 0) { _histogram = []; return; }
+        const int bins = 12;
+        _binUm = Math.Max(0.1, Math.Ceiling(chips.Max() / bins * 10) / 10);
+        _histogram = new int[bins];
+        foreach (double c in chips) _histogram[Math.Min(bins - 1, (int)(c / _binUm))]++;
+    }
+
+    private async Task Play()
+    {
+        if (_playing || _frames.Count < 2) return;
+        double end = _frames[^1].Time;
+        if (_simTime >= end - 1e-12) _simTime = 0;
+        _playing = true;
+        await Viewer.SetToolSpin(ToolAxis, _rpm * 2 * Math.PI / 60 * _factor, Angle(_simTime));
+        var clock = Stopwatch.StartNew();
+        double start = _simTime, factor = _factor;
+        while (_playing)
+        {
+            await Task.Delay(40);
+            if (!_playing || factor != _factor) break;
+            _simTime = Math.Min(end, start + clock.Elapsed.TotalSeconds * factor);
+            await ShowAt(_simTime);
+            if (_simTime >= end) _playing = false;
+            StateHasChanged();
+        }
+        if (factor != _factor && _playing)
+        {
+            _playing = false;
+            await Play();
+            return;
+        }
+        await Viewer.SetToolSpin(ToolAxis, 0, Angle(_simTime));
+        StateHasChanged();
+    }
+
+    private void Pause() => _playing = false;
+
+    private async Task Rewind()
+    {
+        _playing = false;
+        _simTime = 0;
+        await Viewer.SetToolSpin(ToolAxis, 0, 0);
+        await ShowAt(0);
+    }
+
+    private void OnFactor(ChangeEventArgs e)
+    {
+        if (double.TryParse(e.Value?.ToString(), NumberStyles.Float, CultureInfo.InvariantCulture, out double f) && f > 0) _factor = f;
+    }
+
+    private async Task OnScrub(ChangeEventArgs e)
+    {
+        if (_frames.Count < 2 || !double.TryParse(e.Value?.ToString(), NumberStyles.Float, CultureInfo.InvariantCulture, out double v)) return;
+        _playing = false;
+        _simTime = Math.Min(_frames[^1].Time, v / 1000 * _endTime);
+        await Viewer.SetToolSpin(ToolAxis, 0, Angle(_simTime));
+        await ShowAt(_simTime);
+    }
+
+    private async Task SwitchEngine(string engine)
+    {
+        if (_engine == engine) return;
+        _engine = engine;
+        try
+        {
+            await Viewer.SetEngine(engine);
+            _shownFrame = -1;
+            await ShowAt(_simTime, fit: true);
+        }
+        catch (Exception ex) { _error = $"Could not start {engine}: {ex.Message}"; }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _playing = false;
+        _cancel = true;
+        if (_attached)
+        {
+            await Viewer.RemoveTool();
+            await Viewer.Clear();
+        }
+    }
+}

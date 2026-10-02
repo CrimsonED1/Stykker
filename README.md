@@ -34,6 +34,8 @@ with three.js or Babylon.js (switchable).
   undo and a G-code program (G0/G1). Every move cuts exactly; rapid moves into material are reported as collisions.
 - **Spinning disc:** a saw blade or cut-off wheel at 3000 rpm fed into a block; the cut is computed in real process time
   (teeth on their trochoids, feed per tooth, removed volume) and played back in slow motion (1/10 … 1/1000).
+- **Grinding grains:** a wheel with random abrasive grains (size, protrusion mean/σ, seed); every grain follows its
+  trochoid and cuts its own chip – active grains in orange, chip-thickness histogram, surface profile with Ra/Rz.
 - **Free-form:** two cubes – drag or rotate the tool cube with a gizmo (or jog X/Y/Z/A/B/C); every motion,
   translation and rotation together, cuts the other solid.
 - **Self test:** runs the reference checks of the test suite inside the browser.
