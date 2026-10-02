@@ -7,6 +7,7 @@
     "snapshot": "node snapshot.mjs"
   },
   "dependencies": {
+    "gifenc": "^1.0.3",
     "three": "0.180.0"
   },
   "devDependencies": {

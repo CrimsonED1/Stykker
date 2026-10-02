@@ -82,6 +82,76 @@ public readonly record struct Pose3(
         return r with { TxNm = point.X - px, TyNm = point.Y - py, TzNm = point.Z - pz };
     }
 
+    /// <summary>Pose from a unit quaternion (x, y, z, w) and a translation in mm.</summary>
+    public static Pose3 FromQuaternion(double qx, double qy, double qz, double qw, double txMm, double tyMm, double tzMm)
+    {
+        double n = Math.Sqrt(qx * qx + qy * qy + qz * qz + qw * qw);
+        if (n == 0) throw new ArgumentException("Quaternion must not be zero.");
+        qx /= n; qy /= n; qz /= n; qw /= n;
+        return new Pose3(
+            1 - 2 * (qy * qy + qz * qz), 2 * (qx * qy - qz * qw), 2 * (qx * qz + qy * qw),
+            2 * (qx * qy + qz * qw), 1 - 2 * (qx * qx + qz * qz), 2 * (qy * qz - qx * qw),
+            2 * (qx * qz - qy * qw), 2 * (qy * qz + qx * qw), 1 - 2 * (qx * qx + qy * qy),
+            txMm * Units.NmPerMm, tyMm * Units.NmPerMm, tzMm * Units.NmPerMm);
+    }
+
+    /// <summary>The rotation as a unit quaternion (x, y, z, w) with w ≥ 0.</summary>
+    public (double X, double Y, double Z, double W) Quaternion()
+    {
+        double x, y, z, w, trace = R00 + R11 + R22;
+        if (trace > 0)
+        {
+            double s = Math.Sqrt(trace + 1) * 2;
+            w = s / 4; x = (R21 - R12) / s; y = (R02 - R20) / s; z = (R10 - R01) / s;
+        }
+        else if (R00 > R11 && R00 > R22)
+        {
+            double s = Math.Sqrt(1 + R00 - R11 - R22) * 2;
+            w = (R21 - R12) / s; x = s / 4; y = (R01 + R10) / s; z = (R02 + R20) / s;
+        }
+        else if (R11 > R22)
+        {
+            double s = Math.Sqrt(1 + R11 - R00 - R22) * 2;
+            w = (R02 - R20) / s; x = (R01 + R10) / s; y = s / 4; z = (R12 + R21) / s;
+        }
+        else
+        {
+            double s = Math.Sqrt(1 + R22 - R00 - R11) * 2;
+            w = (R10 - R01) / s; x = (R02 + R20) / s; y = (R12 + R21) / s; z = s / 4;
+        }
+        return w < 0 ? (-x, -y, -z, -w) : (x, y, z, w);
+    }
+
+    /// <summary>
+    /// Screw-free interpolation between two poses: translation linear, rotation by spherical linear interpolation
+    /// (constant angular speed about a fixed axis).
+    /// </summary>
+    public static Pose3 Interpolate(Pose3 a, Pose3 b, double t)
+    {
+        var qa = a.Quaternion();
+        var qb = b.Quaternion();
+        double dot = qa.X * qb.X + qa.Y * qb.Y + qa.Z * qb.Z + qa.W * qb.W;
+        if (dot < 0) { qb = (-qb.X, -qb.Y, -qb.Z, -qb.W); dot = -dot; }
+        double wa, wb;
+        if (dot > 0.9999999)
+        {
+            wa = 1 - t; wb = t;
+        }
+        else
+        {
+            double theta = Math.Acos(Math.Min(1, dot)), sin = Math.Sin(theta);
+            wa = Math.Sin((1 - t) * theta) / sin;
+            wb = Math.Sin(t * theta) / sin;
+        }
+        var r = FromQuaternion(wa * qa.X + wb * qb.X, wa * qa.Y + wb * qb.Y, wa * qa.Z + wb * qb.Z, wa * qa.W + wb * qb.W, 0, 0, 0);
+        return r with
+        {
+            TxNm = a.TxNm + (b.TxNm - a.TxNm) * t,
+            TyNm = a.TyNm + (b.TyNm - a.TyNm) * t,
+            TzNm = a.TzNm + (b.TzNm - a.TzNm) * t,
+        };
+    }
+
     /// <summary>Applies the pose to a point (double, nm).</summary>
     public (double X, double Y, double Z) Apply(double x, double y, double z) =>
         (R00 * x + R01 * y + R02 * z + TxNm, R10 * x + R11 * y + R12 * z + TyNm, R20 * x + R21 * y + R22 * z + TzNm);

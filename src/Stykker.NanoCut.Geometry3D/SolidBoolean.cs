@@ -25,7 +25,21 @@ internal enum Location
 /// </summary>
 internal static class SolidBoolean
 {
-    internal sealed record Classified(List<(Face3 Face, Location Loc)> A, List<(Face3 Face, Location Loc)> B);
+    /// <summary>
+    /// A face and the pieces it was split into. Leaves carry the classification. When every leaf below a node ends
+    /// up in the result (or none does), the node's own face is used instead of its pieces – exact, because the pieces
+    /// partition it – so splits that create no boundary leave no fragments behind.
+    /// </summary>
+    internal sealed class Node(Face3 face)
+    {
+        public Face3 Face { get; } = face;
+        public Node? Front { get; set; }
+        public Node? Back { get; set; }
+        public Location Loc { get; set; }
+        public bool IsLeaf => Front is null;
+    }
+
+    internal sealed record Classified(List<Node> A, List<Node> B);
 
     public static Classified Classify(IReadOnlyList<Face3> a, IReadOnlyList<Face3> b)
     {
@@ -37,44 +51,51 @@ internal static class SolidBoolean
     public static List<Face3> Assemble(Classified c, SolidOp op)
     {
         var result = new List<Face3>();
-        foreach (var (f, loc) in c.A)
+        Func<Location, bool> keepA = op switch
         {
-            bool keep = op switch
-            {
-                SolidOp.Union => loc is Location.Outside or Location.OnSame,
-                SolidOp.Intersection => loc is Location.Inside or Location.OnSame,
-                SolidOp.Difference => loc is Location.Outside or Location.OnOpposite,
-                _ => throw new ArgumentOutOfRangeException(nameof(op)),
-            };
-            if (keep) result.Add(f);
-        }
-        foreach (var (f, loc) in c.B)
+            SolidOp.Union => loc => loc is Location.Outside or Location.OnSame,
+            SolidOp.Intersection => loc => loc is Location.Inside or Location.OnSame,
+            SolidOp.Difference => loc => loc is Location.Outside or Location.OnOpposite,
+            _ => throw new ArgumentOutOfRangeException(nameof(op)),
+        };
+        Func<Location, bool> keepB = op switch
         {
-            switch (op)
-            {
-                case SolidOp.Union when loc == Location.Outside:
-                case SolidOp.Intersection when loc == Location.Inside:
-                    result.Add(f);
-                    break;
-                case SolidOp.Difference when loc == Location.Inside:
-                    result.Add(f.Reversed());
-                    break;
-            }
-        }
+            SolidOp.Union => loc => loc == Location.Outside,
+            _ => loc => loc == Location.Inside,
+        };
+        foreach (var n in c.A) Emit(n, keepA, reverse: false, result);
+        foreach (var n in c.B) Emit(n, keepB, reverse: op == SolidOp.Difference, result);
         return result;
     }
 
-    private static List<(Face3, Location)> Process(IReadOnlyList<Face3> faces, Bvh3 other)
+    private static bool AllKept(Node n, Func<Location, bool> keep) =>
+        n.IsLeaf ? keep(n.Loc) : AllKept(n.Front!, keep) && AllKept(n.Back!, keep);
+
+    private static void Emit(Node n, Func<Location, bool> keep, bool reverse, List<Face3> result)
     {
-        var result = new List<(Face3, Location)>(faces.Count);
+        if (AllKept(n, keep))
+        {
+            result.Add(reverse ? n.Face.Reversed() : n.Face);
+            return;
+        }
+        if (n.IsLeaf) return;
+        Emit(n.Front!, keep, reverse, result);
+        Emit(n.Back!, keep, reverse, result);
+    }
+
+    private static List<Node> Process(IReadOnlyList<Face3> faces, Bvh3 other)
+    {
+        var result = new List<Node>(faces.Count);
         var otherBox = other.Bounds;
         var candidates = new List<Face3>();
         var rayScratch = new List<Face3>();
         foreach (var p in faces)
         {
+            var root = new Node(p);
+            result.Add(root);
             if (!p.Box.Overlaps(otherBox))
             {
-                result.Add((p, Location.Outside));
+                root.Loc = Location.Outside;
                 continue;
             }
             other.Query(p.Box, candidates);
@@ -99,26 +120,28 @@ internal static class SolidBoolean
                 }
             }
 
-            var fragments = new List<Face3> { p };
+            var fragments = new List<Node> { root };
             for (int pi = 0; pi < planes.Count; pi++)
             {
                 var plane = planes[pi];
-                var next = new List<Face3>(fragments.Count + 4);
-                foreach (var f in fragments)
+                var next = new List<Node>(fragments.Count + 4);
+                foreach (var n in fragments)
                 {
                     // Only fragments that can touch one of the faces spanning this plane need the cut.
-                    if (!f.Box.Overlaps(reach[pi])) { next.Add(f); continue; }
-                    if (f.Split(plane, out var front, out var back, out _))
+                    if (!n.Face.Box.Overlaps(reach[pi])) { next.Add(n); continue; }
+                    if (n.Face.Split(plane, out var front, out var back, out _))
                     {
-                        next.Add(front!);
-                        next.Add(back!);
+                        n.Front = new Node(front!);
+                        n.Back = new Node(back!);
+                        next.Add(n.Front);
+                        next.Add(n.Back);
                     }
-                    else next.Add(f);
+                    else next.Add(n);
                 }
                 fragments = next;
             }
-            foreach (var f in fragments)
-                result.Add((f, Locate(f, other, coplanar, rayScratch)));
+            foreach (var n in fragments)
+                n.Loc = Locate(n.Face, other, coplanar, rayScratch);
         }
         return result;
     }

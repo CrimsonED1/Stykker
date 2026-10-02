@@ -35,3 +35,28 @@ public class CoreTests
         Assert.Throws<ArgumentOutOfRangeException>(() => Units.MmToNm(double.NaN));
     }
 }
+
+public class PoseTests
+{
+    [Fact]
+    public void QuaternionRoundTripAndInterpolation()
+    {
+        var a = Pose3.Rotation(0.4, 1, 2, 3);
+        var q = a.Quaternion();
+        var b = Pose3.FromQuaternion(q.X, q.Y, q.Z, q.W, 0, 0, 0);
+        Assert.Equal(a.R01, b.R01, 12);
+        Assert.Equal(a.R12, b.R12, 12);
+        Assert.Equal(a.R20, b.R20, 12);
+
+        // Halfway between identity and a 90° turn about z is a 45° turn; translation halfway.
+        var end = Pose3.Rotation(Math.PI / 2, 0, 0, 1) with { TxNm = 10e6 };
+        var mid = Pose3.Interpolate(Pose3.Identity, end, 0.5);
+        var expected = Pose3.Rotation(Math.PI / 4, 0, 0, 1);
+        Assert.Equal(expected.R00, mid.R00, 12);
+        Assert.Equal(expected.R10, mid.R10, 12);
+        Assert.Equal(5e6, mid.TxNm, 6);
+        var (x, y, _) = mid.Apply(1e6, 0, 0);
+        Assert.Equal(5e6 + 1e6 * Math.Cos(Math.PI / 4), x, 3);
+        Assert.Equal(1e6 * Math.Sin(Math.PI / 4), y, 3);
+    }
+}

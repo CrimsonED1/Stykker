@@ -18,9 +18,10 @@ Background, research and phase plan: [docs/plan.md](docs/plan.md) (German).
 | 5 – Web | three.js/Babylon.js adapters, byte-buffer interop, Blazor WebAssembly demo with machines ✅; web worker, AOT build in CI | mostly |
 | 6 – Hardening & release | Fuzzing, benchmarks, packages | open |
 
-| | | |
-| --- | --- | --- |
-| ![Gear generation](docs/images/gear-generation.png) | ![Turning](docs/images/turning.png) | ![Milling](docs/images/milling.png) |
+| | |
+| --- | --- |
+| ![Gear generation](docs/images/anim-gear.gif) | ![Turning](docs/images/anim-lathe.gif) |
+| ![Milling](docs/images/anim-mill.gif) | ![Cube shapes cube](docs/images/anim-cubes.gif) |
 
 ## Interactive demo
 
@@ -31,6 +32,8 @@ with three.js or Babylon.js (switchable).
   against analytic solutions, and STL / `.ncs` download.
 - **Machines:** a lathe (X diameter, Z) and a 3-axis mill (X, Y, Z) with jog buttons (0.01 … 5 mm, infeed), go-to,
   undo and a G-code program (G0/G1). Every move cuts exactly; rapid moves into material are reported as collisions.
+- **Free-form:** two cubes – drag or rotate the tool cube with a gizmo (or jog X/Y/Z/A/B/C); every motion,
+  translation and rotation together, cuts the other solid.
 - **Self test:** runs the reference checks of the test suite inside the browser.
 
 ```bash
@@ -139,6 +142,10 @@ node tests/Stykker.NanoCut.WasmSmoke/bin/Release/net10.0/wwwroot/main.mjs   # br
 # Render the example scenes to PNGs (headless Chromium + three.js)
 dotnet run -c Release --project samples/Stykker.NanoCut.Snapshot -- snapshot-out all   # example1|gear|lathe|mill|all
 cd tools/snapshot && npm install && node snapshot.mjs ../../snapshot-out/gear gear.png
+
+# Animated GIFs: frames of a process cut step by step, rendered and encoded
+dotnet run -c Release --project samples/Stykker.NanoCut.Snapshot -- anim-out anim-mill     # anim-mill|anim-lathe|anim-gear|anim-cubes
+cd tools/snapshot && node animate.mjs ../../anim-out/anim-mill ../../docs/images/anim-mill.gif 720 450 90
 ```
 
 ## 2D kernel

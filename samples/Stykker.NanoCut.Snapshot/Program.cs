@@ -12,6 +12,11 @@ string which = args.Length > 1 ? args[1] : "all";
 CultureInfo.DefaultThreadCurrentCulture = CultureInfo.InvariantCulture;
 var tol = Tolerance.Default;
 
+if (which.StartsWith("anim-"))
+{
+    Animations.Run(outRoot, which);
+    return;
+}
 if (which is "example1" or "all") Example1();
 if (which is "gear" or "all") Gear();
 if (which is "lathe" or "all") LatheScene();
