@@ -64,7 +64,8 @@ for (int i = 0; i < steps.Length; i++)
 }
 double totalMs = total.Elapsed.TotalMilliseconds - saveMs;
 double allocMb = (GC.GetTotalAllocatedBytes(true) - alloc0) / 1e6;
-string gcInfo = $"gen0 {GC.CollectionCount(0) - gc0}, gen1 {GC.CollectionCount(1) - gc1}, gen2 {GC.CollectionCount(2) - gc2}, " +
+string phases = engine == "nanocut" ? $"hull {NanoCutEngine.HullMs:F0} ms, boolean {NanoCutEngine.BooleanMs:F0} ms; " : "";
+string gcInfo = phases + $"gen0 {GC.CollectionCount(0) - gc0}, gen1 {GC.CollectionCount(1) - gc1}, gen2 {GC.CollectionCount(2) - gc2}, " +
                 $"pause {(GC.GetTotalPauseDuration() - gcPause0).TotalMilliseconds:F0} ms, allocated {allocMb:F0} MB";
 
 var stats = new JsonObject
@@ -101,7 +102,17 @@ sealed class NanoCutEngine : IEngine
     public void Start(long[] min, long[] max) =>
         _work = Solid.Box(new Vec3(min[0], min[1], min[2]), new Vec3(max[0], max[1], max[2]));
 
-    public void Cut(long[][] points) => _work -= ConvexHull3.Compute(points.Select(p => new Vec3(p[0], p[1], p[2])));
+    public static double HullMs, BooleanMs;
+
+    public void Cut(long[][] points)
+    {
+        var t = Stopwatch.GetTimestamp();
+        var hull = ConvexHull3.Compute(points.Select(p => new Vec3(p[0], p[1], p[2])));
+        var t1 = Stopwatch.GetTimestamp();
+        _work -= hull;
+        HullMs += Stopwatch.GetElapsedTime(t, t1).TotalMilliseconds;
+        BooleanMs += Stopwatch.GetElapsedTime(t1).TotalMilliseconds;
+    }
 
     public double VolumeMm3() => _work.VolumeMm3;
 

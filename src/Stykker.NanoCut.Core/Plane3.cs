@@ -43,6 +43,9 @@ public readonly record struct Plane3(Int128 Nx, Int128 Ny, Int128 Nz, Int128 D)
         if (a == 0) return b;
         if (b == 0) return a;
         if ((a >> 64) == 0 && (b >> 64) == 0) return Gcd64((ulong)a, (ulong)b);
+        // One operand small: a single 128-bit remainder brings the other one down to 64 bits.
+        if ((a >> 64) == 0) return Gcd64((ulong)a, (ulong)(b % a));
+        if ((b >> 64) == 0) return Gcd64((ulong)b, (ulong)(a % b));
         int shift = (int)UInt128.TrailingZeroCount(a | b);
         a >>= (int)UInt128.TrailingZeroCount(a);
         do
@@ -56,6 +59,7 @@ public readonly record struct Plane3(Int128 Nx, Int128 Ny, Int128 Nz, Int128 D)
 
     private static ulong Gcd64(ulong a, ulong b)
     {
+        if (b == 0) return a;
         int shift = System.Numerics.BitOperations.TrailingZeroCount(a | b);
         a >>= System.Numerics.BitOperations.TrailingZeroCount(a);
         do
