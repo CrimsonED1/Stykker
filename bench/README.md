@@ -80,3 +80,36 @@ pass become a few long strips, so the result is 30× smaller than Manifold's mes
 
 So on long tasks a native port could gain about 3× at most. This is the bar for the C# optimisations in
 `docs/native-speed-plan.md`.
+
+## After the first optimisation round (2026-10-02)
+
+pocket-large, same machine:
+
+| Engine | Language | Exact | Time (s) | per step (ms) | Triangles |
+| --- | --- | --- | ---: | ---: | ---: |
+| **nanocut** | C# | yes | **18.4** (was 30.9) | 21.0 | 678 |
+| manifoldsharp | C# | no | 30.8 | 35.1 | 23 774 |
+| manifold | C++ | no | 9.4 | 10.7 | 23 774 |
+
+Volumes are unchanged, identical to 1e-10 mm³. The measurements were taken with `perf`, run with
+`DOTNET_PerfMapEnabled=1 DOTNET_EnableWriteXorExecute=0`. The EventPipe thread-time sampler is misleading here: it only
+samples at safe points, so it shows GC polls and copy loops.
+
+What helped:
+
+| # | Change | Effect |
+| --- | --- | --- |
+| 1 | Convex hull: filtered plane test instead of a full exact orient3d per test | |
+| 1 | Binary GCD for `Plane3.Canonical` | |
+| 1 | BVH sort with a key array | |
+| 2 | Boolean: no splitting by the plane of a face that cannot meet the fragment (strictly outside one of its edge planes) | −15 % time, −28 % allocations |
+| 3 | Hull: coplanar neighbours found by orient3d and walked into one polygon; edge keys a·n + b | `(a << 32) \| b` hashes to a ^ b in .NET and collided massively |
+| 4 | BVH queries on plain arrays | |
+| 5 | Three-plane intersection as cross products in fixed 256-bit arithmetic instead of Cramer in generic Int384 | bit-identical, checked against Cramer on 20 000 random cases |
+
+What did not help, and was reverted or kept out:
+
+- GC settings (gen0 budget, server GC).
+- Classifying connected groups of unsplit faces with one ray test: fewer ray tests, but the edge checks cost more than
+  they saved.
+
