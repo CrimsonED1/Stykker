@@ -113,3 +113,26 @@ What did not help, and was reverted or kept out:
 - Classifying connected groups of unsplit faces with one ray test: fewer ray tests, but the edge checks cost more than
   they saved.
 
+## After the second optimisation round (2026-10-02)
+
+pocket-large, same machine (4 cores):
+
+| Engine | Language | Exact | Time (s) | per step (ms) | CPU (s, whole process) | Triangles |
+| --- | --- | --- | ---: | ---: | ---: | ---: |
+| **nanocut** | C# | yes | **10.4** (was 18.4, first 30.9) | 11.9 | 35.9 | 698 |
+| manifoldsharp | C# | no | 29.7 | 33.9 | 78.8 | 23 774 |
+| manifold | C++ | no | 10.1 | 11.6 | 29.3 | 23 774 |
+
+Volumes are identical to 3e-11 mm³. The CPU column counts the whole process. For the C# engines that includes the warm-up
+run (the scene twice), so NanoCut uses about 18 CPU-s per run. C++ Manifold (built with TBB) runs on about 2.9 cores; the
+earlier "2× behind" compared single-threaded NanoCut against multi-threaded Manifold.
+
+| # | Change |
+| --- | --- |
+| 6 | Hull: linked conflict lists over arrays, no stored exact planes, smaller buffers |
+| 7 | Winding ray along the axis that leaves the other solid's box soonest. For axis-aligned toolpaths the old +x ray ran lengthwise through every groove strip and hit near-parallel faces, which needed exact BigInteger fallbacks. |
+| 8 | Face split: two crossing points in locals, pieces in exactly sized arrays |
+| 9 | Lighter ray probes, single-entry edge index in FaceMerge, BVH nodes in a pre-sized array |
+| 10 | Hull working buffers reused per thread: large-object allocations caused page faults and kernel page zeroing |
+| 11 | Face classification in parallel, one buffer set per thread with results stored by index, so the output is deterministic. `SolidBoolean.MaxParallelism` controls it; the browser runs it sequentially. |
+
