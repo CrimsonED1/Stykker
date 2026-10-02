@@ -6,17 +6,35 @@ The scene (mm) describes a box, a ball tool, a path ("from where to where") and 
 segment. It is expanded once into explicit points on the 1 nm grid, so every engine gets the identical input: per
 step the convex hull of the ball at the step's start and end points, subtracted from the workpiece in order.
 "save" lists the states written as STL (step numbers, 0 = stock, -1 = final); default is only the final state.
+
+Runs on Windows and on Unix: CPU time is taken from the child process via psutil when available, otherwise it is
+omitted rather than guessed. The report carries median, min, max and the spread of every single run.
 """
 import argparse
 import json
 import math
 import os
-import resource
+import statistics
 import subprocess
 import sys
+import time
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
-WARM = False
+WARM = True
+PSUTIL = None
+
+# The report uses real minus and delta signs; a cp1252 console cannot print them.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError):
+        pass
+
+try:
+    import psutil
+    PSUTIL = psutil
+except ImportError:
+    pass
 
 
 def nm(mm):
@@ -59,10 +77,16 @@ def expand(scene):
     }
 
 
-def command(engine, expanded, out):
+def command(engine, expanded, out, repeat, par):
     if engine in ("nanocut", "manifoldsharp"):
         dll = os.path.join(ROOT, "Stykker.NanoCut.Bench/bin/Release/net10.0/Stykker.NanoCut.Bench.dll")
-        return ["dotnet", dll, expanded, out, engine] + (["--warm"] if WARM else [])
+        cmd = ["dotnet", dll, expanded, out, engine]
+        if WARM:
+            cmd.append("--warm")
+        cmd += ["--repeat", str(repeat)]
+        if par:
+            cmd += ["--par", str(par)]
+        return cmd
     if engine == "cgal":
         return [os.path.join(ROOT, "cgal/build/bench_cgal"), expanded, out]
     if engine == "manifold":
@@ -70,11 +94,26 @@ def command(engine, expanded, out):
     raise SystemExit(f"unknown engine {engine}")
 
 
+def run_once(engine, expanded, out, repeat, par, timeout):
+    """One process, `repeat` timed runs inside it. Returns the list of per-run wall times in ms."""
+    t0 = time.perf_counter()
+    r = subprocess.run(command(engine, expanded, out, repeat, par),
+                       capture_output=True, text=True, timeout=timeout)
+    if r.returncode != 0:
+        print(f"{engine} failed:\n{r.stdout}{r.stderr}")
+        return None, None
+    wall = (time.perf_counter() - t0) * 1e3
+    s = json.load(open(os.path.join(out, "stats.json"), encoding="utf-8"))
+    return s, wall
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("scene")
     ap.add_argument("--engines", default="nanocut,manifoldsharp,cgal,manifold")
-    ap.add_argument("--repeat", type=int, default=1)
+    ap.add_argument("--repeat", type=int, default=1, help="timed runs per engine process")
+    ap.add_argument("--outer", type=int, default=1, help="engine processes per repeat (variance between processes)")
+    ap.add_argument("--par", type=int, default=0, help="SolidBoolean.MaxParallelism (0 = default)")
     ap.add_argument("--timeout", type=float, default=3600, help="seconds per engine run")
     ap.add_argument("--out", default=os.path.join(ROOT, "out"))
     ap.add_argument("--cold", action="store_true", help="C#: include JIT compilation (no in-process warm-up run)")
@@ -82,48 +121,66 @@ def main():
     global WARM
     WARM = not a.cold
 
-    scene = json.load(open(a.scene))
+    scene = json.load(open(a.scene, encoding="utf-8"))
     base = os.path.join(a.out, scene["name"])
     os.makedirs(base, exist_ok=True)
     expanded = os.path.join(base, "expanded.json")
-    json.dump(expand(scene), open(expanded, "w"))
+    json.dump(expand(scene), open(expanded, "w", encoding="utf-8"))
+    nsteps = len(json.load(open(expanded, encoding="utf-8"))["steps"])
 
     rows = []
     for engine in a.engines.split(","):
         out = os.path.join(base, engine)
         os.makedirs(out, exist_ok=True)
-        best = None
-        for _ in range(a.repeat):
-            before = resource.getrusage(resource.RUSAGE_CHILDREN)
-            try:
-                r = subprocess.run(command(engine, expanded, out), capture_output=True, text=True, timeout=a.timeout)
-            except subprocess.TimeoutExpired:
-                print(f"{engine}: timeout after {a.timeout:.0f} s")
+        times, cpu, last = [], [], None
+        for _ in range(max(1, a.outer)):
+            s, wall = run_once(engine, expanded, out, a.repeat, a.par, a.timeout)
+            if s is None:
                 break
-            if r.returncode != 0:
-                print(f"{engine} failed:\n{r.stdout}{r.stderr}")
-                break
-            after = resource.getrusage(resource.RUSAGE_CHILDREN)
-            s = json.load(open(os.path.join(out, "stats.json")))
-            # CPU seconds of the whole process (all threads, including start-up and any warm-up run).
-            s["cpuS"] = (after.ru_utime + after.ru_stime) - (before.ru_utime + before.ru_stime)
-            if best is None or s["totalMs"] < best["totalMs"]:
-                best = s
-        if best:
-            rows.append(best)
-            print(f"  {engine:14s} {best['totalMs']:10.0f} ms")
+            last = s
+            times += s.get("totalMsAll", [s["totalMs"]])
+            if s.get("cpuS") is not None:
+                cpu.append(s["cpuS"])
+        if not last:
+            continue
+        row = dict(last)
+        row["runsMs"] = times
+        row["medianMs"] = statistics.median(times)
+        row["minMs"] = min(times)
+        row["maxMs"] = max(times)
+        row["spreadPct"] = (max(times) - min(times)) / statistics.median(times) * 100
+        rows.append(row)
+        print(f"  {engine:14s} median {row['medianMs']:9.0f} ms  (min {row['minMs']:.0f}, max {row['maxMs']:.0f}, "
+              f"spread {row['spreadPct']:.1f}%)")
 
     ref = next((r for r in rows if r["engine"] == "nanocut"), rows[0] if rows else None)
     lines = [f"Scene `{scene['name']}`: {scene.get('description', '')} "
-             f"{len(json.load(open(expanded))['steps'])} steps, C# {'cold (JIT included)' if a.cold else 'warm'}.", "",
-             "| Engine | Language | Exact | Time (ms) | per step (ms) | CPU (s, whole process) | Volume (mm³) | ΔV vs NanoCut (mm³) | Triangles |",
-             "| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |"]
+             f"{nsteps} steps, C# {'cold (JIT included)' if a.cold else 'warm'}, "
+             f"{a.repeat} timed run(s) x {max(1, a.outer)} process(es).", "",
+             "| Engine | Language | Exact | Median (ms) | Min | Max | Spread | per step (ms) | CPU (s) | "
+             "Alloc (MB) | Volume (mm³) | ΔV vs NanoCut (mm³) | Triangles |",
+             "| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |"]
     for r in rows:
         dv = r["volumeMm3"] - ref["volumeMm3"]
-        lines.append(f"| {r['engine']} | {r['language']} | {'yes' if r['exact'] else 'no'} | {r['totalMs']:.0f} | "
-                     f"{r['totalMs'] / r['steps']:.1f} | {r.get('cpuS', float('nan')):.1f} | {r['volumeMm3']:.9f} | {dv:+.2e} | {r['triangles']} |")
+        cpus = f"{statistics.median(cpu):.1f}" if cpu else "–"
+        lines.append(f"| {r['engine']} | {r['language']} | {'yes' if r['exact'] else 'no'} | "
+                     f"**{r['medianMs']:.0f}** | {r['minMs']:.0f} | {r['maxMs']:.0f} | {r['spreadPct']:.1f}% | "
+                     f"{r['medianMs'] / nsteps:.1f} | {cpus} | {r.get('allocatedMb', 0):.0f} | {r['volumeMm3']:.9f} | "
+                     f"{dv:+.2e} | {r['triangles']} |")
+
+    # Kernel-internal split, NanoCut only: hull construction vs. the Boolean itself.
+    n = next((r for r in rows if r["engine"] == "nanocut"), None)
+    if n and n.get("hullMs"):
+        lines += ["", f"NanoCut kernel split: hull {n['hullMs']:.0f} ms, boolean {n['booleanMs']:.0f} ms, "
+                      f"GC gen0 {n.get('gen0', 0)} / gen1 {n.get('gen1', 0)} / gen2 {n.get('gen2', 0)}, "
+                      f"pause {n.get('gcPauseMs', 0):.0f} ms, slowest step {n.get('maxStepMs', 0):.0f} ms."]
+
     table = "\n".join(lines)
-    open(os.path.join(base, "results.md"), "w").write(table + "\n")
+    open(os.path.join(base, "results.md"), "w", encoding="utf-8").write(table + "\n")
+    # Machine-readable companion, so a report can be regenerated from data instead of typed by hand.
+    with open(os.path.join(base, "results.json"), "w", encoding="utf-8") as f:
+        json.dump({"scene": scene["name"], "steps": nsteps, "warm": WARM, "repeat": a.repeat,
+                   "outer": max(1, a.outer), "maxParallelism": a.par or None, "rows": rows}, f, indent=2)
     print()
     print(table)
 

@@ -10,6 +10,12 @@ public static class ConvexHull3
     {
         var tris = Triangles(points, out var pts);
         long n = pts.Length;
+        if (KernelStats.Counting)
+        {
+            var s = KernelStats.Mine;
+            s.HullPoints += n;
+            s.HullTris += tris.Count;
+        }
         // Coplanar hull triangles form one convex polygon. Neighbouring triangles are coplanar iff the far vertex of one
         // lies on the other's plane (exact orient3d); union-find joins them, then each group's boundary (directed edges
         // whose twin is not in the group) is walked into one polygon.
@@ -191,8 +197,16 @@ public static class ConvexHull3
             var pl = planesD[f];
             double v = pl.X * p[q].X + pl.Y * p[q].Y + pl.Z * p[q].Z + pl.D;
             double bound = (pl.Bound + Math.Abs(pl.D)) * 8 * Epsilon;
-            if (v > bound) return true;
-            if (v < -bound) return false;
+            bool certain = v > bound || v < -bound;
+            if (KernelStats.Counting)
+            {
+                var s = KernelStats.Mine;
+                s.AboveCalls++;
+                // The fallback recomputes the exact plane (three cross products plus canonical gcd), so its share
+                // is the cost of the filter bound, not just of Int128.
+                if (!certain) s.AboveExact++;
+            }
+            if (certain) return v > bound;
             var (a, b, c) = faces[f];
             return Predicates.Side(Plane3.FromPoints(p[a], p[b], p[c]), p[q]) > 0;
         }
