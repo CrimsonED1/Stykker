@@ -116,10 +116,19 @@ internal static class SolidBoolean
         }
         else
         {
-            Parallel.For(0, nodes.Length, new ParallelOptions { MaxDegreeOfParallelism = MaxParallelism },
-                () => new Buffers(),
-                (i, _, b) => { nodes[i] = ProcessFace(faces[i], other, otherBox, b); return b; },
-                _ => { });
+            try
+            {
+                Parallel.For(0, nodes.Length, new ParallelOptions { MaxDegreeOfParallelism = MaxParallelism },
+                    () => new Buffers(),
+                    (i, _, b) => { nodes[i] = ProcessFace(faces[i], other, otherBox, b); return b; },
+                    _ => { });
+            }
+            catch (AggregateException ae) when (ae.InnerExceptions.Count > 0)
+            {
+                // Same exception type as the sequential path, independent of face count and parallelism.
+                System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(ae.InnerExceptions[0]).Throw();
+                throw;
+            }
         }
         return [.. nodes];
     }

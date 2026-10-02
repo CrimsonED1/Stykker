@@ -8,7 +8,8 @@ internal sealed class Bvh3
     private readonly IReadOnlyList<Face3> _faces;
     private readonly int[] _order;
     private double[]? _keys;
-    // Nodes in a flat array: leaves hold more than LeafSize / 2 faces, so there are at most n/2 + 1 nodes (+ slack).
+    // Nodes in a flat array: splitting more than LeafSize faces gives children of at least LeafSize / 2, so there are at
+    // most n / 4 leaves and fewer than n / 2 nodes (+ slack for tiny inputs).
     private readonly Node[] _nodes;
     private int _nodeCount;
     // Query-time copies in tree order: face boxes and faces as arrays (no list indexers, no property copies).
