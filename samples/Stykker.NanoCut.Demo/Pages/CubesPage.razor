@@ -1,0 +1,278 @@
+@page "/cubes"
+@using Stykker.NanoCut.Cutting
+@using Stykker.NanoCut.Geometry3D
+@inject Viewer Viewer
+@implements IAsyncDisposable
+
+<div class="scene">
+    <section class="stage">
+        <header class="stage-head">
+            <div>
+                <h1>Free-form: one solid shapes another</h1>
+                <p class="desc">Drag the orange tool with the gizmo (move or rotate) or jog it in all six axes. Every motion – translation
+                    and rotation together – removes exactly what the tool sweeps on its way from the old to the new pose.</p>
+            </div>
+            <div class="engine">
+                <button class="@(_engine == "three" ? "on" : "")" @onclick='() => SwitchEngine("three")'>three.js</button>
+                <button class="@(_engine == "babylon" ? "on" : "")" @onclick='() => SwitchEngine("babylon")'>Babylon.js</button>
+            </div>
+        </header>
+        <div id="viewport" class="viewport">
+            @if (_busy)
+            {
+                <div class="busy"><div class="spinner"></div>Cutting along the motion…</div>
+            }
+        </div>
+    </section>
+
+    <aside class="panel">
+        <h2>Gizmo</h2>
+        <div class="engine">
+            <button class="@(_gizmo == "translate" ? "on" : "")" @onclick='() => SetGizmo("translate")'>Move</button>
+            <button class="@(_gizmo == "rotate" ? "on" : "")" @onclick='() => SetGizmo("rotate")'>Rotate</button>
+            <button class="@(_gizmo == "off" ? "on" : "")" @onclick='() => SetGizmo("off")'>Off</button>
+        </div>
+
+        <h2>Tool pose</h2>
+        <div class="dro">
+            <div><span>X</span>@F(_pose.TxNm / 1e6)</div>
+            <div><span>Y</span>@F(_pose.TyNm / 1e6)</div>
+            <div><span>Z</span>@F(_pose.TzNm / 1e6)</div>
+        </div>
+
+        <h2>Jog</h2>
+        <label class="param"><span>Step</span>
+            <select @bind="_step">
+                <option value="0.5">0.5 mm / 5°</option>
+                <option value="1">1 mm / 10°</option>
+                <option value="2">2 mm / 20°</option>
+                <option value="5">5 mm / 45°</option>
+            </select>
+        </label>
+        @foreach (var (axis, i) in new[] { ("X", 0), ("Y", 1), ("Z", 2) })
+        {
+            <div class="jog six">
+                <b>@axis</b>
+                <button disabled="@_busy" @onclick="() => JogMove(i, -1)">−</button>
+                <button disabled="@_busy" @onclick="() => JogMove(i, 1)">+</button>
+                <b>@("ABC"[i])</b>
+                <span class="jog2">
+                    <button disabled="@_busy" @onclick="() => JogRotate(i, -1)">↺</button>
+                    <button disabled="@_busy" @onclick="() => JogRotate(i, 1)">↻</button>
+                </span>
+            </div>
+        }
+        <div class="actions">
+            <button class="ghost" disabled="@_busy" @onclick="Undo">Undo</button>
+            <button class="ghost" disabled="@_busy" @onclick="ResetAll">Reset</button>
+        </div>
+
+        <h2>Setup</h2>
+        <label class="param"><span>Tool</span>
+            <select @bind="_toolKind">
+                <option value="0">Cube 8 mm</option>
+                <option value="1">Sphere r = 4 mm</option>
+                <option value="2">Cylinder r = 3 mm, 12 mm</option>
+                <option value="3">Tetrahedron 10 mm</option>
+            </select>
+        </label>
+        <label class="param"><span>Path chord error</span>
+            <span class="num"><input type="number" step="1000" @bind="_sweepNm" /><em>nm</em></span>
+        </label>
+        <label class="param"><span>Shape chord error</span>
+            <span class="num"><input type="number" step="100" @bind="_chordNm" /><em>nm</em></span>
+        </label>
+        <p class="desc">With rotation the swept volume needs small steps (≤ 2 × path error ÷ tool diameter); coarser values are
+            faster. Pure translations are exact in a single step.</p>
+        <div class="actions"><button class="ghost" disabled="@_busy" @onclick="ResetAll">Apply &amp; reset</button></div>
+
+        @if (_error is not null)
+        {
+            <div class="error">@_error</div>
+        }
+        <h2>Status</h2>
+        <table class="metrics">
+            <tr><td>Workpiece volume</td><td>@_work.VolumeMm3.ToString("F6", CultureInfo.InvariantCulture) mm³</td></tr>
+            <tr><td>Removed</td><td>@((8000 - _work.VolumeMm3).ToString("F6", CultureInfo.InvariantCulture)) mm³</td></tr>
+            <tr><td>Faces</td><td>@_work.FaceCount</td></tr>
+            <tr><td>Exact (non-grid) vertices</td><td>@_exactVertices</td></tr>
+        </table>
+        <div class="actions">
+            <button class="ghost" @onclick="DownloadStl">STL</button>
+            <button class="ghost" @onclick="DownloadNcs">.ncs (lossless)</button>
+        </div>
+        <h2>Log</h2>
+        <div class="log">@string.Join("\n", _log.TakeLast(30))</div>
+    </aside>
+</div>
+
+@code {
+    private Solid _work = Solid.Empty;
+    private ToolShape _tool = ToolShape.Ball(1);
+    private Pose3 _pose = Pose3.Identity;
+    private readonly Stack<(Solid, Pose3)> _history = new();
+    private readonly List<string> _log = [];
+    private string _engine = "three", _gizmo = "translate", _step = "1";
+    private int _toolKind;
+    private double _sweepNm = 50000, _chordNm = 2000;
+    private int _exactVertices;
+    private bool _busy, _attached;
+    private string? _error;
+    private DotNetObjectReference<CubesPage>? _self;
+
+    private static string F(double v) => v.ToString("0.000", CultureInfo.InvariantCulture);
+
+    private Tolerance Tol => Tolerance.Budget(totalUm: (_chordNm + _sweepNm + 51) / 1000, chordNm: _chordNm, sweepNm: _sweepNm);
+
+    protected override void OnInitialized() => Build();
+
+    private void Build()
+    {
+        var tol = Tol;
+        _work = Solid.Box(Vec3.Mm(-10, -10, -10), Vec3.Mm(10, 10, 10), tol);
+        _tool = _toolKind switch
+        {
+            1 => ToolShape.Ball(4, tol),
+            2 => ToolShape.FromConvexParts(Solid.Cylinder(Vec3.Mm(0, 0, -6), Vec3.Mm(0, 0, 6), 3, tol)),
+            3 => ToolShape.FromConvexParts(Solid.FromTriangles(
+                     [Vec3.Mm(5, 5, 5), Vec3.Mm(5, -5, -5), Vec3.Mm(-5, 5, -5), Vec3.Mm(-5, -5, 5)],
+                     [0, 2, 1, 0, 1, 3, 0, 3, 2, 1, 2, 3])),
+            _ => ToolShape.FromConvexParts(Solid.Box(Vec3.Mm(-4, -4, -4), Vec3.Mm(4, 4, 4), tol)),
+        };
+        _pose = Pose3.TranslationMm(0, 0, 18);
+        _history.Clear();
+        _log.Clear();
+        _exactVertices = 0;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_attached) return;
+        _self = DotNetObjectReference.Create(this);
+        await Viewer.Attach("viewport", _engine);
+        _attached = true;
+        await ShowAll(fit: true);
+    }
+
+    private double[] PoseArray()
+    {
+        var q = _pose.Quaternion();
+        return [_pose.TxNm / 1e6, _pose.TyNm / 1e6, _pose.TzNm / 1e6, q.X, q.Y, q.Z, q.W];
+    }
+
+    private async Task ShowAll(bool fit)
+    {
+        await Viewer.Clear();
+        await Viewer.AddMesh("Workpiece", _work.ToMeshBuffers(OriginMode.Absolute), "#9fb4c8", 1);
+        await Viewer.SetTool(_tool.ToSolid().ToMeshBuffers(OriginMode.Absolute), "#ff8a3d", 0.55, PoseArray());
+        await Viewer.SetGizmo(_gizmo, _self);
+        if (fit) await Viewer.Fit("cubes");
+    }
+
+    [JSInvokable]
+    public async Task OnToolMoved(double x, double y, double z, double qx, double qy, double qz, double qw)
+    {
+        var target = Pose3.FromQuaternion(qx, qy, qz, qw, x, y, z);
+        await MoveTo(target, "drag");
+    }
+
+    private Task JogMove(int axis, int sign)
+    {
+        double d = double.Parse(_step, CultureInfo.InvariantCulture) * sign * Units.NmPerMm;
+        var t = _pose with
+        {
+            TxNm = _pose.TxNm + (axis == 0 ? d : 0),
+            TyNm = _pose.TyNm + (axis == 1 ? d : 0),
+            TzNm = _pose.TzNm + (axis == 2 ? d : 0),
+        };
+        return MoveTo(t, $"{"XYZ"[axis]}{(sign > 0 ? "+" : "−")}");
+    }
+
+    private Task JogRotate(int axis, int sign)
+    {
+        double step = double.Parse(_step, CultureInfo.InvariantCulture);
+        double deg = step switch { 0.5 => 5, 1 => 10, 2 => 20, _ => 45 } * sign;
+        var center = new Vec3((long)_pose.TxNm, (long)_pose.TyNm, (long)_pose.TzNm);
+        var rot = Pose3.Rotation(deg * Math.PI / 180, axis == 0 ? 1 : 0, axis == 1 ? 1 : 0, axis == 2 ? 1 : 0, center);
+        return MoveTo(rot.Compose(_pose), $"{"ABC"[axis]}{(sign > 0 ? "+" : "")}{deg:0}°");
+    }
+
+    private async Task MoveTo(Pose3 target, string label)
+    {
+        if (_busy) { await Viewer.SetToolPose(PoseArray()); return; }
+        _busy = true;
+        _error = null;
+        await Viewer.SetLocked(true);
+        StateHasChanged();
+        await Task.Delay(30);
+        try
+        {
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            double before = _work.VolumeMm3;
+            _history.Push((_work, _pose));
+            _work = Process3.Cut([_work], _tool, Motion3.Between(_pose, target), Tol, out var stats)[0];
+            _pose = target;
+            _exactVertices = _work.Vertices.Count(v => !v.IsGrid);
+            _log.Add($"{label}: removed {(before - _work.VolumeMm3).ToString("0.######", CultureInfo.InvariantCulture)} mm³ · {stats.Intervals} steps · {sw.ElapsedMilliseconds} ms");
+            await ShowAll(fit: false);
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally
+        {
+            _busy = false;
+            await Viewer.SetLocked(false);
+            StateHasChanged();
+        }
+    }
+
+    private async Task Undo()
+    {
+        if (_history.Count == 0) return;
+        (_work, _pose) = _history.Pop();
+        _log.Add("undo");
+        await ShowAll(fit: false);
+    }
+
+    private async Task ResetAll()
+    {
+        Build();
+        await ShowAll(fit: true);
+    }
+
+    private async Task SetGizmo(string mode)
+    {
+        _gizmo = mode;
+        await Viewer.SetGizmo(mode, _self);
+    }
+
+    private async Task SwitchEngine(string engine)
+    {
+        if (_engine == engine) return;
+        _engine = engine;
+        try
+        {
+            await Viewer.SetEngine(engine);
+            await ShowAll(fit: true);
+        }
+        catch (Exception ex) { _error = $"Could not start {engine}: {ex.Message}"; }
+    }
+
+    private async Task DownloadStl() => await Viewer.Download("cubes.stl", _work.ToMeshBuffers(OriginMode.Absolute).ToStl());
+
+    private async Task DownloadNcs()
+    {
+        using var ms = new MemoryStream();
+        NcsFormat.Save(_work, ms);
+        await Viewer.Download("cubes.ncs", ms.ToArray());
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_attached)
+        {
+            await Viewer.SetGizmo<CubesPage>("off", null);
+            await Viewer.Clear();
+        }
+        _self?.Dispose();
+    }
+}

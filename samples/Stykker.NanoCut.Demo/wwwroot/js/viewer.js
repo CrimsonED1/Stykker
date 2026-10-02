@@ -2,6 +2,7 @@
 // Buffers arrive as raw bytes from .NET and are reinterpreted as Float32Array / Uint32Array.
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { TransformControls } from 'three/addons/controls/TransformControls.js';
 import { toThreeGeometry } from './nanocut-three/index.js';
 
 const BABYLON_URL = 'https://cdn.babylonjs.com/babylon.js';
@@ -10,6 +11,11 @@ let host = null;
 let engineName = 'three';
 let impl = null;
 let viewName = 'iso';
+// A movable tool (mesh in its own frame + pose) with an optional drag gizmo that reports the new pose to .NET.
+let tool = null;          // { positions, normals, indices, color, opacity, pose: [px,py,pz,qx,qy,qz,qw] }
+let gizmoMode = 'off';
+let gizmoCallback = null; // DotNetObjectReference
+let locked = false;
 
 const f32 = (bytes) => new Float32Array(bytes.slice().buffer);
 const u32 = (bytes) => new Uint32Array(bytes.slice().buffer);
@@ -25,7 +31,35 @@ export async function setEngine(engine) {
   engineName = engine;
   impl = engine === 'babylon' ? await createBabylon(host) : createThree(host);
   for (const o of objects) impl.add(o);
+  if (tool) { impl.setTool(tool); impl.setGizmo(gizmoMode); }
   impl.fit(bounds(), viewName);
+}
+
+export function setTool(positions, normals, indices, color, opacity, pose) {
+  tool = { name: 'tool', kind: 'mesh', positions: f32(positions), normals: f32(normals), indices: u32(indices), color, opacity, pose };
+  impl?.setTool(tool);
+  impl?.setGizmo(gizmoMode);
+}
+
+export function setToolPose(pose) {
+  if (!tool) return;
+  tool.pose = pose;
+  impl?.setToolPose(pose);
+}
+
+export function setGizmo(mode, dotnetRef) {
+  gizmoMode = mode;
+  if (dotnetRef) gizmoCallback = dotnetRef;
+  impl?.setGizmo(mode);
+}
+
+/** While locked (a cut is being computed) the gizmo ignores drags. */
+export function setLocked(value) { locked = value; impl?.setLocked?.(value); }
+
+function toolMoved(pose) {
+  if (!tool) return;
+  tool.pose = pose;
+  gizmoCallback?.invokeMethodAsync('OnToolMoved', ...pose);
 }
 
 export function clear() {
@@ -76,7 +110,7 @@ function bounds() {
 // Camera directions per view (z up).
 const VIEWS = {
   iso: [-0.62, -0.42, 0.66], top: [0, -0.0001, 1], gear: [-0.38, -0.62, 0.68],
-  lathe: [0.05, -1, 0.25], mill: [-0.42, -0.62, 0.66],
+  lathe: [0.05, -1, 0.25], mill: [-0.42, -0.62, 0.66], cubes: [-0.55, -0.85, 0.55],
 };
 
 function eyeFor(b, view) {
@@ -107,6 +141,17 @@ function createThree(el) {
   const group = new THREE.Group();
   scene.add(group);
   let running = true;
+  let toolMesh = null;
+  const gizmo = new TransformControls(camera, renderer.domElement);
+  gizmo.setSpace('world');
+  scene.add(gizmo.getHelper());
+  gizmo.addEventListener('dragging-changed', (e) => {
+    controls.enabled = !e.value;
+    if (!e.value && toolMesh) {
+      const p = toolMesh.position, q = toolMesh.quaternion;
+      toolMoved([p.x, p.y, p.z, q.x, q.y, q.z, q.w]);
+    }
+  });
 
   function resize() {
     const w = el.clientWidth, h = el.clientHeight;
@@ -141,6 +186,24 @@ function createThree(el) {
     clear() {
       for (const c of [...group.children]) { group.remove(c); c.geometry?.dispose(); c.material?.dispose(); }
     },
+    setTool(t) {
+      if (toolMesh) { gizmo.detach(); scene.remove(toolMesh); toolMesh.geometry.dispose(); toolMesh.material.dispose(); }
+      const mat = new THREE.MeshStandardMaterial({ color: t.color, metalness: 0.3, roughness: 0.45, transparent: t.opacity < 1, opacity: t.opacity });
+      toolMesh = new THREE.Mesh(toThreeGeometry(t), mat);
+      scene.add(toolMesh);
+      this.setToolPose(t.pose);
+    },
+    setToolPose(p) {
+      if (!toolMesh) return;
+      toolMesh.position.set(p[0], p[1], p[2]);
+      toolMesh.quaternion.set(p[3], p[4], p[5], p[6]);
+    },
+    setGizmo(mode) {
+      if (!toolMesh || mode === 'off') { gizmo.detach(); return; }
+      gizmo.setMode(mode);
+      gizmo.attach(toolMesh);
+    },
+    setLocked(v) { gizmo.enabled = !v; },
     fit(b, view) {
       camera.position.set(...eyeFor(b, view));
       controls.target.set(...b.center);
@@ -152,6 +215,9 @@ function createThree(el) {
     dispose() {
       running = false;
       ro.disconnect();
+      gizmo.detach();
+      gizmo.dispose();
+      if (toolMesh) scene.remove(toolMesh);
       controls.dispose();
       this.clear();
       renderer.dispose();
@@ -193,6 +259,16 @@ async function createBabylon(el) {
   const sun = new B.DirectionalLight('sun', new B.Vector3(1, 1.6, -2.4), scene);
   sun.intensity = 0.75;
   const meshes = [];
+  let toolMesh = null;
+  const gizmos = new B.GizmoManager(scene);
+  gizmos.usePointerToAttachGizmos = false;
+  gizmos.positionGizmoEnabled = false;
+  gizmos.rotationGizmoEnabled = false;
+  const reportPose = () => {
+    if (!toolMesh) return;
+    const p = toolMesh.position, q = toolMesh.rotationQuaternion;
+    toolMoved([p.x, p.y, p.z, q.x, q.y, q.z, q.w]);
+  };
   engine.runRenderLoop(() => scene.render());
   const ro = new ResizeObserver(() => engine.resize());
   ro.observe(el);
@@ -222,6 +298,32 @@ async function createBabylon(el) {
       for (const m of meshes) m.dispose(false, true);
       meshes.length = 0;
     },
+    setTool(t) {
+      gizmos.attachToMesh(null);
+      toolMesh?.dispose(false, true);
+      toolMesh = toBabylonMesh(t, 'tool', scene);
+      const mat = new B.StandardMaterial('tool-mat', scene);
+      mat.diffuseColor = B.Color3.FromHexString(t.color);
+      mat.alpha = t.opacity;
+      toolMesh.material = mat;
+      toolMesh.rotationQuaternion = new B.Quaternion(0, 0, 0, 1);
+      this.setToolPose(t.pose);
+    },
+    setToolPose(p) {
+      if (!toolMesh) return;
+      toolMesh.position.set(p[0], p[1], p[2]);
+      toolMesh.rotationQuaternion.set(p[3], p[4], p[5], p[6]);
+    },
+    setGizmo(mode) {
+      gizmos.positionGizmoEnabled = mode === 'translate';
+      gizmos.rotationGizmoEnabled = mode === 'rotate';
+      gizmos.attachToMesh(mode === 'off' ? null : toolMesh);
+      for (const g of [gizmos.gizmos.positionGizmo, gizmos.gizmos.rotationGizmo]) {
+        if (g && !g.__nanocut) { g.onDragEndObservable.add(reportPose); g.__nanocut = true; }
+      }
+      if (gizmos.gizmos.rotationGizmo) gizmos.gizmos.rotationGizmo.updateGizmoRotationToMatchAttachedMesh = false;
+    },
+    setLocked(v) { gizmos.attachToMesh(v ? null : (gizmoMode === 'off' ? null : toolMesh)); },
     fit(b, view) {
       const eye = eyeFor(b, view);
       camera.setTarget(new B.Vector3(...b.center));
@@ -231,6 +333,8 @@ async function createBabylon(el) {
     },
     dispose() {
       ro.disconnect();
+      gizmos.dispose();
+      toolMesh?.dispose(false, true);
       this.clear();
       engine.dispose();
       canvas.remove();

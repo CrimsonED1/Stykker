@@ -86,6 +86,9 @@ public sealed class Motion3
         Sequence(Enumerable.Range(0, Math.Max(1, points.Length - 1))
             .Select(i => points.Length == 1 ? Linear(points[0], points[0]) : Linear(points[i], points[i + 1])).ToArray());
 
+    /// <summary>From one pose to another: translation linear, rotation about a fixed axis (slerp).</summary>
+    public static Motion3 Between(Pose3 from, Pose3 to) => Custom(t => Pose3.Interpolate(from, to, t));
+
     /// <summary>Rotation about the axis through <paramref name="point"/> with direction (ax, ay, az).</summary>
     public static Motion3 Rotate(Vec3 point, double ax, double ay, double az, double fromRad, double toRad) =>
         Custom(t => Pose3.Rotation(fromRad + (toRad - fromRad) * t, ax, ay, az, point));

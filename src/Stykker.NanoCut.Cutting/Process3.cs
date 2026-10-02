@@ -26,6 +26,7 @@ public static class Process3
         double diameter = partPoints.Max(Diameter);
         var rotated = new Dictionary<(double, double, double, double, double, double, double, double, double), Solid[]>();
         int intervals = 0, hulls = 0, cuts = 0;
+        var pending = new List<Solid>();
         foreach (var seg in motion.Segments)
         {
             var poses = Sample(seg, probe, diameter, tol.SweepNm);
@@ -55,13 +56,25 @@ public static class Process3
                         swept = ConvexHull3.Compute(pts.Select(a.Apply).Concat(pts.Select(b.Apply)));
                     }
                     hulls++;
-                    for (int w = 0; w < result.Length; w++)
-                    {
-                        if (!Overlaps(result[w], swept)) continue;
-                        result[w] = result[w] - swept;
-                        cuts++;
-                    }
+                    pending.Add(swept);
+                    if (pending.Count == Batch) Flush();
                 }
+            }
+        }
+        Flush();
+
+        // Small groups of neighbouring swept pieces are united first (cheap, local) and then cut from the workpieces:
+        // cutting every piece alone touches the whole, ever finer workpiece per step; one huge union is slower still.
+        void Flush()
+        {
+            if (pending.Count == 0) return;
+            var swept = UnionTree(pending);
+            pending.Clear();
+            for (int w = 0; w < result.Length; w++)
+            {
+                if (!Overlaps(result[w], swept)) continue;
+                result[w] = result[w] - swept;
+                cuts++;
             }
         }
         stats = new Stats(intervals, hulls, cuts);
@@ -71,6 +84,21 @@ public static class Process3
     /// <summary>Single-workpiece convenience overload.</summary>
     public static Solid Cut(Solid workpiece, ToolShape tool, Motion3 motion, Tolerance? tol = null) =>
         Cut([workpiece], tool, motion, tol, out _)[0];
+
+    private const int Batch = 8;
+
+    private static Solid UnionTree(List<Solid> pieces)
+    {
+        var level = pieces;
+        while (level.Count > 1)
+        {
+            var next = new List<Solid>((level.Count + 1) / 2);
+            for (int i = 0; i + 1 < level.Count; i += 2) next.Add(level[i] | level[i + 1]);
+            if (level.Count % 2 == 1) next.Add(level[^1]);
+            level = next;
+        }
+        return level[0];
+    }
 
     private static long Round(double v) => (long)Math.Round(v, MidpointRounding.AwayFromZero);
 

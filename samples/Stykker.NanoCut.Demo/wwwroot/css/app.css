@@ -58,6 +58,8 @@ button:disabled { opacity: .5; cursor: default; }
 .summary { font-weight: 600; } .summary.pass { color: var(--pass); } .summary.fail { color: var(--fail); }
 .jog { display: grid; grid-template-columns: 34px 1fr 1fr 1fr 1fr; gap: 4px; align-items: center; font-size: 13px; margin: 4px 0; }
 .jog b { text-align: center; }
+.jog2 { display: contents; }
+.jog.six { grid-template-columns: 26px 1fr 1fr 26px 1fr 1fr; }
 .jog button { padding: 5px 0; }
 .dro { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 6px 0; }
 .dro div { background: var(--side); color: #9ff0b8; border-radius: 6px; padding: 6px 8px; font-family: ui-monospace, monospace; font-size: 14px; }

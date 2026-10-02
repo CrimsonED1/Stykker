@@ -28,6 +28,22 @@ public sealed class Viewer(IJSRuntime js) : IAsyncDisposable
     public async Task AddLines(string name, float[] xyz, string color) =>
         await (await Module()).InvokeVoidAsync("addLines", name, MemoryMarshal.AsBytes(xyz.AsSpan()).ToArray(), color);
 
+    /// <summary>Shows a movable tool (mesh in its own frame) at a pose [x, y, z (mm), qx, qy, qz, qw].</summary>
+    public async Task SetTool(MeshBuffers b, string color, double opacity, double[] pose) =>
+        await (await Module()).InvokeVoidAsync("setTool",
+            MemoryMarshal.AsBytes(b.Positions.AsSpan()).ToArray(),
+            MemoryMarshal.AsBytes(b.Normals.AsSpan()).ToArray(),
+            MemoryMarshal.AsBytes(b.Indices.AsSpan()).ToArray(),
+            color, opacity, pose);
+
+    public async Task SetToolPose(double[] pose) => await (await Module()).InvokeVoidAsync("setToolPose", pose);
+
+    /// <summary>Gizmo mode "translate", "rotate" or "off"; drags end in <c>OnToolMoved</c> on the receiver.</summary>
+    public async Task SetGizmo<T>(string mode, DotNetObjectReference<T>? receiver) where T : class =>
+        await (await Module()).InvokeVoidAsync("setGizmo", mode, receiver);
+
+    public async Task SetLocked(bool locked) => await (await Module()).InvokeVoidAsync("setLocked", locked);
+
     public async Task Fit(string view) => await (await Module()).InvokeVoidAsync("fit", view);
 
     public async Task Download(string fileName, byte[] data) => await (await Module()).InvokeVoidAsync("download", fileName, data);
