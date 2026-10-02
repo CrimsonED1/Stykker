@@ -26,6 +26,9 @@ internal static class FaceMerge
         return result;
     }
 
+    // Reused per thread (merging runs once per Boolean result, often for many small plane groups).
+    [ThreadStatic] private static Dictionary<(long, long, long, long, long, long), (int Piece, int Edge)>? _byEdge;
+
     public static void MergeCoplanar(List<Face3> pieces)
     {
         bool mergedAny = true;
@@ -34,7 +37,8 @@ internal static class FaceMerge
             mergedAny = false;
             // Index directed edges by an approximate key; candidates are confirmed exactly. In a closed surface a directed
             // edge belongs to one face, so one entry per key suffices (a rare duplicate only costs a missed merge).
-            var byEdge = new Dictionary<(long, long, long, long, long, long), (int Piece, int Edge)>();
+            var byEdge = _byEdge ??= [];
+            byEdge.Clear();
             for (int i = 0; i < pieces.Count; i++)
             {
                 var v = pieces[i].Vertices;
