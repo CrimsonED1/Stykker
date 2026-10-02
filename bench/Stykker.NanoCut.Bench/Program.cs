@@ -1,25 +1,34 @@
-// Usage: dotnet run -c Release -- <expanded.json> <out-dir> <nanocut|manifoldsharp> [--warm] [--repeat N] [--par N]
+// Usage: dotnet run -c Release -- <scene.json> <out-dir> <nanocut|manifoldsharp|process> [--warm] [--repeat N] [--par N]
 //
-// Runs the steps of an expanded bench scene (workpiece box minus the convex hull of each step's points, in order) and
-// writes stats.json plus binary STL files of the states listed in "save". Only the cutting is timed -- the scene is
-// parsed, the hull inputs materialised and the workpiece created before the clock starts, so the measured allocation
-// is the kernel's own.
+// Two kinds of scene, because they measure different things (docs/performance-audit.md, section 2):
 //
-// Measurement discipline (see docs/performance-audit.md, section 7):
-//   * the warm-up repeats the whole scene until two consecutive runs are within 10 %, so that short scenes are also
+//   default (no "kind")     Expanded steps of a ball on a path: per step, build the convex hull of the two step
+//                           positions and subtract it from the workpiece. A synthetic worst case -- it rebuilds the hull
+//                           on every step and takes one bite per step, which is exactly what Process3 does not do.
+//   kind "process3"         The same path through the production entry point Process3.Cut, which caches the hull per
+//                           tool orientation and does not subdivide a pure translation at all.
+//   kind "process2-gear"    A spur gear generated with a rack (as in samples/Stykker.NanoCut.Snapshot/Program.cs).
+//
+// Only the cutting is timed: parsing, tool construction and workpiece creation happen before the clock starts, so the
+// measured allocation is the kernel's own.
+//
+// Measurement discipline (docs/performance-audit.md, section 7):
+//   * the warm-up repeats the whole scene until three consecutive runs agree within 10 %, so short scenes are
 //     measured at tier 1 and not at tier 0;
-//   * every repeat runs on a fresh engine instance, so no per-run state carries over;
+//   * every repeat rebuilds everything, so no per-run state carries over;
 //   * the report contains all single runs plus min/median/max, never just the best one.
 using System.Diagnostics;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Stykker.NanoCut;
+using Stykker.NanoCut.Geometry2D;
 using Stykker.NanoCut.Geometry3D;
+using Stykker.NanoCut.Cutting;
 using MS = ManifoldSharp;
 
 if (args.Length < 3)
 {
-    Console.Error.WriteLine("usage: <expanded.json> <out-dir> <nanocut|manifoldsharp> [--warm] [--repeat N] [--par N]");
+    Console.Error.WriteLine("usage: <scene.json> <out-dir> <nanocut|manifoldsharp|process> [--warm] [--repeat N] [--par N]");
     return 2;
 }
 var scene = JsonNode.Parse(File.ReadAllText(args[0]))!;
@@ -36,13 +45,22 @@ int ArgInt(string name, int fallback)
     return i >= 0 && i + 1 < args.Length && int.TryParse(args[i + 1], out var v) ? v : fallback;
 }
 
+if (par > 0) SolidBoolean.MaxParallelism = par;
+KernelStats.Reset();
+KernelStats.Counting = counters;
+
 long[] Corner(string key) => scene["box"]![key]!.AsArray().Select(v => v!.GetValue<long>()).ToArray();
+
+// The production entry points: what an application actually pays. Checked before the step parser below, because a
+// process scene carries its geometry in millimetres while an expanded step scene carries grid integers in nm.
+if (engine == "process") return ProcessBench();
+
 var min = Corner("min");
 var max = Corner("max");
 
-// Materialised before any measurement: the hull inputs must not cost LINQ enumerator allocs inside the timed loop.
+// Materialised before any measurement: the hull inputs must not cost LINQ enumerator allocation inside the timed loop.
 var steps = new Vec3[scene["steps"]!.AsArray().Count][];
-int s = 0;
+int stepIndex = 0;
 foreach (var step in scene["steps"]!.AsArray())
 {
     var arr = new Vec3[step!.AsArray().Count];
@@ -52,12 +70,11 @@ foreach (var step in scene["steps"]!.AsArray())
         var c = pt!.AsArray();
         arr[p++] = new Vec3(c[0]!.GetValue<long>(), c[1]!.GetValue<long>(), c[2]!.GetValue<long>());
     }
-    steps[s++] = arr;
+    steps[stepIndex++] = arr;
 }
 var save = scene["save"]!.AsArray().Select(v => v!.GetValue<int>()).ToHashSet();
 
-// --hull-breakdown splits ConvexHull3.Compute into its quickhull phase and the phase that turns triangles into
-// coplanar polygon faces, on one step's point set. Which of the two dominates decides where the hull work goes.
+// Splits ConvexHull3.Compute into its quickhull phase and its face-building phase on one step's point set.
 if (args.Contains("--hull-breakdown"))
 {
     var first = steps[0];
@@ -85,13 +102,6 @@ if (args.Contains("--hull-breakdown"))
     return 0;
 }
 
-// MaxParallelism is process-global; set it once so every run in this process sees the same setting.
-if (par > 0) SolidBoolean.MaxParallelism = par;
-
-// Counters are off for the timings and on only for a dedicated instrumentation pass.
-KernelStats.Reset();
-KernelStats.Counting = counters;
-
 IEngine NewEngine() => engine switch
 {
     "nanocut" => new NanoCutEngine(),
@@ -99,59 +109,48 @@ IEngine NewEngine() => engine switch
     _ => throw new ArgumentException($"unknown engine {engine}"),
 };
 
-// One timed run: fresh engine, workpiece created outside the clock, only the cuts measured.
-(double Ms, double HullMs, double BooleanMs, double AllocMb, int[] Gc, double GcPauseMs, int MaxStepMs) Measure()
+// One timed run: fresh engine, workpiece built outside the clock, only the cuts measured.
+(double Ms, double HullMs, double BooleanMs, double AllocMb, int[] Gc, double GcPauseMs) Measure()
 {
     var e = NewEngine();
     e.Start(min, max);
-
     long alloc0 = GC.GetTotalAllocatedBytes(true);
     int g0 = GC.CollectionCount(0), g1 = GC.CollectionCount(1), g2 = GC.CollectionCount(2);
     double pause0 = GC.GetTotalPauseDuration().TotalMilliseconds;
-
-    var stepMs = new double[steps.Length];
     var total = Stopwatch.StartNew();
-    for (int i = 0; i < steps.Length; i++)
-    {
-        var sw = Stopwatch.StartNew();
-        e.Cut(steps[i]);
-        stepMs[i] = sw.Elapsed.TotalMilliseconds;
-    }
+    foreach (var step in steps) e.Cut(step);
     double ms = total.Elapsed.TotalMilliseconds;
-
     double alloc = (GC.GetTotalAllocatedBytes(true) - alloc0) / 1e6;
     int[] gc = [GC.CollectionCount(0) - g0, GC.CollectionCount(1) - g1, GC.CollectionCount(2) - g2];
     double pause = GC.GetTotalPauseDuration().TotalMilliseconds - pause0;
-    return (ms, e.HullMs, e.BooleanMs, alloc, gc, pause, stepMs.Length > 0 ? (int)stepMs.Max() : 0);
+    return (ms, e.HullMs, e.BooleanMs, alloc, gc, pause);
 }
 
-// Warm-up: at least 5 passes so short scenes also reach tier 1, then repeat until three consecutive runs lie
-// within 10 % of each other -- a single early-slow pass must not stop the warm-up.
 int warmRuns = 0;
 if (warm)
 {
-    const int MinWarmRuns = 5, MaxWarmRuns = 40;
     var recent = new Queue<double>();
-    while (warmRuns < MaxWarmRuns)
+    while (warmRuns < 40)
     {
-        var (ms, _, _, _, _, _, _) = Measure();
+        var ms = Measure().Ms;
         warmRuns++;
+        // A scene that costs seconds per run is well past the point where tiered JIT matters, and repeating it
+        // would cost half an hour without improving the measurement (the gear scene needs ~87 s per run).
+        if (ms > 3000) break;
         recent.Enqueue(ms);
         if (recent.Count > 3) recent.Dequeue();
         if (recent.Count == 3)
         {
             var arr = recent.ToArray();
-            if (Math.Max(arr.Max(), arr.Min()) / arr[0] <= 1.10 && warmRuns >= MinWarmRuns) break;
+            if (Math.Max(arr.Max(), arr.Min()) / arr[0] <= 1.10 && warmRuns >= 5) break;
         }
     }
 }
 
-var runs = new List<(double Ms, double HullMs, double BooleanMs, double AllocMb, int[] Gc, double GcPauseMs, int MaxStepMs)>();
-var final = NewEngine();
+var runs = new List<(double Ms, double HullMs, double BooleanMs, double AllocMb, int[] Gc, double GcPauseMs)>();
 for (int i = 0; i < repeat; i++) runs.Add(Measure());
 
-// One extra instrumented pass: kernel counters are per thread, so the warm-up and the timed runs above do not pollute
-// this. It also measures what the counting itself costs, so it can be compared against the clean timings.
+// One extra instrumented pass: the counters are per thread, so the warm-up and the timed runs do not pollute it.
 string? statsReport = null;
 double statsCostMs = 0;
 if (counters)
@@ -168,10 +167,10 @@ if (counters)
         e.Start(min, max);
         foreach (var step in steps) e.Cut(step);
     });
-    KernelStats.Counting = counters;
 }
 
-// STL output from a separate, untimed pass so that file writing never enters the timings.
+// STL output from a separate, untimed pass, so that file writing never enters the timings.
+var final = NewEngine();
 final.Start(min, max);
 if (save.Contains(0)) File.WriteAllBytes(Path.Combine(outDir, "step-0000.stl"), final.Stl());
 for (int i = 0; i < steps.Length; i++)
@@ -205,7 +204,6 @@ var stats = new JsonObject
     ["gen1"] = bestRun.Gc[1],
     ["gen2"] = bestRun.Gc[2],
     ["gcPauseMs"] = bestRun.GcPauseMs,
-    ["maxStepMs"] = bestRun.MaxStepMs,
     ["kernelStats"] = statsReport,
     ["statsCostMs"] = statsCostMs,
     ["volumeMm3"] = final.VolumeMm3(),
@@ -220,6 +218,176 @@ Console.WriteLine($"{engine}: {steps.Length} steps, median {median:F0} ms (min {
                   (warm ? $", warm-up {warmRuns} runs" : "") +
                   (statsReport is null ? "" : $"\n  counters: {statsReport}\n  counting overhead: {statsCostMs:F1} ms per pass"));
 return 0;
+
+// ---------------------------------------------------------------------------------------------------------------
+// Process scenes: Process3.Cut and Process2.Cut. Same discipline as above -- tool and workpiece are built before the
+// clock, the statistics are reported the same way.
+int ProcessBench()
+{
+    string kind = scene["kind"]?.GetValue<string>() ?? "process3";
+    var tn = scene["tolerance"];
+    var tol = Tolerance.Budget(
+        totalUm: tn?["totalUm"]?.GetValue<double>() ?? 0.1,
+        chordNm: tn?["chordNm"]?.GetValue<double>() ?? 50,
+        sweepNm: tn?["sweepNm"]?.GetValue<double>() ?? 30);
+
+    static Vec3 MmD(JsonNode n) => new(
+        (long)Math.Round(n[0]!.GetValue<double>() * 1e6, MidpointRounding.AwayFromZero),
+        (long)Math.Round(n[1]!.GetValue<double>() * 1e6, MidpointRounding.AwayFromZero),
+        (long)Math.Round(n[2]!.GetValue<double>() * 1e6, MidpointRounding.AwayFromZero));
+
+    (double Vol, long Tri, int Intervals, string Detail) Run()
+    {
+        if (kind == "process2-gear")
+        {
+            double m = scene["moduleMm"]!.GetValue<double>();
+            int z = scene["teeth"]!.GetValue<int>();
+            double rp = m * z / 2 * Units.NmPerMm, pitch = Math.PI * m * Units.NmPerMm;
+            var blank = Region2.Circle(default, (m * z / 2 + m), tol);
+            // The rack has its own tooth count, independent of the gear: the demo cuts a 20-tooth gear with a 7-tooth rack
+            // (samples/Stykker.NanoCut.Snapshot/Program.cs). Using the gear's count for both measures a different,
+            // much heavier scene.
+            int rackTeeth = scene["rackTeeth"]?.GetValue<int>() ?? 7;
+            var rack = GearProfile.Rack(m, rackTeeth, scene["pressureAngleDeg"]?.GetValue<double>() ?? 20,
+                bodyMm: scene["rackBodyMm"]?.GetValue<double>() ?? 0.5);
+            var rolling = Motion2.Sequence([.. Enumerable.Range(0, z).Select(k => Motion2.Custom(t =>
+            {
+                double dphi = 2 * Math.PI / z * t, phi = 2 * Math.PI * k / z + dphi;
+                return Pose2.Rotation(-phi).Compose(new Pose2(0, pitch / 2 - rp * dphi, rp));
+            }))]);
+            var g2 = Process2.Cut([blank], rack, rolling, tol, out var st)[0];
+            var solid = Solid.Extrude(g2, 0, scene["extrudeMm"]?.GetValue<double>() ?? 10);
+            return (solid.VolumeMm3, solid.ToMeshBuffers(OriginMode.Absolute).Indices.Length / 3, st.Intervals,
+                    $"{st.Intervals} roll steps, profile vertices {g2.Contours.Sum(c => c.Count)}, " +
+                    $"contours {g2.Contours.Count}, extrude to {solid.FaceCount} faces");
+        }
+
+        // process3
+        var tool = scene["tool"]!;
+        ToolShape shape;
+        if (tool["ballMm"] is { } ballNode)
+        {
+            int seg = tool["segments"]?.GetValue<int>() ?? 24;
+            var pts = BallPoints((long)Math.Round(ballNode.GetValue<double>() * 1e6), seg);
+            shape = ToolShape.FromConvexParts(ConvexHull3.Compute([.. pts.Distinct()]));
+        }
+        else if (tool["boxMm"] is { } boxNode)
+        {
+            shape = ToolShape.FromConvexParts(Solid.Box(MmD(boxNode["min"]!), MmD(boxNode["max"]!), tol));
+        }
+        else throw new ArgumentException("tool needs ballMm or boxMm");
+
+        var lo = MmD(scene["box"]!["min"]!);
+        var hi = MmD(scene["box"]!["max"]!);
+        var block = Solid.Box(lo, hi, tol);
+        Motion3 motion;
+        string detail;
+        if (scene["rotateDeg"] is { } rotNode)
+        {
+            double deg = rotNode.GetValue<double>();
+            var axis = MmD(scene["axis"] ?? new JsonArray(0, 0, 1));
+            var origin = MmD(scene["origin"] ?? new JsonArray(0, 0, 0));
+            double len = Math.Sqrt(axis.X * (double)axis.X + axis.Y * (double)axis.Y + axis.Z * (double)axis.Z);
+            var to = Pose3.Rotation(deg * Math.PI / 180, axis.X / len, axis.Y / len, axis.Z / len, origin);
+            motion = Motion3.Between(Pose3.Identity, to);
+            detail = $"rotation {deg}° about ({axis.X / len:F3},{axis.Y / len:F3},{axis.Z / len:F3}), sweep {tol.SweepNm} nm";
+        }
+        else
+        {
+            var segs = new List<Motion3>();
+            foreach (var p in scene["paths"]!.AsArray())
+            {
+                var pair = p!.AsArray();
+                segs.Add(Motion3.Linear(MmD(pair[0]!), MmD(pair[1]!)));
+            }
+            motion = Motion3.Sequence([.. segs]);
+            detail = $"{segs.Count} linear path segments";
+        }
+
+        var result = Process3.Cut([block], shape, motion, tol, out var stats3)[0];
+        return (result.VolumeMm3, result.ToMeshBuffers(OriginMode.Absolute).Indices.Length / 3, stats3.Intervals,
+                $"{detail}, intervals {stats3.Intervals}, hulls {stats3.Hulls}, cuts {stats3.Cuts}");
+    }
+
+    (double Ms, long Alloc, int[] Gc, double Pause, double Vol, long Tri, int Intervals, string Detail) Measure()
+    {
+        long a0 = GC.GetTotalAllocatedBytes(true);
+        int g0 = GC.CollectionCount(0), g1 = GC.CollectionCount(1), g2 = GC.CollectionCount(2);
+        double p0 = GC.GetTotalPauseDuration().TotalMilliseconds;
+        var sw = Stopwatch.StartNew();
+        var r = Run();
+        sw.Stop();
+        return (sw.Elapsed.TotalMilliseconds, GC.GetTotalAllocatedBytes(true) - a0,
+                [GC.CollectionCount(0) - g0, GC.CollectionCount(1) - g1, GC.CollectionCount(2) - g2],
+                GC.GetTotalPauseDuration().TotalMilliseconds - p0, r.Vol, r.Tri, r.Intervals, r.Detail);
+    }
+
+    int warmRuns = 0;
+    if (warm)
+    {
+        var recent = new Queue<double>();
+        while (warmRuns < 40)
+        {
+            var ms = Measure().Ms;
+            warmRuns++;
+            if (ms > 3000) break;
+            recent.Enqueue(ms);
+            if (recent.Count > 3) recent.Dequeue();
+            if (recent.Count == 3)
+            {
+                var arr = recent.ToArray();
+                if (Math.Max(arr.Max(), arr.Min()) / arr[0] <= 1.10 && warmRuns >= 5) break;
+            }
+        }
+    }
+
+    var runs = new List<double>();
+    long alloc = 0; int[] gc = [0, 0, 0]; double pause = 0, vol = 0; long tri = 0; int intervals = 0; string detail = "";
+    for (int i = 0; i < repeat; i++)
+    {
+        var m = Measure();
+        runs.Add(m.Ms);
+        alloc = m.Alloc; gc = m.Gc; pause = m.Pause; vol = m.Vol; tri = m.Tri; intervals = m.Intervals; detail = m.Detail;
+    }
+    double[] sorted = [.. runs.Order()];
+    double median = sorted[sorted.Length / 2];
+    var outStats = new JsonObject
+    {
+        ["engine"] = "process", ["kind"] = kind, ["language"] = "C#", ["exact"] = true,
+        ["warm"] = warm, ["warmRuns"] = warmRuns, ["repeat"] = repeat,
+        ["maxParallelism"] = par > 0 ? par : SolidBoolean.MaxParallelism,
+        ["steps"] = intervals, ["totalMs"] = median, ["totalMsMin"] = sorted[0], ["totalMsMax"] = sorted[^1],
+        ["totalMsAll"] = new JsonArray([.. runs.Select(v => (JsonNode)v)]),
+        ["allocatedMb"] = alloc / 1e6, ["gen0"] = gc[0], ["gen1"] = gc[1], ["gen2"] = gc[2], ["gcPauseMs"] = pause,
+        ["volumeMm3"] = vol, ["triangles"] = tri, ["detail"] = detail,
+    };
+    File.WriteAllText(Path.Combine(outDir, "stats.json"),
+        outStats.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+    Console.WriteLine($"process/{kind}: median {median:F0} ms (min {sorted[0]:F0}, max {sorted[^1]:F0}), " +
+                      $"alloc {alloc / 1e6:F0} MB, gen0 {gc[0]}/gen1 {gc[1]}/gen2 {gc[2]}, pause {pause:F0} ms, " +
+                      $"V = {vol:F6} mm³, {tri} triangles\n  {detail}" +
+                      (warm ? $", warm-up {warmRuns} runs" : ""));
+    return 0;
+}
+
+// The same point set bench/run.py builds for a ball: two poles plus rings of `segments` points.
+static Vec3[] BallPoints(long r, int segments)
+{
+    int n = Math.Max(4, segments / 2 * 2);
+    var pts = new List<Vec3> { new(0, 0, r), new(0, 0, -r) };
+    for (int i = 1; i < n / 2; i++)
+    {
+        double th = Math.PI * i / (n / 2);
+        for (int j = 0; j < n; j++)
+        {
+            double ph = 2 * Math.PI * j / n;
+            pts.Add(new Vec3((long)Math.Round(r * Math.Sin(th) * Math.Cos(ph), MidpointRounding.AwayFromZero),
+                             (long)Math.Round(r * Math.Sin(th) * Math.Sin(ph), MidpointRounding.AwayFromZero),
+                             (long)Math.Round(r * Math.Cos(th), MidpointRounding.AwayFromZero)));
+        }
+    }
+    return [.. pts];
+}
 
 interface IEngine
 {
