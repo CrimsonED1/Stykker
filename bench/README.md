@@ -55,14 +55,28 @@ the JIT compilation instead.
 | cgal | C++ | yes | 3290 | 34.3 | 10188.091000565 | −5.5e-12 |
 | manifold | C++ | no | 527 | 5.5 | 10188.091000565 | −5.5e-12 |
 
-**What this shows (first look, two small scenes only):**
+**pocket-large:** 876 steps. A zig-zag pocket with 7 overlapping passes 4 mm apart, 5 mm deep, over an 80 × 60 × 20 mm
+block, ball with 48 segments, 0.75 mm per step. Sized so that the fastest engine needs about 10 s.
 
-- **Results:** all four engines agree on the volume to 1e-11 mm³.
-- **The language alone** (same Manifold algorithm in C# and C++): C++ is about 2× faster on the medium scene, and about
-  8× on the tiny scene, where fixed costs dominate.
-- **Exact against exact:** NanoCut beats CGAL as the part gets more complex. CGAL is 2.5× faster on the small scene, but
-  NanoCut is 1.4× faster on the medium one. CGAL's lazy rationals grow with every cut; NanoCut stays on the nm grid.
-- **Price of exactness:** NanoCut is about 4.5× slower than C++ Manifold and about 2.3× slower than C# Manifold.
+| Engine | Language | Exact | Time (s) | per step (ms) | Volume (mm³) | ΔV vs NanoCut | Triangles |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: |
+| nanocut | C# | yes | 30.9 | 35.3 | 84860.612636583 | 0 | 690 |
+| manifoldsharp | C# | no | 31.1 | 35.5 | 84860.612636583 | −4.4e-11 | 23 774 |
+| cgal | C++ | yes | 347.1 | 396.2 | 84860.612636583 | −4.4e-11 | 88 872 |
+| manifold | C++ | no | 9.8 | 11.1 | 84860.612636583 | −4.4e-11 | 23 774 |
 
-So the language is worth up to about 2× at this size. The rest is algorithm and arithmetic. Next: bigger scenes and a
-profile (see `docs/native-speed-plan.md`).
+The triangle counts differ because NanoCut merges coplanar fragments (FaceMerge). The facets of successive hulls along a
+pass become a few long strips, so the result is 30× smaller than Manifold's mesh and stays small as the cut goes on.
+
+**What this shows:**
+
+- **Results:** all four engines agree on the volume to 1e-10 mm³ (relative 5e-16).
+- **The language alone** (same Manifold algorithm in C# and C++): C++ is 3.2× faster on the long task, 2× on the medium
+  one.
+- **Exact against exact:** NanoCut is 11× faster than CGAL on the long task. CGAL's lazy rationals and its growing mesh
+  (89 k triangles) make each step slower; NanoCut stays on the nm grid with a compact result.
+- **Price of exactness:** on the long task NanoCut is exactly as fast as the C# port of Manifold, which is not exact.
+  It is 3.2× slower than C++ Manifold, and that gap is the language/runtime factor measured above.
+
+So on long tasks a native port could gain about 3× at most. This is the bar for the C# optimisations in
+`docs/native-speed-plan.md`.
