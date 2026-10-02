@@ -37,8 +37,12 @@ def expand(scene):
     ball = scene["tool"]["ball"]
     centers = []
     path = scene["path"]
-    k = scene.get("stepsPerSegment", 1)
     for a, b in zip(path, path[1:]):
+        # Either a fixed number of steps per path segment, or a step length in mm (same chip size everywhere).
+        if "stepMm" in scene:
+            k = max(1, math.ceil(math.dist(a, b) / scene["stepMm"]))
+        else:
+            k = scene.get("stepsPerSegment", 1)
         for i in range(k):
             t = i / k
             centers.append([a[d] + (b[d] - a[d]) * t for d in range(3)])
@@ -70,6 +74,7 @@ def main():
     ap.add_argument("scene")
     ap.add_argument("--engines", default="nanocut,manifoldsharp,cgal,manifold")
     ap.add_argument("--repeat", type=int, default=1)
+    ap.add_argument("--timeout", type=float, default=3600, help="seconds per engine run")
     ap.add_argument("--out", default=os.path.join(ROOT, "out"))
     ap.add_argument("--cold", action="store_true", help="C#: include JIT compilation (no in-process warm-up run)")
     a = ap.parse_args()
@@ -88,7 +93,11 @@ def main():
         os.makedirs(out, exist_ok=True)
         best = None
         for _ in range(a.repeat):
-            r = subprocess.run(command(engine, expanded, out), capture_output=True, text=True)
+            try:
+                r = subprocess.run(command(engine, expanded, out), capture_output=True, text=True, timeout=a.timeout)
+            except subprocess.TimeoutExpired:
+                print(f"{engine}: timeout after {a.timeout:.0f} s")
+                break
             if r.returncode != 0:
                 print(f"{engine} failed:\n{r.stdout}{r.stderr}")
                 break
