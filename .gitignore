@@ -432,3 +432,6 @@ FodyWeavers.xsd
 .claude/worktrees/
 bench/out/
 bench/cgal/build/
+
+# Qwen Code
+.qwen/
