@@ -1,0 +1,11 @@
+{
+  "name": "@stykker/nanocut-babylon",
+  "version": "0.1.0-alpha",
+  "description": "Babylon.js adapter for Stykker.NanoCut mesh buffers and 2D contours.",
+  "type": "module",
+  "main": "index.js",
+  "license": "MIT",
+  "peerDependencies": {
+    "@babylonjs/core": ">=6.0.0"
+  }
+}

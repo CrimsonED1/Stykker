@@ -125,8 +125,20 @@ public readonly struct Int384 : IEquatable<Int384>, IComparable<Int384>
         return new BigInteger(bytes, isUnsigned: false, isBigEndian: false);
     }
 
-    /// <summary>Nearest double (for display and filters only).</summary>
-    public static explicit operator double(Int384 v) => (double)(BigInteger)v;
+    /// <summary>Approximate double value (relative error below 2^-52; for display and filters only).</summary>
+    public static explicit operator double(Int384 v)
+    {
+        Span<ulong> m = stackalloc ulong[Limbs];
+        v.Magnitude(m);
+        int k = UsedLimbs(m) - 1;
+        if (k < 0) return 0;
+        double r = m[k];
+        if (k >= 1) r = r * 18446744073709551616.0 + m[k - 1];
+        if (k >= 2) r = r * 18446744073709551616.0 + m[k - 2];
+        int lowLimbs = Math.Max(0, k - 2);
+        r = Math.ScaleB(r, 64 * lowLimbs);
+        return v.Sign < 0 ? -r : r;
+    }
 
     /// <summary>Checked addition.</summary>
     public static Int384 operator +(Int384 a, Int384 b)

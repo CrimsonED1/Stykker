@@ -24,8 +24,27 @@ Note on groove width: the inscribed circle polygon lies up to 50 nm radially ins
 the top face at a shallow angle this becomes up to 50 nm / cos φ ≈ 67 nm horizontally per side. That is within the
 plan's ± 0.0002 mm but above 0.1 µm; tighter requirements need a smaller `chordNm`.
 
+## Example 1, 3D part (measured)
+
+Chord error 50 nm (spheres: every triangle's sagitta ≤ 50 nm, verified at construction).
+
+| Check | Actual | Exact | Deviation | Allowed |
+| --- | --- | --- | --- | --- |
+| Removed volume | 61.948801880 mm³ | 61.949641602 mm³ | 8.4·10⁻⁴ mm³ | 1.01·10⁻² mm³ |
+| Maximum depth | 1.000000000 mm | 1 mm | 0 | 1·10⁻⁴ mm |
+| Groove vertices to axis | – | 3 mm | ≤ 0.6 nm | 1·10⁻⁴ mm |
+| Remaining volume vs. ManifoldSharp (same input polyhedra) | 3938.051198120 mm³ | 3938.051198120 mm³ | < 10⁻⁹ mm³ | – |
+
+Phase 3 reference solids (chord error 50 nm):
+
+| Solid | Deviation | Allowed (surface × 0.1 µm) |
+| --- | --- | --- |
+| Steinmetz solid, r = 3 mm (V = 16r³/3) | −4.7·10⁻³ mm³ | 1.44·10⁻² mm³ |
+| Sphere lens, r = 3 mm, distance 3 mm | −8.9·10⁻⁴ mm³ | 5.7·10⁻³ mm³ |
+
 ## Definition of depth
 
+In 3D, `Cutter.DepthAlongZ` measures the extent of the removed solid along z in the same way.
 `Penetration2.DepthAlong` measures the extent of the removed material along a direction (default −y, "downwards"):
 max(p·d) − min(p·d) over all vertices. For an entry surface perpendicular to d this is exactly the largest distance of
 the new surface to the original surface. A linear function attains its extremes on a polygon at a vertex, so the value

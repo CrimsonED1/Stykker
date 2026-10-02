@@ -1,5 +1,6 @@
 using Stykker.NanoCut.Cutting;
 using Stykker.NanoCut.Geometry2D;
+using Stykker.NanoCut.Geometry3D;
 
 namespace Stykker.NanoCut.Testing;
 
@@ -66,6 +67,41 @@ public static class Example1
         // Along the path the removed band is 20 mm long with depth 1 mm: area = 20 · 1.
         checks.Add(new("2D sweep removed area (20 mm × 1 mm)", result.RemovedAreaMm2, 20 * H, 2 * 20 * budgetMm, "mm²"));
         checks.Add(new("2D sweep max depth", result.MaxDepthMm, H, budgetMm, "mm"));
+        return checks;
+    }
+
+    /// <summary>Exact removed volume: segment area × 20 mm.</summary>
+    public static double ExactVolume => ExactSegmentArea * 20;
+
+    /// <summary>Runs all 3D checks of example 1 (block 20 × 20 × 10 mm, ball path (−5, 10, 12) → (25, 10, 12)).</summary>
+    public static IReadOnlyList<ReferenceCheck> Run3D(Tolerance? tol = null)
+    {
+        tol ??= Tolerance.Default;
+        double budgetMm = tol.TotalMm;
+        var stock = Solid.Box(Vec3.Mm(0, 0, 0), Vec3.Mm(20, 20, 10), tol);
+        var result = Cutter.Cut(stock, Tool.Ball(R), ToolPath.Linear(Vec3.Mm(-5, 10, 12), Vec3.Mm(25, 10, 12)), tol);
+        var checks = new List<ReferenceCheck>();
+
+        // Allowed volume error: wetted area × budget.
+        double wetted = 2 * R * Math.Acos((R - H) / R) * 20;
+        checks.Add(new("3D removed volume", result.RemovedVolumeMm3, ExactVolume, wetted * budgetMm, "mm³"));
+        checks.Add(new("3D remaining volume", result.Remaining.VolumeMm3, 4000 - ExactVolume, wetted * budgetMm, "mm³"));
+        checks.Add(new("3D max depth", result.MaxDepthMm, H, budgetMm, "mm"));
+
+        // Groove width at the top face: extent in y of the removed vertices lying in z = 10.
+        const double top = 10e6;
+        var onTop = result.Removed.Vertices.Where(v => Math.Abs(v.Z - top) < 1e-3).Select(v => v.Y).ToList();
+        double width = onTop.Count >= 2 ? Units.NmToMm(onTop.Max() - onTop.Min()) : 0;
+        checks.Add(new("3D groove width at top", width, ExactWidth, 2 * budgetMm, "mm"));
+
+        // Every vertex of the groove surface (below the top face) lies at r from the axis y = 10, z = 12.
+        double worst = R;
+        foreach (var v in result.Removed.Vertices.Where(v => v.Z < top - 1))
+        {
+            double d = Math.Sqrt(Math.Pow(Units.NmToMm(v.Y) - 10, 2) + Math.Pow(Units.NmToMm(v.Z) - 12, 2));
+            if (Math.Abs(d - R) > Math.Abs(worst - R)) worst = d;
+        }
+        checks.Add(new("3D groove vertex distance to axis (worst)", worst, R, budgetMm, "mm"));
         return checks;
     }
 }
