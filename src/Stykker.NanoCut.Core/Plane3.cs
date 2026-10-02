@@ -83,6 +83,43 @@ public readonly record struct Plane3(Int128 Nx, Int128 Ny, Int128 Nz, Int128 D)
     /// </summary>
     public static HomogeneousPoint3? Intersect(in Plane3 p, in Plane3 q, in Plane3 r)
     {
+        if (InBudget(p) && InBudget(q) && InBudget(r)) return IntersectFast(p, q, r);
+        return IntersectGeneric(p, q, r);
+    }
+
+    // Fast-path budget: |n| < 2^66 and |d| < 2^98, which covers every plane through grid points (docs/bit-budget.md).
+    // Then |n × n| < 2^133, |W| < 2^201 and |X| < 2^233, far inside the 256-bit range.
+    private static bool InBudget(in Plane3 p) =>
+        Below(p.Nx, 66) && Below(p.Ny, 66) && Below(p.Nz, 66) && Below(p.D, 98);
+
+    private static bool Below(Int128 v, int bits) => v > Int128.MinValue && (UInt128)(v < 0 ? -v : v) >> bits == 0;
+
+    /// <summary>
+    /// Same point as Cramer's rule, written with cross products: x = −(d_p (n_q × n_r) + d_q (n_r × n_p) + d_r (n_p × n_q))
+    /// / (n_p · (n_q × n_r)), in fixed 256-bit arithmetic.
+    /// </summary>
+    internal static HomogeneousPoint3? IntersectFast(in Plane3 p, in Plane3 q, in Plane3 r)
+    {
+        var (ax, ay, az) = Cross(q, r);
+        var (bx, by, bz) = Cross(r, p);
+        var (cx, cy, cz) = Cross(p, q);
+        var w = ax * p.Nx + ay * p.Ny + az * p.Nz;
+        if (w.IsZero) return null;
+        var x = (ax * p.D + bx * q.D + cx * r.D).Negate();
+        var y = (ay * p.D + by * q.D + cy * r.D).Negate();
+        var z = (az * p.D + bz * q.D + cz * r.D).Negate();
+        if (w.IsNegative) { x = x.Negate(); y = y.Negate(); z = z.Negate(); w = w.Negate(); }
+        return new HomogeneousPoint3(x.ToInt384(), y.ToInt384(), z.ToInt384(), w.ToInt384());
+    }
+
+    private static (Int256 X, Int256 Y, Int256 Z) Cross(in Plane3 a, in Plane3 b) => (
+        Int256.Product(a.Ny, b.Nz) - Int256.Product(a.Nz, b.Ny),
+        Int256.Product(a.Nz, b.Nx) - Int256.Product(a.Nx, b.Nz),
+        Int256.Product(a.Nx, b.Ny) - Int256.Product(a.Ny, b.Nx));
+
+    /// <summary>Cramer's rule in Int384 (any input within Int128).</summary>
+    internal static HomogeneousPoint3? IntersectGeneric(in Plane3 p, in Plane3 q, in Plane3 r)
+    {
         // Solve N x = -d with rows n_p, n_q, n_r.
         Int384 a11 = p.Nx, a12 = p.Ny, a13 = p.Nz, b1 = -(Int384)p.D;
         Int384 a21 = q.Nx, a22 = q.Ny, a23 = q.Nz, b2 = -(Int384)q.D;
