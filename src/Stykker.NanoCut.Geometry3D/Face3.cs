@@ -58,7 +58,8 @@ internal sealed class Face3
             var d = new double[4 * (Edges.Length + 1)];
             Put(0, Support);
             for (int i = 0; i < Edges.Length; i++) Put(4 * (i + 1), Edges[i]);
-            return _planesD = d;
+            // Published atomically: classification runs in parallel and several threads may fill the cache at once.
+            return Interlocked.CompareExchange(ref _planesD, d, null) ?? d;
 
             void Put(int o, in Plane3 p)
             {
@@ -158,7 +159,8 @@ internal sealed class Face3
                 var h = Plane3.Intersect(Support, Edges[i], plane)
                         ?? throw new InvalidOperationException("Edge parallel to a crossing plane.");
                 if (e1 < 0) { e1 = i; x1 = new Point3(h); }
-                else { e2 = i; x2 = new Point3(h); }
+                else if (e2 < 0) { e2 = i; x2 = new Point3(h); }
+                else throw new InvalidOperationException("Face is not convex (more than two crossings with a plane).");
             }
         }
         back = Piece(s, 1, plane, e1, x1, e2, x2);

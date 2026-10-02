@@ -452,7 +452,7 @@ public class OptimizationVerification2Tests(ITestOutputHelper output)
         Assert.True(maxFaces >= 64);
     }
 
-    [Fact(Skip = "BUG (minor, API): with >= 64 faces and MaxParallelism > 1, classification errors surface as AggregateException instead of InvalidOperationException (Parallel.For wraps them)")]
+    [Fact]
     public void ClassificationErrorsSurfaceWithTheSameExceptionTypeSequentialAndParallel()
     {
         // Documented behaviour check (not a geometry bug): a fragment that cannot be classified throws
