@@ -69,16 +69,13 @@ public readonly struct Point3
     /// <summary>Exact side of the vertex relative to a plane: +1, 0, -1.</summary>
     public int SideOf(in Plane3 plane)
     {
-        // Only the homogeneous branch filters. The grid branch looks cheaper without one, but the filter needs four
-        // Int128 -> double conversions, which the JIT lowers to high/low limb extraction plus scaling rather than to a
-        // single instruction. Measured interleaved on 1 nm grid points of an 80 x 60 x 20 mm block, filtering first
-        // costs 62 % more than the direct Int128 test (three multiplies, two adds), so the grid branch stays exact.
-        if (_exact is null)
-        {
-            if (KernelStats.Counting) KernelStats.Mine.SideGrid++;
-            return Predicates.Side(plane, _grid);
-        }
-        if (KernelStats.Counting) KernelStats.Mine.SideExact++;
+        // No filter on the grid branch, and deliberately no counter either: A1 of the performance audit proposed
+        // filtering grid vertices too, and that was measured and rejected. The four Int128 -> double conversions the
+        // filter needs are lowered to limb extraction plus scaling, so filtering first costs 62 % more than the three
+        // Int128 multiplies it would avoid (interleaved A/B, 32.8M tests on an 80 x 60 x 20 mm block). Putting a counter
+        // into this method as well cost another 9 % of the whole bench, so the grid/exact split is counted one level
+        // up, in the loops that call this, instead of once per vertex.
+        if (_exact is null) return Predicates.Side(plane, _grid);
         // Floating-point filter: the cached coordinates have a relative error of a few ulps, so the sign is certain
         // whenever |value| clearly exceeds the rounding bound; otherwise decide exactly with Int384.
         int f = Filter.Sign(plane, _exact.X, _exact.Y, _exact.Z);

@@ -44,6 +44,20 @@ internal static class KernelStats
     /// <summary>The calling thread's counter block, registered on first use.</summary>
     internal static Counts Mine => _mine ??= Register();
 
+    /// <summary>
+    /// Counts the grid/homogeneous split of a vertex set. Called once per caller of <c>Point3.SideOf</c> rather than
+    /// inside it: a counter in that method costs about 9 % of the whole bench, because it is the hottest leaf of the
+    /// kernel, whereas the split only has to be sampled per call site.
+    /// </summary>
+    internal static void CountVertices(Point3[] pts)
+    {
+        var s = Mine;
+        for (int i = 0; i < pts.Length; i++)
+        {
+            if (pts[i].IsGrid) s.SideGrid++; else s.SideExact++;
+        }
+    }
+
     private static Counts Register()
     {
         var c = new Counts();
