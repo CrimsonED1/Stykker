@@ -134,10 +134,11 @@ internal sealed class Face3
     {
         int n = Vertices.Length;
         Span<int> s = n <= 64 ? stackalloc int[n] : new int[n];
+        double pnx = (double)plane.Nx, pny = (double)plane.Ny, pnz = (double)plane.Nz, pd = (double)plane.D;
         bool pos = false, neg = false;
         for (int i = 0; i < n; i++)
         {
-            s[i] = Vertices[i].SideOf(plane);
+            s[i] = Vertices[i].SideOf(plane, pnx, pny, pnz, pd);
             pos |= s[i] > 0;
             neg |= s[i] < 0;
         }

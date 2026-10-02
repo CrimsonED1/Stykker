@@ -148,7 +148,7 @@ internal static class SolidBoolean
         b.Coplanar.Clear();
         foreach (var q in b.Candidates)
         {
-            int ps = SideSummary(q.Support, p.Vertices);
+            int ps = SideSummary(q, p.Vertices);
             // Faces that cannot meet need no cut: one lies strictly outside an edge plane of the other.
             if (ps != 2 && (Separated(q, p.Vertices) || Separated(p, q.Vertices))) continue;
             if (ps == 2)
@@ -156,7 +156,7 @@ internal static class SolidBoolean
                 b.Coplanar.Add(q);
                 foreach (var e in q.Edges) AddPlane(e, q.Box, b.Planes, b.Seen, b.Reach);
             }
-            else if (ps == 0 && TouchesOrCrosses(p.Support, q.Vertices))
+            else if (ps == 0 && TouchesOrCrosses(p, q.Vertices))
             {
                 // q's plane crosses p. q must at least touch p's plane: a face touching it only along an
                 // edge can still be where the other surface passes through p (two touching faces from
@@ -216,23 +216,26 @@ internal static class SolidBoolean
     /// </summary>
     private static bool Separated(Face3 f, Point3[] pts)
     {
-        foreach (var e in f.Edges)
+        var k = f.PlanesD;
+        for (int i = 0; i < f.Edges.Length; i++)
         {
+            int o = 4 * (i + 1);
             bool all = true;
             foreach (var v in pts)
-                if (v.SideOf(e) <= 0) { all = false; break; }
+                if (v.SideOf(f.Edges[i], k[o], k[o + 1], k[o + 2], k[o + 3]) <= 0) { all = false; break; }
             if (all) return true;
         }
         return false;
     }
 
     /// <summary>False if all points lie strictly on one side of the plane.</summary>
-    private static bool TouchesOrCrosses(in Plane3 plane, Point3[] pts)
+    private static bool TouchesOrCrosses(Face3 f, Point3[] pts)
     {
+        var k = f.PlanesD;
         bool pos = false, neg = false;
         foreach (var v in pts)
         {
-            int s = v.SideOf(plane);
+            int s = v.SideOf(f.Support, k[0], k[1], k[2], k[3]);
             if (s == 0) return true;
             pos |= s > 0;
             neg |= s < 0;
@@ -241,12 +244,13 @@ internal static class SolidBoolean
     }
 
     /// <summary>+1 all on the positive side or on, -1 all negative or on, 0 crossing, 2 all on the plane.</summary>
-    private static int SideSummary(in Plane3 plane, Point3[] pts)
+    private static int SideSummary(Face3 f, Point3[] pts)
     {
+        var k = f.PlanesD;
         bool pos = false, neg = false;
         foreach (var v in pts)
         {
-            int s = v.SideOf(plane);
+            int s = v.SideOf(f.Support, k[0], k[1], k[2], k[3]);
             pos |= s > 0;
             neg |= s < 0;
             if (pos && neg) return 0;
