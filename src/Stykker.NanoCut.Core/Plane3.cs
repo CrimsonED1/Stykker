@@ -1,0 +1,63 @@
+namespace Stykker.NanoCut;
+
+/// <summary>
+/// A plane through three grid points, stored exactly as n·x + d = 0 with
+/// n = (b - a) × (c - a) (|n_i| ≤ 2^65) and d = -n·a (|d| &lt; 2^98).
+/// Faces in the 3D kernel are described by their supporting plane, never by rounded points.
+/// </summary>
+public readonly record struct Plane3(Int128 Nx, Int128 Ny, Int128 Nz, Int128 D)
+{
+    /// <summary>The plane through a, b, c; the normal points to the side from which a, b, c appear counter-clockwise.</summary>
+    public static Plane3 FromPoints(Vec3 a, Vec3 b, Vec3 c)
+    {
+        long bx = b.X - a.X, by = b.Y - a.Y, bz = b.Z - a.Z;
+        long cx = c.X - a.X, cy = c.Y - a.Y, cz = c.Z - a.Z;
+        Int128 nx = (Int128)by * cz - (Int128)bz * cy;
+        Int128 ny = (Int128)bz * cx - (Int128)bx * cz;
+        Int128 nz = (Int128)bx * cy - (Int128)by * cx;
+        Int128 d = -(nx * a.X + ny * a.Y + nz * a.Z);
+        return new Plane3(nx, ny, nz, d);
+    }
+
+    /// <summary>True if the three defining points were collinear (no plane).</summary>
+    public bool IsDegenerate => Nx == 0 && Ny == 0 && Nz == 0;
+
+    /// <summary>n·p + d, exact (|value| &lt; 2^99).</summary>
+    public Int128 Evaluate(Vec3 p) => Nx * p.X + Ny * p.Y + Nz * p.Z + D;
+
+    /// <summary>
+    /// Exact intersection point of three planes in homogeneous coordinates (Cramer's rule), or
+    /// null if the normals are linearly dependent.
+    /// </summary>
+    public static HomogeneousPoint3? Intersect(in Plane3 p, in Plane3 q, in Plane3 r)
+    {
+        // Solve N x = -d with rows n_p, n_q, n_r.
+        Int384 a11 = p.Nx, a12 = p.Ny, a13 = p.Nz, b1 = -(Int384)p.D;
+        Int384 a21 = q.Nx, a22 = q.Ny, a23 = q.Nz, b2 = -(Int384)q.D;
+        Int384 a31 = r.Nx, a32 = r.Ny, a33 = r.Nz, b3 = -(Int384)r.D;
+
+        Int384 w = Det3(a11, a12, a13, a21, a22, a23, a31, a32, a33);
+        if (w.IsZero) return null;
+        Int384 x = Det3(b1, a12, a13, b2, a22, a23, b3, a32, a33);
+        Int384 y = Det3(a11, b1, a13, a21, b2, a23, a31, b3, a33);
+        Int384 z = Det3(a11, a12, b1, a21, a22, b2, a31, a32, b3);
+        return new HomogeneousPoint3(x, y, z, w);
+    }
+
+    private static Int384 Det3(Int384 a, Int384 b, Int384 c, Int384 d, Int384 e, Int384 f, Int384 g, Int384 h, Int384 i) =>
+        a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g);
+}
+
+/// <summary>
+/// An exact point (X/W, Y/W, Z/W) in nm, created as the intersection of three planes. It is never
+/// rounded, so repeated Booleans do not drift. Bounds: |X|,|Y|,|Z| &lt; 2^231, |W| &lt; 2^198.
+/// </summary>
+public readonly record struct HomogeneousPoint3(Int384 X, Int384 Y, Int384 Z, Int384 W)
+{
+    /// <summary>Approximate Cartesian position in mm (display only).</summary>
+    public (double X, double Y, double Z) ToMm()
+    {
+        double w = (double)W * Units.NmPerMm;
+        return ((double)X / w, (double)Y / w, (double)Z / w);
+    }
+}
