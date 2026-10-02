@@ -77,10 +77,11 @@ public readonly struct Point3
     }
 
     /// <summary>
-    /// Exact side relative to <paramref name="plane"/>, with its coefficients already converted to double (nx, ny, nz, d):
+    /// Exact side relative to <paramref name="plane"/>, given that (nx, ny, nz, d) are that same plane's coefficients
+    /// converted to double (internal: mismatched doubles would give wrong signs):
     /// a floating-point filter decides clearly non-zero values for grid and exact points alike; otherwise exact.
     /// </summary>
-    public int SideOf(in Plane3 plane, double nx, double ny, double nz, double d)
+    internal int SideOf(in Plane3 plane, double nx, double ny, double nz, double d)
     {
         double x = X, y = Y, z = Z;
         double a = nx * x, b = ny * y, c = nz * z;

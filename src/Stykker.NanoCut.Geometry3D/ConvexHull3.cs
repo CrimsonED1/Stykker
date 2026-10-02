@@ -92,6 +92,8 @@ public static class ConvexHull3
 
     private const int ParallelThreshold = 256;
 
+    private const double MaxHullCoordinate = 1L << 40;
+
     private static Face3 Triangle(Vec3[] pts, (int A, int B, int C) t) => Face3.FromGrid([pts[t.A], pts[t.B], pts[t.C]]);
 
     [ThreadStatic] private static Scratch? _scratch;
@@ -146,6 +148,9 @@ public static class ConvexHull3
         // Largest |coordinate| of the input: the filter bound must hold for it (Vec3 itself is not range-checked).
         double maxCoord = 1;
         foreach (var v in p) maxCoord = Math.Max(maxCoord, Math.Max(Math.Abs((double)v.X), Math.Max(Math.Abs((double)v.Y), Math.Abs((double)v.Z))));
+        // Exact planes through the points fit Int128 only for |coordinate| ≤ 2^40 (|n| ≤ 2^83, |d| ≤ 3·2^123).
+        if (maxCoord > MaxHullCoordinate)
+            throw new ArgumentOutOfRangeException(nameof(points), "Hull coordinates must stay within ±2^40 nm.");
 
         // Initial tetrahedron.
         int i0 = 0, i1 = -1, i2 = -1, i3 = -1;
