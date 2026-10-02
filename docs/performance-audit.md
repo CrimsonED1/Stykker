@@ -146,24 +146,73 @@ Strahl jetzt aus der Box ab und prüft zusätzlich, dass ein Strahl knapp neben 
 | **Native Port** | C# → C++ würde den Faktor bringen | Weiterhin nein: nach zwei Runden Parität mit C++ Manifold (`native-speed-plan.md:145`). |
 | **GC-Tuning** | Server-GC / gen0-Budget | `bench/README.md:112` vermerkt erfolglos, ohne dokumentierten A/B-Lauf. Unverändert offen. |
 
-## 7. Was jetzt ansteht, nach Messung geordnet
+## 8. `Solid.Extrude`: der Hebel ist real, aber nicht durch die naheliegende Änderung zu erreichen
+
+Das ist der teuerste gemessene Posten (`gear-m2-z20`: **101 555 ms**, 428 800 Faces, 39,5 GB Allokation), und die
+Ursache ist eindeutig: `Solid.cs:192` ruft `FromTriangleList`, und das macht **kein Merging** — jedes Dreieck wird
+allein zu einem Face3:
+
+```csharp
+foreach (var t in tris)
+    if (!Plane3.FromPoints(t[0], t[1], t[2]).IsDegenerate) faces.Add(Face3.FromGrid(t));
+```
+
+Eine triangulierte Deckfläche bleibt also ein Face pro Dreieck. `ConvexHull3.Compute` hat die passende Logik bereits
+(Union-Find über koplanare Nachbarn, Orient3D, Boundary-Walk) und wurde als `FacesFromTriangles` extrahiert.
+
+**An einfachen Formen funktioniert das und halbiert die Face-Anzahl bei exaktem Volumen:**
+
+| Form | Faces vorher | Faces nachher | ΔV |
+| --- | ---: | ---: | ---: |
+| Rechteck | 12 | **6** | 0,000000 |
+| L-Form | 14 | **8** | 0,000000 |
+| Kreis | ~1 300 | **634** | 0,000000 |
+| Rechteck mit Loch | ~2 700 | **1 356** | 0,000000 |
+| Kreis mit Quadrat-Loch | ~3 800 | **1 908** | 0,000000 |
+| Zwei getrennte Rechtecke | 24 | **12** | 0,000000 |
+
+**An rotierten Prismen funktioniert es nicht.** `Process3.CutPlanar` erzeugt die Prisma über
+`Solid.Extrude(region, z0, z1, placement)`, also mit gerundeten, rotierten Eckpunkten. Dort liefert der Planar-Spinning-Pfad
+ein falsches Ergebnis: im Testfall `ToothedDiscApproachesPlainDiscAtSlowFeed` entfernt das Sägeblatt **negative** Volumen
+(−7,76 mm³, also Material hinzugefügt) statt 2,33 mm³, und der Restkörper hat 22 Faces nach 3 840 Cuts statt
+akkurat zu arbeiten.
+
+Drei Befunde daraus, alle offen:
+
+1. **`Join` braucht eine Randkante.** Eine konvexe Hülle ist geschlossen, die Zwillernkante existiert also immer.
+   Eine Dreieckssuppe aus einem Extrusat kann eine Randkante ohne Nachbar haben; `edgeTri[Key(u,v,n)]` wirft dann
+   `KeyNotFoundException` (beobachtet bei `CutSpinning`, Zahnrad-Auflösung 27 003 Punkte).
+2. **Zwei Dreiecke können mehr als eine Kante teilen.** Der bestehende `far`-Ausdruck nimmt dann den falschen Vertex;
+   ein `far == u || far == v`-Test muss das abfangen.
+3. **Der eigentliche Grund ist nicht gefunden.** Der `far`-Test und der `TryGetValue`-Test beheben die Exception,
+   aber nicht das falsche Volumen. Die naheliegendste Vermutung ist, dass das Runden bei der Rotation zusätzliche
+   Koplanarität erzeugt: Deckflächen- und Seitenwand-Dreiecke eines Prismas können in dieselbe Ebene fallen, und die
+   Boundary-Walk liefert dann ein Polygon, für das `Face3.FromGrid` (das Konvexität voraussetzt und stillschweigend den
+   Rest verwirft) kein gültiges Face liefert.
+
+**Empfehlung:** Die Änderung ist der richtige Hebel und für achsenparallele Extrusionen nachweislich korrekt, sie ist
+aber ohne Ursachenklärung nicht einspielbar. Vor dem nächsten Versuch: `FromGrid` muss die Konvexität der gelaufenen
+Boundary *prüfen* statt sie vorauszusetzen — dann wird ein ungültiges Polygon zu einem Fehler statt zu stillem Unsinn.
+Das ist unabhängig vom Performance-Thema die richtige Härtung.
+
+Die Extrusion ist auch nur eine Seite: `Triangulator2.ConvexParts` ist O(n²) im Ear-Clipping über 107 k Punkte, und die
+428 800 Faces sind nur die Hälfte des Problems — die andere Hälfte ist die Zeit in der Zerlegung selbst.
+
+## 9. Was jetzt ansteht, nach Messung geordnet
 
 | # | Punkt | Erwartung | Warum jetzt |
 | --- | --- | --- | --- |
-| 1 | **Bench-Szenen für die Produktionspfade.** `Process3.Cut` (Translation, Rotation) und `Process2.Cut` (Gear) als Szenen, plus die Gear- und Rotationsfälle, die heute niemand misst. | Messbarkeit | Das Gear-Szenario braucht 87 s und wird von keiner Szene erfasst. Ohne Messung keine Entscheidung. |
-| 2 | **B1: Bandindex für `FindSplitPoints`** (`BooleanKernel.cs:227-239`). Die Doppelschleife filtert nur über x und y, also Faktor ~√n; ein 1-D-Bandindex über `y0` bringt Faktor 10–500. | sehr hoch im 2D-Kern | Treibt die 39 GB Allokation im Gear-Szenario. Größter verbleibender Einzelposten. |
-| 3 | **`Solid.Extrude`: 428 800 Faces für ein 20-Zahn-Rad, 52,7 s.** `Solid.cs:184` → `Triangulator2.ConvexParts`, Ear-Clipping O(n²) über 107 k Punkte. | hoch | Der teuerste Einzelposten der Anwendung, vollständig unbenchmarked. |
+| 1 | **`Face3.FromGrid` muss Konvexität prüfen.** Es nimmt sie an und verwirft den Rest der Schleife stillschweigend, wenn ein Randdreieck auf die Kante fällt. Genau das macht die coplanare Zusammenlegung (Abschnitt 8) unbrauchbar. | Härtung | Kleine, lokale Änderung, macht den Extrude-Hebel überhaupt erst spielbar. |
+| 2 | **`Triangulator2.ConvexParts`** — Ear-Clipping O(n²) über 107 k Punkte. | hoch | Die andere Hälfte der Extrusions-Zeit, unabhängig vom Merging. |
+| 3 | **B1: Bandindex für `FindSplitPoints`** (`BooleanKernel.cs:227-239`). Die Doppelschleife filtert nur über x und y, also Faktor ~√n; ein 1-D-Bandindex über `y0` bringt Faktor 10–500. | sehr hoch im 2D-Kern | Treibt die 39 GB Allokation im Gear-Szenario. Größter verbleibender Einzelposten. |
 | 4 | **B3: `FaceMerge` inkrementell** (`FaceMerge.cs:29-79`). `touched[i]` erzwingt *k*−1 Pässe für einen Streifen aus *k* Stücken, jeder Pass baut das 48-Byte-Key-Dict neu. Vertex-IDs statt Geometrie-Keys machen den Schlüssel 8 Byte. | hoch | 53 Pässe pro Boolean gemessen. |
 | 5 | **C1: exakte Ganzzahl-Translation.** `Process3.cs:135` → `Solid.Transform` rechnet pro Dreieck `Plane3.FromPoints` + binären GCD; `v' = v + t`, `d' = d − n·t` wäre exakt und O(Vertices). | mittel-hoch | Betrifft den Translations-Fastpath, also den G-Code-Pfad der Demo. |
 | 6 | **D1: exakter Face-Sweep für Rotation.** Zwei-Posen-Hull übercutet linear in Δθ; ein Face-Sweep analog zum 2D-Kanten-Sweep würde die Abtastdichte stark senken. | hoch, aber groß | `docs/processes.md:199` benennt es selbst. Eigene Aufgabe. |
-| 7 | **B2: `Int384`** ohne `stackalloc`/`Span`, mit `Int128`-Fast-Path. `Int256` zeigt im selben Repo das richtige Muster. | offen | Nur sinnvoll, wenn der exakte Pfad teuer bleibt. Die Zähler sagen: 18,5 % der Seiten-Tests sind exakt, der Filter fällt 10 % der Fälle durch. Das ist die einzige offene Frage hier. |
+| 7 | **B2: `Int384`** ohne `stackalloc`/`Span`, mit `Int128`-Fast-Path. `Int256` zeigt im selben Repo das richtige Muster. | offen | Nur sinnvoll, wenn der exakte Pfad teuer bleibt. Die Zähler sagen: 18,5 % der Seiten-Tests sind exakt, der Filter fällt 10 % der Fälle durch. |
 | 8 | **B7: `[MethodImpl(AggressiveInlining)]`** auf den heißen Blättern — im ganzen `src/` gibt es kein einziges. | 5–15 % auf prädikatlastigen Schleifen | Mechanisch, kein Architekturentscheid. |
 | 9 | **C2/C3/C4:** `Overlaps(Solid, Solid)` ist O(F) statt O(1) (`bounds[w]` existiert bereits); `BoundsNm` baut ein `Vec3[]` pro Vertex; feste `Batch = 8` ist semantisch frei, weil `(A\B)\C = A\(B∪C)`. | mittel | |
 | 10 | **A3: `Bvh3.cs:72` `stackalloc int[256]`** = 1 024 Byte Null-Memset pro Query bei einer tatsächlichen Tiefe von ~11. `[SkipLocalsInit]`. | niedrig | |
 | 11 | **A4: BVH liefert `List<Face3>`** statt `int[]`-Indizes; der Konsument dereferenziert jedes Face erneut, obwohl `_boxes` flach vorliegen. | mittel | |
-
-Punkt 3 ist wahrscheinlich die auffälligste Lücke: `Solid.Extrude` erzeugt vier Faces pro Profil-Vektor, und
-weder `bench/` noch eine andere Messung berührt das.
 
 ## 8. Reproduktion
 
