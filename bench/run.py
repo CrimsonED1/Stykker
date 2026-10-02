@@ -60,6 +60,11 @@ def expand(scene):
 
 
 def command(engine, expanded, out):
+    if engine == "nanocut-ref":
+        # NanoCut from another checkout (e.g. an older commit) for before/after comparisons: NANOCUT_REF=<repo dir>.
+        ref = os.environ["NANOCUT_REF"]
+        dll = os.path.join(ref, "bench/Stykker.NanoCut.Bench/bin/Release/net10.0/Stykker.NanoCut.Bench.dll")
+        return ["dotnet", dll, expanded, out, "nanocut"] + (["--warm"] if WARM else [])
     if engine in ("nanocut", "manifoldsharp"):
         dll = os.path.join(ROOT, "Stykker.NanoCut.Bench/bin/Release/net10.0/Stykker.NanoCut.Bench.dll")
         return ["dotnet", dll, expanded, out, engine] + (["--warm"] if WARM else [])
@@ -105,6 +110,7 @@ def main():
                 break
             after = resource.getrusage(resource.RUSAGE_CHILDREN)
             s = json.load(open(os.path.join(out, "stats.json")))
+            s["engine"] = engine
             # CPU seconds of the whole process (all threads, including start-up and any warm-up run).
             s["cpuS"] = (after.ru_utime + after.ru_stime) - (before.ru_utime + before.ru_stime)
             if best is None or s["totalMs"] < best["totalMs"]:
@@ -114,6 +120,7 @@ def main():
             print(f"  {engine:14s} {best['totalMs']:10.0f} ms")
 
     ref = next((r for r in rows if r["engine"] == "nanocut"), rows[0] if rows else None)
+    json.dump(rows, open(os.path.join(base, "results.json"), "w"), indent=1)
     lines = [f"Scene `{scene['name']}`: {scene.get('description', '')} "
              f"{len(json.load(open(expanded))['steps'])} steps, C# {'cold (JIT included)' if a.cold else 'warm'}.", "",
              "| Engine | Language | Exact | Time (ms) | per step (ms) | CPU (s, whole process) | Volume (mm³) | ΔV vs NanoCut (mm³) | Triangles |",
