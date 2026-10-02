@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NanoCut Benchmark Runde 3</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one narrow technical sheet — verdict, main chart, full table, notes in two columns */
+:root {
+  --bg: #f3f5f6;
+  --paper: #ffffff;
+  --fg: #1b2328;
+  --muted: #5c6a73;
+  --rule: #d5dde1;
+  --steel: #8a99a3;
+  --accent: #c25a00;
+  --accent-soft: #f6e3d2;
+  --good: #1f7a4d;
+  --font-display: "Barlow Condensed", "Arial Narrow", sans-serif;
+  --font-body: "IBM Plex Sans", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #12171a; --paper: #1a2126; --fg: #e4eaed; --muted: #94a3ac; --rule: #2d373e;
+    --steel: #5d6c75; --accent: #f08a2c; --accent-soft: #3a2614; --good: #4cc08a; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #12171a; --paper: #1a2126; --fg: #e4eaed; --muted: #94a3ac; --rule: #2d373e;
+  --steel: #5d6c75; --accent: #f08a2c; --accent-soft: #3a2614; --good: #4cc08a; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--fg); font: 15px/1.55 var(--font-body); padding-inline: 16px; padding-block: 32px 48px; }
+.sheet { max-width: 920px; margin: 0 auto; background: var(--paper); border: 1px solid var(--rule); padding: clamp(20px, 4vw, 44px); display: grid; gap: 32px; }
+header { display: grid; gap: 10px; }
+.eyebrow { font: 500 12px/1 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+h1 { font: 700 clamp(30px, 5.4vw, 48px)/1.02 var(--font-display); letter-spacing: -.01em; margin: 0; text-wrap: balance; }
+h1 em { font-style: normal; color: var(--accent); }
+.lede { margin: 0; max-width: 64ch; color: var(--fg); }
+h2 { font: 600 22px/1.1 var(--font-display); letter-spacing: .01em; margin: 0 0 4px; text-wrap: balance; }
+.sub { margin: 0 0 16px; color: var(--muted); font-size: 13.5px; }
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1px; background: var(--rule); border: 1px solid var(--rule); }
+.kpi { background: var(--paper); padding: 14px 16px; display: grid; gap: 2px; }
+.kpi b { font: 600 34px/1 var(--font-display); font-variant-numeric: tabular-nums; }
+.kpi span { font-size: 13px; color: var(--muted); }
+.kpi.hl b { color: var(--accent); }
+
+.bars { display: grid; gap: 10px; }
+.bar { display: grid; grid-template-columns: minmax(120px, 190px) 1fr; gap: 12px; align-items: center; }
+.bar .lab { font-size: 13.5px; line-height: 1.25; min-width: 0; }
+.bar .lab small { display: block; color: var(--muted); font: 12px var(--font-mono); }
+.track { position: relative; height: 26px; }
+.fill { height: 100%; background: var(--steel); display: flex; align-items: center; justify-content: flex-end; padding-right: 8px; min-width: 52px; }
+.fill.old { background: transparent; border: 1.5px dashed var(--steel); }
+.fill.nc { background: var(--accent); }
+.fill span { font: 500 12.5px var(--font-mono); font-variant-numeric: tabular-nums; color: var(--paper); }
+.fill.old span { color: var(--muted); }
+.axis { display: grid; grid-template-columns: minmax(120px, 190px) 1fr; gap: 12px; }
+.axis .ticks { display: flex; justify-content: space-between; font: 11px var(--font-mono); color: var(--muted); border-top: 1px solid var(--rule); padding-top: 4px; }
+
+.tablewrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; min-width: 620px; font-size: 13.5px; }
+th, td { padding: 7px 10px; text-align: right; border-bottom: 1px solid var(--rule); font-variant-numeric: tabular-nums; white-space: nowrap; }
+th:first-child, td:first-child { text-align: left; }
+thead th { font: 500 11.5px var(--font-mono); letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+td.scene { font-weight: 600; }
+td.scene small { display: block; font: 400 11.5px var(--font-mono); color: var(--muted); }
+td.win { color: var(--accent); font-weight: 600; }
+td.f { font-family: var(--font-mono); font-size: 12.5px; }
+.up { color: var(--good); }
+
+.cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 28px; }
+.cols > section { min-width: 0; }
+ul { margin: 0; padding-left: 18px; display: grid; gap: 7px; }
+li::marker { color: var(--muted); }
+.cloud { width: 100%; border-collapse: collapse; font-size: 13.5px; min-width: 0; }
+.cloud td { padding: 6px 8px; border-bottom: 1px solid var(--rule); }
+.cloud td:last-child { text-align: right; font-family: var(--font-mono); white-space: nowrap; }
+footer { border-top: 1px solid var(--rule); padding-top: 14px; font: 12px/1.6 var(--font-mono); color: var(--muted); }
+code { font: 12.5px var(--font-mono); background: var(--accent-soft); padding: 1px 4px; }
+</style>
+</head>
+<body>
+<main class="sheet">
+<header>
+<div class="eyebrow">Stykker NanoCut · Benchmark · Runde 3 · 2. Oktober 2026</div>
+<h1>Exakt und schneller als <em>C++-Manifold</em>, bei langen Aufgaben</h1>
+<p class="lede">Nach der dritten Optimierungsrunde braucht NanoCut für die lange Taschenfräsung 7,9 s, C++-Manifold 9,2 s – gemessen im Cloud-Container mit 4 Kernen. Bei kurzen Aufgaben bleibt C++ vorn. Alle Engines liefern dasselbe Volumen; NanoCut rechnet exakt auf dem 1-nm-Raster.</p>
+</header>
+
+<div class="kpis">
+<div class="kpi hl"><b>1,16×</b><span>schneller als C++-Manifold (pocket-large)</span></div>
+<div class="kpi hl"><b>1,18×</b><span>Gewinn durch Runde 3 (pocket-large, gleiche Maschine)</span></div>
+<div class="kpi"><b>19×</b><span>schneller als CGAL, den anderen exakten Kern (pocket-profile)</span></div>
+<div class="kpi"><b>698</b><span>Dreiecke im Ergebnis statt 23 774 bei Manifold</span></div>
+</div>
+
+<section>
+<h2>pocket-large: 876 Schnitte, Zickzack-Tasche 80 × 60 × 20 mm</h2>
+<p class="sub">Reine Schnittzeit in Sekunden, bester von 3 Läufen, C# vorgewärmt. Kürzer ist besser.</p>
+<div class="bars">
+<div class="bar"><div class="lab">NanoCut, Runde 3<small>exakt · C#</small></div><div class="track"><div class="fill nc" style="width:24.8%"><span>7,9 s</span></div></div></div>
+<div class="bar"><div class="lab">Manifold<small>double · C++ (TBB)</small></div><div class="track"><div class="fill" style="width:28.7%"><span>9,2 s</span></div></div></div>
+<div class="bar"><div class="lab">NanoCut, Runde 2<small>exakt · C# · Commit 4384975</small></div><div class="track"><div class="fill old" style="width:29.3%"><span>9,4 s</span></div></div></div>
+<div class="bar"><div class="lab">ManifoldSharp<small>double · C#-Port</small></div><div class="track"><div class="fill" style="width:94.5%"><span>30,3 s</span></div></div></div>
+</div>
+<div class="axis" aria-hidden="true"><div></div><div class="ticks"><span>0</span><span>8</span><span>16</span><span>24</span><span>32 s</span></div></div>
+</section>
+
+<section>
+<h2>Alle Szenen</h2>
+<p class="sub">Zeit in ms, bester von 3 (CGAL: ein Lauf). Hervorgehoben: die schnellste Engine pro Szene.</p>
+<div class="tablewrap">
+<table>
+<thead><tr><th>Szene</th><th>NanoCut R2</th><th>NanoCut R3</th><th>Gewinn</th><th>Manifold C++</th><th>ManifoldSharp</th><th>CGAL (exakt)</th><th>NanoCut vs. C++</th></tr></thead>
+<tbody>
+<tr><td class="scene">ball-small<small>16 Schritte</small></td><td>191</td><td>156</td><td class="up">1,22×</td><td class="win">26</td><td>203</td><td>122</td><td class="f">6,0× langsamer</td></tr>
+<tr><td class="scene">ball-medium<small>96 Schritte</small></td><td>1 089</td><td>1 055</td><td class="up">1,03×</td><td class="win">528</td><td>965</td><td>3 179</td><td class="f">2,0× langsamer</td></tr>
+<tr><td class="scene">pocket-profile<small>372 Schritte</small></td><td>3 846</td><td>3 364</td><td class="up">1,14×</td><td class="win">3 221</td><td>10 085</td><td>63 270</td><td class="f">≈ gleich (1,04×)</td></tr>
+<tr><td class="scene">pocket-large<small>876 Schritte</small></td><td>9 367</td><td class="win">7 936</td><td class="up">1,18×</td><td>9 178</td><td>30 254</td><td>347 056*</td><td class="f">1,16× schneller</td></tr>
+</tbody>
+</table>
+</div>
+<p class="sub" style="margin-top:8px">* CGAL pocket-large aus der ersten Messung (ein Lauf dauert rund 6 Minuten). Volumen aller Engines identisch bis ≤ 5·10⁻¹¹ mm³.</p>
+</section>
+
+<div class="cols">
+<section>
+<h2>So ist das einzuordnen</h2>
+<ul>
+<li><b>Lange Aufgaben gewinnt NanoCut.</b> Koplanare Flächen werden zusammengefasst; das Werkstück behält 698 statt 23 774 Dreiecke, jeder weitere Schnitt wird kaum teurer.</li>
+<li><b>Kurze Aufgaben gewinnt C++.</b> Bei wenigen Schritten zählt der feste Aufwand pro Schnitt (Hülle, Suchstrukturen, .NET), und den hat Manifold kleiner.</li>
+<li><b>Beide rechnen parallel.</b> Manifold nutzt TBB (≈ 2,7–2,9 Kerne), NanoCut klassifiziert Flächen und baut Hüllenflächen parallel – das Ergebnis ist unabhängig von der Kernzahl identisch.</li>
+<li><b>Gegen den anderen exakten Kern</b> (CGAL, Epeck) ist NanoCut bei pocket-profile 19× und bei pocket-large rund 44× schneller.</li>
+<li><b>Geprüft:</b> jede Runde wurde von einem unabhängigen Prüf-Agenten auf Korrektheit getestet; 142 Tests laufen dauerhaft mit.</li>
+</ul>
+</section>
+<section>
+<h2>Verlauf in der Cloud</h2>
+<p class="sub">pocket-large, Container mit 4 Kernen</p>
+<table class="cloud">
+<tbody>
+<tr><td>NanoCut, Ausgangsstand</td><td>30,9 s</td></tr>
+<tr><td>NanoCut, nach Runde 1</td><td>18,4 s</td></tr>
+<tr><td>NanoCut, nach Runde 2</td><td>10,4 s / 9,4 s*</td></tr>
+<tr><td>NanoCut, nach Runde 3</td><td><b>7,9 s</b></td></tr>
+<tr><td>Manifold C++</td><td>9,2 s</td></tr>
+<tr><td>ManifoldSharp C#</td><td>30,3 s</td></tr>
+</tbody>
+</table>
+<p class="sub" style="margin-top:10px">* zwei Messungen desselben Stands an verschiedenen Zeitpunkten; die Schwankung im geteilten Container liegt bei rund 10 %. Lokal (Ryzen 7 5800X3D, 8 Kerne) lag Runde 2 bei 5,8 s gegen 7,6 s für Manifold.</p>
+<h2 style="margin-top:18px">Was Runde 3 geändert hat</h2>
+<ul>
+<li>Gleitkomma-Vorfilter für Seitentests von Gitterpunkten: 92 000 → 1 200 exakte Auswertungen pro Schnitt.</li>
+<li>Weniger Allokationen: Probe, Merge-Index und Fragmentlisten pro Thread wiederverwendet, BVH-Arrays aus dem Pool (2,5 → 1,5 MB pro Schnitt).</li>
+<li>Hüllenflächen parallel gebaut (5,1 → 3,9 ms pro Hülle).</li>
+</ul>
+</section>
+</div>
+
+<footer>
+Gemessen im Cloud-Container: Intel Xeon @ 2,1 GHz, 4 Kerne, Linux, .NET 10, Commit f0cf504 (Runde 3) und 4384975 (Runde 2), mit <code>bench/run.py</code>.
+Manifold C++ ist manifold3d 3.5.4 über Python (mit TBB), CGAL 5.6 mit Epeck und Corefinement. Die Zeiten zählen nur das Schneiden, nicht Laden und Speichern.
+</footer>
+</main>
+</body>
+</html>
