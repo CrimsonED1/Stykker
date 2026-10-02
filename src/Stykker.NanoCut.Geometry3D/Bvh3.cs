@@ -7,8 +7,12 @@ internal sealed class Bvh3
 
     private readonly IReadOnlyList<Face3> _faces;
     private readonly int[] _order;
-    private readonly List<Node> _nodes = [];
+    private readonly List<Node> _build = [];
     private double[]? _keys;
+    // Query-time copies in tree order: nodes and face boxes as arrays (no list indexers, no property copies).
+    private readonly Node[] _nodes;
+    private readonly Box3[] _boxes;
+    private readonly Face3[] _sorted;
 
     private struct Node
     {
@@ -22,16 +26,24 @@ internal sealed class Bvh3
         _faces = faces;
         _order = Enumerable.Range(0, faces.Count).ToArray();
         if (faces.Count > 0) Build(0, faces.Count);
+        _nodes = _build.ToArray();
+        _sorted = new Face3[faces.Count];
+        _boxes = new Box3[faces.Count];
+        for (int i = 0; i < faces.Count; i++)
+        {
+            _sorted[i] = faces[_order[i]];
+            _boxes[i] = _sorted[i].Box;
+        }
     }
 
-    public Box3 Bounds => _nodes.Count > 0 ? _nodes[0].Box : Box3.Empty;
+    public Box3 Bounds => _nodes.Length > 0 ? _nodes[0].Box : Box3.Empty;
 
     private int Build(int start, int count)
     {
         var box = Box3.Empty;
         for (int i = start; i < start + count; i++) box = box.Union(_faces[_order[i]].Box);
-        int index = _nodes.Count;
-        _nodes.Add(new Node { Box = box, Left = -1, Right = -1, Start = start, Count = count });
+        int index = _build.Count;
+        _build.Add(new Node { Box = box, Left = -1, Right = -1, Start = start, Count = count });
         if (count <= LeafSize) return index;
 
         double dx = box.MaxX - box.MinX, dy = box.MaxY - box.MinY, dz = box.MaxZ - box.MinZ;
@@ -43,10 +55,10 @@ internal sealed class Bvh3
         int half = count / 2;
         int left = Build(start, half);
         int right = Build(start + half, count - half);
-        var node = _nodes[index];
+        var node = _build[index];
         node.Left = left;
         node.Right = right;
-        _nodes[index] = node;
+        _build[index] = node;
         return index;
     }
 
@@ -54,22 +66,19 @@ internal sealed class Bvh3
     public void Query(in Box3 box, List<Face3> result)
     {
         result.Clear();
-        if (_nodes.Count == 0) return;
+        if (_nodes.Length == 0) return;
         // Depth is about log2(faces / LeafSize); 256 entries cover any realistic tree without allocating.
         Span<int> stack = stackalloc int[256];
         int top = 0;
         stack[top++] = 0;
         while (top > 0)
         {
-            var n = _nodes[stack[--top]];
+            ref readonly var n = ref _nodes[stack[--top]];
             if (!n.Box.Overlaps(box)) continue;
             if (n.Left < 0)
             {
                 for (int i = n.Start; i < n.Start + n.Count; i++)
-                {
-                    var f = _faces[_order[i]];
-                    if (f.Box.Overlaps(box)) result.Add(f);
-                }
+                    if (_boxes[i].Overlaps(box)) result.Add(_sorted[i]);
             }
             else
             {
