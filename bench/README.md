@@ -207,3 +207,25 @@ Results, steady state, best of 3 (4 cores):
 
 Short tasks: C++ ahead by 1.3–2.3× (was up to 5.5×). Long tasks: NanoCut ahead by 1.5–1.7×.
 
+## GPU prototype: Z-map preview (2026-10-03)
+
+A preview of the same scene, not an exact solid: a height field over the workpiece (one height per cell) that every
+tool step lowers. `src/Stykker.NanoCut.Gpu` holds the managed API with two backends – `Cpu` (C#, the reference) and
+`Cuda` (`LibraryImport` into `src/Stykker.NanoCut.Gpu.Native/zmap.cu`, built by `build.ps1`, not part of `dotnet build`).
+`bench/Stykker.NanoCut.GpuBench` measures it.
+
+pocket-large, 876 steps, on the machine from `docs/gpu-findings.md` (RTX 5070 Ti, Ryzen 7 5800X3D), **not** comparable
+to the cloud tables above:
+
+| | Time for all 876 steps | per step | Remaining volume (mm³) |
+| --- | ---: | ---: | ---: |
+| Exact kernel (`nanocut`) | 4 655 ms | 5,31 ms | 84 860,612636583 |
+| Z-map, CPU backend, 16 threads | 286 ms | 0,327 ms | 84 770,457226 |
+| Z-map, CUDA backend (kernel only) | 1,5 ms | 0,0017 ms | 84 770,457226 |
+| Z-map, CUDA backend (wall, with transfers) | 2,5 ms | 0,0029 ms | 84 770,457226 |
+
+The deviation of −0,106 % splits into three causes: tool model −0,016 %, representation −0,090 %, grid +0,0005 %. The
+representation error is a property of the height field and does not shrink with a finer grid, so 512 × 384 is enough for a
+preview. Measurements, error decomposition and the recommendation: `docs/gpu-findings.md`. One-page result:
+[`results-2026-10-03-gpu.html`](results-2026-10-03-gpu.html).
+
