@@ -103,6 +103,31 @@ public class PlanePredicateTests
     }
 
     [Fact]
+    public void FastIntersectionEqualsCramer()
+    {
+        // The 256-bit cross-product path must return exactly the Int384 Cramer result (same X, Y, Z, W).
+        var rng = new Random(2026);
+        int compared = 0;
+        for (int i = 0; i < 20000; i++)
+        {
+            var p = Plane3.FromPoints(P(rng), P(rng), P(rng));
+            var q = Plane3.FromPoints(P(rng), P(rng), P(rng));
+            var r = Plane3.FromPoints(P(rng), P(rng), P(rng));
+            if (i % 3 == 0) (p, q) = (p.Canonical(), q.Flipped());
+            var fast = Plane3.IntersectFast(p, q, r);
+            var slow = Plane3.IntersectGeneric(p, q, r);
+            Assert.Equal(slow.HasValue, fast.HasValue);
+            if (slow is { } s) { Assert.Equal(s, fast!.Value); compared++; }
+        }
+        Assert.True(compared > 19000);
+        // Degenerate: parallel planes have no point.
+        var a = Plane3.FromPoints(new(0, 0, 0), new(1, 0, 0), new(0, 1, 0));
+        var b = Plane3.FromPoints(new(0, 0, 5), new(1, 0, 5), new(0, 1, 5));
+        var c = Plane3.FromPoints(new(0, 0, 0), new(0, 1, 0), new(0, 0, 1));
+        Assert.Null(Plane3.IntersectFast(a, b, c));
+    }
+
+    [Fact]
     public void ExtremeConfigurationDoesNotOverflow()
     {
         // Planes through the corners of the full coordinate cube produce the largest magnitudes.

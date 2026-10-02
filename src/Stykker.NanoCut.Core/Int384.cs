@@ -20,6 +20,8 @@ public readonly struct Int384 : IEquatable<Int384>, IComparable<Int384>
         _l0 = l0; _l1 = l1; _l2 = l2; _l3 = l3; _l4 = l4; _l5 = l5;
     }
 
+    internal static Int384 FromLimbs(ulong l0, ulong l1, ulong l2, ulong l3, ulong l4, ulong l5) => new(l0, l1, l2, l3, l4, l5);
+
     private Int384(ReadOnlySpan<ulong> l) : this(l[0], l[1], l[2], l[3], l[4], l[5]) { }
 
     /// <summary>Zero.</summary>
