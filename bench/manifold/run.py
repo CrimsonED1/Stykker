@@ -11,7 +11,7 @@ import sys
 import time
 
 import numpy as np
-from manifold3d import Manifold
+from manifold3d import Manifold, OpType
 
 
 def write_stl(m, path):
@@ -37,15 +37,36 @@ def main():
     if 0 in save:
         write_stl(work, f"{out}/step-0000.stl")
     steps = scene["steps"]
+    batch = int(sys.argv[sys.argv.index("--batch") + 1]) if "--batch" in sys.argv else 1
     step_ms = []
-    for i, pts in enumerate(steps):
+    if "--pipeline" in sys.argv:
+        # The hull of the next step is computed in a second thread while the current step is subtracted.
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(1) as pool:
+            hull = lambda pts: Manifold.hull_points(np.asarray(pts, dtype=np.float64))
+            nxt = pool.submit(hull, steps[0])
+            for i in range(len(steps)):
+                t0 = time.perf_counter()
+                tool = nxt.result()
+                if i + 1 < len(steps):
+                    nxt = pool.submit(hull, steps[i + 1])
+                work = work - tool
+                work.num_tri()
+                step_ms.append((time.perf_counter() - t0) * 1000)
+        batch = len(steps) + 1  # skip the loop below
+    for i in range(0, len(steps) if batch <= len(steps) else 0, batch):
+        group = steps[i:i + batch]
         t0 = time.perf_counter()
-        work = work - Manifold.hull_points(np.asarray(pts, dtype=np.float64))
+        hulls = [Manifold.hull_points(np.asarray(pts, dtype=np.float64)) for pts in group]
+        tool = hulls[0] if len(hulls) == 1 else Manifold.batch_boolean(hulls, OpType.Add)
+        work = work - tool
         work.num_tri()  # force evaluation (Manifold evaluates lazily)
-        step_ms.append((time.perf_counter() - t0) * 1000)
-        if (i + 1) in save or (i == len(steps) - 1 and -1 in save):
-            write_stl(work, f"{out}/step-{i + 1:04d}.stl")
-    stats = {"engine": "manifold", "language": "C++", "exact": False, "steps": len(steps), "totalMs": sum(step_ms),
+        ms = (time.perf_counter() - t0) * 1000
+        step_ms.extend([ms / len(group)] * len(group))
+        last = i + len(group)
+        if any(i < s <= last for s in save if s > 0) or (last == len(steps) and -1 in save):
+            write_stl(work, f"{out}/step-{last:04d}.stl")
+    stats = {"engine": "manifold", "language": "C++", "exact": False, "steps": len(steps), "batch": batch if batch <= len(steps) else 1, "pipeline": "--pipeline" in sys.argv, "totalMs": sum(step_ms),
              "stepMs": step_ms, "volumeMm3": work.volume() * 1e-18, "triangles": work.num_tri()}
     json.dump(stats, open(f"{out}/stats.json", "w"), indent=2)
     print(f"manifold: {len(steps)} steps in {sum(step_ms):.0f} ms, V = {stats['volumeMm3']:.9f} mm3, {stats['triangles']} triangles")
