@@ -18,6 +18,8 @@ Background, research and phase plan: [docs/plan.md](docs/plan.md) (German).
 | 5 – Web | three.js/Babylon.js adapters, byte-buffer interop, Blazor WebAssembly demo with machines ✅; web worker, AOT build in CI | mostly |
 | 6 – Hardening & release | Fuzzing, benchmarks, packages | open |
 
+Open features: [docs/todo.md](docs/todo.md).
+
 | | |
 | --- | --- |
 | ![Gear generation](docs/images/anim-gear.gif) | ![Turning](docs/images/anim-lathe.gif) |
