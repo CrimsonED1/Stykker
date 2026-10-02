@@ -86,12 +86,20 @@ internal sealed class Bvh3 : IDisposable
         return index;
     }
 
-    // Quickselect (Hoare partition, median-of-three pivot): afterwards keys[k] is the k-th smallest of keys[lo..hi], with
+    // Quickselect (Hoare partition, median-of-three pivot, sorting fallback): afterwards keys[k] is the k-th smallest of keys[lo..hi], with
     // smaller-or-equal keys before it and greater-or-equal keys after it; order[] is permuted alongside.
     private static void Select(double[] keys, int[] order, int lo, int hi, int k)
     {
+        // Introselect: after 2·log2(n) + 4 rounds without converging (adversarial key order), sort the rest instead,
+        // which bounds the work by O(n log n).
+        int budget = 2 * System.Numerics.BitOperations.Log2((uint)(hi - lo + 1)) + 4;
         while (hi > lo)
         {
+            if (budget-- == 0)
+            {
+                Array.Sort(keys, order, lo, hi - lo + 1);
+                return;
+            }
             int mid = lo + (hi - lo) / 2;
             if (keys[mid] < keys[lo]) Swap(lo, mid);
             if (keys[hi] < keys[lo]) Swap(lo, hi);
