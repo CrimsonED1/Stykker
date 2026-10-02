@@ -15,12 +15,36 @@ Background, research and phase plan: [docs/plan.md](docs/plan.md) (German).
 | 2 – 2D kernel | Booleans (4 fill rules, hot-pixel snap rounding), arcs with chord error, offset, Minkowski sweep, triangulation and convex decomposition | ✅ example 1 (2D) within budget, oracle vs. Clipper2 on 10,000 random polygons |
 | 3 – 3D kernel | Plane-based exact Booleans, BVH, primitives, extrude/revolve, convex hull, lossless `.ncs` format, STL import | ✅ Steinmetz solid and sphere lens within budget, oracle vs. ManifoldSharp (max. ΔV 4·10⁻¹⁴ mm³) |
 | 4 – Processes | Acting shape + motion on one or more workpieces: planar processes (gear generation), turning, 3D milling ([docs/processes.md](docs/processes.md)) | ✅ 2D/turning/3D translation; 3D rotation works but slow |
-| 5 – Web | three.js/Babylon.js adapters and headless snapshot ✅; `[JSExport]` interop, web worker, Blazor demo | partly |
+| 5 – Web | three.js/Babylon.js adapters, byte-buffer interop, Blazor WebAssembly demo with machines ✅; web worker, AOT build in CI | mostly |
 | 6 – Hardening & release | Fuzzing, benchmarks, packages | open |
 
 | | | |
 | --- | --- | --- |
 | ![Gear generation](docs/images/gear-generation.png) | ![Turning](docs/images/turning.png) | ![Milling](docs/images/milling.png) |
+
+## Interactive demo
+
+`samples/Stykker.NanoCut.Demo` is a Blazor WebAssembly app: all geometry is computed in the browser in C# and shown
+with three.js or Babylon.js (switchable).
+
+- **Reference cases, kernels, shapes, processes:** every scene has editable parameters, live metrics, PASS/FAIL checks
+  against analytic solutions, and STL / `.ncs` download.
+- **Machines:** a lathe (X diameter, Z) and a 3-axis mill (X, Y, Z) with jog buttons (0.01 … 5 mm, infeed), go-to,
+  undo and a G-code program (G0/G1). Every move cuts exactly; rapid moves into material are reported as collisions.
+- **Self test:** runs the reference checks of the test suite inside the browser.
+
+```bash
+cd samples/Stykker.NanoCut.Demo && dotnet run          # then open the printed URL
+dotnet publish -c Release                              # static site in bin/Release/net10.0/publish/wwwroot
+```
+
+GitHub Pages: enable *Settings → Pages → Source: GitHub Actions* and run the "Demo (GitHub Pages)" workflow.
+The app runs in the .NET interpreter by default; heavy scenes (fine chord errors, gear generation) are much faster
+when published with AOT (`-p:Aot=true`, needs the `wasm-tools` workload).
+
+| | |
+| --- | --- |
+| ![Mill](docs/images/demo-mill.png) | ![Gear generation](docs/images/demo-gear.png) |
 
 ## Quick start (2D)
 
@@ -97,6 +121,7 @@ src/Stykker.NanoCut.Geometry3D/   Solid, exact plane-based Boolean kernel, primi
 src/Stykker.NanoCut.Cutting/      Motion2/3, Process2/3, Lathe, ToolShape; Tool/ToolPath/Cutter (3D), Tool2/ToolPath2/Cutter2 (2D)
 js/nanocut-three/                 three.js adapter (@stykker/nanocut-three)
 js/nanocut-babylon/               Babylon.js adapter (@stykker/nanocut-babylon)
+samples/Stykker.NanoCut.Demo/     interactive Blazor WebAssembly demo (scenes, machines with jog/G-code, self test)
 samples/Stykker.NanoCut.Snapshot/ computes example scenes and writes mesh buffers as JSON
 tools/snapshot/                   headless three.js render of those buffers to PNG
 tests/Stykker.NanoCut.Tests/          analytic reference cases, predicates vs. BigInteger, fuzzing

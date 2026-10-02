@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk.BlazorWebAssembly">
+  <!--
+    Interactive demo: all geometry is computed in the browser (C# on WebAssembly) and shown with three.js or Babylon.js.
+    Run:      dotnet run (in samples/Stykker.NanoCut.Demo)
+    Publish:  dotnet publish -c Release   (static files in bin/Release/net10.0/publish/wwwroot)
+    AOT:      add -p:Aot=true to publish (needs the wasm-tools workload); much faster for heavy scenes.
+  -->
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <!-- Plain framework file names: the page keeps its own import map for three.js / Babylon.js. -->
+    <OverrideHtmlAssetPlaceholders>false</OverrideHtmlAssetPlaceholders>
+    <WasmFingerprintAssets>false</WasmFingerprintAssets>
+    <RootNamespace>Stykker.NanoCut.Demo</RootNamespace>
+    <RunAOTCompilation Condition="'$(Aot)' == 'true'">true</RunAOTCompilation>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" Version="10.0.12" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" Version="10.0.12" PrivateAssets="all" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/Stykker.NanoCut.Cutting/Stykker.NanoCut.Cutting.csproj" />
+    <Compile Include="../../tests/Shared/*.cs" Link="Shared/%(Filename)%(Extension)" />
+    <!-- The npm adapters are served from the repository's js/ folder. -->
+    <Content Include="../../js/nanocut-three/index.js" Link="wwwroot/js/nanocut-three/index.js" />
+    <Content Include="../../js/nanocut-babylon/index.js" Link="wwwroot/js/nanocut-babylon/index.js" />
+  </ItemGroup>
+</Project>
