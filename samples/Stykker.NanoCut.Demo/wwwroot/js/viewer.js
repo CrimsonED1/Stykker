@@ -33,7 +33,7 @@ export async function setEngine(engine) {
   engineName = engine;
   impl = engine === 'babylon' ? await createBabylon(host) : createThree(host);
   for (const o of objects) impl.add(o);
-  if (tool) { impl.setTool(tool); applyToolPose(); impl.setGizmo(gizmoMode); }
+  if (tool) { impl.setTool(tool); if (tool.parts) impl.setToolParts(tool.parts); applyToolPose(); impl.setGizmo(gizmoMode); }
   impl.fit(bounds(), viewName);
 }
 
@@ -48,6 +48,16 @@ export function setToolPose(pose) {
   if (!tool) return;
   tool.pose = pose;
   applyToolPose();
+}
+
+/**
+ * Replaces the extra parts of the tool (meshes in the tool's frame that move and spin with it, e.g. grains coloured
+ * by state). Each part: { positions, normals, indices (bytes), color, opacity }.
+ */
+export function setToolParts(parts) {
+  if (!tool) return;
+  tool.parts = parts.map((p) => ({ kind: 'mesh', positions: f32(p.positions), normals: f32(p.normals), indices: u32(p.indices), color: p.color, opacity: p.opacity }));
+  impl?.setToolParts(tool.parts);
 }
 
 /** Removes the movable tool (and stops its spin). */
@@ -245,7 +255,7 @@ function createThree(el) {
       for (const c of [...group.children]) { group.remove(c); c.geometry?.dispose(); c.material?.dispose(); }
     },
     setTool(t) {
-      if (toolMesh) { gizmo.detach(); scene.remove(toolMesh); toolMesh.geometry.dispose(); toolMesh.material.dispose(); }
+      if (toolMesh) { gizmo.detach(); this.setToolParts([]); scene.remove(toolMesh); toolMesh.geometry.dispose(); toolMesh.material.dispose(); }
       const mat = new THREE.MeshStandardMaterial({ color: t.color, metalness: 0.3, roughness: 0.45, transparent: t.opacity < 1, opacity: t.opacity });
       toolMesh = new THREE.Mesh(toThreeGeometry(t), mat);
       scene.add(toolMesh);
@@ -256,9 +266,18 @@ function createThree(el) {
       toolMesh.position.set(p[0], p[1], p[2]);
       toolMesh.quaternion.set(p[3], p[4], p[5], p[6]);
     },
+    setToolParts(parts) {
+      if (!toolMesh) return;
+      for (const c of [...toolMesh.children]) { toolMesh.remove(c); c.geometry.dispose(); c.material.dispose(); }
+      for (const p of parts) {
+        const mat = new THREE.MeshStandardMaterial({ color: p.color, metalness: 0.2, roughness: 0.5, transparent: p.opacity < 1, opacity: p.opacity });
+        toolMesh.add(new THREE.Mesh(toThreeGeometry(p), mat));
+      }
+    },
     removeTool() {
       if (!toolMesh) return;
       gizmo.detach();
+      this.setToolParts([]);
       scene.remove(toolMesh);
       toolMesh.geometry.dispose();
       toolMesh.material.dispose();
@@ -379,6 +398,18 @@ async function createBabylon(el) {
       if (!toolMesh) return;
       toolMesh.position.set(p[0], p[1], p[2]);
       toolMesh.rotationQuaternion.set(p[3], p[4], p[5], p[6]);
+    },
+    setToolParts(parts) {
+      if (!toolMesh) return;
+      for (const c of toolMesh.getChildMeshes()) c.dispose(false, true);
+      parts.forEach((p, i) => {
+        const m = toBabylonMesh(p, 'tool-part-' + i, scene);
+        const mat = new B.StandardMaterial('tool-part-mat-' + i, scene);
+        mat.diffuseColor = B.Color3.FromHexString(p.color);
+        mat.alpha = p.opacity;
+        m.material = mat;
+        m.parent = toolMesh;
+      });
     },
     removeTool() {
       gizmos.attachToMesh(null);

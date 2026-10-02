@@ -11,9 +11,14 @@ public sealed class SurfaceProfile
     private readonly (double X0, double Y0, double X1, double Y1, double Nx, double Ny, double Nz, double D, double[] Xs, double[] Ys)[] _faces;
 
     /// <summary>Prepares height queries on <paramref name="solid"/> (only faces facing upwards can be the top).</summary>
-    public SurfaceProfile(Solid solid)
+    public SurfaceProfile(Solid solid) : this([solid])
     {
-        _faces = solid.Faces.Where(f => f.Support.Nz > 0).Select(f =>
+    }
+
+    /// <summary>Prepares height queries on several solids together (e.g. the cells of a workpiece).</summary>
+    public SurfaceProfile(IEnumerable<Solid> solids)
+    {
+        _faces = solids.SelectMany(s => s.Faces).Where(f => f.Support.Nz > 0).Select(f =>
         {
             var p = f.Support;
             var xs = f.Vertices.Select(v => v.X).ToArray();

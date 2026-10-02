@@ -31,6 +31,7 @@ public class GrindingTests(ITestOutputHelper output)
         var sim = Simulate(wheel, block, clearance: 0.01, x0: 0.5, x1: 1.5, feedMmPerS: 20);   // 0.4 mm per revolution
         sim.Run();
         var r = sim.Grains[0];
+        // Lowest point of the scratches (the union of the cells has no cell walls left).
         double lowest = sim.Workpiece.Vertices.Where(v => v.Z > -0.5e6).Min(v => v.Z) / 1e6;
         output.WriteLine($"{sim.Passes.Count} passes, {r.ActivePasses} active, removed {r.RemovedMm3:E3} mm³, chip {r.MaxChipThicknessMm * 1000:F4} µm, " +
                          $"lowest {lowest * 1000:F4} µm, angles {r.EntryAngleDeg:F2}…{r.ExitAngleDeg:F2}°, {sim.Hulls} hulls, {sw.ElapsedMilliseconds} ms");
@@ -41,7 +42,10 @@ public class GrindingTests(ITestOutputHelper output)
         // Contact arc of a 20 µm deep cut on R = 5 mm: about ±√(2 · 0.02 / 5) rad = ±5.1° around the lowest point.
         Assert.InRange(r.EntryAngleDeg, -6, 0);
         Assert.InRange(r.ExitAngleDeg, 0, 6);
-        Assert.Equal(block.VolumeMm3 - sim.Workpiece.VolumeMm3, sim.RemovedMm3, 12);
+        Assert.Equal(block.VolumeMm3 - sim.VolumeMm3, sim.RemovedMm3, 12);
+        Assert.Equal(sim.RemovedMm3, r.RemovedMm3, 12);
+        Assert.True(sim.Cells.Count > 1);
+        Assert.Equal(sim.VolumeMm3, sim.Workpiece.VolumeMm3, 9);
     }
 
     [Fact]
@@ -91,7 +95,7 @@ public class GrindingTests(ITestOutputHelper output)
         s1.Run();
         s2.Run();
         output.WriteLine($"{s1.ActiveGrains}/{a.Grains.Count} active, removed {s1.RemovedMm3:E4} mm³, {s1.Passes.Count} passes");
-        Assert.Equal(s1.Workpiece.VolumeMm3, s2.Workpiece.VolumeMm3);
+        Assert.Equal(s1.VolumeMm3, s2.VolumeMm3);
         Assert.Equal(s1.Grains.Select(g => g.RemovedMm3), s2.Grains.Select(g => g.RemovedMm3));
         Assert.True(s1.ActiveGrains > 0 && s1.ActiveGrains < a.Grains.Count);
     }

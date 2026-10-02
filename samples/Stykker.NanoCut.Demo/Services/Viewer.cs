@@ -45,6 +45,18 @@ public sealed class Viewer(IJSRuntime js) : IAsyncDisposable
     public async Task SetToolSpin(double[] axis, double radPerSecond, double? angle = null) =>
         await (await Module()).InvokeVoidAsync("setToolSpin", axis, radPerSecond, angle);
 
+    /// <summary>Replaces the extra parts of the tool (meshes in the tool frame that move and spin with it).</summary>
+    public async Task SetToolParts(IEnumerable<(MeshBuffers Mesh, string Color, double Opacity)> parts) =>
+        // Cast to object: an array argument would otherwise be spread into separate JS arguments.
+        await (await Module()).InvokeVoidAsync("setToolParts", (object)parts.Select(p => new
+        {
+            positions = MemoryMarshal.AsBytes(p.Mesh.Positions.AsSpan()).ToArray(),
+            normals = MemoryMarshal.AsBytes(p.Mesh.Normals.AsSpan()).ToArray(),
+            indices = MemoryMarshal.AsBytes(p.Mesh.Indices.AsSpan()).ToArray(),
+            color = p.Color,
+            opacity = p.Opacity,
+        }).ToArray());
+
     /// <summary>Removes the movable tool and stops its spin.</summary>
     public async Task RemoveTool() => await (await Module()).InvokeVoidAsync("removeTool");
 
