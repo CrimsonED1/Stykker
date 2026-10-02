@@ -4,7 +4,7 @@
   "description": "three.js adapter for Stykker.NanoCut mesh buffers and 2D contours.",
   "type": "module",
   "main": "index.js",
-  "license": "MIT",
+  "license": "BUSL-1.1",
   "peerDependencies": {
     "three": ">=0.150.0"
   }

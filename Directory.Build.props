@@ -11,7 +11,7 @@
     <Company>Stykker</Company>
     <Product>Stykker.NanoCut</Product>
     <Copyright>Copyright (c) 2026 CrimsonED1</Copyright>
-    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageLicenseExpression>BUSL-1.1</PackageLicenseExpression>
     <RepositoryUrl>https://github.com/CrimsonED1/Stykker-NanoCut</RepositoryUrl>
     <Version>0.1.0-alpha</Version>
   </PropertyGroup>

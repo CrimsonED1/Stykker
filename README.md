@@ -10,7 +10,7 @@ Background, research and phase plan: [docs/plan.md](docs/plan.md) (German).
 
 | Phase | Scope | Status |
 | --- | --- | --- |
-| 0 – Repo & CI | Project structure, GitHub Actions for `net10.0` and `browser-wasm`, MIT | ✅ |
+| 0 – Repo & CI | Project structure, GitHub Actions for `net10.0` and `browser-wasm`, license | ✅ |
 | 1 – Core | 1 nm grid, `Int128` predicates, `Int384`, planes and homogeneous intersection points, tolerance model | ✅ predicates match `BigInteger` on 10⁶ cases, bit budget verified ([docs/bit-budget.md](docs/bit-budget.md)) |
 | 2 – 2D kernel | Booleans (4 fill rules, hot-pixel snap rounding), arcs with chord error, offset, Minkowski sweep, triangulation and convex decomposition | ✅ example 1 (2D) within budget, oracle vs. Clipper2 on 10,000 random polygons |
 | 3 – 3D kernel | Plane-based exact Booleans, BVH, primitives, extrude/revolve, convex hull, lossless `.ncs` format, STL import | ✅ Steinmetz solid and sphere lens within budget, oracle vs. ManifoldSharp (max. ΔV 4·10⁻¹⁴ mm³) |
@@ -179,4 +179,10 @@ STL is for import and display only: binary STL stores float32 (±30 nm per coord
 
 ## License
 
-MIT
+[Business Source License 1.1](LICENSE) (`BUSL-1.1`): copying, modification, redistribution and non-production use
+are permitted; production use requires a separate license from the Licensor. On the Change Date (2030-10-02) the code
+converts to the Apache License 2.0.
+
+Third-party components keep their own licenses: three.js (MIT, vendored in
+`samples/Stykker.NanoCut.Demo/wwwroot/lib/three`), Babylon.js (Apache 2.0, loaded from its CDN by the demo). Clipper2
+(Boost) and ManifoldSharp (Apache 2.0) are test-only dependencies.
