@@ -204,7 +204,7 @@ public static class ConvexHull3
             if (v > bound) return true;
             if (v < -bound) return false;
             var (a, b, c) = faces[f];
-            return Predicates.Side(Plane3.FromPoints(p[a], p[b], p[c]), p[q]) > 0;
+            return Predicates.Orient3D(p[a], p[b], p[c], p[q]) > 0; // same sign as the face plane (outward normal)
         }
 
         // Orient the tetrahedron so that every face has the fourth point below it.
