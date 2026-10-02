@@ -20,12 +20,16 @@ internal static class Filter
         return v > bound ? 1 : v < -bound ? -1 : Uncertain;
     }
 
-    /// <summary>Sign of n·p + d for coefficients at <paramref name="o"/> in <paramref name="k"/> (n_x, n_y, n_z, d).</summary>
-    public static int Sign(double[] k, int o, double x, double y, double z)
+    /// <summary>
+    /// Sign of n·p + d for coefficients at <paramref name="o"/> in <paramref name="k"/> (n_x, n_y, n_z, d). The point's
+    /// coordinates may carry an absolute error up to <paramref name="pointErr"/> (e.g. after averaging large values).
+    /// </summary>
+    public static int Sign(double[] k, int o, double x, double y, double z, double pointErr = 0)
     {
         double a = k[o] * x, b = k[o + 1] * y, c = k[o + 2] * z, d = k[o + 3];
         double v = a + b + c + d;
-        double bound = Rel * (Math.Abs(a) + Math.Abs(b) + Math.Abs(c) + Math.Abs(d));
+        double bound = Rel * (Math.Abs(a) + Math.Abs(b) + Math.Abs(c) + Math.Abs(d))
+                       + 2 * pointErr * (Math.Abs(k[o]) + Math.Abs(k[o + 1]) + Math.Abs(k[o + 2]));
         return v > bound ? 1 : v < -bound ? -1 : Uncertain;
     }
 
@@ -33,14 +37,17 @@ internal static class Filter
     /// Edge plane (at offset <paramref name="e"/>) evaluated where the ray y = cy, z = cz meets the support plane
     /// (offset 0) – coefficient array variant of <see cref="EdgeAtHit(in Plane3, in Plane3, double, double)"/>.
     /// </summary>
-    public static int EdgeAtHit(double[] k, int e, double cy, double cz)
+    public static int EdgeAtHit(double[] k, int e, double cy, double cz, double pointErr = 0)
     {
         double sy = k[1] * cy, sz = k[2] * cz, sd = k[3], sx = k[0];
         double xHit = -(sy + sz + sd) / sx;
         double ex = k[e], ey = k[e + 1] * cy, ez = k[e + 2] * cz, ed = k[e + 3];
         double g = ex * xHit + ey + ez + ed;
+        // ∂g/∂cy = e_y − e_x·s_y/s_x, ∂g/∂cz = e_z − e_x·s_z/s_x: an error in the probe propagates with these weights.
+        double ratio = Math.Abs(ex) / Math.Abs(sx);
         double bound = Rel * (Math.Abs(ex) * (Math.Abs(sy) + Math.Abs(sz) + Math.Abs(sd)) / Math.Abs(sx)
-                              + Math.Abs(ey) + Math.Abs(ez) + Math.Abs(ed));
+                              + Math.Abs(ey) + Math.Abs(ez) + Math.Abs(ed))
+                       + 2 * pointErr * (Math.Abs(k[e + 1]) + ratio * Math.Abs(k[1]) + Math.Abs(k[e + 2]) + ratio * Math.Abs(k[2]));
         return g > bound ? 1 : g < -bound ? -1 : Uncertain;
     }
 

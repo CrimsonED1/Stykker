@@ -1,3 +1,5 @@
+using System.Collections.Concurrent;
+using System.Runtime.CompilerServices;
 using Stykker.NanoCut.Geometry3D;
 
 namespace Stykker.NanoCut.Cutting;
@@ -45,7 +47,7 @@ public static class Process3
                         // Exact fast path: the part (rotated once, rounded) translated along the move.
                         var key = (a.R00, a.R01, a.R02, a.R10, a.R11, a.R12, a.R20, a.R21, a.R22);
                         if (!rotated.TryGetValue(key, out var placed))
-                            rotated[key] = placed = tool.Parts.Select(p => p.Transform(a with { TxNm = 0, TyNm = 0, TzNm = 0 })).ToArray();
+                            rotated[key] = placed = tool.Parts.Select(p => Oriented(p, a)).ToArray();
                         var t0 = new Vec3(Round(a.TxNm), Round(a.TyNm), Round(a.TzNm));
                         var t1 = new Vec3(Round(b.TxNm), Round(b.TyNm), Round(b.TzNm));
                         swept = Sweep3.Translate(Translate(placed[k], t0), t1 - t0);
@@ -98,6 +100,24 @@ public static class Process3
             level = next;
         }
         return level[0];
+    }
+
+    private static readonly ConditionalWeakTable<Solid, ConcurrentDictionary<(double, double, double, double, double, double, double, double, double), Solid>> OrientedCache = new();
+
+    /// <summary>
+    /// The part rotated by the pose's orientation, as the exact convex hull of its rounded vertices. Rounding to the grid
+    /// can leave nm-sized dents (also in curved primitives), and <see cref="Sweep3.Translate"/> requires convexity;
+    /// the hull removes them (deviation ≤ 0.87 nm). Cached per part and orientation, since hulls of fine tools are costly.
+    /// </summary>
+    private static Solid Oriented(Solid part, Pose3 pose)
+    {
+        var key = (pose.R00, pose.R01, pose.R02, pose.R10, pose.R11, pose.R12, pose.R20, pose.R21, pose.R22);
+        var cache = OrientedCache.GetValue(part, _ => new());
+        return cache.GetOrAdd(key, _ =>
+        {
+            var rotation = pose with { TxNm = 0, TyNm = 0, TzNm = 0 };
+            return ConvexHull3.Compute(part.Vertices.Select(v => rotation.Apply(v.Grid)));
+        });
     }
 
     private static long Round(double v) => (long)Math.Round(v, MidpointRounding.AwayFromZero);

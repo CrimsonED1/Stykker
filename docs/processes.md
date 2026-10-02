@@ -29,9 +29,9 @@ back by one pitch); the sweep is never interpolated across it.
 
 | Engine | Use | Method | Error |
 | --- | --- | --- | --- |
-| `Process2` | planar processes: gear generation/shaping, wire EDM, 2.5D | convex parts at every sampled pose + the area swept by each edge between poses | exact for the linearly interpolated motion; deviation of vertex paths from their chords ≤ `SweepNm` |
+| `Process2` | planar processes: gear generation/shaping, wire EDM, 2.5D | convex parts at every sampled pose + the area swept by each edge between poses; edges are split where they fold (the edge point nearest the rotation centre moves along the edge) | deviation ≤ `SweepNm` (verified against a densely sampled true motion) |
 | `Lathe` | turning | `Process2` in the r–z half-plane, then `Solid.Revolve` | as `Process2` + chord error of the revolve; helical feed marks not modelled |
-| `Process3` | arbitrary spatial motion | same orientation: exact Minkowski sum with the move; with rotation: convex hull of both poses with step ≤ 2·`SweepNm`/diameter | exact for translations; correct but slow for large rotations |
+| `Process3` | arbitrary spatial motion | parts are placed as the exact convex hull of their rotated, rounded vertices (cached); same orientation: exact Minkowski sum with the move; with rotation: convex hull of both poses with step ≤ 2·`SweepNm`/diameter | exact for translations (up to the ≤ 0.87 nm placement rounding) |
 
 Sampling is adaptive: an interval is accepted when no tool point leaves the chord between the interval's poses by more
 than `Tolerance.SweepNm` (checked at the extreme points of the tool, where the deviation of a rigid motion is largest).
@@ -49,6 +49,20 @@ than `Tolerance.SweepNm` (checked at the extreme points of the tool, where the d
 ![Gear generation](images/gear-generation.png)
 ![Turning](images/turning.png)
 ![Milling](images/milling.png)
+
+## Independent verification
+
+An independent review with adversarial tests (`tests/Stykker.NanoCut.Tests/VerificationTests.cs`) found and pinned
+three bugs, all fixed:
+
+1. The floating-point filter assumed relative errors only; the fragment probe point is an average of large
+   coordinates and can carry a larger absolute error (cancellation). The probe now carries an absolute error bound
+   that the filters include.
+2. A tilted tool moved straight left the workpiece open: rounding the rotated tool to the grid creates nm dents, and
+   the translational sweep requires convexity. Parts are now placed as the exact convex hull of their rounded
+   vertices (new quickhull with conflict lists: 380 000 vertices in ~8 s).
+3. The planar edge sweep missed the bulge where a rotating edge folds (195 nm undercut against 30 nm allowed); edges
+   are now split across the fold range (11.9 nm in the same case).
 
 ## Performance notes (measured)
 

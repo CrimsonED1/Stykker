@@ -232,7 +232,15 @@ internal static class SolidBoolean
             X = (_w[0] * a.X + _w[1] * b.X + _w[2] * c.X) / sum;
             Y = (_w[0] * a.Y + _w[1] * b.Y + _w[2] * c.Y) / sum;
             Z = (_w[0] * a.Z + _w[1] * b.Z + _w[2] * c.Z) / sum;
+            // Averaging cancels: the error is relative to the vertices, not to the (possibly small) result.
+            double max = 1;
+            foreach (var p in new[] { a, b, c })
+                max = Math.Max(max, Math.Max(Math.Abs(p.X), Math.Max(Math.Abs(p.Y), Math.Abs(p.Z))));
+            Err = 16 * Math.ScaleB(1, -53) * max;
         }
+
+        /// <summary>Bound on the absolute error of <see cref="X"/>, <see cref="Y"/>, <see cref="Z"/>.</summary>
+        public double Err { get; }
 
         public double X { get; }
         public double Y { get; }
@@ -292,7 +300,7 @@ internal static class SolidBoolean
         var k = q.PlanesD;
         for (int i = 0; i < q.Edges.Length; i++)
         {
-            int side = Filter.Sign(k, 4 * (i + 1), c.X, c.Y, c.Z);
+            int side = Filter.Sign(k, 4 * (i + 1), c.X, c.Y, c.Z, c.Err);
             if (side == Filter.Uncertain) side = Eval(q.Edges[i], c.Big);
             if (side >= 0) return false;
         }
@@ -318,7 +326,7 @@ internal static class SolidBoolean
             if (s == own || s == ownFlipped) continue;
             var k = q.PlanesD;
             int sx = Int128.Sign(s.Nx);
-            int sp = Filter.Sign(k, 0, cx, cy, cz);
+            int sp = Filter.Sign(k, 0, cx, cy, cz, probe.Err);
             if (sp == Filter.Uncertain) sp = Eval(s, probe.Big);
             if (sp == 0)
             {
@@ -339,7 +347,7 @@ internal static class SolidBoolean
             for (int ei = 0; ei < q.Edges.Length; ei++)
             {
                 var e = q.Edges[ei];
-                int sign = Filter.EdgeAtHit(k, 4 * (ei + 1), cy, cz);
+                int sign = Filter.EdgeAtHit(k, 4 * (ei + 1), cy, cz, probe.Err);
                 if (sign == Filter.Uncertain)
                 {
                     var c = probe.Big;

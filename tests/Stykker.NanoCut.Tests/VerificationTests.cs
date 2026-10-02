@@ -89,7 +89,7 @@ public class VerificationTests(ITestOutputHelper output)
     /// is Inside; the filter evaluates the cavity floor at the approximate probe (inside the cavity) and the
     /// fragment is classified Outside. Every Boolean with this pair returns an open surface.
     /// </summary>
-    [Fact(Skip = "BUG: Filter bound ignores the absolute error of SolidBoolean.Probe coordinates (cancellation) – fragment misclassified, result not closed")]
+    [Fact]
     public void ProbeCancellationMisclassifiesFragment()
     {
         var (a, other, reference) = ProbeCancellationCase();
@@ -405,7 +405,7 @@ public class VerificationTests(ITestOutputHelper output)
     /// parallelogram folds back into the body and the sweep surface overlaps itself (winding 2 in thin slivers).
     /// The Boolean kernel requires winding 0/1 inputs, so the workpiece minus that sweep is not closed.
     /// </summary>
-    [Fact(Skip = "BUG: Process3 sweeps a rounded (non-convex) rotated part with Sweep3.Translate – result not closed")]
+    [Fact]
     public void Process3TiltedTranslationLeavesClosedWorkpiece()
     {
         var (block, tool, motion, _, _) = TiltedBallCase(2);
@@ -473,7 +473,7 @@ public class VerificationTests(ITestOutputHelper output)
     /// 20 mm bar turning by 0.05° while moving 0.86 mm: the sampler accepts one interval (vertex chord deviation
     /// 3.3 nm ≤ SweepNm = 30 nm), but points of the true swept area are missed by ~195 nm (budget 100 nm total).
     /// </summary>
-    [Fact(Skip = "BUG: Process2 edge sweep (quadrilateral) misses the envelope bulge – undercut ~195 nm > SweepNm 30 nm")]
+    [Fact]
     public void Process2UndercutStaysWithinSweepTolerance()
     {
         double worst = Process2Undercut(out var tol);
