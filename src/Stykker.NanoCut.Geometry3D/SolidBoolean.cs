@@ -44,8 +44,8 @@ internal static class SolidBoolean
 
     public static Classified Classify(IReadOnlyList<Face3> a, IReadOnlyList<Face3> b)
     {
-        var bvhA = new Bvh3(a);
-        var bvhB = new Bvh3(b);
+        using var bvhA = new Bvh3(a);
+        using var bvhB = new Bvh3(b);
         return new Classified(Process(a, bvhB), Process(b, bvhA));
     }
 
@@ -100,6 +100,8 @@ internal static class SolidBoolean
         public readonly List<Box3> Reach = [];
         public readonly List<Face3> Coplanar = [];
         public readonly Probe Probe = new();
+        public readonly List<Node> FragmentsA = [];
+        public readonly List<Node> FragmentsB = [];
     }
 
     /// <summary>
@@ -171,11 +173,15 @@ internal static class SolidBoolean
             root.Loc = Locate(p, other, b.Coplanar, b.RayScratch, b.Probe);
             return root;
         }
-        var fragments = new List<Node> { root };
+        // Two lists from the thread's buffers, alternating between the current and the next set of fragments.
+        var fragments = b.FragmentsA;
+        var next = b.FragmentsB;
+        fragments.Clear();
+        fragments.Add(root);
         for (int pi = 0; pi < b.Planes.Count; pi++)
         {
             var plane = b.Planes[pi];
-            var next = new List<Node>(fragments.Count + 4);
+            next.Clear();
             foreach (var n in fragments)
             {
                 // Only fragments that can touch one of the faces spanning this plane need the cut.
@@ -189,7 +195,7 @@ internal static class SolidBoolean
                 }
                 else next.Add(n);
             }
-            fragments = next;
+            (fragments, next) = (next, fragments);
         }
         foreach (var n in fragments)
             n.Loc = Locate(n.Face, other, b.Coplanar, b.RayScratch, b.Probe);
