@@ -136,3 +136,25 @@ earlier "2× behind" compared single-threaded NanoCut against multi-threaded Man
 | 10 | Hull working buffers reused per thread: large-object allocations caused page faults and kernel page zeroing |
 | 11 | Face classification in parallel, one buffer set per thread with results stored by index, so the output is deterministic. `SolidBoolean.MaxParallelism` controls it; the browser runs it sequentially. |
 
+## After the third optimisation round (2026-10-02)
+
+pocket-large, same machine (4 cores):
+
+| Engine | Language | Exact | Time (s) | per step (ms) | CPU (s, whole process) |
+| --- | --- | --- | ---: | ---: | ---: |
+| **nanocut** | C# | yes | **8.2** (rounds: 30.9 → 18.4 → 10.4 → 8.2) | 9.4 | 41.3 (incl. warm-up, about 20 per run) |
+| manifold | C++ | no | 9.3 | 10.6 | 34.8 |
+
+This round went through an external list of findings (`PerformanceFindings.md`) step by step, measuring with counters
+before each change:
+
+| Finding | Measured | Result |
+| --- | --- | --- |
+| B1: no float filter for side tests of grid points | 92k exact Int128 side tests per step on grid points (19k on exact points, 5.7 % fallback) | Filter using the cached face-plane doubles: about 1.2k exact evaluations per step left, Boolean −17 % |
+| C2/C3, FaceMerge index, BVH arrays: allocations | `Probe` 13 %, FaceMerge entries 9 %, BVH arrays 19 % of the Boolean's allocations | Reused per-thread probe, edge index and fragment lists; BVH arrays from `ArrayPool`. 2.5 → 1.5 MB per step. |
+| Hull face construction | about a third of the hull | Built in parallel by index: 5.1 → 3.9 ms |
+| B2: hull fallback via orient3d | rare path | Done (simpler, same sign) |
+| A1/A2: `FaceMerge.Join` | about 1 % of run time | Skipped. The proposed local test checked each vertex against the plane of its own edge (always 0), so it would accept non-convex merges. |
+| D1: cache the BVH in the solid | the workpiece is a new solid after every cut | No effect on cut chains; not done |
+| GC settings | measured in round 1 | No effect |
+
