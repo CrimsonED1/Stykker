@@ -69,6 +69,10 @@ public readonly struct Point3
     /// <summary>Exact side of the vertex relative to a plane: +1, 0, -1.</summary>
     public int SideOf(in Plane3 plane)
     {
+        // Only the homogeneous branch filters. The grid branch looks cheaper without one, but the filter needs four
+        // Int128 -> double conversions, which the JIT lowers to high/low limb extraction plus scaling rather than to a
+        // single instruction. Measured interleaved on 1 nm grid points of an 80 x 60 x 20 mm block, filtering first
+        // costs 62 % more than the direct Int128 test (three multiplies, two adds), so the grid branch stays exact.
         if (_exact is null)
         {
             if (KernelStats.Counting) KernelStats.Mine.SideGrid++;
