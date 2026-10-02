@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>NanoCut Benchmark Runde 3</title>
+<title>NanoCut Benchmark Runde 4</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
@@ -87,14 +87,14 @@ code { font: 12.5px var(--font-mono); background: var(--accent-soft); padding: 1
 <body>
 <main class="sheet">
 <header>
-<div class="eyebrow">Stykker NanoCut · Benchmark · Runde 3 · 2. Oktober 2026</div>
+<div class="eyebrow">Stykker NanoCut · Benchmark · Runde 4 · 2. Oktober 2026</div>
 <h1>Exakt und schneller als <em>C++-Manifold</em>, bei langen Aufgaben</h1>
-<p class="lede">Nach der dritten Optimierungsrunde braucht NanoCut für die lange Taschenfräsung 7,9 s, C++-Manifold 9,2 s – gemessen im Cloud-Container mit 4 Kernen. Bei kurzen Aufgaben bleibt C++ vorn. Alle Engines liefern dasselbe Volumen; NanoCut rechnet exakt auf dem 1-nm-Raster.</p>
+<p class="lede">Nach der vierten Optimierungsrunde braucht NanoCut für die lange Taschenfräsung 7,9 s, C++-Manifold 9,2 s – gemessen im Cloud-Container mit 4 Kernen. Bei kurzen Aufgaben bleibt C++ vorn. Alle Engines liefern dasselbe Volumen; NanoCut rechnet exakt auf dem 1-nm-Raster.</p>
 </header>
 
 <div class="kpis">
 <div class="kpi hl"><b>1,16×</b><span>schneller als C++-Manifold (pocket-large)</span></div>
-<div class="kpi hl"><b>1,18×</b><span>Gewinn durch Runde 3 (pocket-large, gleiche Maschine)</span></div>
+<div class="kpi hl"><b>1,18×</b><span>Gewinn durch Runde 4 (pocket-large, gleiche Maschine)</span></div>
 <div class="kpi"><b>19×</b><span>schneller als CGAL, den anderen exakten Kern (pocket-profile)</span></div>
 <div class="kpi"><b>698</b><span>Dreiecke im Ergebnis statt 23 774 bei Manifold</span></div>
 </div>
@@ -103,7 +103,7 @@ code { font: 12.5px var(--font-mono); background: var(--accent-soft); padding: 1
 <h2>pocket-large: 876 Schnitte, Zickzack-Tasche 80 × 60 × 20 mm</h2>
 <p class="sub">Reine Schnittzeit in Sekunden, bester von 3 Läufen, C# vorgewärmt. Kürzer ist besser.</p>
 <div class="bars">
-<div class="bar"><div class="lab">NanoCut, Runde 3<small>exakt · C#</small></div><div class="track"><div class="fill nc" style="width:24.8%"><span>7,9 s</span></div></div></div>
+<div class="bar"><div class="lab">NanoCut, Runde 4<small>exakt · C#</small></div><div class="track"><div class="fill nc" style="width:24.8%"><span>7,9 s</span></div></div></div>
 <div class="bar"><div class="lab">Manifold<small>double · C++ (TBB)</small></div><div class="track"><div class="fill" style="width:28.7%"><span>9,2 s</span></div></div></div>
 <div class="bar"><div class="lab">NanoCut, Runde 2<small>exakt · C# · Commit 4384975</small></div><div class="track"><div class="fill old" style="width:29.3%"><span>9,4 s</span></div></div></div>
 <div class="bar"><div class="lab">ManifoldSharp<small>double · C#-Port</small></div><div class="track"><div class="fill" style="width:94.5%"><span>30,3 s</span></div></div></div>
@@ -116,7 +116,7 @@ code { font: 12.5px var(--font-mono); background: var(--accent-soft); padding: 1
 <p class="sub">Zeit in ms, bester von 3 (CGAL: ein Lauf). Hervorgehoben: die schnellste Engine pro Szene.</p>
 <div class="tablewrap">
 <table>
-<thead><tr><th>Szene</th><th>NanoCut R2</th><th>NanoCut R3</th><th>Gewinn</th><th>Manifold C++</th><th>ManifoldSharp</th><th>CGAL (exakt)</th><th>NanoCut vs. C++</th></tr></thead>
+<thead><tr><th>Szene</th><th>NanoCut R2</th><th>NanoCut R4</th><th>Gewinn</th><th>Manifold C++</th><th>ManifoldSharp</th><th>CGAL (exakt)</th><th>NanoCut vs. C++</th></tr></thead>
 <tbody>
 <tr><td class="scene">ball-small<small>16 Schritte</small></td><td>191</td><td>156</td><td class="up">1,22×</td><td class="win">26</td><td>203</td><td>122</td><td class="f">6,0× langsamer</td></tr>
 <tr><td class="scene">ball-medium<small>96 Schritte</small></td><td>1 089</td><td>1 055</td><td class="up">1,03×</td><td class="win">528</td><td>965</td><td>3 179</td><td class="f">2,0× langsamer</td></tr>
@@ -147,13 +147,14 @@ code { font: 12.5px var(--font-mono); background: var(--accent-soft); padding: 1
 <tr><td>NanoCut, Ausgangsstand</td><td>30,9 s</td></tr>
 <tr><td>NanoCut, nach Runde 1</td><td>18,4 s</td></tr>
 <tr><td>NanoCut, nach Runde 2</td><td>10,4 s / 9,4 s*</td></tr>
-<tr><td>NanoCut, nach Runde 3</td><td><b>7,9 s</b></td></tr>
+<tr><td>NanoCut, Runde 3</td><td>separat (anderer Agent)</td></tr>
+<tr><td>NanoCut, nach Runde 4</td><td><b>7,9 s</b></td></tr>
 <tr><td>Manifold C++</td><td>9,2 s</td></tr>
 <tr><td>ManifoldSharp C#</td><td>30,3 s</td></tr>
 </tbody>
 </table>
 <p class="sub" style="margin-top:10px">* zwei Messungen desselben Stands an verschiedenen Zeitpunkten; die Schwankung im geteilten Container liegt bei rund 10 %. Lokal (Ryzen 7 5800X3D, 8 Kerne) lag Runde 2 bei 5,8 s gegen 7,6 s für Manifold.</p>
-<h2 style="margin-top:18px">Was Runde 3 geändert hat</h2>
+<h2 style="margin-top:18px">Was Runde 4 geändert hat</h2>
 <ul>
 <li>Gleitkomma-Vorfilter für Seitentests von Gitterpunkten: 92 000 → 1 200 exakte Auswertungen pro Schnitt.</li>
 <li>Weniger Allokationen: Probe, Merge-Index und Fragmentlisten pro Thread wiederverwendet, BVH-Arrays aus dem Pool (2,5 → 1,5 MB pro Schnitt).</li>
@@ -163,7 +164,7 @@ code { font: 12.5px var(--font-mono); background: var(--accent-soft); padding: 1
 </div>
 
 <footer>
-Gemessen im Cloud-Container: Intel Xeon @ 2,1 GHz, 4 Kerne, Linux, .NET 10, Commit f0cf504 (Runde 3) und 4384975 (Runde 2), mit <code>bench/run.py</code>.
+Gemessen im Cloud-Container: Intel Xeon @ 2,1 GHz, 4 Kerne, Linux, .NET 10, Commit f0cf504 (Runde 4) und 4384975 (Runde 2), mit <code>bench/run.py</code>.
 Manifold C++ ist manifold3d 3.5.4 über Python (mit TBB), CGAL 5.6 mit Epeck und Corefinement. Die Zeiten zählen nur das Schneiden, nicht Laden und Speichern.
 </footer>
 </main>

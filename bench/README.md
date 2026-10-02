@@ -136,7 +136,9 @@ earlier "2× behind" compared single-threaded NanoCut against multi-threaded Man
 | 10 | Hull working buffers reused per thread: large-object allocations caused page faults and kernel page zeroing |
 | 11 | Face classification in parallel, one buffer set per thread with results stored by index, so the output is deterministic. `SolidBoolean.MaxParallelism` controls it; the browser runs it sequentially. |
 
-## After the third optimisation round (2026-10-02)
+## After the fourth optimisation round (2026-10-02)
+
+Round 3 is a separate effort by another agent; the numbers here compare round 4 with round 2 (commit 4384975).
 
 pocket-large, same machine (4 cores):
 
