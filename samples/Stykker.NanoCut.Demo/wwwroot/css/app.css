@@ -74,3 +74,4 @@ textarea.program { width: 100%; height: 150px; font-family: ui-monospace, monosp
   .scene { grid-template-columns: 1fr; grid-template-rows: 55vh auto; }
   .panel { border-left: 0; border-top: 1px solid var(--line); }
 }
+.scrub { width: 100%; margin: 8px 0; accent-color: var(--accent); }

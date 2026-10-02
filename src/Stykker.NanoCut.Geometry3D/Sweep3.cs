@@ -30,6 +30,9 @@ public static class Sweep3
         }
 
         var result = new List<Face3>(faces.Count * 2);
+        // Faces parallel to t are swept in their plane. A plane may be split into several coplanar faces (e.g. the
+        // triangle fan of a cylinder cap): their swept pieces would overlap, so each plane gets one hull of all of them.
+        var parallel = new Dictionary<Plane3, (Plane3 Support, List<Vec3> Points)>();
         for (int i = 0; i < faces.Count; i++)
         {
             var pts = faces[i].Vertices.Select(v => v.Grid).ToArray();
@@ -42,7 +45,10 @@ public static class Sweep3
                     result.Add(Face3.FromGrid(pts.Select(p => p + t).ToArray()));
                     break;
                 default:
-                    result.Add(Face3.FromGrid(PlanarHull(pts.Concat(pts.Select(p => p + t)).ToArray(), faces[i].Support)));
+                    var key = faces[i].Support.Canonical();
+                    if (!parallel.TryGetValue(key, out var group)) parallel[key] = group = (faces[i].Support, []);
+                    group.Points.AddRange(pts);
+                    group.Points.AddRange(pts.Select(p => p + t));
                     break;
             }
             // Silhouette edges: this face faces backwards, the neighbour forwards.
@@ -55,6 +61,7 @@ public static class Sweep3
                 if (sides[j] > 0) result.Add(Face3.FromGrid([a + t, b + t, b, a]));
             }
         }
+        foreach (var (support, points) in parallel.Values) result.Add(Face3.FromGrid(PlanarHull([.. points], support)));
         return new Solid(result);
     }
 
