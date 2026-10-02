@@ -76,6 +76,22 @@ public readonly struct Point3
         return f != Filter.Uncertain ? f : Predicates.Side(plane, _exact.H);
     }
 
+    /// <summary>
+    /// Exact side relative to <paramref name="plane"/>, with its coefficients already converted to double (nx, ny, nz, d):
+    /// a floating-point filter decides clearly non-zero values for grid and exact points alike; otherwise exact.
+    /// </summary>
+    public int SideOf(in Plane3 plane, double nx, double ny, double nz, double d)
+    {
+        double x = X, y = Y, z = Z;
+        double a = nx * x, b = ny * y, c = nz * z;
+        double v = a + b + c + d;
+        // Same bound as Filter.Sign: 1e-11 relative to the terms, far above the rounding of n, d and the cached coordinates.
+        double bound = Filter.Rel * (Math.Abs(a) + Math.Abs(b) + Math.Abs(c) + Math.Abs(d));
+        if (v > bound) return 1;
+        if (v < -bound) return -1;
+        return _exact is null ? Predicates.Side(plane, _grid) : Predicates.Side(plane, _exact.H);
+    }
+
     /// <summary>Exact equality of the represented points.</summary>
     public bool SameAs(in Point3 o)
     {
