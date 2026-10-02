@@ -124,3 +124,17 @@ Same input on the nm grid for all engines. Medium scene: 96 hull subtractions.
 
 The same algorithm runs about 2× faster in C++. An exact C++ kernel (CGAL) is not faster than NanoCut. See
 `bench/README.md`.
+
+**Long task** (pocket-large, 876 steps, sized so that the fastest engine needs about 10 s):
+
+| Engine | Language | Arithmetic | Time |
+| --- | --- | --- | ---: |
+| NanoCut | C# | exact | 30.9 s |
+| ManifoldSharp | C# | double | 31.1 s |
+| CGAL | C++ | exact | 347 s |
+| Manifold | C++ | double | 9.8 s |
+
+- NanoCut is as fast as the same-language double-precision engine, and 11× faster than the exact C++ kernel.
+- The remaining 3.2× to C++ Manifold equals the C#/C++ factor of the identical algorithm. That is the most a native port
+  could gain on long tasks.
+
