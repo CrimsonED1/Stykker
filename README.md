@@ -22,6 +22,7 @@ Background, research and phase plan: [docs/plan.md](docs/plan.md) (German).
 | --- | --- |
 | ![Gear generation](docs/images/anim-gear.gif) | ![Turning](docs/images/anim-lathe.gif) |
 | ![Milling](docs/images/anim-mill.gif) | ![Cube shapes cube](docs/images/anim-cubes.gif) |
+| ![Saw blade at 3000 rpm, slow motion](docs/images/anim-saw.gif) | ![Grinding with single abrasive grains](docs/images/anim-grinding.gif) |
 
 ## Interactive demo
 
@@ -53,6 +54,7 @@ well under a second per 45° at the default path error (see the performance note
 | | |
 | --- | --- |
 | ![Mill](docs/images/demo-mill.png) | ![Gear generation](docs/images/demo-gear.png) |
+| ![Spinning disc](docs/images/demo-spinning.png) | ![Grinding grains](docs/images/demo-grinding.png) |
 
 ## Quick start (2D)
 
@@ -155,6 +157,10 @@ cd tools/snapshot && npm install && node snapshot.mjs ../../snapshot-out/gear ge
 # Animated GIFs: frames of a process cut step by step, rendered and encoded
 dotnet run -c Release --project samples/Stykker.NanoCut.Snapshot -- anim-out anim-mill     # anim-mill|anim-lathe|anim-gear|anim-cubes
 cd tools/snapshot && node animate.mjs ../../anim-out/anim-mill ../../docs/images/anim-mill.gif 720 450 90
+
+# GIFs of demo pages: serve the published demo, compute a page and scrub through its playback
+(cd publish/wwwroot && python3 -m http.server 8766) &
+cd tools/snapshot && node demo-gif.mjs http://localhost:8766/ grinding "Compute grinding" ../../docs/images/anim-grinding.gif
 ```
 
 ## 2D kernel
