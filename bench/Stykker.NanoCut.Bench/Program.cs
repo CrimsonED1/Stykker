@@ -37,9 +37,14 @@ IEngine run = engine switch
     _ => throw new ArgumentException($"unknown engine {engine}"),
 };
 
-// Optional warm-up: the whole scene once, untimed, so that JIT compilation (tiered + PGO) is not measured.
-if (warm)
+// Optional warm-up, untimed: the whole scene repeatedly until at least 1.5 s have passed, so that tiered JIT compilation
+// and PGO have reached optimised code (steady state, as in a long-running process). A single pass of a short scene
+// (~100 ms) leaves hot methods in unoptimised tier-0 code and would measure JIT warm-up instead of the kernel.
+var warmClock = Stopwatch.StartNew();
+int warmRuns = 0;
+while (warm && (warmRuns == 0 || warmClock.ElapsedMilliseconds < 1500))
 {
+    warmRuns++;
     var w = engine == "nanocut" ? (IEngine)new NanoCutEngine() : new ManifoldSharpEngine();
     w.Start(min, max);
     if (pipeline && w is NanoCutEngine wn) wn.SubtractInOrder(steps.Select(st => (Func<Solid>)(() => NanoCutEngine.Hull(st))));
@@ -48,6 +53,7 @@ if (warm)
             if (Math.Min(batch, steps.Length - i) == 1) w.Cut(steps[i]);
             else w.CutBatch(steps[i..Math.Min(steps.Length, i + batch)]);
 }
+NanoCutEngine.HullMs = NanoCutEngine.BooleanMs = 0; // phase times of the measured run only
 
 var stepMs = new List<double>();
 var total = Stopwatch.StartNew();
@@ -103,6 +109,7 @@ var stats = new JsonObject
     ["warm"] = warm,
     ["batch"] = batch,
     ["pipeline"] = pipeline,
+    ["warmRuns"] = warmRuns,
     ["steps"] = steps.Length,
     ["totalMs"] = totalMs,
     ["stepMs"] = new JsonArray(stepMs.Select(v => (JsonNode)v).ToArray()),
