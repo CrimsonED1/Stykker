@@ -126,6 +126,29 @@ File.WriteAllText("rz.csv", Profile2.ToCsv(rz));
 The section is exact: each face is intersected with the plane by three-plane intersections and the points are rounded
 once to the nm grid of the plane's (u, v) frame. A face lying in the section plane counts as just below it.
 
+## Performance
+
+The kernel is exact and still fast on long tasks. pocket-large, an 80 × 60 × 20 mm zig-zag pocket cut by 876 ball-hull
+steps on a 4-core container:
+
+| Engine | Time | Result triangles |
+| --- | ---: | ---: |
+| **NanoCut** (C#, exact) | **4.9 s** | 698 |
+| Manifold (C++, double, TBB) | 8.2 s | 23 774 |
+| CGAL (C++, exact) | 347 s | 88 872 |
+
+Short tasks (16–96 steps) remain 1.3–2.3× faster with C++. Results are identical to 1e-10 mm³.
+
+```csharp
+Solid.MaxParallelism = Environment.ProcessorCount;      // threads for the 3D kernel; results do not depend on it
+var part = Solid.SubtractInOrder(block, toolFactories); // cut chain: next tool built while the current one is cut
+var swept = Solid.UnionAll(pieces);                     // balanced, parallel union
+```
+
+The benchmark (`bench/`, NanoCut vs Manifold C++/C# and CGAL on identical nm-grid scenes), the optimisation rounds and
+how they were verified are described in [docs/performance.md](docs/performance.md) and
+[bench/README.md](bench/README.md).
+
 ## Processes: acting shape + motion
 
 ```csharp
