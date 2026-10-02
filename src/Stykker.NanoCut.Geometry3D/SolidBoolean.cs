@@ -220,7 +220,7 @@ internal static class SolidBoolean
 
     private static Location Locate(Face3 f, Bvh3 other, List<Face3> coplanar, List<Face3> scratch)
     {
-        for (int attempt = 0; attempt < 8; attempt++)
+        for (int attempt = 0; attempt < Weights.Length; attempt++)
         {
             var c = new Probe(f, attempt);
             foreach (var q in coplanar)
@@ -248,11 +248,11 @@ internal static class SolidBoolean
         {
             _f = f;
             var v = f.Vertices;
-            var fans = new List<int>();
-            for (int i = 1; i + 1 < v.Length; i++)
-                if (!CollinearFiltered(v[0], v[i], v[i + 1])) fans.Add(i);
-            if (fans.Count == 0) throw new InvalidOperationException("Degenerate face fragment.");
-            _k = fans[(attempt / Weights.Length) % fans.Count];
+            // First non-degenerate fan triangle (v0, v_k, v_k+1); the attempts (< Weights.Length) vary the weights.
+            _k = -1;
+            for (int i = 1; i + 1 < v.Length && _k < 0; i++)
+                if (!CollinearFiltered(v[0], v[i], v[i + 1])) _k = i;
+            if (_k < 0) throw new InvalidOperationException("Degenerate face fragment.");
             _w = Weights[attempt % Weights.Length];
             double sum = _w[0] + _w[1] + _w[2];
             Point3 a = v[0], b = v[_k], c = v[_k + 1];
@@ -260,11 +260,11 @@ internal static class SolidBoolean
             Y = (_w[0] * a.Y + _w[1] * b.Y + _w[2] * c.Y) / sum;
             Z = (_w[0] * a.Z + _w[1] * b.Z + _w[2] * c.Z) / sum;
             // Averaging cancels: the error is relative to the vertices, not to the (possibly small) result.
-            double max = 1;
-            foreach (var p in new[] { a, b, c })
-                max = Math.Max(max, Math.Max(Math.Abs(p.X), Math.Max(Math.Abs(p.Y), Math.Abs(p.Z))));
+            double max = Math.Max(1, Math.Max(MaxAbs(a), Math.Max(MaxAbs(b), MaxAbs(c))));
             Err = 16 * Math.ScaleB(1, -53) * max;
         }
+
+        private static double MaxAbs(in Point3 p) => Math.Max(Math.Abs(p.X), Math.Max(Math.Abs(p.Y), Math.Abs(p.Z)));
 
         /// <summary>Bound on the absolute error of <see cref="X"/>, <see cref="Y"/>, <see cref="Z"/>.</summary>
         public double Err { get; }
