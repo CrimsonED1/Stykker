@@ -11,6 +11,7 @@ import argparse
 import json
 import math
 import os
+import resource
 import subprocess
 import sys
 
@@ -93,6 +94,7 @@ def main():
         os.makedirs(out, exist_ok=True)
         best = None
         for _ in range(a.repeat):
+            before = resource.getrusage(resource.RUSAGE_CHILDREN)
             try:
                 r = subprocess.run(command(engine, expanded, out), capture_output=True, text=True, timeout=a.timeout)
             except subprocess.TimeoutExpired:
@@ -101,7 +103,10 @@ def main():
             if r.returncode != 0:
                 print(f"{engine} failed:\n{r.stdout}{r.stderr}")
                 break
+            after = resource.getrusage(resource.RUSAGE_CHILDREN)
             s = json.load(open(os.path.join(out, "stats.json")))
+            # CPU seconds of the whole process (all threads, including start-up and any warm-up run).
+            s["cpuS"] = (after.ru_utime + after.ru_stime) - (before.ru_utime + before.ru_stime)
             if best is None or s["totalMs"] < best["totalMs"]:
                 best = s
         if best:
@@ -111,12 +116,12 @@ def main():
     ref = next((r for r in rows if r["engine"] == "nanocut"), rows[0] if rows else None)
     lines = [f"Scene `{scene['name']}`: {scene.get('description', '')} "
              f"{len(json.load(open(expanded))['steps'])} steps, C# {'cold (JIT included)' if a.cold else 'warm'}.", "",
-             "| Engine | Language | Exact | Time (ms) | per step (ms) | Volume (mm³) | ΔV vs NanoCut (mm³) | Triangles |",
-             "| --- | --- | --- | ---: | ---: | ---: | ---: | ---: |"]
+             "| Engine | Language | Exact | Time (ms) | per step (ms) | CPU (s, whole process) | Volume (mm³) | ΔV vs NanoCut (mm³) | Triangles |",
+             "| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |"]
     for r in rows:
         dv = r["volumeMm3"] - ref["volumeMm3"]
         lines.append(f"| {r['engine']} | {r['language']} | {'yes' if r['exact'] else 'no'} | {r['totalMs']:.0f} | "
-                     f"{r['totalMs'] / r['steps']:.1f} | {r['volumeMm3']:.9f} | {dv:+.2e} | {r['triangles']} |")
+                     f"{r['totalMs'] / r['steps']:.1f} | {r.get('cpuS', float('nan')):.1f} | {r['volumeMm3']:.9f} | {dv:+.2e} | {r['triangles']} |")
     table = "\n".join(lines)
     open(os.path.join(base, "results.md"), "w").write(table + "\n")
     print()
