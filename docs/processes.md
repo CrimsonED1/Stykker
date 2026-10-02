@@ -50,10 +50,20 @@ than `Tolerance.SweepNm` (checked at the extreme points of the tool, where the d
 ![Turning](images/turning.png)
 ![Milling](images/milling.png)
 
+## Performance notes (measured)
+
+| Case | native | browser AOT | browser interpreter |
+| --- | --- | --- | --- |
+| Cube 8 mm turning 45° through a cube, path error 50 µm (128 steps), first rotation | 12 s | 32 s | 167 s |
+| Same, second rotation on the already cut cube (50 282 faces afterwards) | 45 s | 114 s | – |
+
+Two kernel improvements address this: classifying fragments with a floating-point filter (exact arithmetic only when
+the filter is undecided) and merging coplanar neighbouring fragments that end up on the same side.
+
 ## Known limits / next steps
 
 - **3D motions with rotation** (5-axis tool tilt, hobbing, skiving, rotating workpiece in 3D) use the convex hull of
   two poses, which needs very small steps. An exact face-sweep (analogous to the 2D edge sweep) is the next step.
-- **Face count:** fragments are not merged back after Booleans; flat areas consist of many coplanar pieces and long
-  processes accumulate faces. Merging coplanar fragments is planned.
+- **Face count:** pieces of a face are merged back when all of them land on the same side (split tree). Partially
+  kept faces stay fragmented, so long rotating sweeps still accumulate many faces.
 - **Turning feed marks:** the lathe model is a continuous cut; scallops of the feed per revolution are ignored.

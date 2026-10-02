@@ -26,7 +26,10 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 10.0.x
-      - run: dotnet publish samples/Stykker.NanoCut.Demo -c Release -o out
+      - name: Install WebAssembly build tools (AOT)
+        run: dotnet workload install wasm-tools
+      - name: Publish with AOT (≈5× faster geometry in the browser)
+        run: dotnet publish samples/Stykker.NanoCut.Demo -c Release -p:Aot=true -o out
       - name: Prepare for a project page (base path, SPA fallback)
         run: |
           cd out/wwwroot

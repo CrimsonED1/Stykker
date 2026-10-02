@@ -82,8 +82,9 @@
         <label class="param"><span>Shape chord error</span>
             <span class="num"><input type="number" step="100" @bind="_chordNm" /><em>nm</em></span>
         </label>
-        <p class="desc">With rotation the swept volume needs small steps (≤ 2 × path error ÷ tool diameter); coarser values are
-            faster. Pure translations are exact in a single step.</p>
+        <p class="desc">Pure translations are exact in a single step. With rotation the swept volume is built from many small
+            steps (≤ 2 × path error ÷ tool diameter) – the default 0.2 mm keeps it interactive; smaller values are more
+            accurate but much slower (several seconds per 10° in the browser, more without AOT).</p>
         <div class="actions"><button class="ghost" disabled="@_busy" @onclick="ResetAll">Apply &amp; reset</button></div>
 
         @if (_error is not null)
@@ -114,7 +115,7 @@
     private readonly List<string> _log = [];
     private string _engine = "three", _gizmo = "translate", _step = "1";
     private int _toolKind;
-    private double _sweepNm = 50000, _chordNm = 2000;
+    private double _sweepNm = 200000, _chordNm = 2000;
     private int _exactVertices;
     private bool _busy, _attached;
     private string? _error;
