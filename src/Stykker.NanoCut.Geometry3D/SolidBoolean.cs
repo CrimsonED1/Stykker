@@ -98,6 +98,7 @@ internal static class SolidBoolean
         public readonly List<Plane3> Planes = [];
         public readonly Dictionary<Plane3, int> Seen = [];
         public readonly List<Box3> Reach = [];
+        public readonly List<Face3?> Owners = [];
         public readonly List<Face3> Coplanar = [];
         public readonly Probe Probe = new();
         public readonly List<Node> FragmentsA = [];
@@ -148,6 +149,7 @@ internal static class SolidBoolean
         b.Planes.Clear();
         b.Seen.Clear();
         b.Reach.Clear();
+        b.Owners.Clear();
         b.Coplanar.Clear();
         foreach (var q in b.Candidates)
         {
@@ -157,14 +159,14 @@ internal static class SolidBoolean
             if (ps == 2)
             {
                 b.Coplanar.Add(q);
-                foreach (var e in q.Edges) AddPlane(e, q.Box, b.Planes, b.Seen, b.Reach);
+                foreach (var e in q.Edges) AddPlane(e, q, b);
             }
             else if (ps == 0 && TouchesOrCrosses(p, q.Vertices))
             {
                 // q's plane crosses p. q must at least touch p's plane: a face touching it only along an
                 // edge can still be where the other surface passes through p (two touching faces from
                 // opposite sides), so only faces strictly on one side are skipped.
-                AddPlane(q.Support, q.Box, b.Planes, b.Seen, b.Reach);
+                AddPlane(q.Support, q, b);
             }
         }
 
@@ -186,6 +188,13 @@ internal static class SolidBoolean
             {
                 // Only fragments that can touch one of the faces spanning this plane need the cut.
                 if (!n.Face.Box.Overlaps(b.Reach[pi])) { next.Add(n); continue; }
+                // A fragment the (single) face of this plane cannot meet needs no cut: its surface does not pass through
+                // the fragment (the same exact separation test as for whole faces).
+                if (b.Owners[pi] is { } owner && (Separated(owner, n.Face.Vertices) || Separated(n.Face, owner.Vertices)))
+                {
+                    next.Add(n);
+                    continue;
+                }
                 if (n.Face.Split(plane, out var front, out var back, out _))
                 {
                     n.Front = new Node(front!);
@@ -202,19 +211,22 @@ internal static class SolidBoolean
         return root;
     }
 
-    private static void AddPlane(in Plane3 plane, in Box3 box, List<Plane3> planes, Dictionary<Plane3, int> seen, List<Box3> reach)
+    private static void AddPlane(in Plane3 plane, Face3 owner, Buffers b)
     {
-        // Treat a plane and its flip as the same splitter; remember the region of the faces spanning it.
+        // Treat a plane and its flip as the same splitter; remember the region of the faces spanning it, and the face
+        // itself while only one face spans the plane (shared planes keep null: always split).
         bool positive = plane.Nx > 0 || (plane.Nx == 0 && (plane.Ny > 0 || (plane.Ny == 0 && plane.Nz > 0)));
         var key = positive ? plane : plane.Flipped();
-        if (seen.TryGetValue(key, out int i))
+        if (b.Seen.TryGetValue(key, out int i))
         {
-            reach[i] = reach[i].Union(box);
+            b.Reach[i] = b.Reach[i].Union(owner.Box);
+            if (!ReferenceEquals(b.Owners[i], owner)) b.Owners[i] = null;
             return;
         }
-        seen[key] = planes.Count;
-        planes.Add(key);
-        reach.Add(box);
+        b.Seen[key] = b.Planes.Count;
+        b.Planes.Add(key);
+        b.Reach.Add(owner.Box);
+        b.Owners.Add(owner);
     }
 
     /// <summary>

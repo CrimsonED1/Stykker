@@ -183,3 +183,27 @@ What did not help:
 | Batching: unite k consecutive hulls, then cut once (`--batch k`) | 3.2 s → 3.9–4.4 s | 3.0 → 2.2 s | NanoCut's cost grows with interacting faces, and uniting nearly congruent hulls splits almost every face |
 | Overlap for Manifold (`manifold-pipeline`) | – | 2.9 → 3.1 s | Its hull is cheap, and it already parallelises internally |
 
+## Round 6: fixed costs per cut, and the JIT warm-up (2026-10-02)
+
+| Change | Effect |
+| --- | --- |
+| Skip a split when the single face spanning the plane cannot meet the fragment (exact separation test per fragment) | Small scene Boolean 5.2 → 4.4 ms per cut. Geometry unchanged: all 396 differential workload results have identical exact volumes. |
+| BVH build partitions around the median (quickselect) instead of sorting every range | pocket-profile Boolean 5.0 → 4.3–4.5 ms per cut |
+| **Bench warm-up repeats the scene until 1.5 s have passed** (was: once) | Short scenes were measuring JIT warm-up |
+
+The warm-up finding: a single pass of ball-small (about 100 ms) leaves hot methods in unoptimised tier-0 code. With
+`DOTNET_TieredCompilation=0` the same run takes 32 ms instead of 105 ms. Full optimisation from the start costs PGO on long
+runs, though (pocket-profile 2.05 → 2.51 s). The bench now measures steady state, as in a long-running service. For
+short-lived processes, ReadyToRun or `TieredCompilation=false` are the levers.
+
+Results, steady state, best of 3 (4 cores):
+
+| Scene | nanocut-pipeline | nanocut | manifoldsharp | manifold C++ |
+| --- | ---: | ---: | ---: | ---: |
+| ball-small (16 steps) | 52 ms | 55 ms | 39 ms | **23 ms** |
+| ball-medium (96 steps) | 607 ms | 784 ms | 908 ms | **451 ms** |
+| pocket-profile (372 steps) | **1.94 s** | – | – | 2.83 s |
+| pocket-large (876 steps) | **4.86 s** | – | – | 8.21 s |
+
+Short tasks: C++ ahead by 1.3–2.3× (was up to 5.5×). Long tasks: NanoCut ahead by 1.5–1.7×.
+
