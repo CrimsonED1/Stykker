@@ -317,17 +317,17 @@ public sealed class Solid
         var work = workpiece;
         if (SolidBoolean.MaxParallelism <= 1)
         {
-            foreach (var make in tools) work -= make();
+            foreach (var make in tools) work -= Checked(make)();
             return work;
         }
         using var e = tools.GetEnumerator();
         if (!e.MoveNext()) return work;
-        var next = Task.Run(e.Current);
+        var next = Task.Run(Checked(e.Current));
         while (true)
         {
             var tool = next.GetAwaiter().GetResult(); // rethrows the factory's own exception
             bool more = e.MoveNext();
-            if (more) next = Task.Run(e.Current);
+            if (more) next = Task.Run(Checked(e.Current));
             try
             {
                 work -= tool;
@@ -341,6 +341,9 @@ public sealed class Solid
         }
     }
 
+    private static Func<Solid> Checked(Func<Solid>? make) =>
+        make ?? throw new ArgumentNullException("tools", "The sequence contains a null tool factory.");
+
     /// <summary>
     /// Union of many solids as a balanced tree (pairs of neighbours first): far fewer faces pass through each Boolean
     /// than in a left-to-right chain. The pairs of one level are independent and run in parallel.
@@ -350,14 +353,26 @@ public sealed class Solid
         ArgumentNullException.ThrowIfNull(solids);
         if (solids.Count == 0) return Empty;
         var level = solids.ToArray();
+        if (Array.IndexOf(level, null) >= 0) throw new ArgumentNullException(nameof(solids), "The list contains a null solid.");
         while (level.Length > 1)
         {
             var next = new Solid[(level.Length + 1) / 2];
             var current = level;
             int pairs = current.Length / 2;
             if (pairs > 1 && SolidBoolean.MaxParallelism > 1)
-                Parallel.For(0, pairs, new ParallelOptions { MaxDegreeOfParallelism = SolidBoolean.MaxParallelism },
-                    i => next[i] = current[2 * i] | current[2 * i + 1]);
+            {
+                try
+                {
+                    Parallel.For(0, pairs, new ParallelOptions { MaxDegreeOfParallelism = SolidBoolean.MaxParallelism },
+                        i => next[i] = current[2 * i] | current[2 * i + 1]);
+                }
+                catch (AggregateException ae) when (ae.InnerExceptions.Count > 0)
+                {
+                    // Same exception type as the sequential path.
+                    System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(ae.InnerExceptions[0]).Throw();
+                    throw;
+                }
+            }
             else
                 for (int i = 0; i < pairs; i++) next[i] = current[2 * i] | current[2 * i + 1];
             if (current.Length % 2 == 1) next[^1] = current[^1];

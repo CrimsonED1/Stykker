@@ -224,7 +224,7 @@ public class OptimizationVerification5Tests(ITestOutputHelper output)
     /// A null factory in the sequence: the sequential path invokes it (NullReferenceException), the overlapped path
     /// passes it to Task.Run (ArgumentNullException) – the exception type depends on MaxParallelism.
     /// </summary>
-    [Fact(Skip = "BUG: SubtractInOrder with a null factory throws NullReferenceException at MaxParallelism 1 but ArgumentNullException (from Task.Run) otherwise")]
+    [Fact]
     public void NullFactoryThrowsTheSameExceptionAtAnyParallelism()
     {
         var tools = Factories(13, 3);
@@ -293,7 +293,7 @@ public class OptimizationVerification5Tests(ITestOutputHelper output)
     /// directly, the parallel level wraps it in an AggregateException (SolidBoolean.Process unwraps for exactly this
     /// reason). Before round 5 Process3 threw the original exception.
     /// </summary>
-    [Fact(Skip = "BUG: UnionAll throws AggregateException at MaxParallelism > 1 but the original exception at 1 (Parallel.For not unwrapped)")]
+    [Fact]
     public void UnionAllThrowsTheSameExceptionAtAnyParallelism()
     {
         var rng = new Random(1);

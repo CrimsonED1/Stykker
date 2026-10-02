@@ -53,6 +53,8 @@ def main():
                 work = work - tool
                 work.num_tri()
                 step_ms.append((time.perf_counter() - t0) * 1000)
+        if -1 in save or len(steps) in save:
+            write_stl(work, f"{out}/step-{len(steps):04d}.stl")
         batch = len(steps) + 1  # skip the loop below
     for i in range(0, len(steps) if batch <= len(steps) else 0, batch):
         group = steps[i:i + batch]

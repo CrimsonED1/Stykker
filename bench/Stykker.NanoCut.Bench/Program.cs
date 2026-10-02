@@ -42,7 +42,11 @@ if (warm)
 {
     var w = engine == "nanocut" ? (IEngine)new NanoCutEngine() : new ManifoldSharpEngine();
     w.Start(min, max);
-    for (int i = 0; i < steps.Length; i += batch) w.CutBatch(steps[i..Math.Min(steps.Length, i + batch)]);
+    if (pipeline && w is NanoCutEngine wn) wn.SubtractInOrder(steps.Select(st => (Func<Solid>)(() => NanoCutEngine.Hull(st))));
+    else
+        for (int i = 0; i < steps.Length; i += batch)
+            if (Math.Min(batch, steps.Length - i) == 1) w.Cut(steps[i]);
+            else w.CutBatch(steps[i..Math.Min(steps.Length, i + batch)]);
 }
 
 var stepMs = new List<double>();
