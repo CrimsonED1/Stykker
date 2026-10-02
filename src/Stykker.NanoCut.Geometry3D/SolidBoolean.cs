@@ -99,6 +99,7 @@ internal static class SolidBoolean
         public readonly Dictionary<Plane3, int> Seen = [];
         public readonly List<Box3> Reach = [];
         public readonly List<Face3> Coplanar = [];
+        public readonly Probe Probe = new();
     }
 
     /// <summary>
@@ -167,7 +168,7 @@ internal static class SolidBoolean
 
         if (b.Planes.Count == 0)
         {
-            root.Loc = Locate(p, other, b.Coplanar, b.RayScratch);
+            root.Loc = Locate(p, other, b.Coplanar, b.RayScratch, b.Probe);
             return root;
         }
         var fragments = new List<Node> { root };
@@ -191,7 +192,7 @@ internal static class SolidBoolean
             fragments = next;
         }
         foreach (var n in fragments)
-            n.Loc = Locate(n.Face, other, b.Coplanar, b.RayScratch);
+            n.Loc = Locate(n.Face, other, b.Coplanar, b.RayScratch, b.Probe);
         return root;
     }
 
@@ -258,11 +259,11 @@ internal static class SolidBoolean
         return pos ? 1 : neg ? -1 : 2;
     }
 
-    private static Location Locate(Face3 f, Bvh3 other, List<Face3> coplanar, List<Face3> scratch)
+    private static Location Locate(Face3 f, Bvh3 other, List<Face3> coplanar, List<Face3> scratch, Probe probe)
     {
         for (int attempt = 0; attempt < Weights.Length; attempt++)
         {
-            var c = new Probe(f, attempt);
+            var c = probe.Init(f, attempt);
             foreach (var q in coplanar)
             {
                 if (StrictlyInsideCoplanar(q, c))
@@ -279,14 +280,16 @@ internal static class SolidBoolean
     /// </summary>
     private sealed class Probe
     {
-        private readonly Face3 _f;
-        private readonly int _k;
-        private readonly int[] _w;
+        private Face3 _f = null!;
+        private int _k;
+        private int[] _w = null!;
         private BigPoint? _big;
 
-        public Probe(Face3 f, int attempt)
+        /// <summary>Re-initialises the probe for face <paramref name="f"/> (one instance is reused per thread).</summary>
+        public Probe Init(Face3 f, int attempt)
         {
             _f = f;
+            _big = null;
             var v = f.Vertices;
             // First non-degenerate fan triangle (v0, v_k, v_k+1); the attempts (< Weights.Length) vary the weights.
             _k = -1;
@@ -302,16 +305,17 @@ internal static class SolidBoolean
             // Averaging cancels: the error is relative to the vertices, not to the (possibly small) result.
             double max = Math.Max(1, Math.Max(MaxAbs(a), Math.Max(MaxAbs(b), MaxAbs(c))));
             Err = 16 * Math.ScaleB(1, -53) * max;
+            return this;
         }
 
         private static double MaxAbs(in Point3 p) => Math.Max(Math.Abs(p.X), Math.Max(Math.Abs(p.Y), Math.Abs(p.Z)));
 
         /// <summary>Bound on the absolute error of <see cref="X"/>, <see cref="Y"/>, <see cref="Z"/>.</summary>
-        public double Err { get; }
+        public double Err { get; private set; }
 
-        public double X { get; }
-        public double Y { get; }
-        public double Z { get; }
+        public double X { get; private set; }
+        public double Y { get; private set; }
+        public double Z { get; private set; }
 
         public BigPoint Big => _big ??= Exact();
 
