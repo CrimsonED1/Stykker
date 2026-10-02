@@ -38,6 +38,16 @@ public sealed class Viewer(IJSRuntime js) : IAsyncDisposable
 
     public async Task SetToolPose(double[] pose) => await (await Module()).InvokeVoidAsync("setToolPose", pose);
 
+    /// <summary>
+    /// Spins the tool mesh in the browser about <paramref name="axis"/> (tool frame) at <paramref name="radPerSecond"/>
+    /// (0 stops); <paramref name="angle"/> (rad), if given, sets the current spin angle.
+    /// </summary>
+    public async Task SetToolSpin(double[] axis, double radPerSecond, double? angle = null) =>
+        await (await Module()).InvokeVoidAsync("setToolSpin", axis, radPerSecond, angle);
+
+    /// <summary>Removes the movable tool and stops its spin.</summary>
+    public async Task RemoveTool() => await (await Module()).InvokeVoidAsync("removeTool");
+
     /// <summary>Gizmo mode "translate", "rotate" or "off"; drags end in <c>OnToolMoved</c> on the receiver.</summary>
     public async Task SetGizmo<T>(string mode, DotNetObjectReference<T>? receiver) where T : class =>
         await (await Module()).InvokeVoidAsync("setGizmo", mode, receiver);
@@ -45,6 +55,9 @@ public sealed class Viewer(IJSRuntime js) : IAsyncDisposable
     public async Task SetLocked(bool locked) => await (await Module()).InvokeVoidAsync("setLocked", locked);
 
     public async Task Fit(string view) => await (await Module()).InvokeVoidAsync("fit", view);
+
+    /// <summary>Fits the camera to a box [minX, minY, minZ, maxX, maxY, maxZ] (mm) instead of the visible objects.</summary>
+    public async Task Fit(string view, double[] box) => await (await Module()).InvokeVoidAsync("fit", view, box);
 
     public async Task Download(string fileName, byte[] data) => await (await Module()).InvokeVoidAsync("download", fileName, data);
 

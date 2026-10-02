@@ -16,6 +16,8 @@ let tool = null;          // { positions, normals, indices, color, opacity, pose
 let gizmoMode = 'off';
 let gizmoCallback = null; // DotNetObjectReference
 let locked = false;
+// Optional spin of the tool about an axis in its own frame (slow-motion display of a spinning spindle).
+const spin = { axis: [0, 0, 1], rate: 0, angle: 0, raf: 0, last: 0 };
 
 const f32 = (bytes) => new Float32Array(bytes.slice().buffer);
 const u32 = (bytes) => new Uint32Array(bytes.slice().buffer);
@@ -31,20 +33,68 @@ export async function setEngine(engine) {
   engineName = engine;
   impl = engine === 'babylon' ? await createBabylon(host) : createThree(host);
   for (const o of objects) impl.add(o);
-  if (tool) { impl.setTool(tool); impl.setGizmo(gizmoMode); }
+  if (tool) { impl.setTool(tool); applyToolPose(); impl.setGizmo(gizmoMode); }
   impl.fit(bounds(), viewName);
 }
 
 export function setTool(positions, normals, indices, color, opacity, pose) {
   tool = { name: 'tool', kind: 'mesh', positions: f32(positions), normals: f32(normals), indices: u32(indices), color, opacity, pose };
   impl?.setTool(tool);
+  applyToolPose();
   impl?.setGizmo(gizmoMode);
 }
 
 export function setToolPose(pose) {
   if (!tool) return;
   tool.pose = pose;
-  impl?.setToolPose(pose);
+  applyToolPose();
+}
+
+/** Removes the movable tool (and stops its spin). */
+export function removeTool() {
+  tool = null;
+  setToolSpin([0, 0, 1], 0, 0);
+  impl?.setGizmo('off');
+  impl?.removeTool();
+}
+
+/**
+ * Spins the tool about `axis` (in the tool's own frame) at `radPerSecond` (0 stops). `angle` (rad), if given, sets
+ * the current spin angle, e.g. to show the spindle phase of a computed state. The spin is applied on top of the pose.
+ */
+export function setToolSpin(axis, radPerSecond, angle) {
+  if (axis) spin.axis = axis;
+  spin.rate = radPerSecond || 0;
+  if (angle !== null && angle !== undefined) spin.angle = angle;
+  applyToolPose();
+  if (spin.rate !== 0 && !spin.raf) {
+    spin.last = performance.now();
+    spin.raf = requestAnimationFrame(spinStep);
+  }
+}
+
+function spinStep(now) {
+  spin.angle = (spin.angle + spin.rate * (now - spin.last) / 1000) % (2 * Math.PI);
+  spin.last = now;
+  applyToolPose();
+  spin.raf = spin.rate !== 0 ? requestAnimationFrame(spinStep) : 0;
+}
+
+// Pose with the spin about the tool's own axis applied: q = q_pose · q_spin.
+function spunPose(p) {
+  if (spin.angle === 0) return p;
+  const [ax, ay, az] = spin.axis, n = Math.hypot(ax, ay, az) || 1, h = spin.angle / 2, s = Math.sin(h) / n;
+  const bx = ax * s, by = ay * s, bz = az * s, bw = Math.cos(h);
+  const [, , , x, y, z, w] = p;
+  return [p[0], p[1], p[2],
+    w * bx + x * bw + y * bz - z * by,
+    w * by - x * bz + y * bw + z * bx,
+    w * bz + x * by - y * bx + z * bw,
+    w * bw - x * bx - y * by - z * bz];
+}
+
+function applyToolPose() {
+  if (tool) impl?.setToolPose(spunPose(tool.pose));
 }
 
 export function setGizmo(mode, dotnetRef) {
@@ -79,8 +129,10 @@ export function addLines(name, xyz, color) {
   impl?.add(o);
 }
 
-export function fit(view) {
+/** Fits the camera to the visible objects, or to `box` = [minX, minY, minZ, maxX, maxY, maxZ] if given. */
+export function fit(view, box) {
   viewName = view ?? viewName;
+  fitBox = box ?? null;
   impl?.fit(bounds(), viewName);
 }
 
@@ -93,7 +145,13 @@ export function download(fileName, bytes) {
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 
+let fitBox = null;
+
 function bounds() {
+  if (fitBox) {
+    const center = [0, 1, 2].map((k) => (fitBox[k] + fitBox[k + 3]) / 2);
+    return { center, radius: Math.max(1, Math.hypot(fitBox[3] - fitBox[0], fitBox[4] - fitBox[1], fitBox[5] - fitBox[2]) / 2) };
+  }
   const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
   for (const o of objects) {
     if (o.kind !== 'mesh' || o.opacity < 0.5) continue;
@@ -110,7 +168,7 @@ function bounds() {
 // Camera directions per view (z up).
 const VIEWS = {
   iso: [-0.62, -0.42, 0.66], top: [0, -0.0001, 1], gear: [-0.38, -0.62, 0.68],
-  lathe: [0.05, -1, 0.25], mill: [-0.42, -0.62, 0.66], cubes: [-0.55, -0.85, 0.55],
+  lathe: [0.05, -1, 0.25], mill: [-0.42, -0.62, 0.66], cubes: [-0.55, -0.85, 0.55], spin: [-0.3, -0.8, 0.75],
 };
 
 function eyeFor(b, view) {
@@ -197,6 +255,14 @@ function createThree(el) {
       if (!toolMesh) return;
       toolMesh.position.set(p[0], p[1], p[2]);
       toolMesh.quaternion.set(p[3], p[4], p[5], p[6]);
+    },
+    removeTool() {
+      if (!toolMesh) return;
+      gizmo.detach();
+      scene.remove(toolMesh);
+      toolMesh.geometry.dispose();
+      toolMesh.material.dispose();
+      toolMesh = null;
     },
     setGizmo(mode) {
       if (!toolMesh || mode === 'off') { gizmo.detach(); return; }
@@ -313,6 +379,11 @@ async function createBabylon(el) {
       if (!toolMesh) return;
       toolMesh.position.set(p[0], p[1], p[2]);
       toolMesh.rotationQuaternion.set(p[3], p[4], p[5], p[6]);
+    },
+    removeTool() {
+      gizmos.attachToMesh(null);
+      toolMesh?.dispose(false, true);
+      toolMesh = null;
     },
     setGizmo(mode) {
       gizmos.positionGizmoEnabled = mode === 'translate';
