@@ -10,9 +10,89 @@ public static class ConvexHull3
     public static Solid Compute(IEnumerable<Vec3> points)
     {
         var tris = Triangles(points, out var pts);
-        var faces = new List<Face3>(tris.Count);
-        foreach (var (a, b, c) in tris) faces.Add(Face3.FromGrid([pts[a], pts[b], pts[c]]));
-        return new Solid(FaceMerge.MergeAll(faces));
+        long n = pts.Length;
+        // Coplanar hull triangles form one convex polygon. Neighbouring triangles are coplanar iff the far vertex of one
+        // lies on the other's plane (exact orient3d); union-find joins them, then each group's boundary (directed edges
+        // whose twin is not in the group) is walked into one polygon.
+        var edgeTri = new Dictionary<long, int>(3 * tris.Count);
+        for (int i = 0; i < tris.Count; i++)
+        {
+            var (a, b, c) = tris[i];
+            edgeTri[Key(a, b, n)] = i; edgeTri[Key(b, c, n)] = i; edgeTri[Key(c, a, n)] = i;
+        }
+        var parent = new int[tris.Count];
+        for (int i = 0; i < parent.Length; i++) parent[i] = i;
+        int Find(int i) { while (parent[i] != i) i = parent[i] = parent[parent[i]]; return i; }
+        for (int i = 0; i < tris.Count; i++)
+        {
+            var (a, b, c) = tris[i];
+            Join(i, b, a, c); Join(i, c, b, a); Join(i, a, c, b);
+        }
+        void Join(int i, int u, int v, int own)
+        {
+            int j = edgeTri[Key(u, v, n)];
+            if (j < i) return; // each shared edge once
+            var (x, y, z) = tris[j];
+            int far = x != u && x != v ? x : y != u && y != v ? y : z;
+            var (a, b, c) = tris[i];
+            if (Predicates.Orient3D(pts[a], pts[b], pts[c], pts[far]) == 0) parent[Find(i)] = Find(j);
+        }
+        var groups = new Dictionary<int, List<(int A, int B, int C)>>();
+        for (int i = 0; i < tris.Count; i++)
+        {
+            int r = Find(i);
+            if (!groups.TryGetValue(r, out var g)) groups[r] = g = [];
+            g.Add(tris[i]);
+        }
+        var faces = new List<Face3>(groups.Count);
+        var next = new Dictionary<int, int>();
+        var inner = new HashSet<long>();
+        var loop = new List<Vec3>();
+        foreach (var g in groups.Values)
+        {
+            if (g.Count == 1)
+            {
+                faces.Add(Face3.FromGrid([pts[g[0].A], pts[g[0].B], pts[g[0].C]]));
+                continue;
+            }
+            inner.Clear();
+            foreach (var (a, b, c) in g) { inner.Add(Key(a, b, n)); inner.Add(Key(b, c, n)); inner.Add(Key(c, a, n)); }
+            next.Clear();
+            foreach (var (a, b, c) in g)
+            {
+                if (!inner.Contains(Key(b, a, n))) next[a] = b;
+                if (!inner.Contains(Key(c, b, n))) next[b] = c;
+                if (!inner.Contains(Key(a, c, n))) next[c] = a;
+            }
+            loop.Clear();
+            int start = next.Keys.First(), v = start;
+            do
+            {
+                loop.Add(pts[v]);
+                v = next[v];
+            } while (v != start && loop.Count <= next.Count);
+            if (v != start || loop.Count != next.Count) throw new InvalidOperationException("Hull face boundary is not a single loop.");
+            faces.Add(Face3.FromGrid(WithoutCollinear(loop)));
+        }
+        return new Solid(faces);
+    }
+
+    // Edge key a·n + b. (Not (a << 32) | b: Int64's hash folds the halves with XOR, which collides for a ^ b.)
+    private static long Key(int a, int b, long n) => a * n + b;
+
+    // Removes vertices that lie on the line through their neighbours (exact cross product; differences < 2^33).
+    private static List<Vec3> WithoutCollinear(List<Vec3> loop)
+    {
+        var r = new List<Vec3>(loop.Count);
+        int n = loop.Count;
+        for (int i = 0; i < n; i++)
+        {
+            Vec3 a = loop[(i - 1 + n) % n], b = loop[i], c = loop[(i + 1) % n];
+            long ux = b.X - a.X, uy = b.Y - a.Y, uz = b.Z - a.Z, vx = c.X - b.X, vy = c.Y - b.Y, vz = c.Z - b.Z;
+            bool collinear = (Int128)uy * vz == (Int128)uz * vy && (Int128)uz * vx == (Int128)ux * vz && (Int128)ux * vy == (Int128)uy * vx;
+            if (!collinear) r.Add(b);
+        }
+        return r;
     }
 
     /// <summary>Hull triangles (indices into <paramref name="pts"/>), counter-clockwise seen from outside.</summary>
@@ -20,6 +100,7 @@ public static class ConvexHull3
     {
         pts = points.Distinct().ToArray();
         if (pts.Length < 4) throw new ArgumentException("A hull needs at least four points.");
+        long n = pts.Length;
         var p = pts;
 
         // Initial tetrahedron.
@@ -32,13 +113,15 @@ public static class ConvexHull3
             if (i != i1 && i != i2 && Predicates.Orient3D(p[i0], p[i1], p[i2], p[i]) != 0) i3 = i;
         if (i3 < 0) throw new ArgumentException("Points are coplanar.");
 
-        var faces = new List<(int A, int B, int C)>();
-        var alive = new List<bool>();
-        var outside = new List<List<int>?>();
-        var edgeFace = new Dictionary<(int, int), int>();
+        // Quickhull creates a few faces per point over its run; sizing up front avoids repeated growth copies.
+        int capacity = 8 * p.Length + 16;
+        var faces = new List<(int A, int B, int C)>(capacity);
+        var alive = new List<bool>(capacity);
+        var outside = new List<List<int>?>(capacity);
+        var edgeFace = new Dictionary<long, int>(3 * (2 * p.Length + 4));
         // Per face: exact plane (outward normal) and its double approximation for the filtered side test.
-        var planes = new List<Plane3>();
-        var planesD = new List<(double X, double Y, double Z, double D, double Bound)>();
+        var planes = new List<Plane3>(capacity);
+        var planesD = new List<(double X, double Y, double Z, double D, double Bound)>(capacity);
 
         int AddFace(int a, int b, int c)
         {
@@ -46,9 +129,9 @@ public static class ConvexHull3
             faces.Add((a, b, c));
             alive.Add(true);
             outside.Add(null);
-            edgeFace[(a, b)] = id;
-            edgeFace[(b, c)] = id;
-            edgeFace[(c, a)] = id;
+            edgeFace[Key(a, b, n)] = id;
+            edgeFace[Key(b, c, n)] = id;
+            edgeFace[Key(c, a, n)] = id;
             // Same orientation as Orient3D(a, b, c, q): positive above the counter-clockwise triangle (outside).
             var pl = Plane3.FromPoints(p[a], p[b], p[c]);
             planes.Add(pl);
@@ -131,9 +214,9 @@ public static class ConvexHull3
             foreach (int f in visible)
             {
                 var (a, b, c) = faces[f];
-                if (!visibleSet.Contains(edgeFace[(b, a)])) horizon.Add((a, b));
-                if (!visibleSet.Contains(edgeFace[(c, b)])) horizon.Add((b, c));
-                if (!visibleSet.Contains(edgeFace[(a, c)])) horizon.Add((c, a));
+                if (!visibleSet.Contains(edgeFace[Key(b, a, n)])) horizon.Add((a, b));
+                if (!visibleSet.Contains(edgeFace[Key(c, b, n)])) horizon.Add((b, c));
+                if (!visibleSet.Contains(edgeFace[Key(a, c, n)])) horizon.Add((c, a));
                 if (outside[f] is { } list) foreach (int r in list) if (r != q) orphans.Add(r);
                 outside[f] = null;
             }
@@ -141,7 +224,7 @@ public static class ConvexHull3
             {
                 alive[f] = false;
                 var (a, b, c) = faces[f];
-                edgeFace.Remove((a, b)); edgeFace.Remove((b, c)); edgeFace.Remove((c, a));
+                edgeFace.Remove(Key(a, b, n)); edgeFace.Remove(Key(b, c, n)); edgeFace.Remove(Key(c, a, n));
             }
             var created = new List<int>(horizon.Count);
             foreach (var (u, v) in horizon) created.Add(AddFace(u, v, q));
@@ -150,7 +233,7 @@ public static class ConvexHull3
 
             void Visit(int u, int v)
             {
-                int g = edgeFace[(u, v)];
+                int g = edgeFace[Key(u, v, n)];
                 if (visibleSet.Contains(g) || !Above(g, q)) return;
                 visibleSet.Add(g);
                 stack.Push(g);
