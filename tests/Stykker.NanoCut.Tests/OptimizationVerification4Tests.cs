@@ -12,10 +12,10 @@ namespace Stykker.NanoCut.Tests;
 /// <summary>
 /// Deterministic Boolean / hull workload for the differential check of the third optimisation round. The same source
 /// is compiled against the reference commit 4384975 (with REF_BUILD defined and the assembly named
-/// Stykker.NanoCut.Tests, so the internals are visible) to produce <see cref="OptimizationVerification3Tests.ReferenceDigests"/>.
+/// Stykker.NanoCut.Tests, so the internals are visible) to produce <see cref="OptimizationVerification4Tests.ReferenceDigests"/>.
 /// Only APIs that exist in both versions are used here.
 /// </summary>
-public static class Rev3Workload
+public static class Rev4Workload
 {
     private const long M = Units.MaxCoordinate;
     private const long Mm = 1_000_000;
@@ -178,7 +178,7 @@ public static class Rev3Workload
 /// (13) reused ray probe and per-thread FaceMerge index, (14) pooled BVH arrays and alternating fragment lists,
 /// (15) parallel hull triangle construction, and the orient3d hull fallback (85bf470).
 /// </summary>
-public class OptimizationVerification3Tests(ITestOutputHelper output)
+public class OptimizationVerification4Tests(ITestOutputHelper output)
 {
     private const long M = Units.MaxCoordinate;
     private const long Mm = 1_000_000;
@@ -342,8 +342,8 @@ public class OptimizationVerification3Tests(ITestOutputHelper output)
         int faces = 0;
         for (int t = 0; t < 30; t++)
         {
-            var a = Rev3Workload.LatticeHull(rng, 0, 0, 0, 3);
-            var b = Rev3Workload.LatticeHull(rng, rng.Next(-2, 3) * Mm, rng.Next(-2, 3) * Mm, rng.Next(-2, 3) * Mm, 3);
+            var a = Rev4Workload.LatticeHull(rng, 0, 0, 0, 3);
+            var b = Rev4Workload.LatticeHull(rng, rng.Next(-2, 3) * Mm, rng.Next(-2, 3) * Mm, rng.Next(-2, 3) * Mm, 3);
             foreach (var s in new[] { a | b, a & b, a - b, b - a })
                 foreach (var f in s.Faces.Concat(s.Faces.Select(x => x.Reversed())))
                 {
@@ -415,10 +415,10 @@ public class OptimizationVerification3Tests(ITestOutputHelper output)
 
     private static List<(string Name, Func<Solid> Make)> HeavyCases()
     {
-        var s1 = Rev3Workload.Ball(new Vec3(0, 0, 0), 3, 40_000);
-        var s2 = Rev3Workload.Ball(new Vec3(1_234_567, -765_432, 345_678), 2.5, 30_000);
-        var s3 = Rev3Workload.Ball(new Vec3(M - 4 * Mm, -M + 4 * Mm, M - 3 * Mm - 11), 3, 60_000);
-        var s4 = Rev3Workload.Ball(new Vec3(M - 4 * Mm + 2_222_223, -M + 4 * Mm - 1_111_111, M - 3 * Mm - 1_000_011), 2, 30_000);
+        var s1 = Rev4Workload.Ball(new Vec3(0, 0, 0), 3, 40_000);
+        var s2 = Rev4Workload.Ball(new Vec3(1_234_567, -765_432, 345_678), 2.5, 30_000);
+        var s3 = Rev4Workload.Ball(new Vec3(M - 4 * Mm, -M + 4 * Mm, M - 3 * Mm - 11), 3, 60_000);
+        var s4 = Rev4Workload.Ball(new Vec3(M - 4 * Mm + 2_222_223, -M + 4 * Mm - 1_111_111, M - 3 * Mm - 1_000_011), 2, 30_000);
         var rng = new Random(88);
         var cloud = Enumerable.Range(0, 1200).Select(_ => new Vec3(rng.NextInt64(-M, M + 1), rng.NextInt64(-M, M + 1), rng.NextInt64(-M, M + 1))).ToList();
         var shell = Enumerable.Range(0, 900).Select(_ =>
@@ -443,11 +443,11 @@ public class OptimizationVerification3Tests(ITestOutputHelper output)
     public void ResultsAreIdenticalForParallelism1To8()
     {
         var cases = HeavyCases();
-        var reference = WithParallelism(1, () => cases.Select(c => Rev3Workload.Fingerprint(c.Make())).ToList());
+        var reference = WithParallelism(1, () => cases.Select(c => Rev4Workload.Fingerprint(c.Make())).ToList());
         foreach (int p in new[] { 2, 4, 8, 3 })
             for (int rep = 0; rep < 2; rep++)
             {
-                var got = WithParallelism(p, () => cases.Select(c => Rev3Workload.Fingerprint(c.Make())).ToList());
+                var got = WithParallelism(p, () => cases.Select(c => Rev4Workload.Fingerprint(c.Make())).ToList());
                 for (int i = 0; i < cases.Count; i++)
                     Assert.True(reference[i] == got[i], $"{cases[i].Name}: parallelism {p} (rep {rep}) differs from sequential");
             }
@@ -466,9 +466,9 @@ public class OptimizationVerification3Tests(ITestOutputHelper output)
         var rng = new Random(1205);
         var small = new List<(Solid A, Solid B)>();
         for (int i = 0; i < 12; i++)
-            small.Add((Rev3Workload.LatticeHull(rng, 0, 0, 0, 3), Rev3Workload.LatticeHull(rng, rng.Next(-2, 3) * Mm, rng.Next(-2, 3) * Mm, 0, 3)));
-        var expected = WithParallelism(1, () => cases.Select(c => Rev3Workload.Fingerprint(c.Make())).ToList());
-        var expectedSmall = WithParallelism(1, () => small.Select(s => Rev3Workload.Fingerprint((s.A - s.B) | (s.B & s.A))).ToList());
+            small.Add((Rev4Workload.LatticeHull(rng, 0, 0, 0, 3), Rev4Workload.LatticeHull(rng, rng.Next(-2, 3) * Mm, rng.Next(-2, 3) * Mm, 0, 3)));
+        var expected = WithParallelism(1, () => cases.Select(c => Rev4Workload.Fingerprint(c.Make())).ToList());
+        var expectedSmall = WithParallelism(1, () => small.Select(s => Rev4Workload.Fingerprint((s.A - s.B) | (s.B & s.A))).ToList());
         // Fresh solids (PlanesD not yet cached) shared by all tasks.
         var fresh = HeavyCases();
         int n = fresh.Count * 3 + small.Count * 3;
@@ -477,11 +477,11 @@ public class OptimizationVerification3Tests(ITestOutputHelper output)
         {
             Parallel.For(0, n, new ParallelOptions { MaxDegreeOfParallelism = 8 }, i =>
             {
-                if (i < fresh.Count * 3) got[i] = Rev3Workload.Fingerprint(fresh[i % fresh.Count].Make());
+                if (i < fresh.Count * 3) got[i] = Rev4Workload.Fingerprint(fresh[i % fresh.Count].Make());
                 else
                 {
                     var s = small[(i - fresh.Count * 3) % small.Count];
-                    got[i] = Rev3Workload.Fingerprint((s.A - s.B) | (s.B & s.A));
+                    got[i] = Rev4Workload.Fingerprint((s.A - s.B) | (s.B & s.A));
                 }
             });
             return 0;
@@ -545,11 +545,11 @@ public class OptimizationVerification3Tests(ITestOutputHelper output)
     public void BooleansWithEmptySolidsAndInterleavedSizesAreExact()
     {
         var rng = new Random(1207);
-        var big = Rev3Workload.Ball(new Vec3(0, 0, 0), 2, 30_000);
+        var big = Rev4Workload.Ball(new Vec3(0, 0, 0), 2, 30_000);
         BigInteger u = (BigInteger)Mm * Mm * Mm * 6;
         for (int t = 0; t < 10; t++)
         {
-            var a = Rev3Workload.LatticeHull(rng, 0, 0, 0, 3);
+            var a = Rev4Workload.LatticeHull(rng, 0, 0, 0, 3);
             var va = Volume6(a);
             Assert.Equal(va, Volume6(a | Solid.Empty));
             Assert.Equal(va, Volume6(Solid.Empty | a));
@@ -593,7 +593,7 @@ public class OptimizationVerification3Tests(ITestOutputHelper output)
         {
             var copy = new List<Face3>(s);
             FaceMerge.MergeCoplanar(copy);
-            return Rev3Workload.Fingerprint(new Solid(copy));
+            return Rev4Workload.Fingerprint(new Solid(copy));
         }
         var expected = sets.Select(Merge).ToList();
         var got = new string[sets.Count * 8];
@@ -628,7 +628,7 @@ public class OptimizationVerification3Tests(ITestOutputHelper output)
                 pts.Add(new Vec3(off + rng.NextInt64(0, size), -off + rng.NextInt64(0, size), off / 3 + rng.NextInt64(0, size)));
             string Outcome(int p) => WithParallelism(p, () =>
             {
-                try { return "ok " + Rev3Workload.Hash(ConvexHull3.Compute(pts)); }
+                try { return "ok " + Rev4Workload.Hash(ConvexHull3.Compute(pts)); }
                 catch (Exception e) { return e.GetType().Name; }
             });
             string seq = Outcome(1), par = Outcome(4);
@@ -643,7 +643,7 @@ public class OptimizationVerification3Tests(ITestOutputHelper output)
     // ------------------------------------------------------------------------------------------------ differential
 
     /// <summary>
-    /// Hashes of the exact fingerprints of <see cref="Rev3Workload.Run"/> computed with the reference commit 4384975
+    /// Hashes of the exact fingerprints of <see cref="Rev4Workload.Run"/> computed with the reference commit 4384975
     /// (before round 3): the same source file compiled with REF_BUILD against that commit's src/ (assembly named
     /// Stykker.NanoCut.Tests). Round 3 claims bit-identical results (same faces, same order, same exact vertices).
     /// </summary>
@@ -1050,7 +1050,7 @@ hullx E3B0C44298FC1C14
     public void WorkloadIsBitIdenticalToReferenceCommit()
     {
         var expected = ReferenceDigests.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        var got = Rev3Workload.Run();
+        var got = Rev4Workload.Run();
         Assert.Equal(expected.Length, got.Count);
         var diffs = new List<string>();
         for (int i = 0; i < got.Count; i++) if (expected[i] != got[i]) diffs.Add($"{expected[i]} -> {got[i]}");
