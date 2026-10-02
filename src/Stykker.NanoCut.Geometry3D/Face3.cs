@@ -93,12 +93,17 @@ internal sealed class Face3
               : Abs(support.Ny) >= Abs(support.Nz) ? 1 : 2;
         var edges = new Plane3[n];
         var verts = new Point3[n];
+        if (KernelStats.Counting)
+        {
+            var st = KernelStats.Mine;
+            st.HullFaces++;
+            st.HullFromGridEdges += n;
+        }
         for (int i = 0; i < n; i++)
         {
             Vec3 a = pts[i], b = pts[(i + 1) % n];
             if (a == b) throw new ArgumentException("Duplicate consecutive vertices.");
-            Vec3 off = k switch { 0 => new Vec3(a.X + 1, a.Y, a.Z), 1 => new Vec3(a.X, a.Y + 1, a.Z), _ => new Vec3(a.X, a.Y, a.Z + 1) };
-            var e = Plane3.FromPoints(a, b, off).Canonical();
+            var e = Plane3.EdgePlane(a, b, k);
             // Interior on the negative side: test with a vertex not on this edge's line.
             int side = 0;
             for (int j = 0; j < n && side == 0; j++) side = Predicates.Side(e, pts[j]);

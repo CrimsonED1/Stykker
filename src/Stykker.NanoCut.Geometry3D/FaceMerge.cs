@@ -41,6 +41,12 @@ internal static class FaceMerge
                 for (int k = 0; k < v.Length; k++)
                     byEdge.TryAdd(Key(v[k], v[(k + 1) % v.Length]), (i, k));
             }
+            if (KernelStats.Counting)
+            {
+                var st = KernelStats.Mine;
+                st.MergePasses++;
+                st.MergeKeys += byEdge.Count;
+            }
             var dead = new bool[pieces.Count];
             var touched = new bool[pieces.Count];
             for (int i = 0; i < pieces.Count; i++)
