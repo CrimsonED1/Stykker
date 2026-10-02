@@ -77,7 +77,21 @@ def expand(scene):
     }
 
 
-def command(engine, expanded, out, repeat, par):
+def command(engine, scene_path, scene, expanded, out, repeat, par):
+    # A scene with a "kind" is a process scene: geometry in millimetres, run through Process3.Cut / Process2.Cut.
+    # It is not expanded into grid steps.
+    kind = scene.get("kind")
+    if kind:
+        if engine != "process":
+            return None
+        dll = os.path.join(ROOT, "Stykker.NanoCut.Bench/bin/Release/net10.0/Stykker.NanoCut.Bench.dll")
+        cmd = ["dotnet", dll, scene_path, out, "process"]
+        if WARM:
+            cmd.append("--warm")
+        cmd += ["--repeat", str(repeat)]
+        if par:
+            cmd += ["--par", str(par)]
+        return cmd
     if engine in ("nanocut", "manifoldsharp"):
         dll = os.path.join(ROOT, "Stykker.NanoCut.Bench/bin/Release/net10.0/Stykker.NanoCut.Bench.dll")
         cmd = ["dotnet", dll, expanded, out, engine]
@@ -94,11 +108,13 @@ def command(engine, expanded, out, repeat, par):
     raise SystemExit(f"unknown engine {engine}")
 
 
-def run_once(engine, expanded, out, repeat, par, timeout):
+def run_once(engine, scene_path, scene, expanded, out, repeat, par, timeout):
     """One process, `repeat` timed runs inside it. Returns the list of per-run wall times in ms."""
+    cmd = command(engine, scene_path, scene, expanded, out, repeat, par)
+    if cmd is None:
+        return None, None
     t0 = time.perf_counter()
-    r = subprocess.run(command(engine, expanded, out, repeat, par),
-                       capture_output=True, text=True, timeout=timeout)
+    r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
     if r.returncode != 0:
         print(f"{engine} failed:\n{r.stdout}{r.stderr}")
         return None, None
@@ -121,12 +137,19 @@ def main():
     global WARM
     WARM = not a.cold
 
-    scene = json.load(open(a.scene, encoding="utf-8"))
+    scene_path = os.path.abspath(a.scene)
+    scene = json.load(open(scene_path, encoding="utf-8"))
     base = os.path.join(a.out, scene["name"])
     os.makedirs(base, exist_ok=True)
+    # A scene with "kind" describes geometry in millimetres and runs through the production entry points; it has no
+    # expansion step. Everything else is expanded once, so all engines see the identical input on the 1 nm grid.
+    kind = scene.get("kind")
     expanded = os.path.join(base, "expanded.json")
-    json.dump(expand(scene), open(expanded, "w", encoding="utf-8"))
-    nsteps = len(json.load(open(expanded, encoding="utf-8"))["steps"])
+    if kind:
+        nsteps = scene.get("teeth") or scene.get("paths") and len(scene["paths"]) or 0
+    else:
+        json.dump(expand(scene), open(expanded, "w", encoding="utf-8"))
+        nsteps = len(json.load(open(expanded, encoding="utf-8"))["steps"])
 
     rows = []
     for engine in a.engines.split(","):
@@ -134,7 +157,7 @@ def main():
         os.makedirs(out, exist_ok=True)
         times, cpu, last = [], [], None
         for _ in range(max(1, a.outer)):
-            s, wall = run_once(engine, expanded, out, a.repeat, a.par, a.timeout)
+            s, wall = run_once(engine, scene_path, scene, expanded, out, a.repeat, a.par, a.timeout)
             if s is None:
                 break
             last = s
