@@ -14,7 +14,8 @@ public static class ConvexHull3
         // Coplanar hull triangles form one convex polygon. Neighbouring triangles are coplanar iff the far vertex of one
         // lies on the other's plane (exact orient3d); union-find joins them, then each group's boundary (directed edges
         // whose twin is not in the group) is walked into one polygon.
-        var edgeTri = new Dictionary<long, int>(3 * tris.Count);
+        var edgeTri = (_scratch ??= new Scratch()).EdgeTri;
+        edgeTri.Clear();
         for (int i = 0; i < tris.Count; i++)
         {
             var (a, b, c) = tris[i];
@@ -84,6 +85,32 @@ public static class ConvexHull3
     // Edge key a·n + b. (Not (a << 32) | b: Int64's hash folds the halves with XOR, which collides for a ^ b.)
     private static long Key(int a, int b, long n) => a * n + b;
 
+    [ThreadStatic] private static Scratch? _scratch;
+
+    private sealed class Scratch
+    {
+        public readonly List<(int A, int B, int C)> Faces = [];
+        public readonly List<bool> Alive = [];
+        public readonly List<int> Head = [];
+        public int[] NextPoint = [];
+        public readonly Dictionary<long, int> EdgeFace = [];
+        public readonly List<(double X, double Y, double Z, double D, double Bound)> PlanesD = [];
+        public readonly List<int> Rest = [];
+        public readonly Stack<int> Pending = new();
+        public readonly Stack<int> Stack = new();
+        public readonly List<int> Visible = [];
+        public readonly HashSet<int> VisibleSet = [];
+        public readonly List<(int, int)> Horizon = [];
+        public readonly List<int> Created = [];
+        public readonly Dictionary<long, int> EdgeTri = [];
+
+        public void Clear()
+        {
+            Faces.Clear(); Alive.Clear(); Head.Clear(); EdgeFace.Clear(); PlanesD.Clear(); Rest.Clear();
+            Pending.Clear(); Stack.Clear(); Visible.Clear(); VisibleSet.Clear(); Horizon.Clear(); Created.Clear();
+        }
+    }
+
     // Removes vertices that lie on the line through their neighbours (exact cross product; differences < 2^33).
     private static List<Vec3> WithoutCollinear(List<Vec3> loop)
     {
@@ -117,16 +144,19 @@ public static class ConvexHull3
             if (i != i1 && i != i2 && Predicates.Orient3D(p[i0], p[i1], p[i2], p[i]) != 0) i3 = i;
         if (i3 < 0) throw new ArgumentException("Points are coplanar.");
 
-        // Quickhull creates about 3.6 faces per point over its run; sizing up front avoids most growth copies.
-        int capacity = 4 * p.Length + 16;
-        var faces = new List<(int A, int B, int C)>(capacity);
-        var alive = new List<bool>(capacity);
+        // Working buffers are reused per thread: they exceed the large-object threshold for big inputs, and fresh large
+        // objects cost a page fault and kernel zeroing per page on every call.
+        var w = _scratch ??= new Scratch();
+        w.Clear();
+        var faces = w.Faces;
+        var alive = w.Alive;
         // Outside (conflict) sets as linked lists over arrays: head[f] is the first waiting point, nextPoint[q] the next.
-        var head = new List<int>(capacity);
-        var nextPoint = new int[p.Length];
-        var edgeFace = new Dictionary<long, int>(3 * (2 * p.Length + 4));
+        var head = w.Head;
+        if (w.NextPoint.Length < p.Length) w.NextPoint = new int[p.Length];
+        var nextPoint = w.NextPoint;
+        var edgeFace = w.EdgeFace;
         // Per face: double approximation of the plane for the filtered side test (the exact plane is recomputed on demand).
-        var planesD = new List<(double X, double Y, double Z, double D, double Bound)>(capacity);
+        var planesD = w.PlanesD;
 
         int AddFace(int a, int b, int c)
         {
@@ -180,17 +210,18 @@ public static class ConvexHull3
                         break;
                     }
         }
-        var rest = new List<int>(p.Length);
+        var rest = w.Rest;
         for (int i = 0; i < p.Length; i++) if (i != i0 && i != i1 && i != i2 && i != i3) rest.Add(i);
         Assign(rest, initial);
 
-        var pending = new Stack<int>(initial);
-        var stack = new Stack<int>();
-        var visible = new List<int>();
-        var visibleSet = new HashSet<int>();
-        var horizon = new List<(int, int)>();
+        var pending = w.Pending;
+        foreach (int f in initial) pending.Push(f);
+        var stack = w.Stack;
+        var visible = w.Visible;
+        var visibleSet = w.VisibleSet;
+        var horizon = w.Horizon;
         var orphans = rest;
-        var created = new List<int>();
+        var created = w.Created;
         while (pending.Count > 0)
         {
             int f0 = pending.Pop();
