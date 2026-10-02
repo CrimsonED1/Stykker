@@ -160,3 +160,26 @@ before each change:
 | D1: cache the BVH in the solid | the workpiece is a new solid after every cut | No effect on cut chains; not done |
 | GC settings | measured in round 1 | No effect |
 
+## Round 5: cut chains overlap tool construction and cutting (2026-10-02)
+
+`Solid.SubtractInOrder(workpiece, toolFactories)` builds the next tool (here: the convex hull of the next step) on another
+core while the current one is subtracted. The result is identical to subtracting one after another. Engine
+`nanocut-pipeline` in `run.py`.
+
+| Scene | nanocut | **nanocut-pipeline** | manifold C++ |
+| --- | ---: | ---: | ---: |
+| ball-small (16 steps) | 151 ms | 114 ms | **21 ms** |
+| ball-medium (96 steps) | 832 ms | 639 ms | **469 ms** |
+| pocket-profile (372 steps) | 3.12 s | **2.17 s** | 2.91 s |
+| pocket-large (876 steps) | 7.52 s | **5.23 s** | 8.37 s |
+
+Same CPU time, identical volumes. On pocket-large NanoCut is now 1.6× faster than C++ Manifold. Short tasks remain C++'s
+domain, where fixed per-cut costs dominate.
+
+What did not help:
+
+| Attempt | NanoCut (pocket-profile) | Manifold (pocket-profile) | Why |
+| --- | --- | --- | --- |
+| Batching: unite k consecutive hulls, then cut once (`--batch k`) | 3.2 s → 3.9–4.4 s | 3.0 → 2.2 s | NanoCut's cost grows with interacting faces, and uniting nearly congruent hulls splits almost every face |
+| Overlap for Manifold (`manifold-pipeline`) | – | 2.9 → 3.1 s | Its hull is cheap, and it already parallelises internally |
+
