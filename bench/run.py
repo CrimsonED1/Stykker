@@ -11,9 +11,13 @@ import argparse
 import json
 import math
 import os
-import resource
 import subprocess
 import sys
+
+try:
+    import resource  # Unix only: the CPU-time column is unavailable on Windows
+except ImportError:
+    resource = None
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 WARM = False
@@ -21,6 +25,14 @@ WARM = False
 
 def nm(mm):
     return int(math.floor(mm * 1e6 + 0.5))
+
+
+def cpu_children():
+    """CPU seconds spent by child processes so far, or None where `resource` is missing."""
+    if resource is None:
+        return None
+    u = resource.getrusage(resource.RUSAGE_CHILDREN)
+    return u.ru_utime + u.ru_stime
 
 
 def ball_points(c, r, segments):
@@ -99,20 +111,21 @@ def main():
         os.makedirs(out, exist_ok=True)
         best = None
         for _ in range(a.repeat):
-            before = resource.getrusage(resource.RUSAGE_CHILDREN)
+            before = cpu_children()
             try:
-                r = subprocess.run(command(engine, expanded, out), capture_output=True, text=True, timeout=a.timeout)
+                r = subprocess.run(command(engine, expanded, out), capture_output=True, text=True,
+                                   encoding="utf-8", errors="replace", timeout=a.timeout)
             except subprocess.TimeoutExpired:
                 print(f"{engine}: timeout after {a.timeout:.0f} s")
                 break
             if r.returncode != 0:
                 print(f"{engine} failed:\n{r.stdout}{r.stderr}")
                 break
-            after = resource.getrusage(resource.RUSAGE_CHILDREN)
-            s = json.load(open(os.path.join(out, "stats.json")))
+            after = cpu_children()
+            s = json.load(open(os.path.join(out, "stats.json"), encoding="utf-8"))
             s["engine"] = engine
             # CPU seconds of the whole process (all threads, including start-up and any warm-up run).
-            s["cpuS"] = (after.ru_utime + after.ru_stime) - (before.ru_utime + before.ru_stime)
+            s["cpuS"] = None if before is None else after - before
             if best is None or s["totalMs"] < best["totalMs"]:
                 best = s
         if best:
@@ -127,10 +140,11 @@ def main():
              "| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |"]
     for r in rows:
         dv = r["volumeMm3"] - ref["volumeMm3"]
+        cpu = "n/a" if r.get("cpuS") is None else f"{r['cpuS']:.1f}"
         lines.append(f"| {r['engine']} | {r['language']} | {'yes' if r['exact'] else 'no'} | {r['totalMs']:.0f} | "
-                     f"{r['totalMs'] / r['steps']:.1f} | {r.get('cpuS', float('nan')):.1f} | {r['volumeMm3']:.9f} | {dv:+.2e} | {r['triangles']} |")
+                     f"{r['totalMs'] / r['steps']:.1f} | {cpu} | {r['volumeMm3']:.9f} | {dv:+.2e} | {r['triangles']} |")
     table = "\n".join(lines)
-    open(os.path.join(base, "results.md"), "w").write(table + "\n")
+    open(os.path.join(base, "results.md"), "w", encoding="utf-8").write(table + "\n")
     print()
     print(table)
 
