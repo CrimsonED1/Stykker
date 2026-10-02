@@ -40,20 +40,26 @@ public static class ConvexHull3
         // Single triangles become faces directly; only real coplanar groups are collected.
         var size = new int[tris.Count];
         for (int i = 0; i < tris.Count; i++) size[Find(i)]++;
-        var faces = new List<Face3>(tris.Count);
         var groups = new Dictionary<int, List<(int A, int B, int C)>>();
+        var single = new List<int>(tris.Count);
         for (int i = 0; i < tris.Count; i++)
         {
             int r = Find(i);
-            if (size[r] == 1)
-            {
-                var (a, b, c) = tris[i];
-                faces.Add(Face3.FromGrid([pts[a], pts[b], pts[c]]));
-                continue;
-            }
+            if (size[r] == 1) { single.Add(i); continue; }
             if (!groups.TryGetValue(r, out var g)) groups[r] = g = [];
             g.Add(tris[i]);
         }
+        // Face construction (exact planes, GCD normalisation) is independent per triangle: build in parallel by index,
+        // so the face order and the result do not depend on scheduling.
+        var built = new Face3[single.Count];
+        var pp = pts;
+        if (single.Count >= ParallelThreshold && SolidBoolean.MaxParallelism > 1)
+            Parallel.For(0, built.Length, new ParallelOptions { MaxDegreeOfParallelism = SolidBoolean.MaxParallelism },
+                k => built[k] = Triangle(pp, tris[single[k]]));
+        else
+            for (int k = 0; k < built.Length; k++) built[k] = Triangle(pp, tris[single[k]]);
+        var faces = new List<Face3>(built.Length + groups.Count);
+        faces.AddRange(built);
         var next = new Dictionary<int, int>();
         var inner = new HashSet<long>();
         var loop = new List<Vec3>();
@@ -83,6 +89,10 @@ public static class ConvexHull3
 
     // Edge key a·n + b. (Not (a << 32) | b: Int64's hash folds the halves with XOR, which collides for a ^ b.)
     private static long Key(int a, int b, long n) => a * n + b;
+
+    private const int ParallelThreshold = 256;
+
+    private static Face3 Triangle(Vec3[] pts, (int A, int B, int C) t) => Face3.FromGrid([pts[t.A], pts[t.B], pts[t.C]]);
 
     [ThreadStatic] private static Scratch? _scratch;
 
