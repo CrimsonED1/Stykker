@@ -79,7 +79,7 @@ public static partial class Process3
         void Flush()
         {
             if (pending.Count == 0) return;
-            var swept = UnionTree(pending);
+            var swept = Solid.UnionAll(pending);
             pending.Clear();
             for (int w = 0; w < result.Length; w++)
             {
@@ -98,19 +98,6 @@ public static partial class Process3
         Cut([workpiece], tool, motion, tol, out _)[0];
 
     private const int Batch = 8;
-
-    private static Solid UnionTree(List<Solid> pieces)
-    {
-        var level = pieces;
-        while (level.Count > 1)
-        {
-            var next = new List<Solid>((level.Count + 1) / 2);
-            for (int i = 0; i + 1 < level.Count; i += 2) next.Add(level[i] | level[i + 1]);
-            if (level.Count % 2 == 1) next.Add(level[^1]);
-            level = next;
-        }
-        return level[0];
-    }
 
     private static readonly ConditionalWeakTable<Solid, ConcurrentDictionary<(double, double, double, double, double, double, double, double, double), Solid>> OrientedCache = new();
 

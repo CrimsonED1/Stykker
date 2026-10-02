@@ -147,3 +147,6 @@ and NanoCut uses fewer CPU-seconds per run. A native port is not needed for spee
 
 **After the fourth round** (round 3 is a separate effort)**:** NanoCut needs 8.2 s, C++ Manifold 9.3 s. NanoCut is faster in wall time while exact.
 
+**Round 5:** cut chains overlap tool construction with cutting (`Solid.SubtractInOrder`). pocket-large: NanoCut 5.2 s,
+C++ Manifold 8.4 s.
+
