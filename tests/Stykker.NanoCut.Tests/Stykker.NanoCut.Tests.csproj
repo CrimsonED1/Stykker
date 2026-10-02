@@ -11,6 +11,7 @@
   <ItemGroup>
     <ProjectReference Include="../../src/Stykker.NanoCut.Core/Stykker.NanoCut.Core.csproj" />
     <ProjectReference Include="../../src/Stykker.NanoCut.Geometry2D/Stykker.NanoCut.Geometry2D.csproj" />
+    <ProjectReference Include="../../src/Stykker.NanoCut.Geometry3D/Stykker.NanoCut.Geometry3D.csproj" />
     <ProjectReference Include="../../src/Stykker.NanoCut.Cutting/Stykker.NanoCut.Cutting.csproj" />
   </ItemGroup>
   <ItemGroup>

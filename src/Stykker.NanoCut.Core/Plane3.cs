@@ -19,6 +19,26 @@ public readonly record struct Plane3(Int128 Nx, Int128 Ny, Int128 Nz, Int128 D)
         return new Plane3(nx, ny, nz, d);
     }
 
+    /// <summary>The same plane with all coefficients divided by their greatest common divisor (orientation kept).</summary>
+    public Plane3 Canonical()
+    {
+        UInt128 g = Gcd(Gcd(Abs(Nx), Abs(Ny)), Gcd(Abs(Nz), Abs(D)));
+        if (g <= 1) return this;
+        Int128 gi = (Int128)g;
+        return new Plane3(Nx / gi, Ny / gi, Nz / gi, D / gi);
+    }
+
+    /// <summary>The same plane with opposite orientation.</summary>
+    public Plane3 Flipped() => new(-Nx, -Ny, -Nz, -D);
+
+    private static UInt128 Abs(Int128 v) => v < 0 ? (UInt128)(-v) : (UInt128)v;
+
+    private static UInt128 Gcd(UInt128 a, UInt128 b)
+    {
+        while (b != 0) (a, b) = (b, a % b);
+        return a;
+    }
+
     /// <summary>True if the three defining points were collinear (no plane).</summary>
     public bool IsDegenerate => Nx == 0 && Ny == 0 && Nz == 0;
 
@@ -26,7 +46,7 @@ public readonly record struct Plane3(Int128 Nx, Int128 Ny, Int128 Nz, Int128 D)
     public Int128 Evaluate(Vec3 p) => Nx * p.X + Ny * p.Y + Nz * p.Z + D;
 
     /// <summary>
-    /// Exact intersection point of three planes in homogeneous coordinates (Cramer's rule), or
+    /// Exact intersection point of three planes in homogeneous coordinates (Cramer's rule) with W &gt; 0, or
     /// null if the normals are linearly dependent.
     /// </summary>
     public static HomogeneousPoint3? Intersect(in Plane3 p, in Plane3 q, in Plane3 r)
@@ -41,7 +61,8 @@ public readonly record struct Plane3(Int128 Nx, Int128 Ny, Int128 Nz, Int128 D)
         Int384 x = Det3(b1, a12, a13, b2, a22, a23, b3, a32, a33);
         Int384 y = Det3(a11, b1, a13, a21, b2, a23, a31, b3, a33);
         Int384 z = Det3(a11, a12, b1, a21, a22, b2, a31, a32, b3);
-        return new HomogeneousPoint3(x, y, z, w);
+        // Normalise to W > 0 so that callers can compare signs without tracking W.
+        return w.Sign < 0 ? new HomogeneousPoint3(-x, -y, -z, -w) : new HomogeneousPoint3(x, y, z, w);
     }
 
     private static Int384 Det3(Int384 a, Int384 b, Int384 c, Int384 d, Int384 e, Int384 f, Int384 g, Int384 h, Int384 i) =>

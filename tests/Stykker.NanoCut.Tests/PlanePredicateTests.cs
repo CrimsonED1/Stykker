@@ -35,7 +35,9 @@ public class PlanePredicateTests
             a[0, c0] * (a[1, c1] * a[2, c2] - a[1, c2] * a[2, c1])
             - a[0, c1] * (a[1, c0] * a[2, c2] - a[1, c2] * a[2, c0])
             + a[0, c2] * (a[1, c0] * a[2, c1] - a[1, c1] * a[2, c0]);
-        return (Det(3, 1, 2), Det(0, 3, 2), Det(0, 1, 3), Det(0, 1, 2));
+        BigInteger x = Det(3, 1, 2), y = Det(0, 3, 2), z = Det(0, 1, 3), w = Det(0, 1, 2);
+        // Same normalisation as Plane3.Intersect: W > 0.
+        return w.Sign < 0 ? (-x, -y, -z, -w) : (x, y, z, w);
     }
 
     [Fact]

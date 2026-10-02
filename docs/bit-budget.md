@@ -33,3 +33,10 @@ later predicates (e.g. ordering two intersection points along an edge).
 - `PredicateTests`: orient2d and orient3d vs. `BigInteger` on 10⁶ random cases each (including range limits and exactly collinear/coplanar cases).
 - `PlanePredicateTests`: 10⁵ plane triples; intersection point bit-identical to `BigInteger`, lies exactly on all three planes, measured bit lengths ≤ the bounds above; extreme case with planes through the corners of the full coordinate cube.
 - `Int384Tests`: +, −, ×, comparison vs. `BigInteger` (2·10⁵ cases), overflow at all limits.
+
+## Edge planes
+
+Edge planes of input faces are built from the edge's two grid points and the first point shifted by one grid unit
+along the axis most aligned with the face normal. Their normals are at most 2³² per component, so they are within
+the bounds above. Splitting adds only planes of the other solid's faces, so every plane in the kernel is a
+"grid plane" and every vertex is an intersection of three of them – the budget holds for chains of Booleans too.

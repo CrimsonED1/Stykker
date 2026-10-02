@@ -49,6 +49,16 @@ foreach (var check in Example1.Run2D())
 }
 Console.WriteLine($"INFO example 1 (2D) took {sw.ElapsedMilliseconds} ms");
 
+// Example 1, 3D. The interpreter is slow, so the smoke test uses a 1 µm chord error (budget scaled accordingly);
+// the full 50 nm case runs in the net10.0 test suite.
+sw.Restart();
+foreach (var check in Example1.Run3D(Tolerance.Budget(totalUm: 2.1, chordNm: 1000)))
+{
+    Console.WriteLine(check);
+    if (!check.Passed) failures++;
+}
+Console.WriteLine($"INFO example 1 (3D, chord 1 µm) took {sw.ElapsedMilliseconds} ms");
+
 Console.WriteLine(failures == 0 ? "ALL CHECKS PASSED" : $"{failures} CHECK(S) FAILED");
 return failures == 0 ? 0 : 1;
 
