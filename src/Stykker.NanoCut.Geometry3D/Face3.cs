@@ -103,16 +103,69 @@ internal sealed class Face3
         {
             Vec3 a = pts[i], b = pts[(i + 1) % n];
             if (a == b) throw new ArgumentException("Duplicate consecutive vertices.");
-            var e = Plane3.EdgePlane(a, b, k);
-            // Interior on the negative side: test with a vertex not on this edge's line.
-            int side = 0;
-            for (int j = 0; j < n && side == 0; j++) side = Predicates.Side(e, pts[j]);
-            if (side > 0) e = e.Flipped();
-            if (side == 0) throw new ArgumentException("Degenerate face.");
-            edges[i] = e;
+            edges[i] = OrientedEdgePlane(Plane3.EdgePlane(a, b, k), pts, i, n);
             verts[i] = new Point3(a);
         }
         return new Face3(support, edges, verts);
+    }
+
+    /// <summary>
+    /// The single-triangle case. Identical to <see cref="FromGrid"/> on three points, but without allocating the
+    /// three-element array and without the interface-dispatched access -- this is one call per hull triangle, so it
+    /// dominates the hull's face-building phase when the hull is finely tessellated.
+    /// </summary>
+    public static Face3 FromTriangle(Vec3 a, Vec3 b, Vec3 c)
+    {
+        if (a == b || b == c || c == a) throw new ArgumentException("Duplicate consecutive vertices.");
+        var support = Plane3.FromPoints(a, b, c).Canonical();
+        int k = Abs(support.Nx) >= Abs(support.Ny) && Abs(support.Nx) >= Abs(support.Nz) ? 0
+              : Abs(support.Ny) >= Abs(support.Nz) ? 1 : 2;
+        Span<Vec3> v = [a, b, c];
+        var edges = new Plane3[3]
+        {
+            OrientedEdgePlane(Plane3.EdgePlane(a, b, k), v, 0),
+            OrientedEdgePlane(Plane3.EdgePlane(b, c, k), v, 1),
+            OrientedEdgePlane(Plane3.EdgePlane(c, a, k), v, 2),
+        };
+        if (KernelStats.Counting)
+        {
+            var st = KernelStats.Mine;
+            st.HullFaces++;
+            st.HullFromGridEdges += 3;
+        }
+        return new Face3(support, edges, [new Point3(a), new Point3(b), new Point3(c)]);
+    }
+
+    /// <summary>
+    /// Orients an edge plane so that the polygon interior is on its negative side. Vertices <c>i</c> and <c>i+1</c>
+    /// lie on the plane by construction, so the side search skips them: for a triangle that leaves one Int128 test
+    /// instead of three, and it never has to scan the whole polygon.
+    /// </summary>
+    private static Plane3 OrientedEdgePlane(Plane3 e, IReadOnlyList<Vec3> pts, int i, int n)
+    {
+        int next = i + 1 == n ? 0 : i + 1;
+        for (int j = 0; j < n; j++)
+        {
+            if (j == i || j == next) continue;   // on the edge plane by construction
+            int side = Predicates.Side(e, pts[j]);
+            if (side > 0) return e.Flipped();
+            // Collinear vertices are allowed, so one on the plane does not decide: keep looking.
+            if (side < 0) return e;
+        }
+        throw new ArgumentException("Degenerate face.");
+    }
+
+    private static Plane3 OrientedEdgePlane(Plane3 e, ReadOnlySpan<Vec3> pts, int i)
+    {
+        int n = pts.Length, next = i + 1 == n ? 0 : i + 1;
+        for (int j = 0; j < n; j++)
+        {
+            if (j == i || j == next) continue;
+            int side = Predicates.Side(e, pts[j]);
+            if (side > 0) return e.Flipped();
+            if (side < 0) return e;
+        }
+        throw new ArgumentException("Degenerate face.");
     }
 
     private static Int128 Abs(Int128 v) => v < 0 ? -v : v;

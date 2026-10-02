@@ -56,6 +56,35 @@ foreach (var step in scene["steps"]!.AsArray())
 }
 var save = scene["save"]!.AsArray().Select(v => v!.GetValue<int>()).ToHashSet();
 
+// --hull-breakdown splits ConvexHull3.Compute into its quickhull phase and the phase that turns triangles into
+// coplanar polygon faces, on one step's point set. Which of the two dominates decides where the hull work goes.
+if (args.Contains("--hull-breakdown"))
+{
+    var first = steps[0];
+    var pair = new Vec3[first.Length * 2];
+    Array.Copy(first, pair, first.Length);
+    Array.Copy(first, 0, pair, first.Length, first.Length);
+    var tris = ConvexHull3.Triangles(pair, out _);
+    var hull = ConvexHull3.Compute(pair);
+    const int Reps = 200;
+    double triBest = double.MaxValue, allBest = double.MaxValue;
+    for (int i = 0; i < 5; i++)
+    {
+        var t0 = Stopwatch.GetTimestamp();
+        for (int r = 0; r < Reps; r++) _ = ConvexHull3.Triangles(pair, out _);
+        triBest = Math.Min(triBest, Stopwatch.GetElapsedTime(t0).TotalMilliseconds / Reps);
+        t0 = Stopwatch.GetTimestamp();
+        for (int r = 0; r < Reps; r++) _ = ConvexHull3.Compute(pair);
+        allBest = Math.Min(allBest, Stopwatch.GetElapsedTime(t0).TotalMilliseconds / Reps);
+    }
+    double face = allBest - triBest;
+    Console.WriteLine($"hull breakdown: {first.Length} input points -> {tris.Count} triangles, {hull.FaceCount} faces");
+    Console.WriteLine($"  quickhull phase  {triBest,8:F3} ms  {100 * triBest / allBest,5:F1} %");
+    Console.WriteLine($"  face build phase {face,8:F3} ms  {100 * face / allBest,5:F1} %   ({face * 1e6 / hull.FaceCount:F0} ns per face)");
+    Console.WriteLine($"  Compute total    {allBest,8:F3} ms");
+    return 0;
+}
+
 // MaxParallelism is process-global; set it once so every run in this process sees the same setting.
 if (par > 0) SolidBoolean.MaxParallelism = par;
 
