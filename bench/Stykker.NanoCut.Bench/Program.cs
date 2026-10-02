@@ -1,0 +1,154 @@
+// Usage: dotnet run -c Release -- <expanded.json> <out-dir> <nanocut|manifoldsharp> [--warm]
+// Runs the steps of an expanded bench scene (workpiece box minus the convex hull of each step's points, in order) and
+// writes stats.json plus binary STL files of the states listed in "save". Only the cutting is timed.
+using System.Diagnostics;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using Stykker.NanoCut;
+using Stykker.NanoCut.Geometry3D;
+using MS = ManifoldSharp;
+
+if (args.Length < 3)
+{
+    Console.Error.WriteLine("usage: <expanded.json> <out-dir> <nanocut|manifoldsharp>");
+    return 2;
+}
+var scene = JsonNode.Parse(File.ReadAllText(args[0]))!;
+string outDir = args[1], engine = args[2];
+bool warm = args.Contains("--warm");
+Directory.CreateDirectory(outDir);
+
+long[] Corner(string key) => scene["box"]![key]!.AsArray().Select(v => v!.GetValue<long>()).ToArray();
+var min = Corner("min");
+var max = Corner("max");
+var steps = scene["steps"]!.AsArray()
+    .Select(s => s!.AsArray().Select(p => p!.AsArray().Select(v => v!.GetValue<long>()).ToArray()).ToArray())
+    .ToArray();
+var save = scene["save"]!.AsArray().Select(v => v!.GetValue<int>()).ToHashSet();
+
+IEngine run = engine switch
+{
+    "nanocut" => new NanoCutEngine(),
+    "manifoldsharp" => new ManifoldSharpEngine(),
+    _ => throw new ArgumentException($"unknown engine {engine}"),
+};
+
+// Optional warm-up: the whole scene once, untimed, so that JIT compilation (tiered + PGO) is not measured.
+if (warm)
+{
+    var w = engine == "nanocut" ? (IEngine)new NanoCutEngine() : new ManifoldSharpEngine();
+    w.Start(min, max);
+    foreach (var step in steps) w.Cut(step);
+}
+
+var stepMs = new List<double>();
+var total = Stopwatch.StartNew();
+run.Start(min, max);
+if (save.Contains(0)) File.WriteAllBytes(Path.Combine(outDir, "step-0000.stl"), run.Stl());
+total.Restart();
+double saveMs = 0;
+for (int i = 0; i < steps.Length; i++)
+{
+    var sw = Stopwatch.StartNew();
+    run.Cut(steps[i]);
+    stepMs.Add(sw.Elapsed.TotalMilliseconds);
+    if (save.Contains(i + 1) || (i == steps.Length - 1 && save.Contains(-1)))
+    {
+        var s = Stopwatch.StartNew();
+        File.WriteAllBytes(Path.Combine(outDir, $"step-{i + 1:0000}.stl"), run.Stl());
+        saveMs += s.Elapsed.TotalMilliseconds;
+    }
+}
+double totalMs = total.Elapsed.TotalMilliseconds - saveMs;
+
+var stats = new JsonObject
+{
+    ["engine"] = engine,
+    ["language"] = "C#",
+    ["exact"] = engine == "nanocut",
+    ["warm"] = warm,
+    ["steps"] = steps.Length,
+    ["totalMs"] = totalMs,
+    ["stepMs"] = new JsonArray(stepMs.Select(v => (JsonNode)v).ToArray()),
+    ["volumeMm3"] = run.VolumeMm3(),
+    ["triangles"] = run.Triangles(),
+};
+File.WriteAllText(Path.Combine(outDir, "stats.json"), stats.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+Console.WriteLine($"{engine}: {steps.Length} steps in {totalMs:F0} ms, V = {run.VolumeMm3():F9} mm³, {run.Triangles()} triangles");
+return 0;
+
+interface IEngine
+{
+    void Start(long[] min, long[] max);
+    void Cut(long[][] points);
+    double VolumeMm3();
+    long Triangles();
+    byte[] Stl();
+}
+
+sealed class NanoCutEngine : IEngine
+{
+    private Solid _work = Solid.Empty;
+
+    public void Start(long[] min, long[] max) =>
+        _work = Solid.Box(new Vec3(min[0], min[1], min[2]), new Vec3(max[0], max[1], max[2]));
+
+    public void Cut(long[][] points) => _work -= ConvexHull3.Compute(points.Select(p => new Vec3(p[0], p[1], p[2])));
+
+    public double VolumeMm3() => _work.VolumeMm3;
+
+    public long Triangles() => _work.ToMeshBuffers(OriginMode.Absolute).Indices.Length / 3;
+
+    public byte[] Stl() => _work.ToMeshBuffers(OriginMode.Absolute).ToStl();
+}
+
+// Coordinates are given to Manifold in nm (as doubles, exact for |c| < 2^53); volumes are converted to mm³.
+sealed class ManifoldSharpEngine : IEngine
+{
+    private MS.Manifold _work = MS.Manifold.Empty();
+
+    public void Start(long[] min, long[] max) =>
+        _work = MS.Manifold.Cube(new MS.Linalg.Vec3(max[0] - min[0], max[1] - min[1], max[2] - min[2]), false)
+            .Translate(new MS.Linalg.Vec3(min[0], min[1], min[2]));
+
+    public void Cut(long[][] points) =>
+        _work = _work.Difference(MS.Manifold.Hull(points.Select(p => new MS.Linalg.Vec3(p[0], p[1], p[2])).ToList()));
+
+    public double VolumeMm3() => _work.Volume() * 1e-18;
+
+    public long Triangles() => _work.NumTri();
+
+    public byte[] Stl()
+    {
+        var m = _work.GetMeshGL64(0);
+        var v = m.VertProperties;
+        int np = (int)m.NumProp;
+        return StlWriter.Write(m.TriVerts.Count / 3, (t, k) =>
+        {
+            int i = (int)m.TriVerts[3 * t + k] * np;
+            return ((float)(v[i] * 1e-6), (float)(v[i + 1] * 1e-6), (float)(v[i + 2] * 1e-6));
+        });
+    }
+}
+
+static class StlWriter
+{
+    public static byte[] Write(int triangles, Func<int, int, (float X, float Y, float Z)> vertex)
+    {
+        var ms = new MemoryStream();
+        var w = new BinaryWriter(ms);
+        w.Write(new byte[80]);
+        w.Write((uint)triangles);
+        for (int t = 0; t < triangles; t++)
+        {
+            w.Write(0f); w.Write(0f); w.Write(0f);
+            for (int k = 0; k < 3; k++)
+            {
+                var (x, y, z) = vertex(t, k);
+                w.Write(x); w.Write(y); w.Write(z);
+            }
+            w.Write((ushort)0);
+        }
+        return ms.ToArray();
+    }
+}

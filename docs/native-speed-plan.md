@@ -110,3 +110,17 @@ Port the same piece in both C and Rust: the exact predicates (orient3d, plane si
 | 2 | 2–4 days |
 | 3–4 | 3–5 days |
 | Porting the whole kernel | several weeks |
+
+## First measurements (CLI race, `bench/`)
+
+Same input on the nm grid for all engines. Medium scene: 96 hull subtractions.
+
+| Engine | Language | Arithmetic | Time |
+| --- | --- | --- | ---: |
+| NanoCut | C# | exact | 2.39 s |
+| CGAL | C++ | exact | 3.29 s |
+| ManifoldSharp | C# | double | 1.03 s |
+| Manifold | C++ | double | 0.53 s |
+
+The same algorithm runs about 2× faster in C++. An exact C++ kernel (CGAL) is not faster than NanoCut. See
+`bench/README.md`.
