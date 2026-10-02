@@ -1,0 +1,117 @@
+"""Runs one bench scene with several engines and compares time and result.
+
+Usage: python3 bench/run.py bench/scenes/ball-small.json [--engines nanocut,manifoldsharp,cgal,manifold] [--repeat 3]
+
+The scene (mm) describes a box, a ball tool, a path ("from where to where") and the number of steps per path
+segment. It is expanded once into explicit points on the 1 nm grid, so every engine gets the identical input: per
+step the convex hull of the ball at the step's start and end points, subtracted from the workpiece in order.
+"save" lists the states written as STL (step numbers, 0 = stock, -1 = final); default is only the final state.
+"""
+import argparse
+import json
+import math
+import os
+import subprocess
+import sys
+
+ROOT = os.path.dirname(os.path.abspath(__file__))
+WARM = False
+
+
+def nm(mm):
+    return int(math.floor(mm * 1e6 + 0.5))
+
+
+def ball_points(c, r, segments):
+    n = max(4, segments // 2 * 2)
+    pts = [[c[0], c[1], c[2] + r], [c[0], c[1], c[2] - r]]
+    for i in range(1, n // 2):
+        th = math.pi * i / (n // 2)
+        for j in range(n):
+            ph = 2 * math.pi * j / n
+            pts.append([c[0] + r * math.sin(th) * math.cos(ph), c[1] + r * math.sin(th) * math.sin(ph), c[2] + r * math.cos(th)])
+    return pts
+
+
+def expand(scene):
+    ball = scene["tool"]["ball"]
+    centers = []
+    path = scene["path"]
+    k = scene.get("stepsPerSegment", 1)
+    for a, b in zip(path, path[1:]):
+        for i in range(k):
+            t = i / k
+            centers.append([a[d] + (b[d] - a[d]) * t for d in range(3)])
+    centers.append(path[-1])
+    steps = []
+    for p, q in zip(centers, centers[1:]):
+        pts = ball_points(p, ball["radius"], ball["segments"]) + ball_points(q, ball["radius"], ball["segments"])
+        steps.append([[nm(v) for v in pt] for pt in pts])
+    return {
+        "box": {"min": [nm(v) for v in scene["box"]["min"]], "max": [nm(v) for v in scene["box"]["max"]]},
+        "steps": steps,
+        "save": scene.get("save", [-1]),
+    }
+
+
+def command(engine, expanded, out):
+    if engine in ("nanocut", "manifoldsharp"):
+        dll = os.path.join(ROOT, "Stykker.NanoCut.Bench/bin/Release/net10.0/Stykker.NanoCut.Bench.dll")
+        return ["dotnet", dll, expanded, out, engine] + (["--warm"] if WARM else [])
+    if engine == "cgal":
+        return [os.path.join(ROOT, "cgal/build/bench_cgal"), expanded, out]
+    if engine == "manifold":
+        return [sys.executable, os.path.join(ROOT, "manifold/run.py"), expanded, out]
+    raise SystemExit(f"unknown engine {engine}")
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("scene")
+    ap.add_argument("--engines", default="nanocut,manifoldsharp,cgal,manifold")
+    ap.add_argument("--repeat", type=int, default=1)
+    ap.add_argument("--out", default=os.path.join(ROOT, "out"))
+    ap.add_argument("--cold", action="store_true", help="C#: include JIT compilation (no in-process warm-up run)")
+    a = ap.parse_args()
+    global WARM
+    WARM = not a.cold
+
+    scene = json.load(open(a.scene))
+    base = os.path.join(a.out, scene["name"])
+    os.makedirs(base, exist_ok=True)
+    expanded = os.path.join(base, "expanded.json")
+    json.dump(expand(scene), open(expanded, "w"))
+
+    rows = []
+    for engine in a.engines.split(","):
+        out = os.path.join(base, engine)
+        os.makedirs(out, exist_ok=True)
+        best = None
+        for _ in range(a.repeat):
+            r = subprocess.run(command(engine, expanded, out), capture_output=True, text=True)
+            if r.returncode != 0:
+                print(f"{engine} failed:\n{r.stdout}{r.stderr}")
+                break
+            s = json.load(open(os.path.join(out, "stats.json")))
+            if best is None or s["totalMs"] < best["totalMs"]:
+                best = s
+        if best:
+            rows.append(best)
+            print(f"  {engine:14s} {best['totalMs']:10.0f} ms")
+
+    ref = next((r for r in rows if r["engine"] == "nanocut"), rows[0] if rows else None)
+    lines = [f"Scene `{scene['name']}`: {scene.get('description', '')} "
+             f"{len(json.load(open(expanded))['steps'])} steps, C# {'cold (JIT included)' if a.cold else 'warm'}.", "",
+             "| Engine | Language | Exact | Time (ms) | per step (ms) | Volume (mm³) | ΔV vs NanoCut (mm³) | Triangles |",
+             "| --- | --- | --- | ---: | ---: | ---: | ---: | ---: |"]
+    for r in rows:
+        dv = r["volumeMm3"] - ref["volumeMm3"]
+        lines.append(f"| {r['engine']} | {r['language']} | {'yes' if r['exact'] else 'no'} | {r['totalMs']:.0f} | "
+                     f"{r['totalMs'] / r['steps']:.1f} | {r['volumeMm3']:.9f} | {dv:+.2e} | {r['triangles']} |")
+    table = "\n".join(lines)
+    open(os.path.join(base, "results.md"), "w").write(table + "\n")
+    print()
+    print(table)
+
+
+main()

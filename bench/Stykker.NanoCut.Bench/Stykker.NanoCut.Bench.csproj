@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Benchmark CLI: runs an expanded bench scene with NanoCut or ManifoldSharp (comparison only; nothing here ships). -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <ServerGarbageCollection>false</ServerGarbageCollection>
+    <TieredPGO>true</TieredPGO>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="ManifoldSharp" Version="0.3.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/Stykker.NanoCut.Geometry3D/Stykker.NanoCut.Geometry3D.csproj" />
+  </ItemGroup>
+</Project>

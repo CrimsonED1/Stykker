@@ -430,3 +430,5 @@ FodyWeavers.xsd
 
 # Agent worktrees (Claude Code)
 .claude/worktrees/
+bench/out/
+bench/cgal/build/
