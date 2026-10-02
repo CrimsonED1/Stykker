@@ -32,17 +32,14 @@ internal static class FaceMerge
         while (mergedAny && pieces.Count > 1)
         {
             mergedAny = false;
-            // Index directed edges by an approximate key; candidates are confirmed exactly.
-            var byEdge = new Dictionary<(long, long, long, long, long, long), List<(int Piece, int Edge)>>();
+            // Index directed edges by an approximate key; candidates are confirmed exactly. In a closed surface a directed
+            // edge belongs to one face, so one entry per key suffices (a rare duplicate only costs a missed merge).
+            var byEdge = new Dictionary<(long, long, long, long, long, long), (int Piece, int Edge)>();
             for (int i = 0; i < pieces.Count; i++)
             {
                 var v = pieces[i].Vertices;
                 for (int k = 0; k < v.Length; k++)
-                {
-                    var key = Key(v[k], v[(k + 1) % v.Length]);
-                    if (!byEdge.TryGetValue(key, out var list)) byEdge[key] = list = [];
-                    list.Add((i, k));
-                }
+                    byEdge.TryAdd(Key(v[k], v[(k + 1) % v.Length]), (i, k));
             }
             var dead = new bool[pieces.Count];
             var touched = new bool[pieces.Count];
@@ -55,23 +52,20 @@ internal static class FaceMerge
                 {
                     var u = a.Vertices[k];
                     var w = a.Vertices[(k + 1) % a.Vertices.Length];
-                    if (!byEdge.TryGetValue(Key(w, u), out var twins)) continue;
-                    foreach (var (j, m) in twins)
-                    {
-                        if (j == i || dead[j] || touched[j]) continue;
-                        var b = pieces[j];
-                        var bu = b.Vertices[m];
-                        var bw = b.Vertices[(m + 1) % b.Vertices.Length];
-                        if (!bu.SameAs(w) || !bw.SameAs(u)) continue;
-                        var joined = Join(a, k, b, m);
-                        if (joined is null) continue;
-                        // Indices of the merged face are stale for this pass: mark it, merge further next pass.
-                        pieces[i] = joined;
-                        dead[j] = true;
-                        touched[i] = true;
-                        mergedAny = done = true;
-                        break;
-                    }
+                    if (!byEdge.TryGetValue(Key(w, u), out var twin)) continue;
+                    var (j, m) = twin;
+                    if (j == i || dead[j] || touched[j]) continue;
+                    var b = pieces[j];
+                    var bu = b.Vertices[m];
+                    var bw = b.Vertices[(m + 1) % b.Vertices.Length];
+                    if (!bu.SameAs(w) || !bw.SameAs(u)) continue;
+                    var joined = Join(a, k, b, m);
+                    if (joined is null) continue;
+                    // Indices of the merged face are stale for this pass: mark it, merge further next pass.
+                    pieces[i] = joined;
+                    dead[j] = true;
+                    touched[i] = true;
+                    mergedAny = done = true;
                 }
             }
             if (mergedAny)
