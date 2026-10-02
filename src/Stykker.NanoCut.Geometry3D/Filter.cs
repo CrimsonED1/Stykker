@@ -9,7 +9,7 @@ namespace Stykker.NanoCut.Geometry3D;
 internal static class Filter
 {
     public const int Uncertain = int.MinValue;
-    private const double Rel = 1e-11;
+    public const double Rel = 1e-11;
 
     /// <summary>Sign of n·p + d.</summary>
     public static int Sign(in Plane3 plane, double x, double y, double z)

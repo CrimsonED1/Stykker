@@ -89,6 +89,14 @@ internal sealed class Bvh3
         }
     }
 
+    /// <summary>Faces whose box meets the axis-parallel ray from (x, y, z) along ±axis (0 = x, 1 = y, 2 = z).</summary>
+    public void QueryRay(int axis, int sign, double x, double y, double z, List<Face3> result)
+    {
+        double lo(double c, int a) => a != axis ? c : sign > 0 ? c - 1 : double.MinValue;
+        double hi(double c, int a) => a != axis ? c : sign > 0 ? double.MaxValue : c + 1;
+        Query(new Box3(lo(x, 0), lo(y, 1), lo(z, 2), hi(x, 0), hi(y, 1), hi(z, 2)), result);
+    }
+
     /// <summary>Faces whose box meets the ray {(x, y, z) : x ≥ x0}.</summary>
     public void QueryRayX(double x0, double y, double z, List<Face3> result) =>
         Query(new Box3(x0, y, z, double.MaxValue, y, z), result);
