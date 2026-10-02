@@ -128,6 +128,16 @@ public sealed class Region2
         }
     }
 
+    /// <summary>The region moved by a rigid motion; vertices are rounded to the grid (≤ 0.71 nm).</summary>
+    public Region2 Transform(Pose2 pose)
+    {
+        var contours = Contours.Select(c => new Contour2(c.Points.ToArray().Select(pose.Apply))).ToArray();
+        return new Region2(contours, FillRule, normalized: false);
+    }
+
+    /// <summary>Convex polygons covering the region exactly (counter-clockwise).</summary>
+    public List<Vec2[]> ConvexParts() => Triangulator2.ConvexParts(this);
+
     /// <summary>The region translated by <paramref name="offset"/>.</summary>
     public Region2 Translate(Vec2 offset) =>
         new(Contours.Select(c => c.Translated(offset)).ToArray(), FillRule, IsNormalized);

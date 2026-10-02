@@ -4,10 +4,10 @@ namespace Stykker.NanoCut.Geometry2D;
 /// Exact 2D Boolean kernel on the 1 nm grid.
 /// <list type="number">
 /// <item>All edges of both operands are collected with their winding multiplicities.</item>
-/// <item>A sweep over x finds crossings, T-junctions and collinear overlaps; edges are split there.
-/// Crossing points are rounded once to the grid (≤ 0.71 nm); points that are already on the grid are
-/// never moved again, so the error does not accumulate. Splitting repeats until the arrangement has no
-/// proper crossings left.</item>
+/// <item>A sweep over x finds crossings, T-junctions and collinear overlaps. Crossings are resolved by snap
+/// rounding with hot pixels (every edge is routed through the centre of each crossing or end-point pixel it
+/// meets, ≤ 0.71 nm), T-junctions and overlaps by exact splits. Grid points are never moved again, so the
+/// error does not accumulate.</item>
 /// <item>A half-edge structure is built (exact angular order around each vertex), faces are traced and
 /// the winding numbers of both operands are propagated face to face, starting from one exact ray test
 /// per connected component.</item>
@@ -87,40 +87,143 @@ internal static class BooleanKernel
     {
         for (int iter = 0; iter < MaxSplitIterations; iter++)
         {
-            var splits = FindSplitPoints(edges);
-            if (splits.Count == 0) return edges;
-
-            var next = new List<Edge>(edges.Count + splits.Count * 2);
-            for (int i = 0; i < edges.Count; i++)
+            var (touch, hot) = FindSplitPoints(edges);
+            if (hot.Count > 0)
             {
-                var e = edges[i];
-                if (!splits.TryGetValue(i, out var pts))
-                {
-                    next.Add(e);
-                    continue;
-                }
-                Vec2 d = e.B - e.A;
-                pts.Sort((p, q) => Vec2.Dot(p - e.A, d).CompareTo(Vec2.Dot(q - e.A, d)));
-                Vec2 prev = e.A;
-                foreach (var p in pts)
-                {
-                    if (p == prev || p == e.A || p == e.B) continue;
-                    next.Add(Canonical(prev, p, e.WA, e.WB));
-                    prev = p;
-                }
-                if (prev != e.B) next.Add(Canonical(prev, e.B, e.WA, e.WB));
+                edges = SnapRound(edges, hot);
+                continue;
             }
-            edges = Merge(next);
+            if (touch.Count == 0) return edges;
+            edges = ApplySplits(edges, touch);
         }
         throw new InvalidOperationException(
-            $"Boolean kernel: arrangement did not become planar after {MaxSplitIterations} snap-rounding iterations.");
+            $"Boolean kernel: arrangement did not become planar after {MaxSplitIterations} iterations.");
     }
 
-    private static Dictionary<int, List<Vec2>> FindSplitPoints(List<Edge> edges)
+    /// <summary>Splits edges at exact grid points lying on them (T-junctions, collinear overlaps).</summary>
+    private static List<Edge> ApplySplits(List<Edge> edges, Dictionary<int, List<Vec2>> splits)
+    {
+        var next = new List<Edge>(edges.Count + splits.Count * 2);
+        for (int i = 0; i < edges.Count; i++)
+        {
+            var e = edges[i];
+            if (!splits.TryGetValue(i, out var pts))
+            {
+                next.Add(e);
+                continue;
+            }
+            AddPolyline(next, e, pts);
+        }
+        return Merge(next);
+    }
+
+    private static void AddPolyline(List<Edge> output, in Edge e, List<Vec2> pts)
+    {
+        Vec2 d = e.B - e.A;
+        var a = e.A;
+        pts.Sort((p, q) => Vec2.Dot(p - a, d).CompareTo(Vec2.Dot(q - a, d)));
+        Vec2 prev = e.A;
+        foreach (var p in pts)
+        {
+            if (p == prev || p == e.A || p == e.B) continue;
+            output.Add(Canonical(prev, p, e.WA, e.WB));
+            prev = p;
+        }
+        if (prev != e.B) output.Add(Canonical(prev, e.B, e.WA, e.WB));
+    }
+
+    /// <summary>
+    /// Snap rounding with hot pixels (Hobby; Guibas &amp; Marimont): every crossing point and every edge end point
+    /// defines a hot pixel (the half-open unit square around a grid point); each edge is rerouted through the
+    /// centres of all hot pixels it meets. This moves edges by at most √2/2 nm and, unlike rounding crossings one by
+    /// one, cannot create new crossings, so it terminates.
+    /// </summary>
+    private static List<Edge> SnapRound(List<Edge> edges, HashSet<Vec2> crossings)
+    {
+        var hot = new HashSet<Vec2>(crossings);
+        foreach (var e in edges) { hot.Add(e.A); hot.Add(e.B); }
+        var pixels = hot.ToArray();
+        Array.Sort(pixels);
+        var xs = pixels.Select(p => p.X).ToArray();
+
+        var next = new List<Edge>(edges.Count * 2);
+        var hits = new List<Vec2>();
+        foreach (var e in edges)
+        {
+            long y0 = Math.Min(e.A.Y, e.B.Y) - 1, y1 = Math.Max(e.A.Y, e.B.Y) + 1;
+            int i = LowerBound(xs, e.A.X - 1);
+            hits.Clear();
+            for (; i < pixels.Length && pixels[i].X <= e.B.X + 1; i++)
+            {
+                var h = pixels[i];
+                if (h.Y < y0 || h.Y > y1 || h == e.A || h == e.B) continue;
+                if (SegmentHitsPixel(e.A, e.B, h)) hits.Add(h);
+            }
+            if (hits.Count == 0) next.Add(e);
+            else AddPolyline(next, e, hits);
+        }
+        return Merge(next);
+    }
+
+    private static int LowerBound(long[] xs, long x)
+    {
+        int lo = 0, hi = xs.Length;
+        while (lo < hi)
+        {
+            int mid = (lo + hi) >> 1;
+            if (xs[mid] < x) lo = mid + 1; else hi = mid;
+        }
+        return lo;
+    }
+
+    /// <summary>Exact test whether segment ab meets the half-open pixel [h − ½, h + ½)².</summary>
+    internal static bool SegmentHitsPixel(Vec2 a, Vec2 b, Vec2 h)
+    {
+        // Doubled coordinates make the pixel bounds integral. Parameter interval t ∈ [lo, hi] as fractions.
+        Int128 loN = 0, loD = 1, hiN = 1, hiD = 1;
+        bool loOpen = false, hiOpen = false;
+        return Clip(2 * a.X, 2 * (b.X - a.X), 2 * h.X - 1, 2 * h.X + 1)
+            && Clip(2 * a.Y, 2 * (b.Y - a.Y), 2 * h.Y - 1, 2 * h.Y + 1)
+            && (Compare(loN, loD, hiN, hiD) < 0 || (Compare(loN, loD, hiN, hiD) == 0 && !loOpen && !hiOpen));
+
+        // Constraint low ≤ p + t·d < high.
+        bool Clip(long p, long d, long low, long high)
+        {
+            if (d == 0) return low <= p && p < high;
+            if (d > 0)
+            {
+                Lower(low - p, d, open: false);
+                Upper(high - p, d, open: true);
+            }
+            else
+            {
+                Upper(p - low, -d, open: false);
+                Lower(p - high, -d, open: true);
+            }
+            return true;
+        }
+
+        void Lower(Int128 n, Int128 d, bool open)
+        {
+            int c = Compare(n, d, loN, loD);
+            if (c > 0 || (c == 0 && open)) { loN = n; loD = d; loOpen = open || (c == 0 && loOpen); }
+        }
+
+        void Upper(Int128 n, Int128 d, bool open)
+        {
+            int c = Compare(n, d, hiN, hiD);
+            if (c < 0 || (c == 0 && open)) { hiN = n; hiD = d; hiOpen = open || (c == 0 && hiOpen); }
+        }
+
+        static int Compare(Int128 an, Int128 ad, Int128 bn, Int128 bd) => (an * bd).CompareTo(bn * ad);
+    }
+
+    private static (Dictionary<int, List<Vec2>> Touch, HashSet<Vec2> Hot) FindSplitPoints(List<Edge> edges)
     {
         int n = edges.Count;
         // Edges are sorted by A (lexicographic), and A.X == min X of the edge.
-        var splits = new Dictionary<int, List<Vec2>>();
+        var touch = new Dictionary<int, List<Vec2>>();
+        var hot = new HashSet<Vec2>();
         for (int i = 0; i < n; i++)
         {
             var p = edges[i];
@@ -131,13 +234,13 @@ internal static class BooleanKernel
                 if (q.A.X > p.B.X) break;
                 long qMinY = Math.Min(q.A.Y, q.B.Y), qMaxY = Math.Max(q.A.Y, q.B.Y);
                 if (qMinY > pMaxY || qMaxY < pMinY) continue;
-                Intersect(p, i, q, j, splits);
+                Intersect(p, i, q, j, touch, hot);
             }
         }
-        return splits;
+        return (touch, hot);
     }
 
-    private static void Intersect(in Edge p, int i, in Edge q, int j, Dictionary<int, List<Vec2>> splits)
+    private static void Intersect(in Edge p, int i, in Edge q, int j, Dictionary<int, List<Vec2>> splits, HashSet<Vec2> hot)
     {
         int d1 = Predicates.Orient2D(q.A, q.B, p.A);
         int d2 = Predicates.Orient2D(q.A, q.B, p.B);
@@ -146,12 +249,10 @@ internal static class BooleanKernel
 
         if (d1 * d2 < 0 && d3 * d4 < 0)
         {
-            Vec2 x = RoundedIntersection(p.A, p.B, q.A, q.B);
-            if (x != p.A && x != p.B) Add(splits, i, x);
-            if (x != q.A && x != q.B) Add(splits, j, x);
+            hot.Add(RoundedIntersection(p.A, p.B, q.A, q.B));
             return;
         }
-        // Touching / collinear cases: split at the endpoint lying strictly inside the other edge.
+        // Touching / collinear cases: split at the endpoint lying strictly inside the other edge (exact).
         if (d1 == 0 && StrictlyInside(q, p.A)) Add(splits, j, p.A);
         if (d2 == 0 && StrictlyInside(q, p.B)) Add(splits, j, p.B);
         if (d3 == 0 && StrictlyInside(p, q.A)) Add(splits, i, q.A);
@@ -170,8 +271,8 @@ internal static class BooleanKernel
         point != e.A && point != e.B && Vec2.Dot(e.A - point, e.B - point) < 0;
 
     /// <summary>
-    /// Intersection of two properly crossing segments, rounded to the nearest grid point (half away from zero).
-    /// x = a.x + dx·t with t = num/den; all products stay below 2^98.
+    /// Intersection of two properly crossing segments, rounded to the grid point whose half-open pixel contains it
+    /// (halves round up). x = a.x + dx·t with t = num/den; all products stay below 2^99.
     /// </summary>
     internal static Vec2 RoundedIntersection(Vec2 a, Vec2 b, Vec2 c, Vec2 d)
     {
@@ -184,12 +285,12 @@ internal static class BooleanKernel
         return new Vec2(x, y);
     }
 
-    /// <summary>Rounds n/d to the nearest integer, halves away from zero. d &gt; 0.</summary>
+    /// <summary>floor(n/d + ½) for d &gt; 0 (nearest integer, halves up – matches half-open hot pixels).</summary>
     internal static long RoundDiv(Int128 n, Int128 d)
     {
-        (Int128 q, Int128 rem) = Int128.DivRem(n, d); // truncates toward zero
-        Int128 twice = Int128.Abs(rem) * 2;
-        if (twice >= d) q += n < 0 ? -1 : 1;
+        Int128 num = 2 * n + d, den = 2 * d;
+        (Int128 q, Int128 rem) = Int128.DivRem(num, den); // truncates toward zero
+        if (rem < 0) q -= 1;
         return (long)q;
     }
 

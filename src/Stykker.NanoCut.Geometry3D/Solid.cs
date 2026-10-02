@@ -159,6 +159,108 @@ public sealed class Solid
         return new Solid(faces);
     }
 
+    /// <summary>
+    /// Prism from a planar region: the region (in the xy-plane, mm) is extruded from z0 to z1 and then placed by
+    /// <paramref name="placement"/> (applied in double precision before rounding to the grid). Non-convex regions
+    /// and holes are supported; caps are split into convex pieces.
+    /// </summary>
+    public static Solid Extrude(Geometry2D.Region2 region, double z0Mm, double z1Mm, Pose3? placement = null)
+    {
+        var norm = region.Normalize();
+        if (z1Mm < z0Mm) (z0Mm, z1Mm) = (z1Mm, z0Mm);
+        if (z1Mm == z0Mm || norm.Contours.Count == 0) return Empty;
+        double z0 = z0Mm * Units.NmPerMm, z1 = z1Mm * Units.NmPerMm;
+        var pose = placement ?? Pose3.Identity;
+        Vec3 P(Vec2 p, double z) => Place(pose, p.X, p.Y, z);
+        var tris = new List<Vec3[]>();
+        foreach (var c in norm.Contours)
+            for (int i = 0; i < c.Count; i++)
+            {
+                Vec2 a = c[i], b = c[(i + 1) % c.Count];
+                // Interior lies left of a→b, so (a0, b0, b1, a1) faces outwards.
+                tris.Add([P(a, z0), P(b, z0), P(b, z1)]);
+                tris.Add([P(a, z0), P(b, z1), P(a, z1)]);
+            }
+        foreach (var piece in Geometry2D.Triangulator2.ConvexParts(norm))
+        {
+            for (int i = 1; i + 1 < piece.Length; i++)
+            {
+                tris.Add([P(piece[0], z1), P(piece[i], z1), P(piece[i + 1], z1)]);
+                tris.Add([P(piece[0], z0), P(piece[i + 1], z0), P(piece[i], z0)]);
+            }
+        }
+        return FromTriangleList(tris);
+    }
+
+    /// <summary>
+    /// Solid of revolution: the region is a profile in the half-plane x = r ≥ 0, y = z (mm), revolved once about
+    /// the z-axis with sagitta ≤ <see cref="Tolerance.ChordNm"/>, then placed by <paramref name="placement"/>.
+    /// </summary>
+    public static Solid Revolve(Geometry2D.Region2 profile, Tolerance? tol = null, Pose3? placement = null)
+    {
+        tol ??= Tolerance.Default;
+        var norm = profile.Normalize();
+        if (norm.Contours.Count == 0) return Empty;
+        long rMax = norm.Contours.SelectMany(c => c.Points.ToArray()).Max(p => p.X);
+        if (norm.Contours.Any(c => c.Points.ToArray().Any(p => p.X < 0)))
+            throw new ArgumentException("Profile must lie in r = x ≥ 0.", nameof(profile));
+        int n = (Discretization.SegmentCount(rMax, tol.ChordNm) + 3) / 4 * 4;
+        var pose = placement ?? Pose3.Identity;
+        var cos = new double[n];
+        var sin = new double[n];
+        for (int k = 0; k < n; k++) { cos[k] = Math.Cos(2 * Math.PI * k / n); sin[k] = Math.Sin(2 * Math.PI * k / n); }
+        Vec3 P(Vec2 p, int k) => Place(pose, p.X * cos[k % n], p.X * sin[k % n], p.Y);
+
+        var tris = new List<Vec3[]>();
+        foreach (var c in norm.Contours)
+            for (int i = 0; i < c.Count; i++)
+            {
+                Vec2 a = c[i], b = c[(i + 1) % c.Count];
+                if (a.X == 0 && b.X == 0) continue;
+                for (int k = 0; k < n; k++)
+                {
+                    if (a.X == 0) tris.Add([P(a, k), P(b, k + 1), P(b, k)]);
+                    else if (b.X == 0) tris.Add([P(a, k), P(a, k + 1), P(b, k)]);
+                    else
+                    {
+                        tris.Add([P(a, k), P(a, k + 1), P(b, k + 1)]);
+                        tris.Add([P(a, k), P(b, k + 1), P(b, k)]);
+                    }
+                }
+            }
+        return FromTriangleList(tris);
+    }
+
+    /// <summary>
+    /// The solid moved by a rigid motion. Vertices are rounded to the grid (≤ 0.87 nm); faces are re-triangulated
+    /// so that every face stays exactly planar.
+    /// </summary>
+    public Solid Transform(Pose3 pose)
+    {
+        var tris = new List<Vec3[]>();
+        foreach (var f in Faces)
+        {
+            var v = f.Vertices;
+            for (int i = 1; i + 1 < v.Length; i++)
+                tris.Add([Place(pose, v[0].X, v[0].Y, v[0].Z), Place(pose, v[i].X, v[i].Y, v[i].Z), Place(pose, v[i + 1].X, v[i + 1].Y, v[i + 1].Z)]);
+        }
+        return FromTriangleList(tris);
+    }
+
+    private static Vec3 Place(Pose3 pose, double x, double y, double z)
+    {
+        var (px, py, pz) = pose.Apply(x, y, z);
+        return Vec3.Nm((long)Math.Round(px, MidpointRounding.AwayFromZero), (long)Math.Round(py, MidpointRounding.AwayFromZero), (long)Math.Round(pz, MidpointRounding.AwayFromZero));
+    }
+
+    private static Solid FromTriangleList(List<Vec3[]> tris)
+    {
+        var faces = new List<Face3>(tris.Count);
+        foreach (var t in tris)
+            if (!Plane3.FromPoints(t[0], t[1], t[2]).IsDegenerate) faces.Add(Face3.FromGrid(t));
+        return new Solid(faces);
+    }
+
     private static Vec3 Midpoint(Vec3 a, Vec3 b) => new((a.X + b.X) / 2, (a.Y + b.Y) / 2, (a.Z + b.Z) / 2);
 
     private static Face3 Outward(Vec3[] pts, Vec3 interior)
@@ -257,6 +359,12 @@ public sealed class Solid
             return (x0 * k, y0 * k, z0 * k, x1 * k, y1 * k, z1 * k);
         }
     }
+
+    /// <summary>Saves the solid losslessly in the internal .ncs format.</summary>
+    public void Save(string path) => NcsFormat.Save(this, path);
+
+    /// <summary>Loads a solid saved with <see cref="Save"/>.</summary>
+    public static Solid Load(string path) => NcsFormat.Load(path);
 
     /// <summary>Triangle buffers for three.js / Babylon.js (flat shading).</summary>
     public MeshBuffers ToMeshBuffers(OriginMode origin = OriginMode.Centroid) => MeshBuffers.From(this, origin);

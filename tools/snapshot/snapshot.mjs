@@ -1,4 +1,4 @@
-// Usage: node snapshot.mjs <data-dir> <out.png> [iso|end]
+// Usage: node snapshot.mjs <data-dir> <out.png> [view]  (view defaults to the scene's own camera)
 // Serves the repository root, opens view.html in headless Chromium and saves a screenshot.
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
@@ -9,7 +9,7 @@ import { chromium } from 'playwright';
 const root = resolve(fileURLToPath(new URL('../..', import.meta.url)));
 const dataDir = process.argv[2] ?? 'snapshot-out';
 const out = resolve(process.argv[3] ?? 'snapshot.png');
-const view = process.argv[4] ?? 'iso';
+const view = process.argv[4] ?? '';
 const types = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.json': 'application/json' };
 
 const server = createServer(async (req, res) => {
@@ -30,7 +30,7 @@ const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--ena
 const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
 page.on('console', (m) => console.log('[page]', m.text()));
 page.on('pageerror', (e) => console.error('[page error]', e.message));
-await page.goto(`http://localhost:${port}/tools/snapshot/view.html?data=/__data&view=${view}`);
+await page.goto(`http://localhost:${port}/tools/snapshot/view.html?data=/__data${view ? `&view=${view}` : ''}`);
 await page.waitForFunction(() => window.snapshotReady === true, null, { timeout: 120000 });
 await page.screenshot({ path: out });
 await browser.close();

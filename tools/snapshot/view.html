@@ -50,17 +50,19 @@
 
   const camera = new THREE.PerspectiveCamera(30, innerWidth / innerHeight, 1, 500);
   camera.up.set(0, 0, 1);
-  const view = new URLSearchParams(location.search).get('view') ?? 'iso';
-  const views = { iso: [[-34, -20, 30], [0, 0, -1]], end: [[-36, 0, 14], [0, 0, 1]] };
-  const [eye, target] = views[view];
+  const view = new URLSearchParams(location.search).get('view') ?? info.view ?? 'iso';
+  const views = {
+    iso: [[-34, -20, 30], [0, 0, -1]], example1: [[-34, -20, 30], [0, 0, -1]], end: [[-36, 0, 14], [0, 0, 1]],
+    gear: [[-36, -64, 70], [2, 4, 0]], lathe: [[0, -95, 25], [0, 0, 0]], mill: [[-30, -52, 50], [0, 2, -2]],
+  };
+  const [eye, target] = views[view] ?? views.iso;
   camera.position.set(...eye);
   camera.lookAt(...target);
   renderer.render(scene, camera);
 
+  const lines = info.lines ?? [];
   document.getElementById('info').innerHTML =
-    `<b>Stykker.NanoCut – ${info.title}</b><br>` +
-    `removed volume ${info.removedVolume.toFixed(6)} mm³ (exact ${info.exactVolume.toFixed(6)})<br>` +
-    `depth ${info.depth.toFixed(6)} mm · ${info.faces} exact faces · ${info.ms} ms`;
+    `<b>Stykker.NanoCut – ${lines[0] ?? ''}</b><br>` + lines.slice(1).join('<br>');
   window.snapshotReady = true;
 </script>
 </body>
