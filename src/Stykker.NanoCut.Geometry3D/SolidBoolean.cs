@@ -226,6 +226,8 @@ internal static class SolidBoolean
         var k = f.PlanesD;
         for (int i = 0; i < f.Edges.Length; i++)
         {
+            // PlanesD layout: support at 0, Edges[i] at 4·(i + 1). Tests barely catch a wrong offset here (any edge plane
+            // that separates still proves separation), so keep this in step with Face3.PlanesD.
             int o = 4 * (i + 1);
             bool all = true;
             foreach (var v in pts)
