@@ -91,6 +91,10 @@ internal static class SolidBoolean
         var otherBox = other.Bounds;
         var candidates = new List<Face3>();
         var rayScratch = new List<Face3>();
+        var planes = new List<Plane3>();
+        var seen = new Dictionary<Plane3, int>();
+        var reach = new List<Box3>();
+        var coplanar = new List<Face3>();
         foreach (var p in faces)
         {
             var root = new Node(p);
@@ -101,13 +105,15 @@ internal static class SolidBoolean
                 continue;
             }
             other.Query(p.Box, candidates);
-            var planes = new List<Plane3>();
-            var seen = new Dictionary<Plane3, int>();
-            var reach = new List<Box3>();
-            var coplanar = new List<Face3>();
+            planes.Clear();
+            seen.Clear();
+            reach.Clear();
+            coplanar.Clear();
             foreach (var q in candidates)
             {
                 int ps = SideSummary(q.Support, p.Vertices);
+                // Faces that cannot meet need no cut: one lies strictly outside an edge plane of the other.
+                if (ps != 2 && (Separated(q, p.Vertices) || Separated(p, q.Vertices))) continue;
                 if (ps == 2)
                 {
                     coplanar.Add(q);
@@ -122,6 +128,11 @@ internal static class SolidBoolean
                 }
             }
 
+            if (planes.Count == 0)
+            {
+                root.Loc = Locate(p, other, coplanar, rayScratch);
+                continue;
+            }
             var fragments = new List<Node> { root };
             for (int pi = 0; pi < planes.Count; pi++)
             {
@@ -161,6 +172,22 @@ internal static class SolidBoolean
         seen[key] = planes.Count;
         planes.Add(key);
         reach.Add(box);
+    }
+
+    /// <summary>
+    /// True if all points lie strictly outside one edge plane of <paramref name="f"/>: then their convex hull cannot meet
+    /// the face (the face lies in the closed inner half-space of every edge plane).
+    /// </summary>
+    private static bool Separated(Face3 f, Point3[] pts)
+    {
+        foreach (var e in f.Edges)
+        {
+            bool all = true;
+            foreach (var v in pts)
+                if (v.SideOf(e) <= 0) { all = false; break; }
+            if (all) return true;
+        }
+        return false;
     }
 
     /// <summary>False if all points lie strictly on one side of the plane.</summary>
