@@ -84,3 +84,7 @@ textarea.program { width: 100%; height: 150px; font-family: ui-monospace, monosp
 .hist-bar i { display: block; width: 100%; min-height: 1px; background: var(--accent); border-radius: 3px 3px 0 0; }
 .hist-axis { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); }
 .num input + input { margin-left: 4px; }
+.sec-fill { fill: #9fb4c8; fill-opacity: 0.7; fill-rule: nonzero; stroke: #ff6a00; stroke-width: 0.6; vector-effect: non-scaling-stroke; }
+.sec-band { fill: #ff8a3d; fill-opacity: 0.75; fill-rule: nonzero; stroke: none; }
+.plot.section { max-height: 420px; }
+.sec-nominal { fill: none; stroke: #2f6fdc; stroke-width: 1; stroke-dasharray: 4 3; vector-effect: non-scaling-stroke; }
