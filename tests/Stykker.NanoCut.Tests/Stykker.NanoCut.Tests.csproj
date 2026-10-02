@@ -13,6 +13,7 @@
     <ProjectReference Include="../../src/Stykker.NanoCut.Geometry2D/Stykker.NanoCut.Geometry2D.csproj" />
     <ProjectReference Include="../../src/Stykker.NanoCut.Geometry3D/Stykker.NanoCut.Geometry3D.csproj" />
     <ProjectReference Include="../../src/Stykker.NanoCut.Cutting/Stykker.NanoCut.Cutting.csproj" />
+    <ProjectReference Include="../../src/Stykker.NanoCut.Gpu/Stykker.NanoCut.Gpu.csproj" />
   </ItemGroup>
   <ItemGroup>
     <Compile Include="../Shared/*.cs" Link="Shared/%(Filename)%(Extension)" />
