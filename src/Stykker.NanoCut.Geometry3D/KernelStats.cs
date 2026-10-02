@@ -22,6 +22,7 @@ internal static class KernelStats
         public long AboveCalls, AboveExact;
         public long HullPoints, HullTris, HullFaces, HullFromGridEdges;
         public long MergePasses, MergeKeys;
+        public long FaceCandidates, PairsTested;
 
         public void Reset()
         {
@@ -30,6 +31,7 @@ internal static class KernelStats
             AboveCalls = AboveExact = 0;
             HullPoints = HullTris = HullFaces = HullFromGridEdges = 0;
             MergePasses = MergeKeys = 0;
+            FaceCandidates = PairsTested = 0;
         }
     }
 
@@ -75,9 +77,10 @@ internal static class KernelStats
     /// <summary>Aggregated snapshot, summed over all threads that ever touched the kernel.</summary>
     internal static (long FilterCalls, long FilterUncertain, long SideGrid, long SideExact, long AboveCalls,
         long AboveExact, long HullPoints, long HullTris, long HullFaces, long HullFromGridEdges, long MergePasses,
-        long MergeKeys) Snapshot()
+        long MergeKeys, long FaceCandidates, long PairsTested) Snapshot()
     {
-        long fc = 0, fu = 0, sg = 0, se = 0, ac = 0, ae = 0, hp = 0, ht = 0, hf = 0, he = 0, mp = 0, mk = 0;
+        long fc = 0, fu = 0, sg = 0, se = 0, ac = 0, ae = 0, hp = 0, ht = 0, hf = 0, he = 0, mp = 0, mk = 0,
+             cand = 0, tested = 0;
         foreach (var c in Registry.Values)
         {
             fc += c.FilterCalls; fu += c.FilterUncertain;
@@ -85,8 +88,9 @@ internal static class KernelStats
             ac += c.AboveCalls; ae += c.AboveExact;
             hp += c.HullPoints; ht += c.HullTris; hf += c.HullFaces; he += c.HullFromGridEdges;
             mp += c.MergePasses; mk += c.MergeKeys;
+            cand += c.FaceCandidates; tested += c.PairsTested;
         }
-        return (fc, fu, sg, se, ac, ae, hp, ht, hf, he, mp, mk);
+        return (fc, fu, sg, se, ac, ae, hp, ht, hf, he, mp, mk, cand, tested);
     }
 
     /// <summary>Wall-clock cost of the counting itself, in ms, measured on <paramref name="work"/>.</summary>
@@ -117,6 +121,7 @@ internal static class KernelStats
                $"plane-side {s.SideGrid} grid / {s.SideExact} exact{Pct(s.SideExact, s.SideGrid + s.SideExact)}; " +
                $"hull-Above {s.AboveCalls} calls, {s.AboveExact} exact{Pct(s.AboveExact, s.AboveCalls)}; " +
                $"hull {s.HullTris} tris -> {s.HullFaces} faces, {s.HullFromGridEdges} edge planes; " +
-               $"merging {s.MergePasses} passes over {s.MergeKeys} keys";
+               $"merging {s.MergePasses} passes over {s.MergeKeys} keys; " +
+                $"candidates {s.FaceCandidates} fetched, {s.PairsTested} really tested{Pct(s.PairsTested, s.FaceCandidates)}";
     }
 }

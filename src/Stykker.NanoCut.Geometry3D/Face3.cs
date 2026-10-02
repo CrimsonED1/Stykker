@@ -34,7 +34,16 @@ internal sealed class Face3
             x0 = Math.Min(x0, v.X); y0 = Math.Min(y0, v.Y); z0 = Math.Min(z0, v.Z);
             x1 = Math.Max(x1, v.X); y1 = Math.Max(y1, v.Y); z1 = Math.Max(z1, v.Z);
         }
-        const double pad = 1.0; // nm; approximations of exact vertices are far more accurate
+        // The box must enclose the exact face, but a homogeneous vertex is only known through its double approximation
+        // X/W, which carries about four ulps of relative error. With the documented coordinate bound |c| <= 2^31 that is
+        // 2^31 * 4 * 2^-52 nm <= 1.9e-6 nm, so a pad of 1e-5 nm is a safe bound with a factor of five in hand.
+        //
+        // It used to be 1.0 nm -- five decades more than needed. Because neighbouring faces' boxes then overlapped by
+        // 2 nm, the BVH handed the candidate loop faces that Separated immediately discarded: the counters showed that
+        // only 55.5 % of the fetched candidates survived to a real test, so nearly half of the candidate work was
+        // induced by this constant alone. The pad is load-bearing in three places (the BVH query, the outside decision
+        // in SolidBoolean.ProcessFace and the split decision in Face3.Split), so it is derived, not guessed.
+        const double pad = 1e-5;
         Box = new Box3(x0 - pad, y0 - pad, z0 - pad, x1 + pad, y1 + pad, z1 + pad);
     }
 
