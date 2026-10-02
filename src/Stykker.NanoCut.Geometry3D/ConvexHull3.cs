@@ -4,7 +4,6 @@ namespace Stykker.NanoCut.Geometry3D;
 public static class ConvexHull3
 {
     private const double Epsilon = 1.0 / (1L << 53);
-    private const double MaxCoord = Units.MaxCoordinate;
 
     /// <summary>Convex hull as a solid with triangular faces. Throws if the points do not span a volume.</summary>
     public static Solid Compute(IEnumerable<Vec3> points)
@@ -134,6 +133,10 @@ public static class ConvexHull3
         long n = pts.Length;
         var p = pts;
 
+        // Largest |coordinate| of the input: the filter bound must hold for it (Vec3 itself is not range-checked).
+        double maxCoord = 1;
+        foreach (var v in p) maxCoord = Math.Max(maxCoord, Math.Max(Math.Abs((double)v.X), Math.Max(Math.Abs((double)v.Y), Math.Abs((double)v.Z))));
+
         // Initial tetrahedron.
         int i0 = 0, i1 = -1, i2 = -1, i3 = -1;
         for (int i = 1; i < p.Length && i1 < 0; i++) if (p[i] != p[i0]) i1 = i;
@@ -171,7 +174,7 @@ public static class ConvexHull3
             var pl = Plane3.FromPoints(p[a], p[b], p[c]);
             double nx = (double)pl.Nx, ny = (double)pl.Ny, nz = (double)pl.Nz;
             // |error| ≤ rounding of n and d (relative 2^-53 each) plus rounding in the sum: 8 ulp of the magnitude.
-            planesD.Add((nx, ny, nz, (double)pl.D, (Math.Abs(nx) + Math.Abs(ny) + Math.Abs(nz)) * MaxCoord));
+            planesD.Add((nx, ny, nz, (double)pl.D, (Math.Abs(nx) + Math.Abs(ny) + Math.Abs(nz)) * maxCoord));
             return id;
         }
 

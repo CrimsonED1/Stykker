@@ -315,9 +315,7 @@ public class OptimizationVerificationTests(ITestOutputHelper output)
         Assert.Equal(new Plane3(1, 0, 0, 0), new Plane3((Int128)1 << 126, 0, 0, 0).Canonical());
     }
 
-    [Fact(Skip = "BUG (pre-existing, not from the optimisation; unreachable from grid planes): Canonical flips the orientation " +
-                 "when the gcd is 2^127 (all coefficients in {0, Int128.MinValue}): (Int128)2^127 wraps to Int128.MinValue, a " +
-                 "negative divisor. The old Euclid version behaves identically.")]
+    [Fact]
     public void CanonicalKeepsOrientationForInt128MinValue()
     {
         var p = new Plane3(Int128.MinValue, 0, 0, 0);
@@ -575,10 +573,7 @@ public class OptimizationVerificationTests(ITestOutputHelper output)
         }
     }
 
-    [Fact(Skip = "BUG (regression of Optimize (1), out-of-contract input): ConvexHull3.Compute accepts Vec3 beyond ±2^31 without " +
-                 "a range check, but the filter bound in Above() assumes |coord| <= 2^31 (MaxCoord). With |x|,|y| ~ 2^40 the double " +
-                 "evaluation of n·q + d errs by more than the bound, Above() returns wrong signs and quickhull corrupts its mesh " +
-                 "(KeyNotFoundException in Visit) or drops points. The exact Int128 code before 403fb02 passes this test.")]
+    [Fact]
     public void HullBeyondGridRangeIsStillExactOrRejected()
     {
         var rng = new Random(40);

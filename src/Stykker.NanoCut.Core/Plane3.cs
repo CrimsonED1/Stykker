@@ -28,6 +28,8 @@ public readonly record struct Plane3(Int128 Nx, Int128 Ny, Int128 Nz, Int128 D)
         if (g == 1) return this;
         g = Gcd(g, Abs(D));
         if (g <= 1) return this;
+        // g = 2^127 only when every coefficient is 0 or Int128.MinValue; (Int128)2^127 would wrap to a negative divisor.
+        if (g >> 127 != 0) return new Plane3(Int128.Sign(Nx), Int128.Sign(Ny), Int128.Sign(Nz), Int128.Sign(D));
         Int128 gi = (Int128)g;
         return new Plane3(Nx / gi, Ny / gi, Nz / gi, D / gi);
     }
