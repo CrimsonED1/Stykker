@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Stykker.NanoCut.Core/Stykker.NanoCut.Core.csproj" />
+    <Project Path="src/Stykker.NanoCut.Cutting/Stykker.NanoCut.Cutting.csproj" />
+    <Project Path="src/Stykker.NanoCut.Geometry2D/Stykker.NanoCut.Geometry2D.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Stykker.NanoCut.OracleTests/Stykker.NanoCut.OracleTests.csproj" />
+    <Project Path="tests/Stykker.NanoCut.Tests/Stykker.NanoCut.Tests.csproj" />
+    <Project Path="tests/Stykker.NanoCut.WasmSmoke/Stykker.NanoCut.WasmSmoke.csproj" />
+  </Folder>
+</Solution>
