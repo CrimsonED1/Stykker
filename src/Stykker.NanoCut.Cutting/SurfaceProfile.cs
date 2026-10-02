@@ -57,13 +57,7 @@ public sealed class SurfaceProfile
     /// Arithmetic mean roughness Ra and peak-to-valley height Rz (one sampling length, mm) of a profile, measured from its
     /// mean line (NaN samples are ignored).
     /// </summary>
-    public static (double Ra, double Rz) Roughness(IReadOnlyList<double> heights)
-    {
-        var h = heights.Where(v => !double.IsNaN(v)).ToArray();
-        if (h.Length == 0) return (double.NaN, double.NaN);
-        double mean = h.Average();
-        return (h.Average(v => Math.Abs(v - mean)), h.Max() - h.Min());
-    }
+    public static (double Ra, double Rz) Roughness(IReadOnlyList<double> heights) => Geometry2D.Profile2.Roughness(heights);
 
     // Convex polygon (counter-clockwise seen from above, since the face points upwards), boundary included.
     private static bool Inside(double[] xs, double[] ys, double x, double y)
