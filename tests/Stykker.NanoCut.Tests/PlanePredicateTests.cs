@@ -118,3 +118,29 @@ public class PlanePredicateTests
         Assert.True(h.Value.W.BitLength <= WBits);
     }
 }
+
+public class FilterTests
+{
+    [Fact]
+    public void FilteredSideTestsAgreeWithExactArithmetic()
+    {
+        // Exact vertices from plane intersections tested against planes, including planes through those vertices.
+        var rng = new Random(99);
+        Vec3 P() => new(rng.NextInt64(-50_000_000, 50_000_000), rng.NextInt64(-50_000_000, 50_000_000), rng.NextInt64(-50_000_000, 50_000_000));
+        int zeros = 0;
+        for (int i = 0; i < 20_000; i++)
+        {
+            Plane3 a = Plane3.FromPoints(P(), P(), P()).Canonical(), b = Plane3.FromPoints(P(), P(), P()).Canonical();
+            Plane3 c = Plane3.FromPoints(P(), P(), P()).Canonical();
+            if (Plane3.Intersect(a, b, c) is not { } h) continue;
+            var v = new Stykker.NanoCut.Geometry3D.Point3(h);
+            foreach (var q in new[] { a, b, c, Plane3.FromPoints(P(), P(), P()).Canonical() })
+            {
+                int exact = Predicates.Side(q, h);
+                Assert.Equal(exact, v.SideOf(q));
+                if (exact == 0) zeros++;
+            }
+        }
+        Assert.True(zeros > 1000, "degenerate (on-plane) cases must be covered");
+    }
+}

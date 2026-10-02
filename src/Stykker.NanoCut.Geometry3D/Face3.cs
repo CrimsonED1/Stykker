@@ -47,6 +47,26 @@ internal sealed class Face3
 
     public Box3 Box { get; }
 
+    private double[]? _planesD;
+
+    /// <summary>Plane coefficients as doubles for the floating-point filters: support first, then the edges (4 each).</summary>
+    public double[] PlanesD
+    {
+        get
+        {
+            if (_planesD is not null) return _planesD;
+            var d = new double[4 * (Edges.Length + 1)];
+            Put(0, Support);
+            for (int i = 0; i < Edges.Length; i++) Put(4 * (i + 1), Edges[i]);
+            return _planesD = d;
+
+            void Put(int o, in Plane3 p)
+            {
+                d[o] = (double)p.Nx; d[o + 1] = (double)p.Ny; d[o + 2] = (double)p.Nz; d[o + 3] = (double)p.D;
+            }
+        }
+    }
+
     /// <summary>
     /// Creates a face from coplanar grid points in counter-clockwise order (seen from the outside).
     /// Collinear vertices are allowed; the polygon must be convex.

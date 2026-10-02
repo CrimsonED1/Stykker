@@ -9,7 +9,7 @@ public static class ConvexHull3
         var tris = Triangles(points, out var pts);
         var faces = new List<Face3>(tris.Count);
         foreach (var (a, b, c) in tris) faces.Add(Face3.FromGrid([pts[a], pts[b], pts[c]]));
-        return new Solid(faces);
+        return new Solid(FaceMerge.MergeAll(faces));
     }
 
     /// <summary>Hull triangles (indices into <paramref name="pts"/>), counter-clockwise seen from outside.</summary>

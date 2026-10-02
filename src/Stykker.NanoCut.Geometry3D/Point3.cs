@@ -67,8 +67,14 @@ public readonly struct Point3
     }
 
     /// <summary>Exact side of the vertex relative to a plane: +1, 0, -1.</summary>
-    public int SideOf(in Plane3 plane) =>
-        _exact is null ? Predicates.Side(plane, _grid) : Predicates.Side(plane, _exact.H);
+    public int SideOf(in Plane3 plane)
+    {
+        if (_exact is null) return Predicates.Side(plane, _grid);
+        // Floating-point filter: the cached coordinates have a relative error of a few ulps, so the sign is certain
+        // whenever |value| clearly exceeds the rounding bound; otherwise decide exactly with Int384.
+        int f = Filter.Sign(plane, _exact.X, _exact.Y, _exact.Z);
+        return f != Filter.Uncertain ? f : Predicates.Side(plane, _exact.H);
+    }
 
     /// <summary>Exact equality of the represented points.</summary>
     public bool SameAs(in Point3 o)
