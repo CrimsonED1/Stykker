@@ -171,13 +171,38 @@ public class GpuZMapTests(ITestOutputHelper output)
         Assert.True(compared > 100, $"only {compared} columns were compared");
     }
 
+    /// <summary>
+    /// Regression: for a horizontal step the discriminant of the stationary point is zero in exact arithmetic, but
+    /// it is computed as the difference of two products of size 4·d²·w2², so in float32 it comes out slightly
+    /// negative about half the time and the whole step used to be dropped for that cell. The longer the step (that
+    /// is the larger w2 and d), the larger those products and the more certain the cancellation.
+    /// </summary>
+    [Fact]
+    public void LongHorizontalStepIsNotDroppedByFloatCancellation()
+    {
+        // A 60 mm long capsule of r = 3 lying exactly in the top face of an 80 x 60 x 20 block: half of it is in the
+        // stock, so the removed volume is (pi r² L + 4/3 pi r³) / 2.
+        var map = new ZMap(0, 0, 0, 80, 60, 20, 320, 240);
+        map.ApplySteps([new BallStep((10, 30, 20), (70, 30, 20), 3)]);
+
+        double expected = (Math.PI * 9 * 60 + 4.0 / 3 * Math.PI * 27) / 2;
+        Assert.True(Math.Abs(map.RemovedVolumeMm3 - expected) < 0.02 * expected,
+            $"removed {map.RemovedVolumeMm3:F6} mm³, expected about {expected:F6} mm³");
+
+        // The deepest cells sit on the axis y = 30, which the grid straddles by 0.125 mm.
+        double expectedDepth = 20 - Math.Sqrt(9 - 0.125 * 0.125);
+        Assert.True(Math.Abs(map.Heights.Min() - expectedDepth) < 1e-3,
+            $"the deepest cell is at {map.Heights.Min():F6} mm, expected {expectedDepth:F6} mm");
+    }
+
     [Fact]
     public void HeightsNeverRiseAndThreadCountDoesNotMatter()
     {
         BallStep[] steps =
         [
+            new((1, 1, 10), (9, 1, 10), 2),   // long horizontal step: the float cancellation case
             new((2, 3, 10), (7, 3, 10), 2),
-            new((7, 3, 10), (7, 8, 9), 2),
+            new((7, 3, 10), (7, 8, 9), 2),    // ramp, so the lowest point is not above the closest one
             new((7, 8, 9), (2, 8, 9), 2),
             BallStep.At((4, 5, 10), 1.5),
         ];
@@ -334,28 +359,46 @@ public class GpuZMapTests(ITestOutputHelper output)
 
         BallStep[] steps =
         [
+            new((1, 1, 10), (9, 1, 10), 2),   // long horizontal step: the float cancellation case
             new((2, 3, 10), (7, 3, 10), 2),
-            new((7, 3, 10), (7, 8, 9), 2),
+            new((7, 3, 10), (7, 8, 9), 2),    // ramp, so the lowest point is not above the closest one
             new((7, 8, 9), (2, 8, 9), 2),
             BallStep.At((4, 5, 10), 1.5),
         ];
 
         var cpu = Stock(64, 64, backend: new CpuBackend(1));
         var gpu = Stock(64, 64, backend: cuda);
-        cpu.ApplySteps(steps);
-        gpu.ApplySteps(steps);
 
+        // One step at a time, so a divergence says which step caused it.
         float worst = 0;
-        for (int k = 0; k < cpu.Heights.Length; k++)
-            worst = Math.Max(worst, Math.Abs(cpu.Heights[k] - gpu.Heights[k]));
+        for (int s = 0; s < steps.Length; s++)
+        {
+            cpu.ApplySteps(steps.AsSpan(s, 1));
+            gpu.ApplySteps(steps.AsSpan(s, 1));
+            for (int k = 0; k < cpu.Heights.Length; k++)
+            {
+                float difference = Math.Abs(cpu.Heights[k] - gpu.Heights[k]);
+                if (difference <= worst) continue;
+                worst = difference;
+                output.WriteLine($"step {s} cell {k % 64},{k / 64} " +
+                                 $"({(k % 64 + 0.5) * 10.0 / 64:F4}, {(k / 64 + 0.5) * 10.0 / 64:F4}) mm: " +
+                                 $"cpu {cpu.Heights[k]:R}, cuda {gpu.Heights[k]:R}, difference {difference:E2} mm");
+            }
+        }
+
+        output.WriteLine($"cpu removed {cpu.RemovedVolumeMm3:F9} mm³, cuda removed {gpu.RemovedVolumeMm3:F9} mm³");
+        output.WriteLine($"cuda timing {gpu.TotalTiming}");
         Assert.True(worst < 1e-4f, $"the largest height difference was {worst:E2} mm");
 
-        Assert.Equal(cpu.RemovedVolumeMm3, gpu.RemovedVolumeMm3, 6);
-        Assert.True(gpu.LastTiming.KernelMs > 0, "the CUDA backend should report a kernel time");
+        // Both sum the same heights in double, so the volumes differ only through the float32 heights themselves,
+        // where the CUDA compiler contracts a*b+c into fma.
+        Assert.True(Math.Abs(cpu.RemovedVolumeMm3 - gpu.RemovedVolumeMm3) < 1e-6 * cpu.RemovedVolumeMm3,
+            $"cpu removed {cpu.RemovedVolumeMm3:R} mm³, cuda {gpu.RemovedVolumeMm3:R} mm³");
+        Assert.True(gpu.TotalTiming.KernelMs > 0, "the CUDA backend should report a kernel time");
         Assert.True(gpu.LastTiming.WallMs >= gpu.LastTiming.KernelMs);
-        output.WriteLine($"{CudaRuntime.Devices[cuda.DeviceIndex].Name}: kernel {gpu.LastTiming.KernelMs:F3} ms, " +
-                         $"upload {gpu.LastTiming.UploadMs:F3} ms, download {gpu.LastTiming.DownloadMs:F3} ms, " +
-                         $"first call {gpu.LastTiming.FirstCallMs:F1} ms");
+        output.WriteLine($"{CudaRuntime.Devices[cuda.DeviceIndex].Name}: kernel {gpu.TotalTiming.KernelMs:F3} ms, " +
+                         $"upload {gpu.TotalTiming.UploadMs:F3} ms, download {gpu.TotalTiming.DownloadMs:F3} ms, " +
+                         $"first call {gpu.TotalTiming.FirstCallMs:F1} ms for {steps.Length} steps");
     }
 
     /// <summary>Horizontal distance from a column to the segment of a step, in mm.</summary>

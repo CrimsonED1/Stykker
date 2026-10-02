@@ -87,25 +87,22 @@ internal static class ToolProfile
 
         if (w2 > 0f)
         {
-            float disc = d * d - w2 * (p2 - r2);
-            if (disc >= 0f)
-            {
-                float sq = MathF.Sqrt(disc);
-                ConsiderTangent((d - sq) * invW2);
-                ConsiderTangent((d + sq) * invW2);
-            }
+            // The reject above guarantees that S(t) >= 0 for some t in [0, 1], so both discriminants are >= 0 in
+            // exact arithmetic. In float they can come out slightly negative through cancellation -- above all the
+            // stationary one for a horizontal step, where it is exactly zero in theory but is computed as the
+            // difference of two equal products of size 4·d²·w2². Clamping is safe: every candidate t with S(t) >= 0
+            // is a real ball position, so an extra one can only be too high, never too low.
+            float sq = MathF.Sqrt(MathF.Max(d * d - w2 * (p2 - r2), 0f));
+            ConsiderTangent((d - sq) * invW2);
+            ConsiderTangent((d + sq) * invW2);
 
             // Stationary points of g: wz·√S = d − w2·t, squared into a quadratic.
             float alpha = w2 * k;
             float beta = -2f * d * k;
-            float disc2 = beta * beta - 4f * alpha * (d * d - wz2 * (r2 - p2));
-            if (disc2 >= 0f)
-            {
-                float sq2 = MathF.Sqrt(disc2);
-                float inv = 0.5f / alpha;
-                Consider((-beta - sq2) * inv);
-                Consider((-beta + sq2) * inv);
-            }
+            float sq2 = MathF.Sqrt(MathF.Max(beta * beta - 4f * alpha * (d * d - wz2 * (r2 - p2)), 0f));
+            float inv = 0.5f / alpha;
+            Consider((-beta - sq2) * inv);
+            Consider((-beta + sq2) * inv);
         }
 
         return best;
