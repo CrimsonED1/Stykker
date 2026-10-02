@@ -1,0 +1,98 @@
+{
+ "name": "pocket-large-96",
+ "description": "The pocket-large toolpath with a 96 segment ball instead of 48. The polyhedral ball is inscribed in the sphere, so a coarser tessellation removes less; comparing this scene with pocket-large separates the model error of the polyhedral tool from the grid error of a Z-map preview, which uses a true sphere. See docs/gpu-findings.md.",
+ "box": {
+  "min": [
+   0,
+   0,
+   0
+  ],
+  "max": [
+   80,
+   60,
+   20
+  ]
+ },
+ "tool": {
+  "ball": {
+   "radius": 3,
+   "segments": 96
+  }
+ },
+ "path": [
+  [
+   -5,
+   6,
+   18
+  ],
+  [
+   85,
+   6,
+   18
+  ],
+  [
+   85,
+   10,
+   18
+  ],
+  [
+   -5,
+   10,
+   18
+  ],
+  [
+   -5,
+   14,
+   18
+  ],
+  [
+   85,
+   14,
+   18
+  ],
+  [
+   85,
+   18,
+   18
+  ],
+  [
+   -5,
+   18,
+   18
+  ],
+  [
+   -5,
+   22,
+   18
+  ],
+  [
+   85,
+   22,
+   18
+  ],
+  [
+   85,
+   26,
+   18
+  ],
+  [
+   -5,
+   26,
+   18
+  ],
+  [
+   -5,
+   30,
+   18
+  ],
+  [
+   85,
+   30,
+   18
+  ]
+ ],
+ "stepMm": 0.75,
+ "save": [
+  -1
+ ]
+}

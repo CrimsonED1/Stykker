@@ -5,6 +5,7 @@
 //   --backends cpu,cuda      which backends to run
 //   --repeat 3               runs per cell, the best wall time is reported
 //   --steps N                only the first N steps (0 = all)
+//   --chunk N                apply the steps in calls of N steps instead of one call (N = 1 means one launch per step)
 //   --reference <mm3>        remaining volume of the exact kernel, for the deviation column
 //   --diff                   compare every backend against the cpu one at the same resolution
 //   --stl <path>             write the height field of the finest grid as binary STL
@@ -15,6 +16,7 @@
 // download (device to host), first call (CUDA context creation and device allocation) and wall (the whole call).
 // By default one warm-up run on a separate map happens first, so JIT compilation, context creation and the device
 // allocation are not measured as time per step.
+using System.Diagnostics;
 using System.Globalization;
 using System.Text;
 using System.Text.Json;
@@ -35,11 +37,23 @@ Console.WriteLine($"scene {sceneName}: box {scene.BoxMinMm.X:F0},{scene.BoxMinMm
                   $"{scene.BoxMaxMm.X:F0},{scene.BoxMaxMm.Y:F0},{scene.BoxMaxMm.Z:F0} mm, " +
                   $"{scene.Steps.Count} steps (using {steps.Length}), ball r = {scene.RadiusMm:F3} mm, " +
                   $"{scene.PointsPerStep} points per step");
+// One-off cost, paid before anything is measured: loading nanocut_gpu and letting the CUDA runtime initialise.
+// cudaGetDeviceProperties already creates the context, so nc_gpu_init afterwards costs almost nothing and the first
+// kernel launch is not the slow one either. Reporting this separately keeps it out of the time per step.
+var probe = Stopwatch.StartNew();
+bool cudaAvailable = CudaRuntime.IsAvailable;
+string? cudaReason = CudaRuntime.UnavailableReason;
+var devices = CudaRuntime.Devices;
+probe.Stop();
+
 Console.WriteLine($"stock {scene.BoxVolumeMm3:F3} mm3, {Environment.ProcessorCount} logical processors, " +
-                  (opt.Cold ? "cold (no warm-up)" : "warm"));
-foreach (var d in CudaRuntime.Devices)
+                  (opt.Cold ? "cold (no warm-up)" : "warm") +
+                  (opt.Chunk > 0 ? $", {opt.Chunk} step(s) per call" : ", one call for all steps"));
+foreach (var d in devices)
     Console.WriteLine($"cuda device {d.Index}: {d.Name}, sm_{d.Major}{d.Minor}, {d.MemoryBytes / (1024 * 1024)} MiB");
-if (!CudaRuntime.IsAvailable) Console.WriteLine($"cuda unavailable: {CudaRuntime.UnavailableReason}");
+Console.WriteLine(cudaAvailable
+    ? $"cuda probe (library load + runtime init, once per process): {probe.Elapsed.TotalMilliseconds:F1} ms"
+    : $"cuda unavailable after {probe.Elapsed.TotalMilliseconds:F1} ms: {cudaReason}");
 Console.WriteLine();
 
 var rows = new List<Row>();
@@ -76,11 +90,11 @@ foreach (int cellsX in opt.Grids)
             if (!opt.Cold)
             {
                 var warm = ZMap.FromScene(scene, cellsX, cellsY, backend);
-                warm.ApplySteps(steps);
+                Runner.Apply(warm, steps, opt.Chunk);
             }
             var map = ZMap.FromScene(scene, cellsX, cellsY, backend);
-            map.ApplySteps(steps);
-            var row = new Row(name, cellsX, cellsY, steps.Length, map.LastTiming, map.RemovedVolumeMm3,
+            Runner.Apply(map, steps, opt.Chunk);
+            var row = new Row(name, cellsX, cellsY, steps.Length, map.TotalTiming, map.RemovedVolumeMm3,
                 map.RemainingVolumeMm3, opt.Diff ? map.Heights : null);
             if (best is null || row.Timing.WallMs < best.Timing.WallMs) best = row;
         }
@@ -117,7 +131,7 @@ if (opt.Stl is { } stlPath)
     int cellsX = opt.Grids[^1];
     int cellsY = rows.First(r => r.CellsX == cellsX).CellsY;
     var map = ZMap.FromScene(scene, cellsX, cellsY, CpuBackend.Instance);
-    map.ApplySteps(steps);
+    Runner.Apply(map, steps, opt.Chunk);
     string? dir = Path.GetDirectoryName(Path.GetFullPath(stlPath));
     if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
     var mesh = map.ToMesh();
@@ -136,9 +150,11 @@ if (opt.Out is { } outDir)
         ["referenceRemainingMm3"] = opt.Reference,
         ["logicalProcessors"] = Environment.ProcessorCount,
         ["cold"] = opt.Cold,
-        ["cudaAvailable"] = CudaRuntime.IsAvailable,
-        ["cudaReason"] = CudaRuntime.UnavailableReason,
-        ["devices"] = new JsonArray([.. CudaRuntime.Devices.Select(d => (JsonNode)new JsonObject
+        ["chunk"] = opt.Chunk,
+        ["cudaAvailable"] = cudaAvailable,
+        ["cudaReason"] = cudaReason,
+        ["cudaProbeMs"] = probe.Elapsed.TotalMilliseconds,
+        ["devices"] = new JsonArray([.. devices.Select(d => (JsonNode)new JsonObject
         {
             ["index"] = d.Index,
             ["name"] = d.Name,
@@ -174,6 +190,24 @@ sealed record Row(string Backend, int CellsX, int CellsY, int Steps, ZMapTiming 
     double RemovedMm3, double RemainingMm3, float[]? Heights)
 {
     public double? MaxHeightDifferenceMm { get; set; }
+}
+
+static class Runner
+{
+    /// <summary>
+    /// Applies the steps in one call, or in chunks of <paramref name="chunk"/> steps. Chunking is what a page does to
+    /// report progress, and it shows the price of one launch per step instead of one for the whole batch.
+    /// </summary>
+    internal static void Apply(ZMap map, BallStep[] steps, int chunk)
+    {
+        if (chunk <= 0 || chunk >= steps.Length)
+        {
+            map.ApplySteps(steps);
+            return;
+        }
+        for (int i = 0; i < steps.Length; i += chunk)
+            map.ApplySteps(steps.AsSpan(i, Math.Min(chunk, steps.Length - i)));
+    }
 }
 
 static class Report
@@ -237,6 +271,7 @@ sealed class Options
     public required string[] Backends { get; init; }
     public required int Repeat { get; init; }
     public required int StepLimit { get; init; }
+    public required int Chunk { get; init; }
     public required bool Cold { get; init; }
     public required bool Diff { get; init; }
     public double? Reference { get; init; }
@@ -247,8 +282,8 @@ sealed class Options
     {
         if (args.Length == 0 || args[0].StartsWith('-'))
             throw new ArgumentException("usage: <expanded.json> [--grids 128,256,1024] [--backends cpu,cuda] " +
-                                        "[--repeat 3] [--steps N] [--reference mm3] [--diff] [--stl path] " +
-                                        "[--out dir] [--cold]");
+                                        "[--repeat 3] [--steps N] [--chunk N] [--reference mm3] [--diff] " +
+                                        "[--stl path] [--out dir] [--cold]");
 
         string? Value(string name)
         {
@@ -264,6 +299,7 @@ sealed class Options
             Backends = (Value("--backends") ?? "cpu,cuda").Split(',', StringSplitOptions.RemoveEmptyEntries),
             Repeat = int.Parse(Value("--repeat") ?? "3"),
             StepLimit = int.Parse(Value("--steps") ?? "0"),
+            Chunk = int.Parse(Value("--chunk") ?? "0"),
             Cold = args.Contains("--cold"),
             Diff = args.Contains("--diff"),
             Reference = Value("--reference") is { } r ? double.Parse(r, CultureInfo.InvariantCulture) : null,
