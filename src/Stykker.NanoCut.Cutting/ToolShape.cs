@@ -85,4 +85,53 @@ public sealed class ToolShape
     /// <summary>Prism of any planar region (xy, mm) from z0 to z1, split into convex prisms (e.g. shaper cutters).</summary>
     public static ToolShape Extruded(Region2 region, double z0Mm, double z1Mm) =>
         new(region.ConvexParts().Select(p => Solid.Extrude(Region2.Polygon(p), z0Mm, z1Mm)).ToArray());
+    /// <summary>
+    /// Simple circular saw blade (disc cutter, slitting saw) about the z-axis, centred on z = 0: a core disc of radius
+    /// <paramref name="radiusMm"/> − <paramref name="toothHeightMm"/> and <paramref name="teeth"/> symmetric
+    /// trapezoid teeth whose tip corners lie on <paramref name="radiusMm"/>. Part 0 is the core (a cylinder, convex),
+    /// parts 1 … N are the teeth (one convex prism each; tooth k is centred at angle 2πk/N from the x-axis). The tooth
+    /// base is 70 % of the pitch wide and reaches slightly into the core, the tip is 24 % of the pitch wide.
+    /// </summary>
+    /// <param name="radiusMm">Outer radius (tooth tips).</param>
+    /// <param name="thicknessMm">Thickness of the core along z.</param>
+    /// <param name="teeth">Number of teeth (≥ 1).</param>
+    /// <param name="toothHeightMm">Radial tooth height (0 &lt; h &lt; radius).</param>
+    /// <param name="tol">Chord error of the core.</param>
+    /// <param name="toothThicknessMm">Thickness of the teeth (kerf width; e.g. larger than the core for set teeth); default: core thickness.</param>
+    public static ToolShape SawBlade(double radiusMm, double thicknessMm, int teeth, double toothHeightMm, Tolerance? tol = null, double? toothThicknessMm = null)
+    {
+        tol ??= Tolerance.Default;
+        if (teeth < 1) throw new ArgumentOutOfRangeException(nameof(teeth), "At least one tooth required.");
+        if (!(thicknessMm > 0)) throw new ArgumentOutOfRangeException(nameof(thicknessMm));
+        if (!(toothHeightMm > 0 && toothHeightMm < radiusMm)) throw new ArgumentOutOfRangeException(nameof(toothHeightMm), "Tooth height must be in (0, radius).");
+        double core = radiusMm - toothHeightMm, kerf = toothThicknessMm ?? thicknessMm;
+        if (!(kerf > 0)) throw new ArgumentOutOfRangeException(nameof(toothThicknessMm));
+        var parts = new List<Solid> { Solid.Cylinder(Vec3.Mm(0, 0, -thicknessMm / 2), Vec3.Mm(0, 0, thicknessMm / 2), core, tol) };
+        foreach (var tooth in SawBladeTeeth(radiusMm, teeth, toothHeightMm, tol).Contours)
+            parts.Add(Solid.Extrude(Region2.FromContours([tooth]), -kerf / 2, kerf / 2));
+        return new(parts);
+    }
+
+    /// <summary>
+    /// The teeth of <see cref="SawBlade"/> as a planar region (one convex trapezoid contour per tooth, tool xy-plane).
+    /// </summary>
+    public static Region2 SawBladeTeeth(double radiusMm, int teeth, double toothHeightMm, Tolerance? tol = null)
+    {
+        tol ??= Tolerance.Default;
+        if (teeth < 1) throw new ArgumentOutOfRangeException(nameof(teeth), "At least one tooth required.");
+        if (!(toothHeightMm > 0 && toothHeightMm < radiusMm)) throw new ArgumentOutOfRangeException(nameof(toothHeightMm), "Tooth height must be in (0, radius).");
+        double core = radiusMm - toothHeightMm;
+        // The core is an inscribed polygon (sagitta ≤ chord error): the tooth base starts well inside it.
+        double baseR = core - Math.Max(0.25 * toothHeightMm, 2 * tol.ChordNm / Units.NmPerMm);
+        if (baseR <= 0) baseR = core / 2;
+        double pitch = 2 * Math.PI / teeth, halfBase = 0.35 * pitch, halfTip = 0.12 * pitch;
+        var contours = new List<Contour2>();
+        for (int k = 0; k < teeth; k++)
+        {
+            double c = k * pitch;
+            Vec2 P(double r, double a) => Vec2.Mm(r * Math.Cos(c + a), r * Math.Sin(c + a));
+            contours.Add(new Contour2([P(baseR, -halfBase), P(radiusMm, -halfTip), P(radiusMm, halfTip), P(baseR, halfBase)]));
+        }
+        return Region2.FromContours(contours);
+    }
 }

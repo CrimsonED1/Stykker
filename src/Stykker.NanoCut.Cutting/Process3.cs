@@ -13,13 +13,16 @@ namespace Stykker.NanoCut.Cutting;
 /// For processes that keep an axis (planar processes, turning) <see cref="Process2"/> and <see cref="Lathe"/> are
 /// much faster and use an exact edge-sweep instead.
 /// </summary>
-public static class Process3
+public static partial class Process3
 {
     /// <summary>Statistics of a process run.</summary>
     public sealed record Stats(int Intervals, int Hulls, int Cuts);
 
     /// <summary>Removes the volume swept by <paramref name="tool"/> under <paramref name="motion"/> (relative to the workpieces).</summary>
-    public static Solid[] Cut(IReadOnlyList<Solid> workpieces, ToolShape tool, Motion3 motion, Tolerance? tol, out Stats stats)
+    public static Solid[] Cut(IReadOnlyList<Solid> workpieces, ToolShape tool, Motion3 motion, Tolerance? tol, out Stats stats) =>
+        Cut(workpieces, tool, motion, tol, out stats, Batch);
+
+    internal static Solid[] Cut(IReadOnlyList<Solid> workpieces, ToolShape tool, Motion3 motion, Tolerance? tol, out Stats stats, int batch)
     {
         tol ??= Tolerance.Default;
         var result = workpieces.ToArray();
@@ -29,6 +32,8 @@ public static class Process3
         var rotated = new Dictionary<(double, double, double, double, double, double, double, double, double), Solid[]>();
         int intervals = 0, hulls = 0, cuts = 0;
         var pending = new List<Solid>();
+        // Bounds of the workpieces (nm); swept pieces that miss all of them cannot remove anything and are skipped.
+        var bounds = result.Select(BoundsNm).ToArray();
         foreach (var seg in motion.Segments)
         {
             var poses = Sample(seg, probe, diameter, tol.SweepNm);
@@ -55,11 +60,14 @@ public static class Process3
                     else
                     {
                         var pts = partPoints[k];
-                        swept = ConvexHull3.Compute(pts.Select(a.Apply).Concat(pts.Select(b.Apply)));
+                        var moved = pts.Select(a.Apply).Concat(pts.Select(b.Apply)).ToArray();
+                        if (!bounds.Any(w => Overlaps(w, BoundsNm(moved)))) continue;
+                        swept = ConvexHull3.Compute(moved);
                     }
+                    if (!bounds.Any(w => Overlaps(w, BoundsNm(swept)))) continue;
                     hulls++;
                     pending.Add(swept);
-                    if (pending.Count == Batch) Flush();
+                    if (pending.Count == batch) Flush();
                 }
             }
         }
@@ -67,6 +75,7 @@ public static class Process3
 
         // Small groups of neighbouring swept pieces are united first (cheap, local) and then cut from the workpieces:
         // cutting every piece alone touches the whole, ever finer workpiece per step; one huge union is slower still.
+        // Pieces whose bounds miss every workpiece were skipped above (e.g. the teeth of a spinning blade outside).
         void Flush()
         {
             if (pending.Count == 0) return;
@@ -76,6 +85,7 @@ public static class Process3
             {
                 if (!Overlaps(result[w], swept)) continue;
                 result[w] = result[w] - swept;
+                bounds[w] = BoundsNm(result[w]);
                 cuts++;
             }
         }
@@ -134,6 +144,26 @@ public static class Process3
         long z0 = all.Min(p => p.Z), z1 = all.Max(p => p.Z);
         return [new(x0, y0, z0), new(x1, y0, z0), new(x0, y1, z0), new(x1, y1, z0), new(x0, y0, z1), new(x1, y0, z1), new(x0, y1, z1), new(x1, y1, z1)];
     }
+
+    private static (long X0, long Y0, long Z0, long X1, long Y1, long Z1)? BoundsNm(Solid s) =>
+        s.IsEmpty ? null : BoundsNm(s.Vertices.Select(v => new Vec3((long)Math.Round(v.X), (long)Math.Round(v.Y), (long)Math.Round(v.Z))).ToArray());
+
+    private static (long X0, long Y0, long Z0, long X1, long Y1, long Z1)? BoundsNm(Vec3[] pts)
+    {
+        if (pts.Length == 0) return null;
+        long x0 = long.MaxValue, y0 = long.MaxValue, z0 = long.MaxValue, x1 = long.MinValue, y1 = long.MinValue, z1 = long.MinValue;
+        foreach (var p in pts)
+        {
+            x0 = Math.Min(x0, p.X); y0 = Math.Min(y0, p.Y); z0 = Math.Min(z0, p.Z);
+            x1 = Math.Max(x1, p.X); y1 = Math.Max(y1, p.Y); z1 = Math.Max(z1, p.Z);
+        }
+        return (x0, y0, z0, x1, y1, z1);
+    }
+
+    // Grid bounds widened by 2 nm, so rounding of exact (homogeneous) vertices to the grid cannot hide a contact.
+    private static bool Overlaps((long X0, long Y0, long Z0, long X1, long Y1, long Z1)? a, (long X0, long Y0, long Z0, long X1, long Y1, long Z1)? b) =>
+        a is { } p && b is { } q &&
+        p.X0 <= q.X1 + 2 && q.X0 <= p.X1 + 2 && p.Y0 <= q.Y1 + 2 && q.Y0 <= p.Y1 + 2 && p.Z0 <= q.Z1 + 2 && q.Z0 <= p.Z1 + 2;
 
     private static bool Overlaps(Solid a, Solid b) =>
         a.BoundsMm is { } p && b.BoundsMm is { } q &&
