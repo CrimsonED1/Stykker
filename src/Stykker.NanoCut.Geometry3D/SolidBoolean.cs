@@ -85,78 +85,105 @@ internal static class SolidBoolean
         Emit(n.Back!, keep, reverse, result);
     }
 
+    /// <summary>Maximum number of threads used to classify faces (1 = sequential). Defaults to the processor count.</summary>
+    public static int MaxParallelism { get; set; } = Environment.ProcessorCount;
+
+    // Below this many faces the thread start-up costs more than it saves.
+    private const int ParallelThreshold = 64;
+
+    private sealed class Buffers
+    {
+        public readonly List<Face3> Candidates = [];
+        public readonly List<Face3> RayScratch = [];
+        public readonly List<Plane3> Planes = [];
+        public readonly Dictionary<Plane3, int> Seen = [];
+        public readonly List<Box3> Reach = [];
+        public readonly List<Face3> Coplanar = [];
+    }
+
+    /// <summary>
+    /// Splits and classifies every face against the other solid. Faces are independent, so they are processed in
+    /// parallel (one buffer set per thread); results are stored by index, so the output does not depend on scheduling.
+    /// </summary>
     private static List<Node> Process(IReadOnlyList<Face3> faces, Bvh3 other)
     {
-        var result = new List<Node>(faces.Count);
+        var nodes = new Node[faces.Count];
         var otherBox = other.Bounds;
-        var candidates = new List<Face3>();
-        var rayScratch = new List<Face3>();
-        var planes = new List<Plane3>();
-        var seen = new Dictionary<Plane3, int>();
-        var reach = new List<Box3>();
-        var coplanar = new List<Face3>();
-        foreach (var p in faces)
+        if (MaxParallelism <= 1 || faces.Count < ParallelThreshold)
         {
-            var root = new Node(p);
-            result.Add(root);
-            if (!p.Box.Overlaps(otherBox))
-            {
-                root.Loc = Location.Outside;
-                continue;
-            }
-            other.Query(p.Box, candidates);
-            planes.Clear();
-            seen.Clear();
-            reach.Clear();
-            coplanar.Clear();
-            foreach (var q in candidates)
-            {
-                int ps = SideSummary(q.Support, p.Vertices);
-                // Faces that cannot meet need no cut: one lies strictly outside an edge plane of the other.
-                if (ps != 2 && (Separated(q, p.Vertices) || Separated(p, q.Vertices))) continue;
-                if (ps == 2)
-                {
-                    coplanar.Add(q);
-                    foreach (var e in q.Edges) AddPlane(e, q.Box, planes, seen, reach);
-                }
-                else if (ps == 0 && TouchesOrCrosses(p.Support, q.Vertices))
-                {
-                    // q's plane crosses p. q must at least touch p's plane: a face touching it only along an
-                    // edge can still be where the other surface passes through p (two touching faces from
-                    // opposite sides), so only faces strictly on one side are skipped.
-                    AddPlane(q.Support, q.Box, planes, seen, reach);
-                }
-            }
-
-            if (planes.Count == 0)
-            {
-                root.Loc = Locate(p, other, coplanar, rayScratch);
-                continue;
-            }
-            var fragments = new List<Node> { root };
-            for (int pi = 0; pi < planes.Count; pi++)
-            {
-                var plane = planes[pi];
-                var next = new List<Node>(fragments.Count + 4);
-                foreach (var n in fragments)
-                {
-                    // Only fragments that can touch one of the faces spanning this plane need the cut.
-                    if (!n.Face.Box.Overlaps(reach[pi])) { next.Add(n); continue; }
-                    if (n.Face.Split(plane, out var front, out var back, out _))
-                    {
-                        n.Front = new Node(front!);
-                        n.Back = new Node(back!);
-                        next.Add(n.Front);
-                        next.Add(n.Back);
-                    }
-                    else next.Add(n);
-                }
-                fragments = next;
-            }
-            foreach (var n in fragments)
-                n.Loc = Locate(n.Face, other, coplanar, rayScratch);
+            var b = new Buffers();
+            for (int i = 0; i < nodes.Length; i++) nodes[i] = ProcessFace(faces[i], other, otherBox, b);
         }
-        return result;
+        else
+        {
+            Parallel.For(0, nodes.Length, new ParallelOptions { MaxDegreeOfParallelism = MaxParallelism },
+                () => new Buffers(),
+                (i, _, b) => { nodes[i] = ProcessFace(faces[i], other, otherBox, b); return b; },
+                _ => { });
+        }
+        return [.. nodes];
+    }
+
+    private static Node ProcessFace(Face3 p, Bvh3 other, in Box3 otherBox, Buffers b)
+    {
+        var root = new Node(p);
+        if (!p.Box.Overlaps(otherBox))
+        {
+            root.Loc = Location.Outside;
+            return root;
+        }
+        other.Query(p.Box, b.Candidates);
+        b.Planes.Clear();
+        b.Seen.Clear();
+        b.Reach.Clear();
+        b.Coplanar.Clear();
+        foreach (var q in b.Candidates)
+        {
+            int ps = SideSummary(q.Support, p.Vertices);
+            // Faces that cannot meet need no cut: one lies strictly outside an edge plane of the other.
+            if (ps != 2 && (Separated(q, p.Vertices) || Separated(p, q.Vertices))) continue;
+            if (ps == 2)
+            {
+                b.Coplanar.Add(q);
+                foreach (var e in q.Edges) AddPlane(e, q.Box, b.Planes, b.Seen, b.Reach);
+            }
+            else if (ps == 0 && TouchesOrCrosses(p.Support, q.Vertices))
+            {
+                // q's plane crosses p. q must at least touch p's plane: a face touching it only along an
+                // edge can still be where the other surface passes through p (two touching faces from
+                // opposite sides), so only faces strictly on one side are skipped.
+                AddPlane(q.Support, q.Box, b.Planes, b.Seen, b.Reach);
+            }
+        }
+
+        if (b.Planes.Count == 0)
+        {
+            root.Loc = Locate(p, other, b.Coplanar, b.RayScratch);
+            return root;
+        }
+        var fragments = new List<Node> { root };
+        for (int pi = 0; pi < b.Planes.Count; pi++)
+        {
+            var plane = b.Planes[pi];
+            var next = new List<Node>(fragments.Count + 4);
+            foreach (var n in fragments)
+            {
+                // Only fragments that can touch one of the faces spanning this plane need the cut.
+                if (!n.Face.Box.Overlaps(b.Reach[pi])) { next.Add(n); continue; }
+                if (n.Face.Split(plane, out var front, out var back, out _))
+                {
+                    n.Front = new Node(front!);
+                    n.Back = new Node(back!);
+                    next.Add(n.Front);
+                    next.Add(n.Back);
+                }
+                else next.Add(n);
+            }
+            fragments = next;
+        }
+        foreach (var n in fragments)
+            n.Loc = Locate(n.Face, other, b.Coplanar, b.RayScratch);
+        return root;
     }
 
     private static void AddPlane(in Plane3 plane, in Box3 box, List<Plane3> planes, Dictionary<Plane3, int> seen, List<Box3> reach)
