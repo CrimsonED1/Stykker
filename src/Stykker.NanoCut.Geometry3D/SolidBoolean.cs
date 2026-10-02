@@ -216,6 +216,7 @@ internal static class SolidBoolean
     /// </summary>
     private static bool Separated(Face3 f, Point3[] pts)
     {
+        if (KernelStats.Counting) KernelStats.CountVertices(pts);
         foreach (var e in f.Edges)
         {
             bool all = true;
@@ -229,6 +230,7 @@ internal static class SolidBoolean
     /// <summary>False if all points lie strictly on one side of the plane.</summary>
     private static bool TouchesOrCrosses(in Plane3 plane, Point3[] pts)
     {
+        if (KernelStats.Counting) KernelStats.CountVertices(pts);
         bool pos = false, neg = false;
         foreach (var v in pts)
         {
@@ -243,6 +245,7 @@ internal static class SolidBoolean
     /// <summary>+1 all on the positive side or on, -1 all negative or on, 0 crossing, 2 all on the plane.</summary>
     private static int SideSummary(in Plane3 plane, Point3[] pts)
     {
+        if (KernelStats.Counting) KernelStats.CountVertices(pts);
         bool pos = false, neg = false;
         foreach (var v in pts)
         {
