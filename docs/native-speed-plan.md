@@ -138,3 +138,7 @@ The same algorithm runs about 2× faster in C++. An exact C++ kernel (CGAL) is n
 - The remaining 3.2× to C++ Manifold equals the C#/C++ factor of the identical algorithm. That is the most a native port
   could gain on long tasks.
 
+**After the first C# optimisation round:** NanoCut needs 18.4 s on the long task, down from 30.9 s. It is now faster than
+the C# port of Manifold (30.8 s) and 2.0× behind C++ Manifold (9.4 s). The gap a native port could close has shrunk from
+3.2× to about 2×.
+
