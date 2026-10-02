@@ -37,24 +37,28 @@ public static class ConvexHull3
             var (a, b, c) = tris[i];
             if (Predicates.Orient3D(pts[a], pts[b], pts[c], pts[far]) == 0) parent[Find(i)] = Find(j);
         }
+        // Single triangles become faces directly; only real coplanar groups are collected.
+        var size = new int[tris.Count];
+        for (int i = 0; i < tris.Count; i++) size[Find(i)]++;
+        var faces = new List<Face3>(tris.Count);
         var groups = new Dictionary<int, List<(int A, int B, int C)>>();
         for (int i = 0; i < tris.Count; i++)
         {
             int r = Find(i);
+            if (size[r] == 1)
+            {
+                var (a, b, c) = tris[i];
+                faces.Add(Face3.FromGrid([pts[a], pts[b], pts[c]]));
+                continue;
+            }
             if (!groups.TryGetValue(r, out var g)) groups[r] = g = [];
             g.Add(tris[i]);
         }
-        var faces = new List<Face3>(groups.Count);
         var next = new Dictionary<int, int>();
         var inner = new HashSet<long>();
         var loop = new List<Vec3>();
         foreach (var g in groups.Values)
         {
-            if (g.Count == 1)
-            {
-                faces.Add(Face3.FromGrid([pts[g[0].A], pts[g[0].B], pts[g[0].C]]));
-                continue;
-            }
             inner.Clear();
             foreach (var (a, b, c) in g) { inner.Add(Key(a, b, n)); inner.Add(Key(b, c, n)); inner.Add(Key(c, a, n)); }
             next.Clear();
@@ -113,14 +117,15 @@ public static class ConvexHull3
             if (i != i1 && i != i2 && Predicates.Orient3D(p[i0], p[i1], p[i2], p[i]) != 0) i3 = i;
         if (i3 < 0) throw new ArgumentException("Points are coplanar.");
 
-        // Quickhull creates a few faces per point over its run; sizing up front avoids repeated growth copies.
-        int capacity = 8 * p.Length + 16;
+        // Quickhull creates about 3.6 faces per point over its run; sizing up front avoids most growth copies.
+        int capacity = 4 * p.Length + 16;
         var faces = new List<(int A, int B, int C)>(capacity);
         var alive = new List<bool>(capacity);
-        var outside = new List<List<int>?>(capacity);
+        // Outside (conflict) sets as linked lists over arrays: head[f] is the first waiting point, nextPoint[q] the next.
+        var head = new List<int>(capacity);
+        var nextPoint = new int[p.Length];
         var edgeFace = new Dictionary<long, int>(3 * (2 * p.Length + 4));
-        // Per face: exact plane (outward normal) and its double approximation for the filtered side test.
-        var planes = new List<Plane3>(capacity);
+        // Per face: double approximation of the plane for the filtered side test (the exact plane is recomputed on demand).
         var planesD = new List<(double X, double Y, double Z, double D, double Bound)>(capacity);
 
         int AddFace(int a, int b, int c)
@@ -128,13 +133,12 @@ public static class ConvexHull3
             int id = faces.Count;
             faces.Add((a, b, c));
             alive.Add(true);
-            outside.Add(null);
+            head.Add(-1);
             edgeFace[Key(a, b, n)] = id;
             edgeFace[Key(b, c, n)] = id;
             edgeFace[Key(c, a, n)] = id;
             // Same orientation as Orient3D(a, b, c, q): positive above the counter-clockwise triangle (outside).
             var pl = Plane3.FromPoints(p[a], p[b], p[c]);
-            planes.Add(pl);
             double nx = (double)pl.Nx, ny = (double)pl.Ny, nz = (double)pl.Nz;
             // |error| ≤ rounding of n and d (relative 2^-53 each) plus rounding in the sum: 8 ulp of the magnitude.
             planesD.Add((nx, ny, nz, (double)pl.D, (Math.Abs(nx) + Math.Abs(ny) + Math.Abs(nz)) * MaxCoord));
@@ -156,7 +160,8 @@ public static class ConvexHull3
             double bound = (pl.Bound + Math.Abs(pl.D)) * 8 * Epsilon;
             if (v > bound) return true;
             if (v < -bound) return false;
-            return Predicates.Side(planes[f], p[q]) > 0;
+            var (a, b, c) = faces[f];
+            return Predicates.Side(Plane3.FromPoints(p[a], p[b], p[c]), p[q]) > 0;
         }
 
         // Orient the tetrahedron so that every face has the fourth point below it.
@@ -164,32 +169,36 @@ public static class ConvexHull3
         var initial = new List<int> { AddFace(i0, i1, i2), AddFace(i0, i3, i1), AddFace(i1, i3, i2), AddFace(i2, i3, i0) };
 
         // Quickhull with conflict lists: every point waits in the outside set of one face it lies strictly above.
-        void Assign(IEnumerable<int> points, List<int> candidates)
+        void Assign(List<int> points, List<int> candidates)
         {
             foreach (int q in points)
                 foreach (int f in candidates)
                     if (Above(f, q))
                     {
-                        (outside[f] ??= []).Add(q);
+                        nextPoint[q] = head[f];
+                        head[f] = q;
                         break;
                     }
         }
-        Assign(Enumerable.Range(0, p.Length).Where(i => i != i0 && i != i1 && i != i2 && i != i3), initial);
+        var rest = new List<int>(p.Length);
+        for (int i = 0; i < p.Length; i++) if (i != i0 && i != i1 && i != i2 && i != i3) rest.Add(i);
+        Assign(rest, initial);
 
         var pending = new Stack<int>(initial);
         var stack = new Stack<int>();
         var visible = new List<int>();
         var visibleSet = new HashSet<int>();
         var horizon = new List<(int, int)>();
-        var orphans = new List<int>();
+        var orphans = rest;
+        var created = new List<int>();
         while (pending.Count > 0)
         {
             int f0 = pending.Pop();
-            if (!alive[f0] || outside[f0] is not { Count: > 0 } waiting) continue;
+            if (!alive[f0] || head[f0] < 0) continue;
             // Farthest point (largest height; all heights refer to the same face, so they compare directly).
-            int q = waiting[0];
+            int q = head[f0];
             double best = Height(f0, q);
-            foreach (int r in waiting)
+            for (int r = nextPoint[q]; r >= 0; r = nextPoint[r])
             {
                 double h = Height(f0, r);
                 if (h > best) { best = h; q = r; }
@@ -217,8 +226,8 @@ public static class ConvexHull3
                 if (!visibleSet.Contains(edgeFace[Key(b, a, n)])) horizon.Add((a, b));
                 if (!visibleSet.Contains(edgeFace[Key(c, b, n)])) horizon.Add((b, c));
                 if (!visibleSet.Contains(edgeFace[Key(a, c, n)])) horizon.Add((c, a));
-                if (outside[f] is { } list) foreach (int r in list) if (r != q) orphans.Add(r);
-                outside[f] = null;
+                for (int r = head[f]; r >= 0; r = nextPoint[r]) if (r != q) orphans.Add(r);
+                head[f] = -1;
             }
             foreach (int f in visible)
             {
@@ -226,10 +235,10 @@ public static class ConvexHull3
                 var (a, b, c) = faces[f];
                 edgeFace.Remove(Key(a, b, n)); edgeFace.Remove(Key(b, c, n)); edgeFace.Remove(Key(c, a, n));
             }
-            var created = new List<int>(horizon.Count);
+            created.Clear();
             foreach (var (u, v) in horizon) created.Add(AddFace(u, v, q));
             Assign(orphans, created);
-            foreach (int f in created) if (outside[f] is { Count: > 0 }) pending.Push(f);
+            foreach (int f in created) if (head[f] >= 0) pending.Push(f);
 
             void Visit(int u, int v)
             {
