@@ -76,13 +76,52 @@ internal sealed class Bvh3 : IDisposable
         // Sort the range by box centre with a key array (no comparison delegate).
         var keys = _keys ??= ArrayPool<double>.Shared.Rent(_count);
         for (int i = start; i < start + count; i++) keys[i] = _faces[_order[i]].Box.Center(axis);
-        Array.Sort(keys, _order, start, count);
         int half = count / 2;
+        // Only the median split matters: partition around the half-th key instead of sorting the whole range.
+        Select(keys, _order, start, start + count - 1, start + half);
         int left = Build(start, half);
         int right = Build(start + half, count - half);
         _nodes[index].Left = left;
         _nodes[index].Right = right;
         return index;
+    }
+
+    // Quickselect (Hoare partition, median-of-three pivot, sorting fallback): afterwards keys[k] is the k-th smallest of keys[lo..hi], with
+    // smaller-or-equal keys before it and greater-or-equal keys after it; order[] is permuted alongside.
+    private static void Select(double[] keys, int[] order, int lo, int hi, int k)
+    {
+        // Introselect: after 2·log2(n) + 4 rounds without converging (adversarial key order), sort the rest instead,
+        // which bounds the work by O(n log n).
+        int budget = 2 * System.Numerics.BitOperations.Log2((uint)(hi - lo + 1)) + 4;
+        while (hi > lo)
+        {
+            if (budget-- == 0)
+            {
+                Array.Sort(keys, order, lo, hi - lo + 1);
+                return;
+            }
+            int mid = lo + (hi - lo) / 2;
+            if (keys[mid] < keys[lo]) Swap(lo, mid);
+            if (keys[hi] < keys[lo]) Swap(lo, hi);
+            if (keys[hi] < keys[mid]) Swap(mid, hi);
+            double pivot = keys[mid];
+            int i = lo, j = hi;
+            while (i <= j)
+            {
+                while (keys[i] < pivot) i++;
+                while (keys[j] > pivot) j--;
+                if (i <= j) { Swap(i, j); i++; j--; }
+            }
+            if (k <= j) hi = j;
+            else if (k >= i) lo = i;
+            else return;
+        }
+
+        void Swap(int a, int b)
+        {
+            (keys[a], keys[b]) = (keys[b], keys[a]);
+            (order[a], order[b]) = (order[b], order[a]);
+        }
     }
 
     /// <summary>Faces whose box overlaps <paramref name="box"/>.</summary>

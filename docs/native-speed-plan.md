@@ -150,3 +150,6 @@ and NanoCut uses fewer CPU-seconds per run. A native port is not needed for spee
 **Round 5:** cut chains overlap tool construction with cutting (`Solid.SubtractInOrder`). pocket-large: NanoCut 5.2 s,
 C++ Manifold 8.4 s.
 
+**Round 6:** fewer splits and a cheaper BVH build. Most of the short-task gap was JIT warm-up, not the kernel: measured in
+steady state, ball-small takes 52 ms against 23 ms for C++ Manifold. pocket-large: NanoCut 4.9 s, C++ Manifold 8.2 s.
+
