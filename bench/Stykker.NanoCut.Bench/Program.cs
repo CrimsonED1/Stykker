@@ -46,6 +46,9 @@ var total = Stopwatch.StartNew();
 run.Start(min, max);
 if (save.Contains(0)) File.WriteAllBytes(Path.Combine(outDir, "step-0000.stl"), run.Stl());
 total.Restart();
+long alloc0 = GC.GetTotalAllocatedBytes(true);
+int gc0 = GC.CollectionCount(0), gc1 = GC.CollectionCount(1), gc2 = GC.CollectionCount(2);
+var gcPause0 = GC.GetTotalPauseDuration();
 double saveMs = 0;
 for (int i = 0; i < steps.Length; i++)
 {
@@ -60,6 +63,9 @@ for (int i = 0; i < steps.Length; i++)
     }
 }
 double totalMs = total.Elapsed.TotalMilliseconds - saveMs;
+double allocMb = (GC.GetTotalAllocatedBytes(true) - alloc0) / 1e6;
+string gcInfo = $"gen0 {GC.CollectionCount(0) - gc0}, gen1 {GC.CollectionCount(1) - gc1}, gen2 {GC.CollectionCount(2) - gc2}, " +
+                $"pause {(GC.GetTotalPauseDuration() - gcPause0).TotalMilliseconds:F0} ms, allocated {allocMb:F0} MB";
 
 var stats = new JsonObject
 {
@@ -72,9 +78,11 @@ var stats = new JsonObject
     ["stepMs"] = new JsonArray(stepMs.Select(v => (JsonNode)v).ToArray()),
     ["volumeMm3"] = run.VolumeMm3(),
     ["triangles"] = run.Triangles(),
+    ["allocatedMb"] = allocMb,
+    ["gc"] = gcInfo,
 };
 File.WriteAllText(Path.Combine(outDir, "stats.json"), stats.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
-Console.WriteLine($"{engine}: {steps.Length} steps in {totalMs:F0} ms, V = {run.VolumeMm3():F9} mm³, {run.Triangles()} triangles");
+Console.WriteLine($"{engine}: {steps.Length} steps in {totalMs:F0} ms, V = {run.VolumeMm3():F9} mm³, {run.Triangles()} triangles; GC: {gcInfo}");
 return 0;
 
 interface IEngine

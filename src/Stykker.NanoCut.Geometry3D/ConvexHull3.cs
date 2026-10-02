@@ -3,6 +3,9 @@ namespace Stykker.NanoCut.Geometry3D;
 /// <summary>Exact 3D convex hull of grid points (incremental, exact orient3d).</summary>
 public static class ConvexHull3
 {
+    private const double Epsilon = 1.0 / (1L << 53);
+    private const double MaxCoord = Units.MaxCoordinate;
+
     /// <summary>Convex hull as a solid with triangular faces. Throws if the points do not span a volume.</summary>
     public static Solid Compute(IEnumerable<Vec3> points)
     {
@@ -33,6 +36,9 @@ public static class ConvexHull3
         var alive = new List<bool>();
         var outside = new List<List<int>?>();
         var edgeFace = new Dictionary<(int, int), int>();
+        // Per face: exact plane (outward normal) and its double approximation for the filtered side test.
+        var planes = new List<Plane3>();
+        var planesD = new List<(double X, double Y, double Z, double D, double Bound)>();
 
         int AddFace(int a, int b, int c)
         {
@@ -43,13 +49,31 @@ public static class ConvexHull3
             edgeFace[(a, b)] = id;
             edgeFace[(b, c)] = id;
             edgeFace[(c, a)] = id;
+            // Same orientation as Orient3D(a, b, c, q): positive above the counter-clockwise triangle (outside).
+            var pl = Plane3.FromPoints(p[a], p[b], p[c]);
+            planes.Add(pl);
+            double nx = (double)pl.Nx, ny = (double)pl.Ny, nz = (double)pl.Nz;
+            // |error| ≤ rounding of n and d (relative 2^-53 each) plus rounding in the sum: 8 ulp of the magnitude.
+            planesD.Add((nx, ny, nz, (double)pl.D, (Math.Abs(nx) + Math.Abs(ny) + Math.Abs(nz)) * MaxCoord));
             return id;
         }
 
-        Int128 Height(int f, int q)
+        // Height of q above face f as a double (for choosing the farthest point; the sign comes from Above).
+        double Height(int f, int q)
         {
-            var (a, b, c) = faces[f];
-            return Predicates.Orient3DValue(p[a], p[b], p[c], p[q]);
+            var pl = planesD[f];
+            return pl.X * p[q].X + pl.Y * p[q].Y + pl.Z * p[q].Z + pl.D;
+        }
+
+        // Exact: q strictly above face f (floating-point filter, Int128 fallback).
+        bool Above(int f, int q)
+        {
+            var pl = planesD[f];
+            double v = pl.X * p[q].X + pl.Y * p[q].Y + pl.Z * p[q].Z + pl.D;
+            double bound = (pl.Bound + Math.Abs(pl.D)) * 8 * Epsilon;
+            if (v > bound) return true;
+            if (v < -bound) return false;
+            return Predicates.Side(planes[f], p[q]) > 0;
         }
 
         // Orient the tetrahedron so that every face has the fourth point below it.
@@ -61,7 +85,7 @@ public static class ConvexHull3
         {
             foreach (int q in points)
                 foreach (int f in candidates)
-                    if (Height(f, q) > 0)
+                    if (Above(f, q))
                     {
                         (outside[f] ??= []).Add(q);
                         break;
@@ -70,6 +94,7 @@ public static class ConvexHull3
         Assign(Enumerable.Range(0, p.Length).Where(i => i != i0 && i != i1 && i != i2 && i != i3), initial);
 
         var pending = new Stack<int>(initial);
+        var stack = new Stack<int>();
         var visible = new List<int>();
         var visibleSet = new HashSet<int>();
         var horizon = new List<(int, int)>();
@@ -80,16 +105,16 @@ public static class ConvexHull3
             if (!alive[f0] || outside[f0] is not { Count: > 0 } waiting) continue;
             // Farthest point (largest height; all heights refer to the same face, so they compare directly).
             int q = waiting[0];
-            Int128 best = Height(f0, q);
+            double best = Height(f0, q);
             foreach (int r in waiting)
             {
-                Int128 h = Height(f0, r);
+                double h = Height(f0, r);
                 if (h > best) { best = h; q = r; }
             }
             // Visible region: connected set of faces with q strictly above, found by flooding from f0.
             visible.Clear();
             visibleSet.Clear();
-            var stack = new Stack<int>();
+            stack.Clear();
             stack.Push(f0);
             visibleSet.Add(f0);
             while (stack.Count > 0)
@@ -97,21 +122,18 @@ public static class ConvexHull3
                 int f = stack.Pop();
                 visible.Add(f);
                 var (a, b, c) = faces[f];
-                foreach (var (u, v) in new[] { (b, a), (c, b), (a, c) })
-                {
-                    int g = edgeFace[(u, v)];
-                    if (visibleSet.Contains(g) || Height(g, q) <= 0) continue;
-                    visibleSet.Add(g);
-                    stack.Push(g);
-                }
+                Visit(b, a);
+                Visit(c, b);
+                Visit(a, c);
             }
             horizon.Clear();
             orphans.Clear();
             foreach (int f in visible)
             {
                 var (a, b, c) = faces[f];
-                foreach (var (u, v) in new[] { (a, b), (b, c), (c, a) })
-                    if (!visibleSet.Contains(edgeFace[(v, u)])) horizon.Add((u, v));
+                if (!visibleSet.Contains(edgeFace[(b, a)])) horizon.Add((a, b));
+                if (!visibleSet.Contains(edgeFace[(c, b)])) horizon.Add((b, c));
+                if (!visibleSet.Contains(edgeFace[(a, c)])) horizon.Add((c, a));
                 if (outside[f] is { } list) foreach (int r in list) if (r != q) orphans.Add(r);
                 outside[f] = null;
             }
@@ -125,6 +147,14 @@ public static class ConvexHull3
             foreach (var (u, v) in horizon) created.Add(AddFace(u, v, q));
             Assign(orphans, created);
             foreach (int f in created) if (outside[f] is { Count: > 0 }) pending.Push(f);
+
+            void Visit(int u, int v)
+            {
+                int g = edgeFace[(u, v)];
+                if (visibleSet.Contains(g) || !Above(g, q)) return;
+                visibleSet.Add(g);
+                stack.Push(g);
+            }
         }
         return faces.Where((_, i) => alive[i]).ToList();
     }
