@@ -187,9 +187,9 @@ STL is for import and display only: binary STL stores float32 (±30 nm per coord
 
 ## License
 
-[Business Source License 1.1](LICENSE) (`BUSL-1.1`): copying, modification, redistribution and non-production use
-are permitted; production use requires a separate license from the Licensor. On the Change Date (2030-10-02) the code
-converts to the Apache License 2.0.
+[Business Source License 1.1](LICENSE) (`BUSL-1.1`): free for personal and non-commercial use (private, education,
+research, non-profit); copying, modification and redistribution are permitted. Commercial production use needs a license
+from the author – open an issue. Each version converts to the Apache License 2.0 four years after its release.
 
 Third-party components keep their own licenses: three.js (MIT, vendored in
 `samples/Stykker.NanoCut.Demo/wwwroot/lib/three`), Babylon.js (Apache 2.0, loaded from its CDN by the demo). Clipper2
