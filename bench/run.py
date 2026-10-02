@@ -185,4 +185,5 @@ def main():
     print(table)
 
 
-main()
+if __name__ == "__main__":
+    main()
