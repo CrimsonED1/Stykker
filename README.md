@@ -43,8 +43,8 @@ dotnet publish -c Release                              # static site in bin/Rele
 
 GitHub Pages: enable *Settings → Pages → Source: GitHub Actions* and run the "Demo (GitHub Pages)" workflow.
 The app runs in the .NET interpreter by default; the Pages workflow publishes with AOT (`-p:Aot=true`, needs
-`dotnet workload install wasm-tools`), which is about 5× faster for heavy scenes. Large rotations in the free-form page
-are still slow (see the performance notes in docs/processes.md).
+`dotnet workload install wasm-tools`), which is about 5× faster for heavy scenes. Rotations in the free-form page take
+well under a second per 45° at the default path error (see the performance notes in docs/processes.md).
 
 | | |
 | --- | --- |

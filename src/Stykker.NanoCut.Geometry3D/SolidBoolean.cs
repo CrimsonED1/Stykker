@@ -25,6 +25,7 @@ internal enum Location
 /// </summary>
 internal static class SolidBoolean
 {
+
     /// <summary>
     /// A face and the pieces it was split into. Leaves carry the classification. When every leaf below a node ends
     /// up in the result (or none does), the node's own face is used instead of its pieces – exact, because the pieces
@@ -65,7 +66,8 @@ internal static class SolidBoolean
         };
         foreach (var n in c.A) Emit(n, keepA, reverse: false, result);
         foreach (var n in c.B) Emit(n, keepB, reverse: op == SolidOp.Difference, result);
-        return result;
+        // Merge coplanar neighbours across the whole result (pieces of one face and faces from both operands alike).
+        return FaceMerge.MergeAll(result);
     }
 
     private static bool AllKept(Node n, Func<Location, bool> keep) =>
@@ -193,41 +195,81 @@ internal static class SolidBoolean
     {
         for (int attempt = 0; attempt < 8; attempt++)
         {
-            var c = InteriorPoint(f, attempt);
+            var c = new Probe(f, attempt);
             foreach (var q in coplanar)
             {
                 if (StrictlyInsideCoplanar(q, c))
                     return q.Support == f.Support ? Location.OnSame : Location.OnOpposite;
             }
-            int? w = RayWinding(c, other, scratch);
+            int? w = RayWinding(c, f.Support, other, scratch);
             if (w is int winding) return winding > 0 ? Location.Inside : Location.Outside;
         }
         throw new InvalidOperationException("Could not classify a face fragment (degenerate configuration).");
+    }
+
+    /// <summary>
+    /// An interior point of a fragment: approximate doubles for the filters, the exact homogeneous point only on demand.
+    /// </summary>
+    private sealed class Probe
+    {
+        private readonly Face3 _f;
+        private readonly int _k;
+        private readonly int[] _w;
+        private BigPoint? _big;
+
+        public Probe(Face3 f, int attempt)
+        {
+            _f = f;
+            var v = f.Vertices;
+            var fans = new List<int>();
+            for (int i = 1; i + 1 < v.Length; i++)
+                if (!CollinearFiltered(v[0], v[i], v[i + 1])) fans.Add(i);
+            if (fans.Count == 0) throw new InvalidOperationException("Degenerate face fragment.");
+            _k = fans[(attempt / Weights.Length) % fans.Count];
+            _w = Weights[attempt % Weights.Length];
+            double sum = _w[0] + _w[1] + _w[2];
+            Point3 a = v[0], b = v[_k], c = v[_k + 1];
+            X = (_w[0] * a.X + _w[1] * b.X + _w[2] * c.X) / sum;
+            Y = (_w[0] * a.Y + _w[1] * b.Y + _w[2] * c.Y) / sum;
+            Z = (_w[0] * a.Z + _w[1] * b.Z + _w[2] * c.Z) / sum;
+        }
+
+        public double X { get; }
+        public double Y { get; }
+        public double Z { get; }
+
+        public BigPoint Big => _big ??= Exact();
+
+        private BigPoint Exact()
+        {
+            var v = _f.Vertices;
+            var p0 = v[0].Big;
+            var p1 = v[_k].Big;
+            var p2 = v[_k + 1].Big;
+            BigInteger w12 = p1.W * p2.W, w02 = p0.W * p2.W, w01 = p0.W * p1.W;
+            return new BigPoint(
+                _w[0] * p0.X * w12 + _w[1] * p1.X * w02 + _w[2] * p2.X * w01,
+                _w[0] * p0.Y * w12 + _w[1] * p1.Y * w02 + _w[2] * p2.Y * w01,
+                _w[0] * p0.Z * w12 + _w[1] * p1.Z * w02 + _w[2] * p2.Z * w01,
+                (_w[0] + _w[1] + _w[2]) * p0.W * w12);
+        }
     }
 
     private readonly record struct BigPoint(BigInteger X, BigInteger Y, BigInteger Z, BigInteger W);
 
     private static readonly int[][] Weights = [[1, 1, 1], [1, 2, 3], [3, 1, 2], [2, 3, 1], [1, 3, 5], [5, 1, 3], [3, 5, 1], [2, 2, 3]];
 
-    /// <summary>A point strictly inside the fragment: weighted average of a non-degenerate fan triangle.</summary>
-    private static BigPoint InteriorPoint(Face3 f, int attempt)
+    /// <summary>Collinearity with a floating-point filter: clearly non-zero cross products decide without BigInteger.</summary>
+    private static bool CollinearFiltered(in Point3 a, in Point3 b, in Point3 c)
     {
-        var v = f.Vertices;
-        var p0 = v[0].Big;
-        var fans = new List<int>();
-        for (int i = 1; i + 1 < v.Length; i++)
-            if (!Collinear(p0, v[i].Big, v[i + 1].Big)) fans.Add(i);
-        if (fans.Count == 0) throw new InvalidOperationException("Degenerate face fragment.");
-        int k = fans[(attempt / Weights.Length) % fans.Count];
-        var p1 = v[k].Big;
-        var p2 = v[k + 1].Big;
-        var w = Weights[attempt % Weights.Length];
-        BigInteger w12 = p1.W * p2.W, w02 = p0.W * p2.W, w01 = p0.W * p1.W;
-        return new BigPoint(
-            w[0] * p0.X * w12 + w[1] * p1.X * w02 + w[2] * p2.X * w01,
-            w[0] * p0.Y * w12 + w[1] * p1.Y * w02 + w[2] * p2.Y * w01,
-            w[0] * p0.Z * w12 + w[1] * p1.Z * w02 + w[2] * p2.Z * w01,
-            (w[0] + w[1] + w[2]) * p0.W * w12);
+        double ux = b.X - a.X, uy = b.Y - a.Y, uz = b.Z - a.Z, vx = c.X - a.X, vy = c.Y - a.Y, vz = c.Z - a.Z;
+        double nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+        double scale = (Math.Abs(ux) + Math.Abs(uy) + Math.Abs(uz)) * (Math.Abs(vx) + Math.Abs(vy) + Math.Abs(vz));
+        // Coordinates are accurate to ~1e-15 relative to their magnitude; allow generously for that.
+        double mag = Math.Max(Math.Max(Math.Abs(a.X), Math.Abs(a.Y)), Math.Max(Math.Abs(a.Z), 1));
+        double bound = 1e-11 * (scale + mag * (Math.Abs(ux) + Math.Abs(uy) + Math.Abs(uz) + Math.Abs(vx) + Math.Abs(vy) + Math.Abs(vz)));
+        if (Math.Abs(nx) > bound || Math.Abs(ny) > bound || Math.Abs(nz) > bound) return false;
+        return Collinear(a.Big, b.Big, c.Big);
     }
 
     private static bool Collinear(
@@ -244,11 +286,16 @@ internal static class SolidBoolean
     private static int Eval(in Plane3 p, in BigPoint c) =>
         ((BigInteger)p.Nx * c.X + (BigInteger)p.Ny * c.Y + (BigInteger)p.Nz * c.Z + (BigInteger)p.D * c.W).Sign;
 
-    private static bool StrictlyInsideCoplanar(Face3 q, in BigPoint c)
+    private static bool StrictlyInsideCoplanar(Face3 q, Probe c)
     {
-        if (Eval(q.Support, c) != 0) return false;
-        foreach (var e in q.Edges)
-            if (Eval(e, c) >= 0) return false;
+        // q comes from the coplanar list: it lies in the fragment's plane, so the probe is on q's plane by construction.
+        var k = q.PlanesD;
+        for (int i = 0; i < q.Edges.Length; i++)
+        {
+            int side = Filter.Sign(k, 4 * (i + 1), c.X, c.Y, c.Z);
+            if (side == Filter.Uncertain) side = Eval(q.Edges[i], c.Big);
+            if (side >= 0) return false;
+        }
         return true;
     }
 
@@ -256,22 +303,30 @@ internal static class SolidBoolean
     /// Winding number of the other solid at c, counted along the ray c + t·(1, 0, 0), t &gt; 0, with c
     /// perturbed symbolically by (0, ε, ε²). Returns null if c lies on the other solid's surface.
     /// </summary>
-    private static int? RayWinding(in BigPoint c, Bvh3 other, List<Face3> scratch)
+    private static int? RayWinding(Probe probe, in Plane3 own, Bvh3 other, List<Face3> scratch)
     {
-        double cx = (double)c.X / (double)c.W, cy = (double)c.Y / (double)c.W, cz = (double)c.Z / (double)c.W;
+        var ownFlipped = own.Flipped();
+        double cx = probe.X, cy = probe.Y, cz = probe.Z;
         other.QueryRayX(cx - 1, cy, cz, scratch);
         int winding = 0;
         foreach (var q in scratch)
         {
             var s = q.Support;
+            // A face in the fragment's own plane: the probe lies on that plane by construction. Strictly inside such
+            // a face was already reported by the coplanar test (q is a candidate of the fragment's parent face), and
+            // the fragment cannot end on q's boundary (it was split by q's edge planes), so the face never counts.
+            if (s == own || s == ownFlipped) continue;
+            var k = q.PlanesD;
             int sx = Int128.Sign(s.Nx);
-            int sp = Eval(s, c);
+            int sp = Filter.Sign(k, 0, cx, cy, cz);
+            if (sp == Filter.Uncertain) sp = Eval(s, probe.Big);
             if (sp == 0)
             {
                 // c on the plane of q: on the surface if inside or on the boundary of q.
+                var c0 = probe.Big;
                 bool closedInside = true;
                 foreach (var e in q.Edges)
-                    if (Eval(e, c) > 0) { closedInside = false; break; }
+                    if (Eval(e, c0) > 0) { closedInside = false; break; }
                 if (closedInside) return null;
                 continue;
             }
@@ -279,17 +334,24 @@ internal static class SolidBoolean
             if (sp * sx > 0) continue;            // plane hit lies behind c (x_hit < c_x)
 
             // Hit point h = (x_hit, c_y, c_z) with x_hit = -(S_y c_y + S_z c_z + S_d) / S_x.
-            BigInteger t = (BigInteger)s.Ny * c.Y + (BigInteger)s.Nz * c.Z + (BigInteger)s.D * c.W;
+            BigInteger? t = null;
             bool inside = true;
-            foreach (var e in q.Edges)
+            for (int ei = 0; ei < q.Edges.Length; ei++)
             {
-                BigInteger g = -(BigInteger)e.Nx * t + (BigInteger)s.Nx * ((BigInteger)e.Ny * c.Y + (BigInteger)e.Nz * c.Z + (BigInteger)e.D * c.W);
-                int sign = g.Sign * sx;
-                if (sign == 0)
+                var e = q.Edges[ei];
+                int sign = Filter.EdgeAtHit(k, 4 * (ei + 1), cy, cz);
+                if (sign == Filter.Uncertain)
                 {
-                    // Perturbation c_y += ε, c_z += ε².
-                    BigInteger alpha = (BigInteger)e.Ny * s.Nx - (BigInteger)e.Nx * s.Ny;
-                    sign = (alpha.IsZero ? ((BigInteger)e.Nz * s.Nx - (BigInteger)e.Nx * s.Nz).Sign : alpha.Sign) * sx;
+                    var c = probe.Big;
+                    t ??= (BigInteger)s.Ny * c.Y + (BigInteger)s.Nz * c.Z + (BigInteger)s.D * c.W;
+                    BigInteger g = -(BigInteger)e.Nx * t.Value + (BigInteger)s.Nx * ((BigInteger)e.Ny * c.Y + (BigInteger)e.Nz * c.Z + (BigInteger)e.D * c.W);
+                    sign = g.Sign * sx;
+                    if (sign == 0)
+                    {
+                        // Perturbation c_y += ε, c_z += ε².
+                        BigInteger alpha = (BigInteger)e.Ny * s.Nx - (BigInteger)e.Nx * s.Ny;
+                        sign = (alpha.IsZero ? ((BigInteger)e.Nz * s.Nx - (BigInteger)e.Nx * s.Nz).Sign : alpha.Sign) * sx;
+                    }
                 }
                 if (sign >= 0) { inside = false; break; }
             }

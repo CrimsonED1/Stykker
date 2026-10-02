@@ -52,18 +52,33 @@ than `Tolerance.SweepNm` (checked at the extreme points of the tool, where the d
 
 ## Performance notes (measured)
 
-| Case | native | browser AOT | browser interpreter |
-| --- | --- | --- | --- |
-| Cube 8 mm turning 45° through a cube, path error 50 µm (128 steps), first rotation | 12 s | 32 s | 167 s |
-| Same, second rotation on the already cut cube (50 282 faces afterwards) | 45 s | 114 s | – |
+Cube 8 mm moving and turning through a 20 mm cube, path error 50 µm (128 steps per 45°):
 
-Two kernel improvements address this: classifying fragments with a floating-point filter (exact arithmetic only when
-the filter is undecided) and merging coplanar neighbouring fragments that end up on the same side.
+| Step | before | now native | now browser (AOT) |
+| --- | --- | --- | --- |
+| first 45° rotation (A) | 12 s native, 32 s AOT | 0.46 s | 0.6 s |
+| translation on the cut cube (Y) | 5.3 s native, 15 s AOT | 0.55 s | 2.6 s |
+| second 45° rotation (C, around the tilted cube) | 45 s native, 114 s AOT | 5.6 s | 17.5 s |
+
+What made the difference:
+
+1. **Floating-point filters** for every side test and every ray–face test: the sign is taken from a double
+   evaluation when it clearly exceeds a conservative rounding bound (1e-11 × Σ|terms|, about 10⁴ above the actual
+   error), otherwise the Int384 / BigInteger evaluation decides. Results are unchanged (all tests, including the
+   degenerate lattice fuzzing and the ManifoldSharp oracle, pass); the exact path now runs for < 1 % of the tests.
+2. **Coplanar knowledge in the ray cast:** faces in the fragment's own plane are skipped without arithmetic, and the
+   coplanar-overlap test no longer builds the exact interior point.
+3. **Split tree and fragment merging:** pieces of a face are restored when they all end up on the same side, and
+   coplanar neighbours sharing an edge are merged when their union is convex (exact edge planes are kept).
+4. **Grouped sweeps:** neighbouring swept pieces are united in groups of eight before cutting the workpiece.
+
+The remaining cost of long rotating sweeps is the face count (35 000 faces after the second rotation above): regions
+bounded by a polygonal envelope need many convex pieces, and pieces meeting at T-junctions cannot be merged yet.
 
 ## Known limits / next steps
 
 - **3D motions with rotation** (5-axis tool tilt, hobbing, skiving, rotating workpiece in 3D) use the convex hull of
   two poses, which needs very small steps. An exact face-sweep (analogous to the 2D edge sweep) is the next step.
-- **Face count:** pieces of a face are merged back when all of them land on the same side (split tree). Partially
-  kept faces stay fragmented, so long rotating sweeps still accumulate many faces.
+- **Face count:** pieces are merged back (split tree, coplanar merging), but pieces meeting at T-junctions are not,
+  so long rotating sweeps still accumulate many faces.
 - **Turning feed marks:** the lathe model is a continuous cut; scallops of the feed per revolution are ignored.
