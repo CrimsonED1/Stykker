@@ -99,6 +99,29 @@ public readonly struct Int384 : IEquatable<Int384>, IComparable<Int384>
         return new(lo, hi, ext, ext, ext, ext);
     }
 
+    /// <summary>Size of the binary representation in bytes.</summary>
+    public const int ByteCount = 48;
+
+    /// <summary>Writes the value as 48 bytes, two's complement, little-endian.</summary>
+    public void WriteBytes(Span<byte> destination)
+    {
+        if (destination.Length < ByteCount) throw new ArgumentException("Destination too small.", nameof(destination));
+        Span<ulong> l = stackalloc ulong[Limbs];
+        Store(l);
+        for (int i = 0; i < Limbs; i++)
+            System.Buffers.Binary.BinaryPrimitives.WriteUInt64LittleEndian(destination.Slice(i * 8, 8), l[i]);
+    }
+
+    /// <summary>Reads a value written by <see cref="WriteBytes"/>.</summary>
+    public static Int384 ReadBytes(ReadOnlySpan<byte> source)
+    {
+        if (source.Length < ByteCount) throw new ArgumentException("Source too small.", nameof(source));
+        Span<ulong> l = stackalloc ulong[Limbs];
+        for (int i = 0; i < Limbs; i++)
+            l[i] = System.Buffers.Binary.BinaryPrimitives.ReadUInt64LittleEndian(source.Slice(i * 8, 8));
+        return new Int384(l);
+    }
+
     /// <summary>Converts from <see cref="BigInteger"/>; throws if out of range.</summary>
     public static explicit operator Int384(BigInteger v)
     {

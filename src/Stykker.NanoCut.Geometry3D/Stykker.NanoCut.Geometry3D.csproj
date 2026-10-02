@@ -6,6 +6,7 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../Stykker.NanoCut.Core/Stykker.NanoCut.Core.csproj" />
+    <ProjectReference Include="../Stykker.NanoCut.Geometry2D/Stykker.NanoCut.Geometry2D.csproj" />
     <InternalsVisibleTo Include="Stykker.NanoCut.Cutting" />
     <InternalsVisibleTo Include="Stykker.NanoCut.Tests" />
     <InternalsVisibleTo Include="Stykker.NanoCut.OracleTests" />

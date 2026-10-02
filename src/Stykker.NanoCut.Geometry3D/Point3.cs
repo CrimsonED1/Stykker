@@ -34,6 +34,9 @@ public readonly struct Point3
         _exact = new Exact(h);
     }
 
+    /// <summary>Reference identity of an exact vertex (shared between fragments created by the same split), or null.</summary>
+    internal object? Identity => _exact;
+
     /// <summary>True if the vertex is a grid point.</summary>
     public bool IsGrid => _exact is null;
 

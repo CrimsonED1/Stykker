@@ -119,12 +119,45 @@ public class Boolean2Tests
     [Fact]
     public void CrossingPointIsRoundedToGrid()
     {
-        // Diagonals of a 3 × 2 rectangle cross at (1.5, 1): rounded to (2, 1) (half away from zero).
+        // Diagonals of a 3 × 2 rectangle cross at (1.5, 1): rounded to (2, 1) (halves up).
         Assert.Equal(new Vec2(2, 1), BooleanKernel.RoundedIntersection(new(0, 0), new(3, 2), new(0, 2), new(3, 0)));
-        Assert.Equal(-2, BooleanKernel.RoundDiv(-3, 2));
+        Assert.Equal(-1, BooleanKernel.RoundDiv(-3, 2));
+        Assert.Equal(-2, BooleanKernel.RoundDiv(-5, 2));
         Assert.Equal(2, BooleanKernel.RoundDiv(3, 2));
         Assert.Equal(1, BooleanKernel.RoundDiv(4, 3));
         Assert.Equal(-1, BooleanKernel.RoundDiv(-4, 3));
+    }
+
+    [Fact]
+    public void HotPixelTestIsExact()
+    {
+        // Pixel around (0, 0) is [-0.5, 0.5)².
+        Assert.True(BooleanKernel.SegmentHitsPixel(new(-5, 0), new(5, 0), new(0, 0)));
+        Assert.True(BooleanKernel.SegmentHitsPixel(new(-1, -1), new(1, 1), new(0, 0)));
+        Assert.False(BooleanKernel.SegmentHitsPixel(new(-5, 1), new(5, 1), new(0, 0)));
+        // The open upper boundary y = 0.5 belongs to the pixel above: a horizontal segment on it hits (0, 1) only.
+        Assert.False(BooleanKernel.SegmentHitsPixel(new(-4, 0), new(4, 0), new(0, 1)));
+        Assert.False(BooleanKernel.SegmentHitsPixel(new(-3, 1), new(3, 1), new(0, 0)));
+        // A segment crossing the corner region diagonally.
+        Assert.True(BooleanKernel.SegmentHitsPixel(new(-1, 0), new(1, 1), new(0, 0)));
+        Assert.True(BooleanKernel.SegmentHitsPixel(new(-1, 0), new(1, 1), new(0, 1)));
+        Assert.False(BooleanKernel.SegmentHitsPixel(new(2, 2), new(9, 3), new(0, 0)));
+    }
+
+    [Fact]
+    public void ManyThinOverlappingSliversStayRobust()
+    {
+        // Fan of long thin triangles rotating in tiny steps: dense near-degenerate crossings.
+        var pieces = new List<Region2>();
+        for (int i = 0; i < 400; i++)
+        {
+            double a = i * 1e-4;
+            Vec2 P(double x, double y) => new((long)Math.Round(x * Math.Cos(a) - y * Math.Sin(a)), (long)Math.Round(x * Math.Sin(a) + y * Math.Cos(a)));
+            pieces.Add(Region2.Polygon(P(0, 0), P(10_000_000, 0), P(10_000_000, 3)));
+        }
+        var u = Region2.UnionAll(pieces);
+        AssertValid(u);
+        Assert.True(u.AreaMm2 > 0);
     }
 
     [Fact]

@@ -12,11 +12,15 @@ Background, research and phase plan: [docs/plan.md](docs/plan.md) (German).
 | --- | --- | --- |
 | 0 – Repo & CI | Project structure, GitHub Actions for `net10.0` and `browser-wasm`, MIT | ✅ |
 | 1 – Core | 1 nm grid, `Int128` predicates, `Int384`, planes and homogeneous intersection points, tolerance model | ✅ predicates match `BigInteger` on 10⁶ cases, bit budget verified ([docs/bit-budget.md](docs/bit-budget.md)) |
-| 2 – 2D kernel | Booleans (4 fill rules), arcs with chord error, offset, Minkowski sweep, area, depth | ✅ example 1 (2D) within budget, oracle vs. Clipper2 on 10,000 random polygons |
-| 3 – 3D kernel | Plane-based exact Booleans, BVH, primitives (box, sphere, cylinder, cone, capsule), STL import | ✅ Steinmetz solid and sphere lens within budget, oracle vs. ManifoldSharp (max. ΔV 4·10⁻¹⁴ mm³) |
-| 4 – 3D sweep & analysis | Linear ball sweep ✅, removed volume and depth ✅; arcs, tool rotation, other tool shapes | partly – example 1 (3D) within budget |
+| 2 – 2D kernel | Booleans (4 fill rules, hot-pixel snap rounding), arcs with chord error, offset, Minkowski sweep, triangulation and convex decomposition | ✅ example 1 (2D) within budget, oracle vs. Clipper2 on 10,000 random polygons |
+| 3 – 3D kernel | Plane-based exact Booleans, BVH, primitives, extrude/revolve, convex hull, lossless `.ncs` format, STL import | ✅ Steinmetz solid and sphere lens within budget, oracle vs. ManifoldSharp (max. ΔV 4·10⁻¹⁴ mm³) |
+| 4 – Processes | Acting shape + motion on one or more workpieces: planar processes (gear generation), turning, 3D milling ([docs/processes.md](docs/processes.md)) | ✅ 2D/turning/3D translation; 3D rotation works but slow |
 | 5 – Web | three.js/Babylon.js adapters and headless snapshot ✅; `[JSExport]` interop, web worker, Blazor demo | partly |
 | 6 – Hardening & release | Fuzzing, benchmarks, packages | open |
+
+| | | |
+| --- | --- | --- |
+| ![Gear generation](docs/images/gear-generation.png) | ![Turning](docs/images/turning.png) | ![Milling](docs/images/milling.png) |
 
 ## Quick start (2D)
 
@@ -57,6 +61,23 @@ Console.WriteLine(r.RemovedVolumeMm3);      // 61.948802 (exact 61.949642, |Δ| 
 Console.WriteLine(r.MaxDepthMm);            // 1.000000
 
 MeshBuffers buf = r.Remaining.ToMeshBuffers(OriginMode.Centroid);   // → three.js / Babylon.js
+r.Remaining.Save("part.ncs");                                        // lossless internal format
+```
+
+## Processes: acting shape + motion
+
+```csharp
+// Sketch – full scenes in samples/Stykker.NanoCut.Snapshot/Program.cs.
+// Turning: insert (r–z region) along a path, workpiece spinning about z.
+var part = Lathe.Turn(Lathe.BarProfile(10, 0, 40), insert,
+                      Motion2.Polyline(Vec2.Mm(12, 42), Vec2.Mm(8, 42), Vec2.Mm(8, 28)), tol).Part;
+
+// Gear generation: a rack rolling on the blank (planar, relative motion).
+var gear2D = Process2.Cut(blank, GearProfile.Rack(2, 7), rollingMotion, tol);
+var gear   = Solid.Extrude(gear2D, 0, 10);
+
+// Milling: any convex-decomposable tool on any spatial motion, several workpieces at once.
+var parts = Process3.Cut([block], ToolShape.BallNoseMill(3, 25, tol), Motion3.Polyline(path), tol, out _);
 ```
 
 ```js
@@ -72,8 +93,8 @@ const mesh = toBabylonMesh(buffers, 'rest', scene); // BABYLON.Mesh
 ```
 src/Stykker.NanoCut.Core/         Vec2/Vec3 (1 nm), Int384, predicates, Plane3/HomogeneousPoint3, tolerance
 src/Stykker.NanoCut.Geometry2D/   Region2, exact Boolean kernel, arcs, offset, Minkowski, penetration
-src/Stykker.NanoCut.Geometry3D/   Solid, exact plane-based Boolean kernel, primitives, STL, mesh buffers
-src/Stykker.NanoCut.Cutting/      Tool/ToolPath/Cutter (3D), Tool2/ToolPath2/Cutter2 (2D)
+src/Stykker.NanoCut.Geometry3D/   Solid, exact plane-based Boolean kernel, primitives, extrude/revolve, hull, sweeps, .ncs, STL, buffers
+src/Stykker.NanoCut.Cutting/      Motion2/3, Process2/3, Lathe, ToolShape; Tool/ToolPath/Cutter (3D), Tool2/ToolPath2/Cutter2 (2D)
 js/nanocut-three/                 three.js adapter (@stykker/nanocut-three)
 js/nanocut-babylon/               Babylon.js adapter (@stykker/nanocut-babylon)
 samples/Stykker.NanoCut.Snapshot/ computes example scenes and writes mesh buffers as JSON
@@ -90,9 +111,9 @@ dotnet test                                          # net10.0: reference and or
 dotnet build tests/Stykker.NanoCut.WasmSmoke -c Release
 node tests/Stykker.NanoCut.WasmSmoke/bin/Release/net10.0/wwwroot/main.mjs   # browser-wasm
 
-# Render example 1 to a PNG (headless Chromium + three.js)
-dotnet run -c Release --project samples/Stykker.NanoCut.Snapshot -- snapshot-out
-cd tools/snapshot && npm install && node snapshot.mjs ../../snapshot-out example1.png iso
+# Render the example scenes to PNGs (headless Chromium + three.js)
+dotnet run -c Release --project samples/Stykker.NanoCut.Snapshot -- snapshot-out all   # example1|gear|lathe|mill|all
+cd tools/snapshot && npm install && node snapshot.mjs ../../snapshot-out/gear gear.png
 ```
 
 ## 2D kernel
@@ -100,8 +121,9 @@ cd tools/snapshot && npm install && node snapshot.mjs ../../snapshot-out example
 The 2D kernel is an exact arrangement method, not a Vatti scanbeam:
 
 1. All edges of both operands are collected with their winding multiplicity.
-2. A sweep over x finds crossings, T-junctions and collinear overlaps; edges are split there.
-   Crossing points are rounded to the grid once and never moved again.
+2. A sweep over x finds crossings, T-junctions and collinear overlaps. Crossings are resolved by snap rounding
+   with hot pixels (each edge is routed through every crossing or end-point pixel it meets, ≤ 0.71 nm), which cannot
+   create new crossings; T-junctions and overlaps are split exactly.
 3. A half-edge structure with exact angular order yields the faces. Winding numbers are propagated face to face,
    with exactly one exact ray test per connected component.
 4. Edges between inside and outside (per fill rule and operation) are linked into result contours:
@@ -125,6 +147,10 @@ Solids are closed polyhedra in plane-based representation (Bernstein & Fussell, 
 
 Volumes of the result agree with ManifoldSharp's exact engine to 10⁻¹³ mm³. Fragments are not merged back yet, so
 flat faces may consist of several coplanar pieces.
+
+Results are stored in the internal `.ncs` format (`Solid.Save/Load`): planes as Int128, vertices as grid Int64 or
+exact homogeneous Int384. Loading is bit-identical, so stored results can be processed further without rounding.
+STL is for import and display only: binary STL stores float32 (±30 nm per coordinate at 1 m).
 
 ## License
 

@@ -7,5 +7,6 @@
   <ItemGroup>
     <ProjectReference Include="../Stykker.NanoCut.Core/Stykker.NanoCut.Core.csproj" />
     <InternalsVisibleTo Include="Stykker.NanoCut.Tests" />
+    <InternalsVisibleTo Include="Stykker.NanoCut.Cutting" />
   </ItemGroup>
 </Project>
