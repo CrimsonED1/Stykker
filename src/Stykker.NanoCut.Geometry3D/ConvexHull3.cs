@@ -43,7 +43,9 @@ public static class ConvexHull3
             var (a, b, c) = tris[i];
             if (Predicates.Orient3D(pts[a], pts[b], pts[c], pts[far]) == 0) parent[Find(i)] = Find(j);
         }
-        // Single triangles become faces directly; only real coplanar groups are collected.
+        // Single triangles become faces directly; only real coplanar groups are collected. For a ball hull almost every
+        // triangle is its own group (a sphere's quads and meridians are not coplanar), so the group lists must not be
+        // built for them: 2256 of 2304 groups for a 48-segment ball would be 2256 throwaway lists.
         var size = new int[tris.Count];
         for (int i = 0; i < tris.Count; i++) size[Find(i)]++;
         var faces = new List<Face3>(tris.Count);
@@ -54,7 +56,7 @@ public static class ConvexHull3
             if (size[r] == 1)
             {
                 var (a, b, c) = tris[i];
-                faces.Add(Face3.FromGrid([pts[a], pts[b], pts[c]]));
+                faces.Add(Face3.FromTriangle(pts[a], pts[b], pts[c]));
                 continue;
             }
             if (!groups.TryGetValue(r, out var g)) groups[r] = g = [];
