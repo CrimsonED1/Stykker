@@ -8,6 +8,7 @@ internal sealed class Bvh3
     private readonly IReadOnlyList<Face3> _faces;
     private readonly int[] _order;
     private readonly List<Node> _nodes = [];
+    private double[]? _keys;
 
     private struct Node
     {
@@ -35,8 +36,10 @@ internal sealed class Bvh3
 
         double dx = box.MaxX - box.MinX, dy = box.MaxY - box.MinY, dz = box.MaxZ - box.MinZ;
         int axis = dx >= dy && dx >= dz ? 0 : dy >= dz ? 1 : 2;
-        Array.Sort(_order, start, count, Comparer<int>.Create((a, b) =>
-            _faces[a].Box.Center(axis).CompareTo(_faces[b].Box.Center(axis))));
+        // Sort the range by box centre with a key array (no comparison delegate).
+        var keys = _keys ??= new double[_order.Length];
+        for (int i = start; i < start + count; i++) keys[i] = _faces[_order[i]].Box.Center(axis);
+        Array.Sort(keys, _order, start, count);
         int half = count / 2;
         int left = Build(start, half);
         int right = Build(start + half, count - half);
@@ -52,11 +55,13 @@ internal sealed class Bvh3
     {
         result.Clear();
         if (_nodes.Count == 0) return;
-        var stack = new Stack<int>();
-        stack.Push(0);
-        while (stack.Count > 0)
+        // Depth is about log2(faces / LeafSize); 256 entries cover any realistic tree without allocating.
+        Span<int> stack = stackalloc int[256];
+        int top = 0;
+        stack[top++] = 0;
+        while (top > 0)
         {
-            var n = _nodes[stack.Pop()];
+            var n = _nodes[stack[--top]];
             if (!n.Box.Overlaps(box)) continue;
             if (n.Left < 0)
             {
@@ -68,8 +73,9 @@ internal sealed class Bvh3
             }
             else
             {
-                stack.Push(n.Left);
-                stack.Push(n.Right);
+                if (top + 2 > stack.Length) throw new InvalidOperationException("BVH deeper than expected.");
+                stack[top++] = n.Left;
+                stack[top++] = n.Right;
             }
         }
     }

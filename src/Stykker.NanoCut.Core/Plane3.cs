@@ -22,7 +22,11 @@ public readonly record struct Plane3(Int128 Nx, Int128 Ny, Int128 Nz, Int128 D)
     /// <summary>The same plane with all coefficients divided by their greatest common divisor (orientation kept).</summary>
     public Plane3 Canonical()
     {
-        UInt128 g = Gcd(Gcd(Abs(Nx), Abs(Ny)), Gcd(Abs(Nz), Abs(D)));
+        UInt128 g = Gcd(Abs(Nx), Abs(Ny));
+        if (g == 1) return this;
+        g = Gcd(g, Abs(Nz));
+        if (g == 1) return this;
+        g = Gcd(g, Abs(D));
         if (g <= 1) return this;
         Int128 gi = (Int128)g;
         return new Plane3(Nx / gi, Ny / gi, Nz / gi, D / gi);
@@ -33,10 +37,34 @@ public readonly record struct Plane3(Int128 Nx, Int128 Ny, Int128 Nz, Int128 D)
 
     private static UInt128 Abs(Int128 v) => v < 0 ? (UInt128)(-v) : (UInt128)v;
 
+    // Binary GCD (shifts and subtractions only); 64-bit when both values fit, which is the common case.
     private static UInt128 Gcd(UInt128 a, UInt128 b)
     {
-        while (b != 0) (a, b) = (b, a % b);
-        return a;
+        if (a == 0) return b;
+        if (b == 0) return a;
+        if ((a >> 64) == 0 && (b >> 64) == 0) return Gcd64((ulong)a, (ulong)b);
+        int shift = (int)UInt128.TrailingZeroCount(a | b);
+        a >>= (int)UInt128.TrailingZeroCount(a);
+        do
+        {
+            b >>= (int)UInt128.TrailingZeroCount(b);
+            if (a > b) (a, b) = (b, a);
+            b -= a;
+        } while (b != 0);
+        return a << shift;
+    }
+
+    private static ulong Gcd64(ulong a, ulong b)
+    {
+        int shift = System.Numerics.BitOperations.TrailingZeroCount(a | b);
+        a >>= System.Numerics.BitOperations.TrailingZeroCount(a);
+        do
+        {
+            b >>= System.Numerics.BitOperations.TrailingZeroCount(b);
+            if (a > b) (a, b) = (b, a);
+            b -= a;
+        } while (b != 0);
+        return a << shift;
     }
 
     /// <summary>True if the three defining points were collinear (no plane).</summary>
