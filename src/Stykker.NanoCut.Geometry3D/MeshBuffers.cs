@@ -41,6 +41,36 @@ public sealed class MeshBuffers
     /// <summary>Number of triangles.</summary>
     public int TriangleCount => Indices.Length / 3;
 
+    /// <summary>
+    /// One buffer with the triangles of several buffers (e.g. the cells of a workpiece or many small parts), all
+    /// relative to the origin of the first one.
+    /// </summary>
+    public static MeshBuffers Concat(IEnumerable<MeshBuffers> buffers)
+    {
+        var list = buffers.ToList();
+        if (list.Count == 0) return new MeshBuffers([], [], [], (0, 0, 0));
+        var o = list[0].OriginMm;
+        var pos = new float[list.Sum(b => b.Positions.Length)];
+        var nrm = new float[pos.Length];
+        var idx = new uint[list.Sum(b => b.Indices.Length)];
+        int p = 0, k = 0;
+        foreach (var b in list)
+        {
+            float dx = (float)(b.OriginMm.X - o.X), dy = (float)(b.OriginMm.Y - o.Y), dz = (float)(b.OriginMm.Z - o.Z);
+            uint start = (uint)(p / 3);
+            for (int i = 0; i < b.Positions.Length; i += 3)
+            {
+                pos[p + i] = b.Positions[i] + dx;
+                pos[p + i + 1] = b.Positions[i + 1] + dy;
+                pos[p + i + 2] = b.Positions[i + 2] + dz;
+            }
+            Array.Copy(b.Normals, 0, nrm, p, b.Normals.Length);
+            foreach (uint i in b.Indices) idx[k++] = start + i;
+            p += b.Positions.Length;
+        }
+        return new MeshBuffers(pos, nrm, idx, o);
+    }
+
     internal static MeshBuffers From(Solid solid, OriginMode mode)
     {
         (double X, double Y, double Z) o = (0, 0, 0);

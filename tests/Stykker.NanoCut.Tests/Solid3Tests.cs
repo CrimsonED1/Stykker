@@ -231,4 +231,17 @@ public class Solid3IoTests
         var tet = StlReader.Read(System.Text.Encoding.ASCII.GetBytes(ascii));
         Assert.Equal(1.0 / 6, Math.Abs(tet.VolumeMm3), 9);
     }
+
+    [Fact]
+    public void TranslationSweepAcrossSplitCoplanarFaces()
+    {
+        // A cylinder moved sideways: its caps (triangle fans, coplanar pieces) are parallel to the move and must be swept
+        // as one face each. Minkowski sum with a segment: V = V(K) + |t| · area of K projected along t.
+        var tol = Tolerance.Budget(totalUm: 2.1, chordNm: 1000, sweepNm: 500);
+        var cyl = Solid.Cylinder(Vec3.Mm(0, -1, 0), Vec3.Mm(0, 1, 0), 10, tol);
+        var b = cyl.BoundsMm!.Value;
+        var swept = Sweep3.Translate(cyl, Vec3.Mm(42, 0, 0));
+        Assert.Equal(cyl.VolumeMm3 + 42 * (b.MaxY - b.MinY) * (b.MaxZ - b.MinZ), swept.VolumeMm3, 6);
+        Assert.Equal(1880, (Solid.Box(Vec3.Mm(0, -5, -10), Vec3.Mm(20, 5, 0)) - swept.Transform(Pose3.TranslationMm(-11, 0, 7))).VolumeMm3, 6);
+    }
 }

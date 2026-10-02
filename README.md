@@ -32,6 +32,10 @@ with three.js or Babylon.js (switchable).
   against analytic solutions, and STL / `.ncs` download.
 - **Machines:** a lathe (X diameter, Z) and a 3-axis mill (X, Y, Z) with jog buttons (0.01 … 5 mm, infeed), go-to,
   undo and a G-code program (G0/G1). Every move cuts exactly; rapid moves into material are reported as collisions.
+- **Spinning disc:** a saw blade or cut-off wheel at 3000 rpm fed into a block; the cut is computed in real process time
+  (teeth on their trochoids, feed per tooth, removed volume) and played back in slow motion (1/10 … 1/1000).
+- **Grinding grains:** a wheel with random abrasive grains (size, protrusion mean/σ, seed); every grain follows its
+  trochoid and cuts its own chip – active grains in orange, chip-thickness histogram, surface profile with Ra/Rz.
 - **Free-form:** two cubes – drag or rotate the tool cube with a gizmo (or jog X/Y/Z/A/B/C); every motion,
   translation and rotation together, cuts the other solid.
 - **Self test:** runs the reference checks of the test suite inside the browser.
@@ -106,6 +110,10 @@ var gear   = Solid.Extrude(gear2D, 0, 10);
 
 // Milling: any convex-decomposable tool on any spatial motion, several workpieces at once.
 var parts = Process3.Cut([block], ToolShape.BallNoseMill(3, 25, tol), Motion3.Polyline(path), tol, out _);
+
+// Spinning tools: a plain wheel is spin-invariant (cut as the revolved body); saw teeth follow feed + spin in time.
+var saw  = SpinningTool.SawBlade(radiusMm: 20, thicknessMm: 1.6, teeth: 12, toothHeightMm: 2.5, rpm: 3000, tol);
+var slot = Process3.CutSpinning([block], saw, feedMotion, feedMmPerS: 60, tol, out var spin)[0];
 ```
 
 ```js

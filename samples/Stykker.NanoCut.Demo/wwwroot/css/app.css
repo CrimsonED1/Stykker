@@ -74,3 +74,13 @@ textarea.program { width: 100%; height: 150px; font-family: ui-monospace, monosp
   .scene { grid-template-columns: 1fr; grid-template-rows: 55vh auto; }
   .panel { border-left: 0; border-top: 1px solid var(--line); }
 }
+.scrub { width: 100%; margin: 8px 0; accent-color: var(--accent); }
+.plot { width: 100%; height: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; margin: 6px 0; }
+.plot-line { fill: none; stroke: var(--accent); stroke-width: 1.5; stroke-linejoin: round; }
+.plot-base { stroke: var(--line); stroke-width: 1; }
+.plot-label { font-size: 9px; fill: var(--muted); }
+.hist { display: flex; align-items: flex-end; gap: 2px; height: 70px; margin: 6px 0 2px; }
+.hist-bar { flex: 1; height: 100%; display: flex; align-items: flex-end; }
+.hist-bar i { display: block; width: 100%; min-height: 1px; background: var(--accent); border-radius: 3px 3px 0 0; }
+.hist-axis { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); }
+.num input + input { margin-left: 4px; }
