@@ -1,32 +1,32 @@
-# Genauigkeitskonzept – Umsetzung und Messwerte
+# Accuracy concept – implementation and measurements
 
-Die Gesamtvorgabe von 0,1 µm ist in `Tolerance.Budget(totalUm: 0.1, chordNm: 50)` aufgeteilt:
+The total budget of 0.1 µm is split in `Tolerance.Budget(totalUm: 0.1, chordNm: 50)`:
 
-| Fehlerquelle | Umsetzung | Budget |
+| Error source | Implementation | Budget |
 | --- | --- | --- |
-| Zahlendarstellung | Int64 auf 1-nm-Gitter, exakte Prädikate; Schnittpunkte einmal gerundet (≤ 0,71 nm) und danach nie wieder bewegt | 0,5 nm je Achse |
-| Diskretisierung | `Discretization.SegmentCount` aus θ = 2·acos(1 − s/r); Kreise einbeschrieben, Segmentzahl auf Vielfaches von 4 aufgerundet (Achsen-Extrempunkte exakt) | 50 nm |
-| Bahn-Schrittweite | Bögen der Werkzeugbahn als Sehnenzug mit Pfeilhöhe ≤ `SweepNm`; gerade Stücke exakt (konvexe Hülle Start/Ende) | 30 nm |
-| Reserve | Rest | 19,5 nm |
+| Number representation | Int64 on a 1 nm grid, exact predicates; crossing points rounded once (≤ 0.71 nm) and never moved again | 0.5 nm per axis |
+| Discretisation | `Discretization.SegmentCount` from θ = 2·acos(1 − s/r); circles inscribed, segment count rounded up to a multiple of 4 (axis extremes exact) | 50 nm |
+| Path step | Arcs of the tool path as chords with sagitta ≤ `SweepNm`; straight moves exact (convex hull of start/end) | 30 nm |
+| Reserve | remainder | 19.5 nm |
 
-## Beispiel 1, 2D-Teil (gemessen, auch im `browser-wasm`-Lauf)
+## Example 1, 2D part (measured, also in the `browser-wasm` run)
 
-| Prüfgröße | Ist | Soll | Abweichung | zulässig |
+| Check | Actual | Exact | Deviation | Allowed |
 | --- | --- | --- | --- | --- |
-| Schnittfläche Kreis ∩ Rechteck | 3,097316064 mm² | 3,097482080 mm² | 1,66·10⁻⁴ mm² | 5,05·10⁻⁴ mm² |
-| Restfläche Rechteck − Kreis | 196,902683936 mm² | 196,902517920 mm² | 1,66·10⁻⁴ mm² | 5,05·10⁻⁴ mm² |
-| Nutbreite an der Oberseite | 4,472014000 mm | 4,472135955 mm | 1,22·10⁻⁴ mm | 2·10⁻⁴ mm |
-| Maximale Tiefe | 1,000000000 mm | 1 mm | 0 | 1·10⁻⁴ mm |
-| Abstand Nutpunkte zur Achse (schlechtester) | 2,999999392 mm | 3 mm | 6,1·10⁻⁷ mm | 1·10⁻⁴ mm |
-| Abtrag beim 2D-Sweep (20 mm × 1 mm) | 20,000000000 mm² | 20 mm² | 0 | 4·10⁻³ mm² |
+| Cut area circle ∩ rectangle | 3.097316064 mm² | 3.097482080 mm² | 1.66·10⁻⁴ mm² | 5.05·10⁻⁴ mm² |
+| Remaining area rectangle − circle | 196.902683936 mm² | 196.902517920 mm² | 1.66·10⁻⁴ mm² | 5.05·10⁻⁴ mm² |
+| Groove width at top face | 4.472014000 mm | 4.472135955 mm | 1.22·10⁻⁴ mm | 2·10⁻⁴ mm |
+| Maximum depth | 1.000000000 mm | 1 mm | 0 | 1·10⁻⁴ mm |
+| Distance of groove vertices to axis (worst) | 2.999999392 mm | 3 mm | 6.1·10⁻⁷ mm | 1·10⁻⁴ mm |
+| Removal in 2D sweep (20 mm × 1 mm) | 20.000000000 mm² | 20 mm² | 0 | 4·10⁻³ mm² |
 
-Hinweis Nutbreite: Die einbeschriebene Kreisnäherung liegt radial ≤ 50 nm innen. Wo der Kreis die Oberseite
-flach schneidet, wird daraus horizontal bis zu 50 nm / cos φ ≈ 67 nm je Seite. Das liegt innerhalb der im Plan
-festgelegten ± 0,0002 mm, aber über 0,1 µm – bei engeren Vorgaben muss `chordNm` entsprechend kleiner gewählt werden.
+Note on groove width: the inscribed circle polygon lies up to 50 nm radially inside the circle. Where the circle meets
+the top face at a shallow angle this becomes up to 50 nm / cos φ ≈ 67 nm horizontally per side. That is within the
+plan's ± 0.0002 mm but above 0.1 µm; tighter requirements need a smaller `chordNm`.
 
-## Definition der Tiefe
+## Definition of depth
 
-`Penetration2.DepthAlong` misst die Ausdehnung des Abtrags entlang einer Richtung (Standard −y bzw. „nach unten“):
-max(p·d) − min(p·d) über alle Eckpunkte. Für eine Eintrittsfläche senkrecht zu d ist das genau der größte Abstand
-der neuen Oberfläche zur Ausgangsfläche. Da eine lineare Funktion ihr Extremum auf einem Polygon in einem Eckpunkt
-annimmt, ist der Wert bis auf die abschließende Division exakt.
+`Penetration2.DepthAlong` measures the extent of the removed material along a direction (default −y, "downwards"):
+max(p·d) − min(p·d) over all vertices. For an entry surface perpendicular to d this is exactly the largest distance of
+the new surface to the original surface. A linear function attains its extremes on a polygon at a vertex, so the value
+is exact up to the final division.

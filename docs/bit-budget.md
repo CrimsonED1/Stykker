@@ -1,35 +1,35 @@
-# Bitbudget der exakten Prädikate
+# Bit budget of the exact predicates
 
-Alle Rechenkoordinaten liegen auf dem 1-nm-Gitter im Bereich |c| ≤ 2³¹ nm (±2,147 m).
-Damit ist jede Koordinatendifferenz |Δ| ≤ 2³². Daraus folgen feste Schranken für alle Zwischenwerte.
-Alle Typen rechnen *geprüft*: Ein Überlauf wirft `OverflowException`, er kann nie still ein falsches Vorzeichen liefern.
+All computation coordinates lie on the 1 nm grid within |c| ≤ 2³¹ nm (±2.147 m), so every coordinate difference
+satisfies |Δ| ≤ 2³². This gives fixed bounds for all intermediate values. All types use *checked* arithmetic:
+an overflow throws `OverflowException` and can never silently produce a wrong sign.
 
 ## 2D (`Int128`)
 
-| Größe | Formel | Schranke |
+| Quantity | Formula | Bound |
 | --- | --- | --- |
 | orient2d | Δx·Δy − Δy·Δx | 2 · 2⁶⁴ = 2⁶⁵ |
-| Schnittpunkt-Zähler | a.x·den + Δx·num | 2³¹·2⁶⁵ + 2³²·2⁶⁵ < 2⁹⁸ |
-| Fläche (doppelt) | Σ xᵢ·yᵢ₊₁ − xᵢ₊₁·yᵢ | 2⁶³ je Term |
+| Intersection numerator | a.x·den + Δx·num | 2³¹·2⁶⁵ + 2³²·2⁶⁵ < 2⁹⁸ |
+| Area (doubled) | Σ xᵢ·yᵢ₊₁ − xᵢ₊₁·yᵢ | 2⁶³ per term |
 
-## 3D-Ebenen (`Int128` / `Int384`)
+## 3D planes (`Int128` / `Int384`)
 
-Eine Fläche wird durch ihre Trägerebene aus drei Gitterpunkten beschrieben: n = (b−a)×(c−a), d = −n·a.
+A face is described by its supporting plane through three grid points: n = (b−a)×(c−a), d = −n·a.
 
-| Größe | Herleitung | Schranke | Typ |
+| Quantity | Derivation | Bound | Type |
 | --- | --- | --- | --- |
 | orient3d | 3 · 2³² · 2⁶⁵ | < 2⁹⁹ | `Int128` |
-| Normale nᵢ | 2 · 2³²·2³² | ≤ 2⁶⁵ | `Int128` |
-| Ebenenabstand d | 3 · 2⁶⁵·2³¹ | < 2⁹⁸ | `Int128` |
+| Normal nᵢ | 2 · 2³²·2³² | ≤ 2⁶⁵ | `Int128` |
+| Plane offset d | 3 · 2⁶⁵·2³¹ | < 2⁹⁸ | `Int128` |
 | W = det(n₁,n₂,n₃) | 6 · (2⁶⁵)³ | < 2¹⁹⁸ | `Int384` |
 | X, Y, Z (Cramer) | 6 · 2⁹⁸·(2⁶⁵)² | < 2²³¹ | `Int384` |
-| Punkt gegen Ebene n·X + d·W | 3·2⁶⁵·2²³¹ + 2⁹⁸·2¹⁹⁸ | ≤ 2²⁹⁸ | `Int384` |
+| Point vs. plane n·X + d·W | 3·2⁶⁵·2²³¹ + 2⁹⁸·2¹⁹⁸ | ≤ 2²⁹⁸ | `Int384` |
 
-Die Schätzung im Plan (≈ 2⁶⁵ / 2⁹⁸ / 2²³¹ / 2³⁰⁰) ist damit bestätigt; `Int384` (max. 2³⁸³) lässt 85 Bit Reserve
-für spätere Prädikate (z. B. Vergleich zweier Schnittpunkte entlang einer Kante).
+This confirms the plan's estimate (≈ 2⁶⁵ / 2⁹⁸ / 2²³¹ / 2³⁰⁰). `Int384` (max. 2³⁸³) leaves 85 bits of headroom for
+later predicates (e.g. ordering two intersection points along an edge).
 
-## Absicherung durch Tests
+## Verified by tests
 
-- `PredicateTests`: orient2d und orient3d gegen `BigInteger` bei je 10⁶ Zufallsfällen (inkl. Bereichsgrenzen und exakt kollinearer/koplanarer Fälle).
-- `PlanePredicateTests`: 10⁵ Ebenen-Tripel; Schnittpunkt bitgenau gleich `BigInteger`, liegt exakt auf allen drei Ebenen, gemessene Bitlängen ≤ den Schranken oben; Extremfall mit Ebenen durch die Ecken des vollen Koordinatenwürfels.
-- `Int384Tests`: +, −, ×, Vergleich gegen `BigInteger` (2·10⁵ Fälle), Überlauf an allen Grenzen.
+- `PredicateTests`: orient2d and orient3d vs. `BigInteger` on 10⁶ random cases each (including range limits and exactly collinear/coplanar cases).
+- `PlanePredicateTests`: 10⁵ plane triples; intersection point bit-identical to `BigInteger`, lies exactly on all three planes, measured bit lengths ≤ the bounds above; extreme case with planes through the corners of the full coordinate cube.
+- `Int384Tests`: +, −, ×, comparison vs. `BigInteger` (2·10⁵ cases), overflow at all limits.
