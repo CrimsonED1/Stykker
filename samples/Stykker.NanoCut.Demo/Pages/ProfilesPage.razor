@@ -1,0 +1,394 @@
+@page "/profiles"
+@using System.Diagnostics
+@using System.Text
+@using Stykker.NanoCut.Geometry2D
+@using Stykker.NanoCut.Geometry3D
+@inject Viewer Viewer
+@implements IAsyncDisposable
+
+<div class="scene">
+    <section class="stage">
+        <header class="stage-head">
+            <div>
+                <h1>Profiles: sections of 3D parts</h1>
+                <p class="desc">Takes a profile off a 3D part over a range you define: a section with any plane, the r–z profile of a turned
+                    part at an angle (or the envelope over all angles), the radius around the axis at one position, or a line profile
+                    with Ra/Rz. The section is exact: every face is intersected with the plane by three-plane intersections and rounded
+                    once to the 1 nm grid.</p>
+            </div>
+            <div class="engine">
+                <button class="@(_engine == "three" ? "on" : "")" @onclick='() => SwitchEngine("three")'>three.js</button>
+                <button class="@(_engine == "babylon" ? "on" : "")" @onclick='() => SwitchEngine("babylon")'>Babylon.js</button>
+            </div>
+        </header>
+        <div id="viewport" class="viewport"></div>
+    </section>
+
+    <aside class="panel">
+        <h2>Part</h2>
+        <label class="param"><span>Part</span>
+            <select value="@_part" @onchange="OnPart">
+                <option value="shaft">Turned shaft with keyway</option>
+                <option value="pocket">Milled grooves (ball nose)</option>
+                <option value="gear">Spur gear (involute)</option>
+            </select>
+        </label>
+        @if (_part == "shaft")
+        {
+            <label class="param"><span>Eccentricity</span><span class="num"><input type="number" step="10" @bind="_eccentricUm" /><em>µm</em></span></label>
+        }
+
+        <h2>Profile</h2>
+        <label class="param"><span>Mode</span>
+            <select @bind="_mode">
+                <option value="axial">Axial r–z (turned parts)</option>
+                <option value="radial">Radial: radius around the axis</option>
+                <option value="plane">Plane section</option>
+                <option value="line">Line profile A → B</option>
+            </select>
+        </label>
+        @switch (_mode)
+        {
+            case "axial":
+                <label class="param"><span>Angle φ</span><span class="num"><input type="number" step="5" @bind="_angleDeg" /><em>°</em></span></label>
+                <label class="param"><span>z from / to</span><span class="num"><input type="number" step="1" @bind="_z0" /><input type="number" step="1" @bind="_z1" /><em>mm</em></span></label>
+                <label class="param"><span>r from / to</span><span class="num"><input type="number" step="1" @bind="_r0" /><input type="number" step="1" @bind="_r1" /><em>mm</em></span></label>
+                <label class="param"><span>Envelope angles</span><span class="num"><input type="number" step="4" @bind="_envelopeAngles" /><em>0 = off</em></span></label>
+                break;
+            case "radial":
+                <label class="param"><span>At z</span><span class="num"><input type="number" step="1" @bind="_at" /><em>mm</em></span></label>
+                <label class="param"><span>Angle from / to</span><span class="num"><input type="number" step="10" @bind="_a0" /><input type="number" step="10" @bind="_a1" /><em>°</em></span></label>
+                break;
+            case "plane":
+                <label class="param"><span>Plane</span>
+                    <select @bind="_plane"><option value="xy">XY (z = offset)</option><option value="xz">XZ (y = offset)</option><option value="yz">YZ (x = offset)</option></select></label>
+                <label class="param"><span>Offset</span><span class="num"><input type="number" step="0.5" @bind="_offset" /><em>mm</em></span></label>
+                <label class="param"><span>u from / to</span><span class="num"><input type="number" step="1" @bind="_u0" /><input type="number" step="1" @bind="_u1" /><em>mm</em></span></label>
+                <label class="param"><span>v from / to</span><span class="num"><input type="number" step="1" @bind="_v0" /><input type="number" step="1" @bind="_v1" /><em>mm</em></span></label>
+                break;
+            default:
+                <label class="param"><span>A (x, y)</span><span class="num"><input type="number" step="1" @bind="_ax" /><input type="number" step="1" @bind="_ay" /><em>mm</em></span></label>
+                <label class="param"><span>B (x, y)</span><span class="num"><input type="number" step="1" @bind="_bx" /><input type="number" step="1" @bind="_by" /><em>mm</em></span></label>
+                <p class="desc">Heights along +z, measured in the vertical plane through A and B.</p>
+                break;
+        }
+        <label class="param"><span>Samples</span><span class="num"><input type="number" step="50" @bind="_samples" /><em></em></span></label>
+        <div class="actions">
+            <button class="run" @onclick="Compute">Take profile</button>
+        </div>
+        @if (_error is not null)
+        {
+            <div class="error">@_error</div>
+        }
+
+        @if (_region is not null)
+        {
+            <h2>Section</h2>
+            <svg class="plot section" viewBox="@_svgBox" role="img" aria-label="Section">
+                <path d="@_regionPath" class="sec-fill" />
+                @if (_bandPath is not null)
+                {
+                    <path d="@_bandPath" class="sec-band" />
+                }
+                @if (_nominalPath is not null)
+                {
+                    <path d="@_nominalPath" class="sec-nominal" />
+                }
+            </svg>
+            <table class="metrics">
+                <tr><td>Area</td><td>@F(_region.AreaMm2, "0.######") mm²</td></tr>
+                <tr><td>Perimeter</td><td>@F(_region.PerimeterMm, "0.####") mm</td></tr>
+                <tr><td>Contours</td><td>@_region.Contours.Count</td></tr>
+                <tr><td>Compute time</td><td>@_computeMs ms</td></tr>
+                @if (_deviation is { } d)
+                {
+                    <tr><td>Deviation from nominal</td><td>+@F(d.MaxExcessMm * 1000, "0.###") / −@F(d.MaxShortfallMm * 1000, "0.###") µm</td></tr>
+                    <tr><td>Excess / missing area</td><td>@F(d.ExcessAreaMm2, "0.######") / @F(d.MissingAreaMm2, "0.######") mm²</td></tr>
+                }
+                @if (_runOut is { } ro)
+                {
+                    <tr><td>Envelope band (orange)</td><td>@F(ro * 1000, "0.###") µm max</td></tr>
+                }
+            </table>
+        }
+
+        @if (_values.Length > 1)
+        {
+            <h2>@_plotTitle</h2>
+            <svg class="plot" viewBox="0 0 300 120" role="img" aria-label="Sampled profile">
+                <polyline points="@_plotPoints" class="plot-line" />
+                <text x="2" y="10" class="plot-label">@F(_vMax, "0.####") mm</text>
+                <text x="2" y="116" class="plot-label">@F(_vMin, "0.####") mm</text>
+                <text x="298" y="116" text-anchor="end" class="plot-label">@_plotAxis</text>
+            </svg>
+            <table class="metrics">
+                <tr><td>Min / max</td><td>@F(_vMin, "0.######") / @F(_vMax, "0.######") mm</td></tr>
+                @if (_mode is "line" or "plane")
+                {
+                    <tr><td>Ra</td><td>@F(_ra * 1000, "0.###") µm</td></tr>
+                    <tr><td>Rz (peak to valley)</td><td>@F(_rz * 1000, "0.###") µm</td></tr>
+                }
+                else
+                {
+                    <tr><td>Max − min</td><td>@F((_vMax - _vMin) * 1000, "0.###") µm</td></tr>
+                }
+            </table>
+        }
+
+        <div class="actions">
+            <button class="ghost" disabled="@(_region is null)" @onclick="DownloadContour">Section CSV</button>
+            <button class="ghost" disabled="@(_values.Length < 2)" @onclick="DownloadSamples">Samples CSV</button>
+            <button class="ghost" disabled="@(_region is null)" @onclick="DownloadSvg">SVG</button>
+        </div>
+    </aside>
+</div>
+
+@code {
+    private static readonly (double, double, double) ZAxis = (0, 0, 1);
+
+    private string _engine = "three";
+    private bool _attached;
+    private string _part = "shaft", _mode = "axial", _plane = "xz";
+    private double _eccentricUm = 20;
+    private double _angleDeg = 0, _z0 = 0, _z1 = 50, _r0 = 0, _r1 = 12;
+    private int _envelopeAngles = 24;
+    private double _at = 30, _a0 = 0, _a1 = 360;
+    private double _offset = 0, _u0 = -100, _u1 = 100, _v0 = -100, _v1 = 100;
+    private double _ax = 0, _ay = 15, _bx = 40, _by = 15;
+    private int _samples = 400;
+
+    private Solid _solid = Solid.Empty;
+    private Region2? _nominal;
+    private Region2? _region;
+    private ProfileDeviation? _deviation;
+    private double? _runOut;
+    private string? _error, _regionPath, _bandPath, _nominalPath, _svgBox;
+    private long _computeMs;
+    private double[] _positions = [], _values = [];
+    private double _vMin, _vMax, _ra, _rz;
+    private string _plotTitle = "", _plotPoints = "", _plotAxis = "", _samplesHeader = "s_mm,h_mm";
+
+    private static string F(double v, string format) => double.IsNaN(v) ? "–" : v.ToString(format, CultureInfo.InvariantCulture);
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_attached) return;
+        await Viewer.Attach("viewport", _engine);
+        _attached = true;
+        await Compute();
+        StateHasChanged();
+    }
+
+    private async Task SwitchEngine(string engine)
+    {
+        _engine = engine;
+        await Viewer.SetEngine(engine);
+    }
+
+    private async Task OnPart(ChangeEventArgs e)
+    {
+        _part = e.Value?.ToString() ?? "shaft";
+        switch (_part)
+        {
+            case "shaft": _mode = "axial"; _z0 = 0; _z1 = 50; _r0 = 0; _r1 = 12; _at = 30; _a0 = 0; _a1 = 360; break;
+            case "pocket": _mode = "line"; _ax = 0; _ay = 15; _bx = 40; _by = 15; _plane = "yz"; _offset = 20; break;
+            default: _mode = "radial"; _at = 5; _a0 = 0; _a1 = 60; break;
+        }
+        await Compute();
+    }
+
+    private void BuildPart()
+    {
+        var tol = Tolerance.Budget(totalUm: 2.2, chordNm: 2000, sweepNm: 100);
+        _nominal = null;
+        switch (_part)
+        {
+            case "shaft":
+            {
+                // Bore r 2; r 10 (z 0…20), r 8 (z 20…35) with a groove r 7 (z 26…28), r 6 (z 35…50).
+                var profile = Region2.Polygon(Vec2.Mm(2, 0), Vec2.Mm(10, 0), Vec2.Mm(10, 20), Vec2.Mm(8, 20), Vec2.Mm(8, 26),
+                    Vec2.Mm(7, 26), Vec2.Mm(7, 28), Vec2.Mm(8, 28), Vec2.Mm(8, 35), Vec2.Mm(6, 35), Vec2.Mm(6, 50), Vec2.Mm(2, 50));
+                _nominal = profile;
+                var shaft = Solid.Revolve(profile, tol, Pose3.TranslationMm(_eccentricUm / 1000, 0, 0));
+                var keyway = Solid.Box(Vec3.Mm(-1.5, 4.5, 37), Vec3.Mm(1.5, 7, 48));
+                _solid = shaft - keyway;
+                break;
+            }
+            case "pocket":
+            {
+                var block = Solid.Box(Vec3.Mm(0, 0, 0), Vec3.Mm(40, 30, 10));
+                var g1 = Solid.Capsule(Vec3.Mm(6, 15, 10), Vec3.Mm(34, 15, 10), 4, tol);
+                var g2 = Solid.Capsule(Vec3.Mm(20, 4, 9), Vec3.Mm(20, 26, 11), 2.5, tol);
+                _solid = block - g1 - g2;
+                break;
+            }
+            default:
+                _solid = Solid.Extrude(GearProfile.Involute(2, 18, 20, tol), 0, 10);
+                break;
+        }
+    }
+
+    private async Task Compute()
+    {
+        _error = null;
+        _deviation = null;
+        _runOut = null;
+        _bandPath = null;
+        _nominalPath = null;
+        _values = [];
+        try
+        {
+            BuildPart();
+            var sw = Stopwatch.StartNew();
+            var axisPoint = Vec3.Mm(0, 0, 0);
+            SectionPlane plane;
+            Region2 region;
+            int n = Math.Clamp(_samples, 2, 5000);
+            switch (_mode)
+            {
+                case "axial":
+                {
+                    double phi = _angleDeg * Math.PI / 180;
+                    plane = SectionPlane.Axial(axisPoint, ZAxis, phi);
+                    region = Section3.Axial(_solid, axisPoint, ZAxis, phi, _z0, _z1, _r0, _r1);
+                    if (_envelopeAngles > 0)
+                    {
+                        var (outer, inner, _) = Section3.AxialEnvelope(_solid, axisPoint, ZAxis, _envelopeAngles, _z0, _z1, _r0, _r1);
+                        _bandPath = Path(outer - inner);
+                        var ro = Profile2.Radii(outer, _z0, _z1, n);
+                        var ri = Profile2.Radii(inner, _z0, _z1, n);
+                        _runOut = ro.Zip(ri, (a, b) => a - b).Where(v => !double.IsNaN(v)).DefaultIfEmpty(0).Max();
+                    }
+                    if (_nominal is not null)
+                    {
+                        var nominal = Section3.Window(_nominal, _r0, _r1, _z0, _z1);
+                        _deviation = Profile2.Deviation(region, nominal);
+                        _nominalPath = Path(nominal);
+                    }
+                    Sampled("Outer radius along z", Profile2.Positions(_z0, _z1, n), Profile2.Radii(region, _z0, _z1, n), "z", "z_mm,r_mm");
+                    break;
+                }
+                case "radial":
+                {
+                    plane = SectionPlane.Radial(axisPoint, ZAxis, _at);
+                    region = Section3.Radial(_solid, axisPoint, ZAxis, _at);
+                    double a0 = _a0 * Math.PI / 180, a1 = _a1 * Math.PI / 180;
+                    var rho = Profile2.Polar(region, (0, 0), a0, a1, n);
+                    Sampled("Radius around the axis", Profile2.Positions(_a0, _a1, n), rho, "angle °", "angle_deg,r_mm");
+                    break;
+                }
+                case "plane":
+                {
+                    plane = _plane switch { "xy" => SectionPlane.XY(_offset), "yz" => SectionPlane.YZ(_offset), _ => SectionPlane.XZ(_offset) };
+                    region = Section3.Cut(_solid, plane, _u0, _u1, _v0, _v1);
+                    if (region.Bounds is { } b)
+                        Sampled("Top line (largest v along u)", Profile2.Positions(b.Min.XMm, b.Max.XMm, n),
+                            Profile2.Heights(region, b.Min.XMm, b.Max.XMm, n), "u", "u_mm,v_mm");
+                    break;
+                }
+                default:
+                {
+                    var a = Vec3.Mm(_ax, _ay, 0);
+                    var bb = Vec3.Mm(_bx, _by, 0);
+                    plane = SectionPlane.Through(a, bb, ZAxis);
+                    region = Section3.Cut(_solid, plane);
+                    double len = Math.Sqrt((_bx - _ax) * (_bx - _ax) + (_by - _ay) * (_by - _ay));
+                    Sampled("Heights along A → B", Profile2.Positions(0, len, n), Section3.LineProfile(_solid, a, bb, ZAxis, n), "s", "s_mm,z_mm");
+                    break;
+                }
+            }
+            _computeMs = sw.ElapsedMilliseconds;
+            _region = region;
+            _regionPath = Path(region);
+            var box = region.Bounds;
+            if (box is { } bx)
+            {
+                double x0 = bx.Min.XMm, y0 = bx.Min.YMm, w = bx.Max.XMm - x0, h = bx.Max.YMm - y0;
+                double m = Math.Max(w, h) * 0.05 + 0.1;
+                _svgBox = string.Create(CultureInfo.InvariantCulture, $"{x0 - m} {-(y0 + h) - m} {w + 2 * m} {h + 2 * m}");
+            }
+            await Show(plane, region);
+        }
+        catch (Exception ex) { _error = ex.Message; }
+    }
+
+    private void Sampled(string title, double[] at, double[] values, string axis, string header)
+    {
+        _plotTitle = title;
+        _positions = at;
+        _values = values;
+        _samplesHeader = header;
+        var valid = values.Where(v => !double.IsNaN(v)).ToArray();
+        if (valid.Length == 0) { _values = []; return; }
+        _vMin = valid.Min();
+        _vMax = valid.Max();
+        (_ra, _rz) = Profile2.Roughness(values);
+        double span = Math.Max(_vMax - _vMin, 1e-9);
+        var sb = new StringBuilder();
+        for (int i = 0; i < values.Length; i++)
+        {
+            if (double.IsNaN(values[i])) continue;
+            double x = 300.0 * i / (values.Length - 1), y = 112 - 100 * (values[i] - _vMin) / span;
+            sb.Append(string.Create(CultureInfo.InvariantCulture, $"{x:0.##},{y:0.##} "));
+        }
+        _plotPoints = sb.ToString();
+        _plotAxis = string.Create(CultureInfo.InvariantCulture, $"{axis} {at[0]:0.##} … {at[^1]:0.##}");
+    }
+
+    private static string Path(Region2 region)
+    {
+        var sb = new StringBuilder();
+        foreach (var c in region.Normalize().Contours)
+        {
+            for (int i = 0; i < c.Count; i++)
+                sb.Append(string.Create(CultureInfo.InvariantCulture, $"{(i == 0 ? "M" : "L")}{c[i].XMm:0.######} {-c[i].YMm:0.######} "));
+            sb.Append("Z ");
+        }
+        return sb.ToString();
+    }
+
+    // The part, the section contours drawn on it, and the outline of the section plane.
+    private async Task Show(SectionPlane plane, Region2 region)
+    {
+        await Viewer.Clear();
+        await Viewer.AddMesh("Part", _solid.ToMeshBuffers(OriginMode.Absolute), "#9fb4c8", 0.55);
+        var lines = new List<float>();
+        void Seg(Vec3 a, Vec3 b) => lines.AddRange([(float)a.XMm, (float)a.YMm, (float)a.ZMm, (float)b.XMm, (float)b.YMm, (float)b.ZMm]);
+        foreach (var c in region.Contours)
+            for (int i = 0; i < c.Count; i++)
+                Seg(plane.ToWorld(c[i]), plane.ToWorld(c[(i + 1) % c.Count]));
+        await Viewer.AddLines("Section", lines.ToArray(), "#ff6a00");
+
+        if (region.Bounds is { } b)
+        {
+            long m = Math.Max(b.Max.X - b.Min.X, b.Max.Y - b.Min.Y) / 10;
+            var p = new[] { new Vec2(b.Min.X - m, b.Min.Y - m), new Vec2(b.Max.X + m, b.Min.Y - m), new Vec2(b.Max.X + m, b.Max.Y + m), new Vec2(b.Min.X - m, b.Max.Y + m) };
+            var frame = new List<float>();
+            for (int i = 0; i < 4; i++)
+            {
+                Vec3 a = plane.ToWorld(p[i]), q = plane.ToWorld(p[(i + 1) % 4]);
+                frame.AddRange([(float)a.XMm, (float)a.YMm, (float)a.ZMm, (float)q.XMm, (float)q.YMm, (float)q.ZMm]);
+            }
+            await Viewer.AddLines("Plane", frame.ToArray(), "#2f6fdc");
+        }
+        await Viewer.Fit("iso");
+    }
+
+    private async Task DownloadContour()
+    {
+        if (_region is not null) await Viewer.Download($"{_part}-{_mode}-section.csv", Encoding.UTF8.GetBytes(Profile2.ToCsv(_region)));
+    }
+
+    private async Task DownloadSamples()
+    {
+        var names = _samplesHeader.Split(',');
+        await Viewer.Download($"{_part}-{_mode}-samples.csv", Encoding.UTF8.GetBytes(Profile2.ToCsv(_positions, _values, names[0], names[1])));
+    }
+
+    private async Task DownloadSvg()
+    {
+        if (_region is not null) await Viewer.Download($"{_part}-{_mode}-section.svg", Encoding.UTF8.GetBytes(_region.ToSvg()));
+    }
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+}

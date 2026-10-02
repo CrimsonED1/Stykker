@@ -39,6 +39,9 @@ with three.js or Babylon.js (switchable).
   (teeth on their trochoids, feed per tooth, removed volume) and played back in slow motion (1/10 … 1/1000).
 - **Grinding grains:** a wheel with random abrasive grains (size, protrusion mean/σ, seed); every grain follows its
   trochoid and cuts its own chip – active grains in orange, chip-thickness histogram, surface profile with Ra/Rz.
+- **Profiles:** sections of 3D parts over a range you define – any plane with a u/v window, the r–z profile of a turned
+  part at an angle φ with z and r ranges (plus the envelope over all angles), the radius around the axis, or a line profile
+  with Ra/Rz; deviation from the nominal contour and CSV / SVG export.
 - **Free-form:** two cubes – drag or rotate the tool cube with a gizmo (or jog X/Y/Z/A/B/C); every motion,
   translation and rotation together, cuts the other solid.
 - **Self test:** runs the reference checks of the test suite inside the browser.
@@ -57,6 +60,7 @@ well under a second per 45° at the default path error (see the performance note
 | --- | --- |
 | ![Mill](docs/images/demo-mill.png) | ![Gear generation](docs/images/demo-gear.png) |
 | ![Spinning disc](docs/images/demo-spinning.png) | ![Grinding grains](docs/images/demo-grinding.png) |
+| ![Profiles: axial section of a turned shaft](docs/images/demo-profiles.png) | ![Profiles: radial section of a gear](docs/images/demo-profiles-gear.png) |
 
 ## Quick start (2D)
 
@@ -99,6 +103,28 @@ Console.WriteLine(r.MaxDepthMm);            // 1.000000
 MeshBuffers buf = r.Remaining.ToMeshBuffers(OriginMode.Centroid);   // → three.js / Babylon.js
 r.Remaining.Save("part.ncs");                                        // lossless internal format
 ```
+
+## Profiles from 3D parts
+
+```csharp
+using Stykker.NanoCut.Geometry2D;
+using Stykker.NanoCut.Geometry3D;
+
+var axis = (0.0, 0.0, 1.0);
+// r–z profile at φ = 30°, only z 10…40 mm and r ≤ 12 mm (u = radius, v = z)
+Region2 rz = Section3.Axial(part, Vec3.Mm(0, 0, 0), axis, Math.PI / 6, z0Mm: 10, z1Mm: 40, r1Mm: 12);
+double[] radius = Profile2.Radii(rz, 10, 40, samples: 300);         // outer radius along z
+var (outer, inner, _) = Section3.AxialEnvelope(part, Vec3.Mm(0, 0, 0), axis, 36, 10, 40);   // run-out
+var dev = Profile2.Deviation(rz, nominalProfile);                    // max excess / shortfall, exact areas
+
+Region2 cut = Section3.Cut(part, SectionPlane.XZ(5), u0Mm: 0, u1Mm: 20, v0Mm: -5, v1Mm: 5);  // any plane, windowed
+double[] h = Section3.LineProfile(part, Vec3.Mm(0, 5, 0), Vec3.Mm(40, 5, 0), (0, 0, 1), 1000);
+var (ra, rz2) = Profile2.Roughness(h);
+File.WriteAllText("rz.csv", Profile2.ToCsv(rz));
+```
+
+The section is exact: each face is intersected with the plane by three-plane intersections and the points are rounded
+once to the nm grid of the plane's (u, v) frame. A face lying in the section plane counts as just below it.
 
 ## Processes: acting shape + motion
 
