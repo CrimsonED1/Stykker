@@ -147,43 +147,50 @@ internal sealed class Face3
             return false;
         }
         side = 0;
-        var crossing = new Point3?[n];
+        // A convex polygon crosses a plane at exactly two edges (strict sign changes).
+        int e1 = -1, e2 = -1;
+        Point3 x1 = default, x2 = default;
         for (int i = 0; i < n; i++)
         {
-            int j = (i + 1) % n;
+            int j = i + 1 == n ? 0 : i + 1;
             if ((s[i] < 0 && s[j] > 0) || (s[i] > 0 && s[j] < 0))
             {
                 var h = Plane3.Intersect(Support, Edges[i], plane)
                         ?? throw new InvalidOperationException("Edge parallel to a crossing plane.");
-                crossing[i] = new Point3(h);
+                if (e1 < 0) { e1 = i; x1 = new Point3(h); }
+                else { e2 = i; x2 = new Point3(h); }
             }
         }
-        back = Piece(s, 1, plane, crossing);
-        front = Piece(s, -1, plane.Flipped(), crossing);
+        back = Piece(s, 1, plane, e1, x1, e2, x2);
+        front = Piece(s, -1, plane.Flipped(), e1, x1, e2, x2);
         return true;
     }
 
-    // Keeps the part where sign·s <= 0; the cut edge gets plane k (interior on its negative side).
-    private Face3 Piece(ReadOnlySpan<int> s, int sign, in Plane3 k, Point3?[] crossing)
+    // Keeps the part where sign·s <= 0; the cut edge gets plane k (interior on its negative side). Crossing points x1, x2
+    // lie on edges e1, e2 (-1 if absent). Arrays are sized exactly (count first, then fill).
+    private Face3 Piece(ReadOnlySpan<int> s, int sign, in Plane3 k, int e1, in Point3 x1, int e2, in Point3 x2)
     {
         int n = Vertices.Length;
-        var verts = new List<Point3>(n + 2);
-        var edges = new List<Plane3>(n + 2);
+        int count = (e1 >= 0 ? 1 : 0) + (e2 >= 0 ? 1 : 0);
+        for (int i = 0; i < n; i++) if (sign * s[i] <= 0) count++;
+        var verts = new Point3[count];
+        var edges = new Plane3[count];
+        int m = 0;
         for (int i = 0; i < n; i++)
         {
-            int j = (i + 1) % n;
+            int j = i + 1 == n ? 0 : i + 1;
             int si = sign * s[i], sj = sign * s[j];
             if (si <= 0)
             {
-                verts.Add(Vertices[i]);
-                edges.Add(si == 0 && sj > 0 ? k : Edges[i]);
+                verts[m] = Vertices[i];
+                edges[m++] = si == 0 && sj > 0 ? k : Edges[i];
             }
-            if (crossing[i] is { } x)
+            if (i == e1 || i == e2)
             {
-                verts.Add(x);
-                edges.Add(si < 0 ? k : Edges[i]);
+                verts[m] = i == e1 ? x1 : x2;
+                edges[m++] = si < 0 ? k : Edges[i];
             }
         }
-        return new Face3(Support, edges.ToArray(), verts.ToArray());
+        return new Face3(Support, edges, verts);
     }
 }
