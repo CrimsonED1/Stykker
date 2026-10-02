@@ -65,28 +65,92 @@ public static class Process2
         intervals = 0;
         foreach (var seg in motion.Segments)
         {
-            var poses = Sample(seg, probe, tol.SweepNm);
+            var timed = SampleTimed(seg, probe, tol.SweepNm);
+            var poses = timed.Select(x => x.P).ToList();
             var placed = poses.Select(pose => parts.Select(part => part.Select(pose.Apply).ToArray()).ToArray()).ToArray();
             // The part at every sampled pose ...
             foreach (var atPose in placed)
                 foreach (var part in atPose) pieces.Add(part);
             // ... plus the area swept by each edge between consecutive poses (vertices moving along chords).
-            // Together they form the exact swept area of the linearly interpolated motion: no overcut, and the
-            // deviation from the true motion is bounded by the chord deviation of the vertex paths.
             for (int i = 0; i + 1 < placed.Length; i++)
             {
                 intervals++;
+                double t0 = timed[i].T, t1 = timed[i + 1].T, h = (t1 - t0) * 1e-3;
+                // Rotation centres at the start, over the whole step and at the end: the edge point closest to the
+                // centre moves along the edge, and the swept area bulges there. That point can wander during the step.
+                var centers = new (Pose2 At, (double X, double Y)? C)[]
+                {
+                    (poses[i], RotationCenter(seg(t0), seg(t0 + h))),
+                    (poses[i], RotationCenter(poses[i], poses[i + 1])),
+                    (poses[i + 1], RotationCenter(seg(t1 - h), seg(t1))),
+                };
                 for (int k = 0; k < parts.Count; k++)
                 {
-                    var a = placed[i][k];
-                    var b = placed[i + 1][k];
-                    for (int e = 0; e < a.Length; e++)
-                        AddEdgeSweep(pieces, a[e], a[(e + 1) % a.Length], b[e], b[(e + 1) % a.Length]);
+                    var part = parts[k];
+                    for (int e = 0; e < part.Length; e++)
+                    {
+                        int f = (e + 1) % part.Length;
+                        var lambdas = new List<double>();
+                        foreach (var (at, c) in centers)
+                            if (c is { } cc && FoldParameter(at, part[e], part[f], cc) is double l) lambdas.Add(l);
+                        var chain = new List<double> { 0 };
+                        if (lambdas.Count > 0)
+                        {
+                            // Split across the range the fold point covers (and a little around it).
+                            double lo = lambdas.Min(), hi = lambdas.Max();
+                            for (int j = 0; j <= 4; j++)
+                            {
+                                double l = lo + (hi - lo) * j / 4;
+                                if (l > 1e-9 && l < 1 - 1e-9 && l - chain[^1] > 1e-9) chain.Add(l);
+                            }
+                        }
+                        chain.Add(1);
+                        for (int j = 0; j + 1 < chain.Count; j++)
+                        {
+                            var (ua, ub) = EdgePoint(part[e], part[f], chain[j], poses[i], poses[i + 1], placed[i][k][e], placed[i + 1][k][e], placed[i][k][f], placed[i + 1][k][f]);
+                            var (va, vb) = EdgePoint(part[e], part[f], chain[j + 1], poses[i], poses[i + 1], placed[i][k][e], placed[i + 1][k][e], placed[i][k][f], placed[i + 1][k][f]);
+                            AddEdgeSweep(pieces, ua, va, ub, vb);
+                        }
+                    }
                 }
             }
         }
         return pieces.Where(p => p.Length >= 3).ToList();
     }
+
+    /// <summary>Fixed point of the motion from pose a to pose b (the rotation centre), or null for a translation.</summary>
+    private static (double X, double Y)? RotationCenter(Pose2 a, Pose2 b)
+    {
+        var t = b.Compose(a.Inverse());
+        double c = Math.Cos(t.AngleRad), s = Math.Sin(t.AngleRad);
+        double det = (1 - c) * (1 - c) + s * s;
+        if (det < 1e-24) return null;
+        // (I − R)·C = T  with  I − R = [[1 − c, s], [−s, 1 − c]].
+        return (((1 - c) * t.TxNm - s * t.TyNm) / det, (s * t.TxNm + (1 - c) * t.TyNm) / det);
+    }
+
+    /// <summary>Parameter λ ∈ (0, 1) of the edge point (at pose a) closest to the rotation centre, if inside the edge.</summary>
+    private static double? FoldParameter(Pose2 a, Vec2 p, Vec2 q, (double X, double Y) center)
+    {
+        var (px, py) = a.Apply(p.X, p.Y);
+        var (qx, qy) = a.Apply(q.X, q.Y);
+        double dx = qx - px, dy = qy - py, len2 = dx * dx + dy * dy;
+        if (len2 == 0) return null;
+        double lambda = ((center.X - px) * dx + (center.Y - py) * dy) / len2;
+        return lambda > 1e-9 && lambda < 1 - 1e-9 ? lambda : null;
+    }
+
+    // Placed position of the edge point at parameter λ at both poses (vertices reuse the placed, rounded positions).
+    private static (Vec2 A, Vec2 B) EdgePoint(Vec2 p, Vec2 q, double lambda, Pose2 a, Pose2 b, Vec2 pa, Vec2 pb, Vec2 qa, Vec2 qb)
+    {
+        if (lambda <= 0) return (pa, pb);
+        if (lambda >= 1) return (qa, qb);
+        double wx = p.X + lambda * (q.X - p.X), wy = p.Y + lambda * (q.Y - p.Y);
+        return (Round(a.Apply(wx, wy)), Round(b.Apply(wx, wy)));
+    }
+
+    private static Vec2 Round((double X, double Y) p) =>
+        Vec2.Nm((long)Math.Round(p.X, MidpointRounding.AwayFromZero), (long)Math.Round(p.Y, MidpointRounding.AwayFromZero));
 
     /// <summary>
     /// Area covered by segment u(t)v(t) with u, v moving linearly from (u0, v0) to (u1, v1): the quadrilateral
@@ -132,9 +196,13 @@ public static class Process2
     }
 
     /// <summary>Adaptive poses so that every probe point stays within <paramref name="maxDeviationNm"/> of its chords.</summary>
-    internal static List<Pose2> Sample(Func<double, Pose2> seg, Vec2[] probe, double maxDeviationNm)
+    internal static List<Pose2> Sample(Func<double, Pose2> seg, Vec2[] probe, double maxDeviationNm) =>
+        SampleTimed(seg, probe, maxDeviationNm).Select(x => x.P).ToList();
+
+    /// <summary>As <see cref="Sample"/>, with the motion parameter of every pose.</summary>
+    internal static List<(double T, Pose2 P)> SampleTimed(Func<double, Pose2> seg, Vec2[] probe, double maxDeviationNm)
     {
-        var poses = new List<Pose2> { seg(0) };
+        var poses = new List<(double T, Pose2 P)> { (0, seg(0)) };
         var stack = new Stack<(double T0, double T1, Pose2 P0, Pose2 P1, int Depth)>();
         stack.Push((0, 1, seg(0), seg(1), 0));
         var accepted = new List<(double T, Pose2 P)>();
@@ -152,8 +220,8 @@ public static class Process2
             stack.Push((tm, t1, pm, p1, depth + 1)); // processed after the left half
             stack.Push((t0, tm, p0, pm, depth + 1));
         }
-        foreach (var (t, p) in accepted.OrderBy(a => a.T)) poses.Add(p);
-        if (poses.Count == 2 && poses[0] == poses[1]) poses.RemoveAt(1);
+        foreach (var x in accepted.OrderBy(a => a.T)) poses.Add(x);
+        if (poses.Count == 2 && poses[0].P == poses[1].P) poses.RemoveAt(1);
         return poses;
     }
 

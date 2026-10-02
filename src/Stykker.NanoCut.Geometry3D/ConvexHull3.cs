@@ -31,46 +31,89 @@ public static class ConvexHull3
 
         var faces = new List<(int A, int B, int C)>();
         var alive = new List<bool>();
+        var outside = new List<List<int>?>();
         var edgeFace = new Dictionary<(int, int), int>();
 
-        void AddFace(int a, int b, int c)
+        int AddFace(int a, int b, int c)
         {
             int id = faces.Count;
             faces.Add((a, b, c));
             alive.Add(true);
+            outside.Add(null);
             edgeFace[(a, b)] = id;
             edgeFace[(b, c)] = id;
             edgeFace[(c, a)] = id;
+            return id;
+        }
+
+        Int128 Height(int f, int q)
+        {
+            var (a, b, c) = faces[f];
+            return Predicates.Orient3DValue(p[a], p[b], p[c], p[q]);
         }
 
         // Orient the tetrahedron so that every face has the fourth point below it.
         if (Predicates.Orient3D(p[i0], p[i1], p[i2], p[i3]) > 0) (i1, i2) = (i2, i1);
-        AddFace(i0, i1, i2);
-        AddFace(i0, i3, i1);
-        AddFace(i1, i3, i2);
-        AddFace(i2, i3, i0);
+        var initial = new List<int> { AddFace(i0, i1, i2), AddFace(i0, i3, i1), AddFace(i1, i3, i2), AddFace(i2, i3, i0) };
 
-        var order = Enumerable.Range(0, p.Length).Where(i => i != i0 && i != i1 && i != i2 && i != i3).ToArray();
-        new Random(12345).Shuffle(order);
-        var visible = new List<int>();
-        var horizon = new List<(int, int)>();
-        foreach (int q in order)
+        // Quickhull with conflict lists: every point waits in the outside set of one face it lies strictly above.
+        void Assign(IEnumerable<int> points, List<int> candidates)
         {
-            visible.Clear();
-            for (int f = 0; f < faces.Count; f++)
+            foreach (int q in points)
+                foreach (int f in candidates)
+                    if (Height(f, q) > 0)
+                    {
+                        (outside[f] ??= []).Add(q);
+                        break;
+                    }
+        }
+        Assign(Enumerable.Range(0, p.Length).Where(i => i != i0 && i != i1 && i != i2 && i != i3), initial);
+
+        var pending = new Stack<int>(initial);
+        var visible = new List<int>();
+        var visibleSet = new HashSet<int>();
+        var horizon = new List<(int, int)>();
+        var orphans = new List<int>();
+        while (pending.Count > 0)
+        {
+            int f0 = pending.Pop();
+            if (!alive[f0] || outside[f0] is not { Count: > 0 } waiting) continue;
+            // Farthest point (largest height; all heights refer to the same face, so they compare directly).
+            int q = waiting[0];
+            Int128 best = Height(f0, q);
+            foreach (int r in waiting)
             {
-                if (!alive[f]) continue;
-                var (a, b, c) = faces[f];
-                if (Predicates.Orient3D(p[a], p[b], p[c], p[q]) > 0) visible.Add(f);
+                Int128 h = Height(f0, r);
+                if (h > best) { best = h; q = r; }
             }
-            if (visible.Count == 0) continue;
-            var vis = new HashSet<int>(visible);
+            // Visible region: connected set of faces with q strictly above, found by flooding from f0.
+            visible.Clear();
+            visibleSet.Clear();
+            var stack = new Stack<int>();
+            stack.Push(f0);
+            visibleSet.Add(f0);
+            while (stack.Count > 0)
+            {
+                int f = stack.Pop();
+                visible.Add(f);
+                var (a, b, c) = faces[f];
+                foreach (var (u, v) in new[] { (b, a), (c, b), (a, c) })
+                {
+                    int g = edgeFace[(u, v)];
+                    if (visibleSet.Contains(g) || Height(g, q) <= 0) continue;
+                    visibleSet.Add(g);
+                    stack.Push(g);
+                }
+            }
             horizon.Clear();
+            orphans.Clear();
             foreach (int f in visible)
             {
                 var (a, b, c) = faces[f];
                 foreach (var (u, v) in new[] { (a, b), (b, c), (c, a) })
-                    if (!vis.Contains(edgeFace[(v, u)])) horizon.Add((u, v));
+                    if (!visibleSet.Contains(edgeFace[(v, u)])) horizon.Add((u, v));
+                if (outside[f] is { } list) foreach (int r in list) if (r != q) orphans.Add(r);
+                outside[f] = null;
             }
             foreach (int f in visible)
             {
@@ -78,7 +121,10 @@ public static class ConvexHull3
                 var (a, b, c) = faces[f];
                 edgeFace.Remove((a, b)); edgeFace.Remove((b, c)); edgeFace.Remove((c, a));
             }
-            foreach (var (u, v) in horizon) AddFace(u, v, q);
+            var created = new List<int>(horizon.Count);
+            foreach (var (u, v) in horizon) created.Add(AddFace(u, v, q));
+            Assign(orphans, created);
+            foreach (int f in created) if (outside[f] is { Count: > 0 }) pending.Push(f);
         }
         return faces.Where((_, i) => alive[i]).ToList();
     }
