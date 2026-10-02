@@ -146,11 +146,13 @@ internal static class SolidBoolean
         b.Seen.Clear();
         b.Reach.Clear();
         b.Coplanar.Clear();
+        if (KernelStats.Counting) KernelStats.Mine.FaceCandidates += b.Candidates.Count;
         foreach (var q in b.Candidates)
         {
             int ps = SideSummary(q.Support, p.Vertices);
             // Faces that cannot meet need no cut: one lies strictly outside an edge plane of the other.
             if (ps != 2 && (Separated(q, p.Vertices) || Separated(p, q.Vertices))) continue;
+            if (KernelStats.Counting) KernelStats.Mine.PairsTested++;
             if (ps == 2)
             {
                 b.Coplanar.Add(q);

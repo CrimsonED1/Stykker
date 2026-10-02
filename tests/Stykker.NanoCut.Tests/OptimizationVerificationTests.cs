@@ -727,8 +727,20 @@ public class OptimizationVerificationTests(ITestOutputHelper output)
         var result = new List<Face3>();
         bvh.Query(f.Box, result);
         Assert.Equal(faces.Count, result.Count);
-        bvh.QueryRayX(-100, 1, 1, result);
+
+        // A ray finds exactly those faces whose box the ray meets. The probe is derived from the box instead of being
+        // a fixed coordinate: the box carries only the rounding pad (1e-5 nm, see Face3), so a hardcoded probe would
+        // only pass while the box is inflated.
+        double midY = (f.Box.MinY + f.Box.MaxY) / 2, midZ = (f.Box.MinZ + f.Box.MaxZ) / 2;
+        bvh.QueryRayX(f.Box.MinX - 100, midY, midZ, result);
         Assert.Equal(faces.Count, result.Count);
+        // Just outside the box in a transversal coordinate: nothing.
+        bvh.QueryRayX(f.Box.MinX - 100, f.Box.MaxY + 1, midZ, result);
+        Assert.Empty(result);
+        // Behind the box along the ray: nothing.
+        bvh.QueryRayX(f.Box.MaxX + 1, midY, midZ, result);
+        Assert.Empty(result);
+
         bvh.Query(new Box3(100, 100, 100, 200, 200, 200), result);
         Assert.Empty(result);
         // Mixed: random boxes, compare with brute force.
