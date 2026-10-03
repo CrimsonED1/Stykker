@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>Stykker.NanoCut.Gpu</RootNamespace>
+    <PackageId>Stykker.NanoCut.Gpu</PackageId>
+    <Description>Z-map preview of milling operations: one height per grid cell, with a CPU reference backend and an optional CUDA backend (native library nanocut_gpu, built separately with nvcc).</Description>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <NanoCutGpuNativeBin>$(MSBuildThisFileDirectory)../Stykker.NanoCut.Gpu.Native/bin/</NanoCutGpuNativeBin>
+  </PropertyGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Stykker.NanoCut.Tests" />
+  </ItemGroup>
+  <!-- The native CUDA library is built by src/Stykker.NanoCut.Gpu.Native/build.ps1 (or build.sh) and stays optional:
+       neither CI nor a machine without nvcc has it, and the CPU backend works everywhere. -->
+  <ItemGroup>
+    <None Include="$(NanoCutGpuNativeBin)nanocut_gpu.dll" Condition="Exists('$(NanoCutGpuNativeBin)nanocut_gpu.dll')"
+          Link="nanocut_gpu.dll" CopyToOutputDirectory="PreserveNewest" Visible="false" />
+    <None Include="$(NanoCutGpuNativeBin)libnanocut_gpu.so" Condition="Exists('$(NanoCutGpuNativeBin)libnanocut_gpu.so')"
+          Link="libnanocut_gpu.so" CopyToOutputDirectory="PreserveNewest" Visible="false" />
+    <None Include="$(NanoCutGpuNativeBin)libnanocut_gpu.dylib" Condition="Exists('$(NanoCutGpuNativeBin)libnanocut_gpu.dylib')"
+          Link="libnanocut_gpu.dylib" CopyToOutputDirectory="PreserveNewest" Visible="false" />
+  </ItemGroup>
+</Project>

@@ -1,11 +1,12 @@
 @page "/selftest"
+@inject IComputeRunner Runner
 @using System.Diagnostics
 @using System.Numerics
 
 <div class="pad selftest">
     <h1>Self test</h1>
     <p class="desc">
-        Runs the analytic reference checks of the test suite inside this browser (C# on WebAssembly): exact predicates
+        Runs the analytic reference checks of the test suite @(Runner is InlineComputeRunner ? "inside this browser (C# on WebAssembly)" : "on the server (native .NET)"): exact predicates
         against <code>BigInteger</code>, example 1 in 2D at 50 nm chord error and in 3D at 1 µm.
     </p>
     <div class="actions"><button class="run" disabled="@_busy" @onclick="Run">@(_busy ? "Running…" : "Run self test")</button></div>

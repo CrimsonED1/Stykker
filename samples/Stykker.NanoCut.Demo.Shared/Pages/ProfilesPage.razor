@@ -4,6 +4,7 @@
 @using Stykker.NanoCut.Geometry2D
 @using Stykker.NanoCut.Geometry3D
 @inject Viewer Viewer
+@inject IComputeRunner Runner
 @implements IAsyncDisposable
 
 <div class="scene">
@@ -148,6 +149,7 @@
 
     private string _engine = "three";
     private bool _attached;
+    private readonly CancellationTokenSource _stop = new();
     private string _part = "shaft", _mode = "axial", _plane = "xz";
     private double _eccentricUm = 20;
     private double _angleDeg = 0, _z0 = 0, _z1 = 50, _r0 = 0, _r1 = 12;
@@ -238,7 +240,9 @@
         _values = [];
         try
         {
-            BuildPart();
+            // Building the part (a gear extrusion, a revolved shaft) is the heavy part; the section after it is not,
+            // and it writes the fields the page shows, so it stays on the page's own thread.
+            await Runner.Run(BuildPart, _stop.Token);
             var sw = Stopwatch.StartNew();
             var axisPoint = Vec3.Mm(0, 0, 0);
             SectionPlane plane;
@@ -390,5 +394,9 @@
         if (_region is not null) await Viewer.Download($"{_part}-{_mode}-section.svg", Encoding.UTF8.GetBytes(_region.ToSvg()));
     }
 
-    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    public ValueTask DisposeAsync()
+    {
+        _stop.Cancel();
+        return ValueTask.CompletedTask;
+    }
 }

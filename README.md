@@ -29,7 +29,9 @@ Open features: [docs/todo.md](docs/todo.md).
 ## Interactive demo
 
 `samples/Stykker.NanoCut.Demo` is a Blazor WebAssembly app: all geometry is computed in the browser in C# and shown
-with three.js or Babylon.js (switchable).
+with three.js or Babylon.js (switchable). `samples/Stykker.NanoCut.Server` runs the same pages (both hosts share
+`samples/Stykker.NanoCut.Demo.Shared`) with the geometry computed natively on the server with all cores; the browser
+only displays, and the meshes travel to the viewer as bytes.
 
 - **Reference cases, kernels, shapes, processes:** every scene has editable parameters, live metrics, PASS/FAIL checks
   against analytic solutions, and STL / `.ncs` download.
@@ -49,7 +51,12 @@ with three.js or Babylon.js (switchable).
 ```bash
 cd samples/Stykker.NanoCut.Demo && dotnet run          # then open the printed URL
 dotnet publish -c Release                              # static site in bin/Release/net10.0/publish/wwwroot
+dotnet run -c Release --project samples/Stykker.NanoCut.Server   # server mode, http://localhost:5180
 ```
+
+In server mode every page runs; long computations show their progress and can be stopped as in the browser, and jobs
+from several users go through one queue (`Compute:MaxConcurrentJobs` in `appsettings.json`, default 2, since every job
+already uses all cores). Timings against the browser are in [bench/README.md](bench/README.md#server-mode).
 
 GitHub Pages: enable *Settings → Pages → Source: GitHub Actions* and run the "Demo (GitHub Pages)" workflow.
 The app runs in the .NET interpreter by default; the Pages workflow publishes with AOT (`-p:Aot=true`, needs
@@ -149,6 +156,19 @@ The benchmark (`bench/`, NanoCut vs Manifold C++/C# and CGAL on identical nm-gri
 how they were verified are described in [docs/performance.md](docs/performance.md) and
 [bench/README.md](bench/README.md).
 
+A GPU is used for previews, not for the exact result. `src/Stykker.NanoCut.Gpu` previews a whole toolpath as a Z-map
+(one height per grid cell) with two interchangeable backends: `Cpu` in plain C#, and `Cuda` on an optional native
+kernel. On an RTX 5070 Ti the 876-step pocket-large previews in 2.5 ms wall against 4.66 s for the exact kernel; the CPU
+backend alone needs 286 ms and runs everywhere, CI and browser included. The preview deviates by 0.106 %, almost all of it
+a property of the height field that no grid size removes. The caller decides whether a step batch reads the field back
+(`ZMapReadBack`) and can ask the device for the removed volume instead, and the field answers batch queries directly:
+heights at a million points in 2.2 ms (1.6× the CPU), and 0.5 ms when the point set stays on the device between
+calls, while a few hundred probed tool poses are faster on the CPU. Measurements and the recommendation:
+[docs/gpu-findings.md](docs/gpu-findings.md). One page:
+[bench/results-2026-10-03-gpu.html](bench/results-2026-10-03-gpu.html), round 2:
+[bench/results-2026-10-03-gpu-round2.html](bench/results-2026-10-03-gpu-round2.html), round 3:
+[bench/results-2026-10-03-gpu-round3.html](bench/results-2026-10-03-gpu-round3.html).
+
 ## Processes: acting shape + motion
 
 ```csharp
@@ -184,9 +204,13 @@ src/Stykker.NanoCut.Core/         Vec2/Vec3 (1 nm), Int384, predicates, Plane3/H
 src/Stykker.NanoCut.Geometry2D/   Region2, exact Boolean kernel, arcs, offset, Minkowski, penetration
 src/Stykker.NanoCut.Geometry3D/   Solid, exact plane-based Boolean kernel, primitives, extrude/revolve, hull, sweeps, .ncs, STL, buffers
 src/Stykker.NanoCut.Cutting/      Motion2/3, Process2/3, Lathe, ToolShape; Tool/ToolPath/Cutter (3D), Tool2/ToolPath2/Cutter2 (2D)
+src/Stykker.NanoCut.Gpu/        optional Z-map preview: Cpu backend (reference), Cuda backend via LibraryImport; the exact kernel never uses it
+src/Stykker.NanoCut.Gpu.Native/ optional CUDA C kernel and C API (zmap.cu), built by nvcc through build.ps1/build.sh, not part of dotnet build
 js/nanocut-three/                 three.js adapter (@stykker/nanocut-three)
 js/nanocut-babylon/               Babylon.js adapter (@stykker/nanocut-babylon)
 samples/Stykker.NanoCut.Demo/     interactive Blazor WebAssembly demo (scenes, machines with jog/G-code, self test)
+samples/Stykker.NanoCut.Demo.Shared/ the demo pages, scenes, viewer and static files, shared by both hosts
+samples/Stykker.NanoCut.Server/   the same demo as Blazor Server: geometry computed on the server, browser displays
 samples/Stykker.NanoCut.Snapshot/ computes example scenes and writes mesh buffers as JSON
 tools/snapshot/                   headless three.js render of those buffers to PNG
 tests/Stykker.NanoCut.Tests/          analytic reference cases, predicates vs. BigInteger, fuzzing
@@ -257,5 +281,5 @@ research, non-profit); copying, modification and redistribution are permitted. C
 from the author – open an issue. Each version converts to the Apache License 2.0 four years after its release.
 
 Third-party components keep their own licenses: three.js (MIT, vendored in
-`samples/Stykker.NanoCut.Demo/wwwroot/lib/three`), Babylon.js (Apache 2.0, loaded from its CDN by the demo). Clipper2
+`samples/Stykker.NanoCut.Demo.Shared/wwwroot/lib/three`), Babylon.js (Apache 2.0, loaded from its CDN by the demo). Clipper2
 (Boost) and ManifoldSharp (Apache 2.0) are test-only dependencies.

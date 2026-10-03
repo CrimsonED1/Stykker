@@ -2,6 +2,7 @@
 @using Stykker.NanoCut.Demo.Machines
 @using Stykker.NanoCut.Geometry3D
 @inject Viewer Viewer
+@inject IComputeRunner Runner
 @implements IAsyncDisposable
 
 <div class="scene">
@@ -125,7 +126,7 @@
             </div>
         }
         <h2>Log</h2>
-        <div class="log">@string.Join("\n", _machine.Log.TakeLast(40))</div>
+        <div class="log">@_logText</div>
     </aside>
 </div>
 
@@ -140,6 +141,11 @@
     private SceneResult? _view;
     private string? _error;
     private bool _busy;
+    private readonly CancellationTokenSource _stop = new();
+
+    // The log as the page shows it, copied after every job: on the server host a move runs on another thread while
+    // the page may render, and the machine's own list is not safe to read then.
+    private string _logText = "";
     private string _busyText = "";
     private string _engine = "three";
     private bool _attached;
@@ -190,13 +196,15 @@
         double step = double.Parse(_step, CultureInfo.InvariantCulture) * factor;
         var p = (double[])_machine.Position.Clone();
         p[axis] += step;
-        _machine.Execute(ToMove(p, rapid: false));
+        var move = ToMove(p, rapid: false);
+        await Runner.Run(() => _machine.Execute(move), _stop.Token);
         await Redraw();
     });
 
     private Task GoTo(bool rapid) => Busy(rapid ? "Rapid move…" : "Cutting…", async () =>
     {
-        _machine.Execute(ToMove(_target, rapid));
+        var move = ToMove(_target, rapid);
+        await Runner.Run(() => _machine.Execute(move), _stop.Token);
         await Redraw();
     });
 
@@ -212,7 +220,8 @@
         for (int i = 0; i < moves.Count; i++)
         {
             _busyText = $"Running program… move {i + 1} / {moves.Count}";
-            _machine.Execute(moves[i]);
+            var move = moves[i];
+            await Runner.Run(() => _machine.Execute(move), _stop.Token);
             if (i % 3 == 2 || i == moves.Count - 1)
             {
                 await Redraw();
@@ -224,7 +233,8 @@
 
     private Task ResetMachine() => Busy("New workpiece…", async () =>
     {
-        _machine.Reset(_settings);
+        var settings = _settings;
+        await Runner.Run(() => _machine.Reset(settings), _stop.Token);
         await Redraw();
     });
 
@@ -234,7 +244,8 @@
 
     private async Task Redraw()
     {
-        _view = _machine.Render();
+        _view = await Runner.Run(() => _machine.Render(), _stop.Token);
+        _logText = string.Join("\n", _machine.Log.TakeLast(40));
         await Viewer.Clear();
         foreach (var o in _view.Objects)
             if (o.Mesh is { } m) await Viewer.AddMesh(o.Name, m, o.Color, o.Opacity);
@@ -269,6 +280,7 @@
 
     public async ValueTask DisposeAsync()
     {
+        _stop.Cancel();
         if (_attached) await Viewer.Clear();
     }
 }

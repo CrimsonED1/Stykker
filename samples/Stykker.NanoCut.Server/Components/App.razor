@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Stykker.NanoCut Demo</title>
+    <title>Stykker.NanoCut Demo (server)</title>
     <base href="/" />
     <link rel="stylesheet" href="_content/Stykker.NanoCut.Demo.Shared/css/app.css" />
     <script type="importmap">
@@ -12,18 +12,23 @@
                 "three": "./_content/Stykker.NanoCut.Demo.Shared/lib/three/three.module.min.js",
                 "three/addons/controls/OrbitControls.js": "./_content/Stykker.NanoCut.Demo.Shared/lib/three/OrbitControls.js",
                 "three/addons/controls/TransformControls.js": "./_content/Stykker.NanoCut.Demo.Shared/lib/three/TransformControls.js",
-                "@babylonjs/core": "./_content/Stykker.NanoCut.Demo.Shared/js/babylon-shim.js"
+                "@@babylonjs/core": "./_content/Stykker.NanoCut.Demo.Shared/js/babylon-shim.js"
             }
         }
     </script>
+    <HeadOutlet @rendermode="Interactive" />
 </head>
 <body>
-    <div id="app">
-        <div class="boot">Loading Stykker.NanoCut (C# on WebAssembly)…</div>
-    </div>
+    <Routes @rendermode="Interactive" />
     <div id="blazor-error-ui">
         An unhandled error has occurred. <a href="" class="reload">Reload</a> <a class="dismiss">🗙</a>
     </div>
-    <script src="_framework/blazor.webassembly.js"></script>
+    <script src="_framework/blazor.web.js"></script>
 </body>
 </html>
+
+@code {
+    // No prerendering: the pages compute in OnAfterRender and attach the viewer there, and a prerender pass would
+    // build every scene twice on the server.
+    private static readonly IComponentRenderMode Interactive = new InteractiveServerRenderMode(prerender: false);
+}

@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NanoCut GPU: Z-Map-Vorschau auf der RTX 5070 Ti</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one narrow technical sheet — verdict, main chart, scaling, error split, full tables, notes in two columns */
+:root {
+  --bg: #f3f5f6;
+  --paper: #ffffff;
+  --fg: #1b2328;
+  --muted: #5c6a73;
+  --rule: #d5dde1;
+  --steel: #8a99a3;
+  --accent: #c25a00;
+  --accent-soft: #f6e3d2;
+  --good: #1f7a4d;
+  --font-display: "Barlow Condensed", "Arial Narrow", sans-serif;
+  --font-body: "IBM Plex Sans", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #12171a; --paper: #1a2126; --fg: #e4eaed; --muted: #94a3ac; --rule: #2d373e;
+    --steel: #5d6c75; --accent: #f08a2c; --accent-soft: #3a2614; --good: #4cc08a; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #12171a; --paper: #1a2126; --fg: #e4eaed; --muted: #94a3ac; --rule: #2d373e;
+  --steel: #5d6c75; --accent: #f08a2c; --accent-soft: #3a2614; --good: #4cc08a; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--fg); font: 15px/1.55 var(--font-body); padding-inline: 16px; padding-block: 32px 48px; }
+.sheet { max-width: 920px; margin: 0 auto; background: var(--paper); border: 1px solid var(--rule); padding: clamp(20px, 4vw, 44px); display: grid; gap: 32px; }
+header { display: grid; gap: 10px; }
+.eyebrow { font: 500 12px/1 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+h1 { font: 700 clamp(30px, 5.4vw, 48px)/1.02 var(--font-display); letter-spacing: -.01em; margin: 0; text-wrap: balance; }
+h1 em { font-style: normal; color: var(--accent); }
+.lede { margin: 0; max-width: 64ch; color: var(--fg); }
+h2 { font: 600 22px/1.1 var(--font-display); letter-spacing: .01em; margin: 0 0 4px; text-wrap: balance; }
+.sub { margin: 0 0 16px; color: var(--muted); font-size: 13.5px; }
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1px; background: var(--rule); border: 1px solid var(--rule); }
+.kpi { background: var(--paper); padding: 14px 16px; display: grid; gap: 2px; }
+.kpi b { font: 600 34px/1 var(--font-display); font-variant-numeric: tabular-nums; }
+.kpi span { font-size: 13px; color: var(--muted); }
+.kpi.hl b { color: var(--accent); }
+
+.bars { display: grid; gap: 10px; }
+.bar { display: grid; grid-template-columns: minmax(120px, 190px) 1fr; gap: 12px; align-items: center; }
+.bar .lab { font-size: 13.5px; line-height: 1.25; min-width: 0; }
+.bar .lab small { display: block; color: var(--muted); font: 12px var(--font-mono); }
+.track { position: relative; height: 26px; }
+.track.duo { display: grid; gap: 3px; align-content: center; }
+.track.duo .fill { height: 15px; }
+.fill { height: 100%; background: var(--steel); display: flex; align-items: center; justify-content: flex-end; padding-right: 8px; min-width: 52px; }
+.fill.old { background: transparent; border: 1.5px dashed var(--steel); }
+.fill.nc { background: var(--accent); }
+.fill span { font: 500 12.5px var(--font-mono); font-variant-numeric: tabular-nums; color: var(--paper); }
+.fill.old span { color: var(--muted); }
+.fill.nc span { color: var(--paper); }
+.axis { display: grid; grid-template-columns: minmax(120px, 190px) 1fr; gap: 12px; }
+.axis .ticks { display: flex; justify-content: space-between; font: 11px var(--font-mono); color: var(--muted); border-top: 1px solid var(--rule); padding-top: 4px; }
+.legend { display: flex; flex-wrap: wrap; gap: 16px; margin: 0 0 12px; font-size: 13px; color: var(--muted); }
+.legend i { display: inline-block; width: 22px; height: 10px; margin-right: 7px; vertical-align: baseline; }
+.legend i.cpu { background: var(--steel); }
+.legend i.gpu { background: var(--accent); }
+.legend i.dash { background: transparent; border: 1.5px dashed var(--steel); }
+
+.tablewrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; min-width: 620px; font-size: 13.5px; }
+th, td { padding: 7px 10px; text-align: right; border-bottom: 1px solid var(--rule); font-variant-numeric: tabular-nums; white-space: nowrap; }
+th:first-child, td:first-child { text-align: left; }
+thead th { font: 500 11.5px var(--font-mono); letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+td.scene { font-weight: 600; }
+td.scene small { display: block; font: 400 11.5px var(--font-mono); color: var(--muted); }
+td.win { color: var(--accent); font-weight: 600; }
+td.f { font-family: var(--font-mono); font-size: 12.5px; }
+td.pos { color: var(--good); }
+td.sum { font-weight: 600; border-top: 1.5px solid var(--fg); }
+.up { color: var(--good); }
+
+/* error split: bars around a zero line that stands for the exact kernel */
+.split { display: grid; gap: 10px; }
+.splitrow { display: grid; grid-template-columns: minmax(140px, 210px) 1fr; gap: 12px; align-items: center; }
+.splitrow .lab { font-size: 13.5px; line-height: 1.25; }
+.splitrow .lab small { display: block; color: var(--muted); font: 12px var(--font-mono); }
+.strack { position: relative; height: 24px; }
+.strack::before { content: ""; position: absolute; left: 90%; top: -4px; bottom: -4px; border-left: 1.5px solid var(--fg); }
+.sfill { position: absolute; top: 0; height: 100%; min-width: 3px; background: var(--steel); }
+.sfill b { position: absolute; font: 500 12.5px var(--font-mono); color: var(--muted); white-space: nowrap; }
+.sfill.rev b { right: 100%; margin-right: 8px; }
+.sfill.pos { background: var(--good); }
+.sfill.pos b { left: 100%; margin-left: 8px; }
+
+.cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 28px; }
+.cols > section { min-width: 0; }
+ul { margin: 0; padding-left: 18px; display: grid; gap: 7px; }
+li::marker { color: var(--muted); }
+.mini { width: 100%; border-collapse: collapse; font-size: 13.5px; min-width: 0; }
+.mini td { padding: 6px 8px; border-bottom: 1px solid var(--rule); }
+.mini td:last-child { text-align: right; font-family: var(--font-mono); white-space: nowrap; }
+.hw { width: 100%; border-collapse: collapse; font-size: 12.5px; min-width: 0; }
+.hw td { padding: 4px 8px 4px 0; border-bottom: 1px solid var(--rule); text-align: left; }
+.hw td:last-child { color: var(--muted); text-align: right; font-family: var(--font-mono); white-space: normal; }
+footer { border-top: 1px solid var(--rule); padding-top: 14px; font: 12px/1.6 var(--font-mono); color: var(--muted); }
+code { font: 12.5px var(--font-mono); background: var(--accent-soft); padding: 1px 4px; }
+</style>
+</head>
+<body>
+<main class="sheet">
+<header>
+<div class="eyebrow">Stykker NanoCut · GPU-Prototyp · 3. Oktober 2026</div>
+<h1>Die ganze Tasche als Vorschau in <em>2,5 ms</em></h1>
+<p class="lede">Ein Z-Map-Vorschau über alle 876 Schnitte dauert auf der RTX 5070 Ti 2,5 ms Wandzeit – der exakte Kernel
+braucht auf derselben Maschine 4,66 s, also 1860× länger. Dafür ist die Vorschau um 0,106 % daneben, und der größte Teil
+davon lässt sich durch kein feineres Gitter reparieren. Gemessen auf diesem Rechner, nicht in der Cloud.</p>
+</header>
+
+<div class="kpis">
+<div class="kpi hl"><b>1860×</b><span>schneller als der exakte Kernel (Wandzeit, 1024 × 768)</span></div>
+<div class="kpi hl"><b>0,106 %</b><span>Volumenabweichung, exakt in drei Ursachen zerlegt</span></div>
+<div class="kpi"><b>512 × 384</b><span>Gitter, das für eine Vorschau dieses Bauteils reicht</span></div>
+<div class="kpi"><b>16×</b><span>reicht das CPU-Backend allein, ohne jede GPU</span></div>
+</div>
+
+<section>
+<h2>Der ganze Pfad, 876 Schnitte, 1024 × 768</h2>
+<p class="sub">Millisekunden für alle 876 Schritte in einem einzigen Aufruf, vorgewärmt, bester von 3. Kürzer ist besser;
+die Achse ist logarithmisch, sonst gäbe es für die GPU-Balken nichts zu sehen.</p>
+<div class="bars">
+<div class="bar"><div class="lab">Exakter Kernel<small>exakt · C# · alle Kerne</small></div><div class="track"><div class="fill" style="width:91.7%"><span>4 655 ms</span></div></div></div>
+<div class="bar"><div class="lab">Z-Map, CPU-Backend<small>Vorschau · C# · 16 Threads</small></div><div class="track"><div class="fill old" style="width:61.4%"><span>286 ms</span></div></div></div>
+<div class="bar"><div class="lab">Z-Map, CUDA<small>Vorschau · nur Kernel</small></div><div class="track"><div class="fill nc" style="width:9.9%"><span>1,5 ms</span></div></div></div>
+<div class="bar"><div class="lab">Z-Map, CUDA<small>Vorschau · Wand, mit Transfer</small></div><div class="track"><div class="fill nc" style="width:9.9%"><span>2,5 ms</span></div></div></div>
+</div>
+<div class="axis" aria-hidden="true"><div></div><div class="ticks"><span>1 ms</span><span>10</span><span>100</span><span>1 000</span><span>10 000 ms</span></div></div>
+<p class="sub" style="margin-top:14px">Pro Schritt sind das 5,31 ms exakt gegen 0,327 ms (CPU-Vorschau), 0,0029 ms (CUDA,
+Wand). Die Volumen stimmen auf neun Nachkommastellen überein. Der Vergleich ist nicht apples-to-apples und soll es nicht
+sein: der exakte Kernel liefert einen exakten Festkörper mit wachsender Randdarstellung, das Z-Map ein Höhenfeld fester
+Größe, das keine Überstände kennen kann.</p>
+</section>
+
+<section>
+<h2>Wie die Vorschau mit dem Gitter wächst</h2>
+<p class="sub">Kernelzeit für alle 876 Schritte in ms, again auf logarithmischer Achse 0,1 … 10 000 ms. Vollständige
+Tabelle unten.</p>
+<div class="legend"><span><i class="cpu"></i>CPU-Backend, 16 Threads</span><span><i class="gpu"></i>CUDA-Backend</span><span>Wert direkt am Balken</span></div>
+<div class="bars">
+<div class="bar"><div class="lab">128 × 96<small>39× · Wand 0,4 ms</small></div><div class="track duo"><div class="fill" style="width:37.7%"><span>7,7</span></div><div class="fill nc" style="width:6%"><span>0,2</span></div></div></div>
+<div class="bar"><div class="lab">256 × 192<small>119× · Wand 0,5 ms</small></div><div class="track duo"><div class="fill" style="width:47.5%"><span>23,7</span></div><div class="fill nc" style="width:6%"><span>0,2</span></div></div></div>
+<div class="bar"><div class="lab">512 × 384<small>183× · Wand 0,8 ms</small></div><div class="track duo"><div class="fill" style="width:57.3%"><span>73,0</span></div><div class="fill nc" style="width:12%"><span>0,4</span></div></div></div>
+<div class="bar"><div class="lab">1024 × 768<small>191× · Wand 2,5 ms</small></div><div class="track duo"><div class="fill" style="width:69.1%"><span>286,0</span></div><div class="fill nc" style="width:23.5%"><span>1,5</span></div></div></div>
+<div class="bar"><div class="lab">2048 × 1536<small>213× · Wand 8,7 ms</small></div><div class="track duo"><div class="fill" style="width:82.3%"><span>1 296,7</span></div><div class="fill nc" style="width:35.7%"><span>6,1</span></div></div></div>
+<div class="bar"><div class="lab">4096 × 3072<small>192× · Wand 36,2 ms</small></div><div class="track duo"><div class="fill" style="width:94.2%"><span>5 144,5</span></div><div class="fill nc" style="width:48.6%"><span>26,8</span></div></div></div>
+</div>
+<div class="axis" aria-hidden="true"><div></div><div class="ticks"><span>0,1 ms</span><span>1</span><span>10</span><span>100</span><span>1 000</span><span>10 000 ms</span></div></div>
+<p class="sub" style="margin-top:14px">Ab 512 Zellen ist der Gitterfehler eine bis zwei Größenordnungen unter dem
+Darstellungsfehler – feiner rechnen kostet nur Zeit. Bei 4096 × 3072 ist die CPU 5,1 s langsam, die GPU 36 ms; genau da
+wird die Karte interessant.</p>
+</section>
+
+<section>
+<h2>Die gesamte Tabelle, Kernel und Transfer getrennt</h2>
+<p class="sub">Alle 876 Schritte in einem Aufruf, vorgewärmt, bester von 3. Δh ist die größte Höhenabweichung zwischen den
+beiden Backends pro Zelle.</p>
+<div class="tablewrap">
+<table>
+<thead><tr><th>Zellen</th><th>CPU-Kernel</th><th>CUDA-Kernel</th><th>Gewinn</th><th>Upload</th><th>Download</th><th>CUDA Wand</th><th>Restvolumen (mm³)</th><th>max Δh (mm)</th></tr></thead>
+<tbody>
+<tr><td class="scene">128 × 96</td><td>7,7</td><td>0,2</td><td class="up">39×</td><td>0,04</td><td>0,04</td><td>0,4</td><td>84 761,374903</td><td>0</td></tr>
+<tr><td class="scene">256 × 192</td><td>23,7</td><td>0,2</td><td class="up">119×</td><td>0,06</td><td>0,10</td><td>0,5</td><td>84 774,000335</td><td>0</td></tr>
+<tr><td class="scene">512 × 384</td><td>73,0</td><td>0,4</td><td class="up">183×</td><td>0,06</td><td>0,18</td><td>0,8</td><td>84 768,999004</td><td>0</td></tr>
+<tr><td class="scene">1024 × 768</td><td>286,0</td><td class="win">1,5</td><td class="up">191×</td><td>0,05</td><td>0,46</td><td>2,5</td><td>84 770,457226</td><td>0</td></tr>
+<tr><td class="scene">2048 × 1536</td><td>1 296,7</td><td>6,1</td><td class="up">213×</td><td>0,07</td><td>1,78</td><td>8,7</td><td>84 769,861853</td><td>0</td></tr>
+<tr><td class="scene">4096 × 3072</td><td>5 144,5</td><td>26,8</td><td class="up">192×</td><td>0,05</td><td>7,73</td><td>36,2</td><td>84 770,036271</td><td>1,9e-6</td></tr>
+</tbody>
+</table>
+</div>
+<p class="sub" style="margin-top:8px">Beide Backends rechnen bis 2048 × 1536 auf das letzte Bit dasselbe; bei
+4096 × 3072 ist der größte Unterschied 1,9·10⁻⁶ mm, dort sichtbar, wo <code>nvcc</code> <code>a*b+c</code> zu
+<code>fma</code> zusammenfasst. Der Download schiebt bei 4096 × 3072 50,3 MB mit 6,5 GB/s über PCIe – pageable, ein
+gepinnter Puffer würde etwa doppelt so viel bringen. Die Upload-Kosten (42 KB gepackte Schritte) sind Rauschen.</p>
+</section>
+
+<section>
+<h2>Der Fehler zerfällt in genau drei Ursachen</h2>
+<p class="sub">Vorschau bei 1024 × 768 lässt 84 770,457226 mm³, der exakte Kernel 84 860,612636583 mm³. Die Nulllinie
+ist der exakte Wert; Balken nach links bedeutet zu viel abgetragen. Achse −90 … +2 mm³.</p>
+<div class="split">
+<div class="splitrow"><div class="lab">Darstellung<small>eine Höhe pro Spalte · analytisch</small></div><div class="strack"><div class="sfill rev" style="left:15.0%;width:75.0%"><b>−76,713</b></div></div></div>
+<div class="splitrow"><div class="lab">Werkzeugmodell<small>Polyederball ↔ Kugel</small></div><div class="strack"><div class="sfill rev" style="left:76.4%;width:13.6%"><b>−13,863</b></div></div></div>
+<div class="splitrow"><div class="lab">Gitter<small>Zellmitte bei 1024 × 768</small></div><div class="strack"><div class="sfill pos" style="left:90%;width:0.5%"><b>+0,421</b></div></div></div>
+</div>
+<div class="tablewrap" style="margin-top:18px">
+<table>
+<thead><tr><th>Ursache</th><th>mm³</th><th>der Abweichung</th><th>wie gemessen</th></tr></thead>
+<tbody>
+<tr><td class="scene">Werkzeugmodell<small>exakter Kernel schneidet eine 48-Segment-Kugel, die Vorschau eine echte Kugel</small></td><td>−13,863</td><td>−0,0163 %</td><td class="f">Richardson aus 48- und 96-Segment-Lauf</td></tr>
+<tr><td class="scene">Darstellung<small>das Z-Map hält nur eine Höhe pro Spalte und verliert das Dach über dem Werkzeug</small></td><td>−76,713</td><td>−0,0904 %</td><td class="f">Vorschau 4096 × 3072 minus hochgerechneter Kugelwert</td></tr>
+<tr><td class="scene">Gitter<small>Abtastung in der Zellmitte</small></td><td class="pos">+0,421</td><td>+0,0005 %</td><td class="f">1024 × 768 gegen 4096 × 3072</td></tr>
+<tr><td class="scene">Summe<small>84 770,457226 gegen 84 860,612636583</small></td><td class="sum">−90,155</td><td class="sum">−0,1062 %</td><td class="f">geht auf die letzte Stelle auf</td></tr>
+</tbody>
+</table>
+</div>
+<p class="sub" style="margin-top:12px">Der Darstellungsfehler ist analytisch gerechnet, nicht nur gemessen: das
+Werkzeugzentrum läuft bei z = 18 mit r = 3 in einem Werkstück, dessen Oberkante bei z = 20 liegt, also bleibt die Krone
+ab d &gt; √5 = 2,236 mm unter der Oberkante. In diesem Randstreifen nimmt das Z-Map Material bis z = 20 weg, obwohl das
+Werkzeug nie dort war. 2 · 80 · ∫[√5..3] (2 − √(9 − d²)) dd = 76,825 mm³ gegen 76,713 gemessen, 0,15 % auseinander.
+Zwei Folgen: der Fehler schrumpft nicht mit feinerem Gitter, und für diese Szene ist das Vorzeichen bekannt – die Vorschau
+zeigt immer etwas <em>mehr</em> abgetragenes Material. Eine Restmaterial-Prüfung darf nicht auf einer Vorschau
+entschieden werden.</p>
+</section>
+
+<div class="cols">
+<section>
+<h2>So ist das einzuordnen</h2>
+<ul>
+<li><b>Ja für eine Vorschau, die ein Mensch ansieht.</b> 876 Schritte in 2,5 ms heißen: den ganzen Pfad bei jeder
+Parameteränderung neu rechnen – Werkzeugradius, Schrittlänge, Tiefe – statt einmal pro Speichern.</li>
+<li><b>Nein für das exakte Ergebnis.</b> Der exakte Kernel bleibt auf der CPU und bekommt keine GPU-Abhängigkeit. Das ist
+Absicht: die 0,1 % Abweichung werden dominiert von einer Darstellungsgrenze, die keine Auflösung heilt.</li>
+<li><b>Das CPU-Backend ist keine Notlösung, sondern eine gute Antwort.</b> 286 ms für die ganze Tasche auf 16 Threads,
+läuft in CI, im Browser und auf Rechnern ohne GPU. Die GPU kauft die 190× – die zählen bei hoher Auflösung, bei vielen
+Bauteilen oder Posen auf einmal und beim Nachrechnen pro Tastendruck.</li>
+<li><b>Der Wrapper funktioniert und bleibt.</b> <code>nvcc</code> auf sm_120 war kein Risiko, <code>LibraryImport</code>
+bleibt AOT-tauglich, der optionale Native-Build stört <code>dotnet build</code> und CI nicht.</li>
+<li><b>Einmalkosten:</b> 34–130 ms CUDA-Start pro Prozess, 0,3 ms Allokation bei 1024 × 768, kein Kernel-Compile zur
+Laufzeit. Für einen Serverprozess unkritisch, deshalb fragt <code>CudaRuntime</code> einmal und cacht.</li>
+</ul>
+</section>
+<section>
+<h2>Was der Doppelbau gefunden hat</h2>
+<ul>
+<li>Denselben Algorithmus zweimal geschrieben – einmal in C#, einmal in CUDA C – und Zelle für Zelle verglichen. Das hat
+einen Fehler gefunden, den die CPU-Tests nicht gesehen hatten: bei horizontalen Schritten ist die Diskriminante des
+Extremums theoretisch genau null, wird aber als Differenz zweier float32-Produkte der Größe 4·d²·w2² berechnet, also etwa
+zur Hälfte leicht negativ – und der Schritt wurde für diese Zelle verworfen. Beide Backends hatten es, der CUDA-Code ist
+nur zuerst darauf gestoßen.</li>
+<li>Beide Diskriminanten sind jetzt bei null geklemmt. Das ist sicher, weil jeder Kandidatenparameter mit S(t) ≥ 0 eine
+echte Werkzeugposition beschreibt und damit nur zu hoch sein kann. Festgehalten in
+<code>GpuZMapTests.LongHorizontalStepIsNotDroppedByFloatCancellation</code>.</li>
+</ul>
+<h2 style="margin-top:18px">Ein Aufruf für den Stapel, oder einer pro Schritt</h2>
+<p class="sub">Der Weg, den eine Seite nimmt, wenn sie nach jedem Schritt den Fortschritt meldet.</p>
+<table class="mini">
+<tbody>
+<tr><td>CUDA, ein Aufruf für alle 876</td><td>2,5 ms</td></tr>
+<tr><td>CUDA, ein Aufruf pro Schritt</td><td>1 128,9 ms</td></tr>
+<tr><td>CPU, ein Aufruf für alle 876</td><td>286,0 ms</td></tr>
+<tr><td>CPU, ein Aufruf pro Schritt</td><td>490,1 ms</td></tr>
+</tbody>
+</table>
+<p class="sub" style="margin-top:10px">Nicht der Launch-Overhead ist das Problem – der liegt bei 5,9 ms gegen 1,5 ms,
+etwa 5 µs je Launch. Die 450× kommen daher, dass <code>IZMapBackend.Apply</code> das Höhenfeld bei jedem Aufruf zurückliest,
+pro Schritt also 876 Kopien von 3 MB. Vor einer Fortschrittsanzeige gehört das geändert: der Aufrufer sollte entscheiden
+dürfen, ob er die Höhen zurückliest. 32 Schritte pro Aufruf hätten die Meldungen und ein Fünfzigstel der Transfers.</p>
+<h2 style="margin-top:18px">Nicht gebaut</h2>
+<ul>
+<li>Der zweite Fall aus dem Plan (Batch-Abfragen: Höhen an Millionen Punkten, Kollisionsprüfung über tausende Posen) – die
+Antwort steht ohne Messung: ein Punktabruf ist ein Launch über unabhängige Punkte ohne Höhenfeld, also noch
+GPU-freundlicher als das Z-Map.</li>
+<li>Kein gepinnter Host-Speicher, keine Streams, kein Multi-GPU, keine Überlappung von Transfer und Rechnung.</li>
+<li>Keine Überstände: das Z-Map kann keine Hohlräume und kein vergrabenes Werkzeug darstellen. Das ist die übliche
+Höhenfeld-Konvention, steht auf <code>ZMap</code>, und
+<code>GpuZMapTests.AToolBuriedInTheStockIsTheKnownZMapLimit</code> hält das Verhalten fest, statt es zu verstecken.</li>
+<li>Teil 1 des Plans (Server-Modus für die Demo, <code>samples/Stykker.NanoCut.Server</code>) ist nicht gebaut; nur der
+GPU-Teil ist fertig. ILGPU wurde, wie entschieden, nicht benutzt.</li>
+</ul>
+</section>
+</div>
+
+<footer>
+Gemessen am 3. Oktober 2026 auf diesem Rechner, auf <code>feature/server-gpu</code>: AMD Ryzen 7 5800X3D (8 Kerne, 16
+Threads), NVIDIA GeForce RTX 5070 Ti 16 275 MiB (Blackwell, compute capability 12.0 / sm_120), Treiber 617.14,
+CUDA Toolkit 13.4 (<code>nvcc</code> V13.4.59), Visual Studio 2022 Community als Host-Compiler, Windows 11 Home
+10.0.26200, .NET SDK 10.0.401. Die native Bibliothek wird mit <code>build.ps1</code> gebaut
+(<code>-O3 -shared -std=c++17 -cudart static</code>, SASS für sm_120 plus PTX für compute_75, 192 KiB).
+Diese Zahlen sind <em>nicht</em> mit den Cloud-Tabellen in <code>bench/README.md</code> vergleichbar (dort Intel Xeon,
+4 Kerne); der exakte Kernel wurde deshalb hier neu gemessen: 4 655 ms gegen 4 910 ms mit dem Code aus Runde 4.
+Die CPU-Zeiten schwanken zwischen Läufen um bis zu ±20 % (277,8 … 391,9 ms bei 1024 × 768 über vier Läufe), die
+CUDA-Zeiten um weniger als ±5 % – der Gewinn ist also auf zwei signifikante Stellen belastbar, nicht auf drei.
+Vollständige Messreihen, Fehlerzerlegung und Reproduktionsschritte stehen in <code>docs/gpu-findings.md</code>, der
+Werkzeugpfad selbst in <code>docs/server-gpu-plan.md</code>.
+</footer>
+</main>
+</body>
+</html>
