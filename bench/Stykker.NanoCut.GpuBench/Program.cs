@@ -3,7 +3,7 @@
 //
 //   --grids 128,256,1024     cells in x; cells in y follow the aspect ratio of the box
 //   --backends cpu,cuda      which backends to run
-//   --repeat 3               runs per cell, the best wall time is reported
+//   --repeat 3               runs per cell (and per query call), the best wall time is reported
 //   --steps N                only the first N steps (0 = all)
 //   --chunk N                apply the steps in calls of N steps instead of one call (N = 1 means one launch per step)
 //   --reference <mm3>        remaining volume of the exact kernel, for the deviation column
@@ -11,6 +11,10 @@
 //   --stl <path>             write the height field of the finest grid as binary STL
 //   --out <dir>              write zmap-results.json and zmap-results.md into <dir>
 //   --cold                   time the very first call instead of warming up on a separate map
+//   --queries                measure the batch queries at the finest grid: height sampling, tool probing and the
+//                            read-back into pinned and into pageable memory
+//   --points N               sample points for the query phase (default 1000000)
+//   --no-pin                 let the CUDA backend read back into pageable memory, to measure what pinning is worth
 //
 // Times are split the way the plan asks for: kernel (device kernel or parallel host loop), upload (host to device),
 // download (device to host), first call (CUDA context creation and device allocation) and wall (the whole call).
@@ -61,18 +65,11 @@ var cpuHeights = new Dictionary<int, float[]>();
 
 foreach (int cellsX in opt.Grids)
 {
-    double aspect = (scene.BoxMaxMm.Y - scene.BoxMinMm.Y) / (scene.BoxMaxMm.X - scene.BoxMinMm.X);
-    int cellsY = Math.Max(2, (int)Math.Round(cellsX * aspect));
-    if (cellsY % 2 == 1) cellsY++;
+    int cellsY = CellsY(cellsX);
 
     foreach (string name in opt.Backends)
     {
-        IZMapBackend? backend = name switch
-        {
-            "cpu" => CpuBackend.Instance,
-            "cuda" => new CudaBackend(),
-            _ => null,
-        };
+        IZMapBackend? backend = Make(name, opt);
         if (backend is null)
         {
             Console.Error.WriteLine($"unknown backend {name}");
@@ -125,6 +122,104 @@ foreach (int cellsX in opt.Grids)
 if (opt.Reference is { } exact)
     Console.WriteLine($"\nreference remaining volume {exact.ToString("F9", inv)} mm3, " +
                       $"stock {scene.BoxVolumeMm3.ToString("F3", inv)} mm3");
+
+if (opt.Queries)
+{
+    Console.WriteLine();
+    int cellsX = opt.Grids[^1];
+    int cellsY = CellsY(cellsX);
+    var samplePoints = Queries.Points(scene, opt.Points);
+    var probePoses = new ToolPose[steps.Length];
+    for (int i = 0; i < steps.Length; i++) probePoses[i] = ToolPose.From(steps[i]);
+    Console.WriteLine($"queries at {cellsX} x {cellsY}: {samplePoints.Length} points to sample, " +
+                      $"{probePoses.Length} poses to probe");
+
+    float[] referenceHeights = [];
+    var referenceDepths = new float[probePoses.Length];
+    foreach (string name in opt.Backends)
+    {
+        IZMapBackend? backend = Make(name, opt);
+        if (backend is null || !backend.IsAvailable) continue;
+
+        var map = ZMap.FromScene(scene, cellsX, cellsY, backend);
+        Runner.Apply(map, steps, opt.Chunk);
+        if (map.Backend is not IZMapQueryBackend queries)
+        {
+            Console.WriteLine($"{name,-5} skipped: the backend cannot answer queries");
+            continue;
+        }
+
+        // Same warm-up as the preview phase: a single cold query is dominated by one-off costs (the query buffers
+        // and the first touch of the pageable point and result arrays, ~1000 page faults for a 4 MB result) and
+        // says nothing about the steady state. Report the best of --repeat, and keep the cold number beside it.
+        var got = new float[samplePoints.Length];
+        var depths = new float[probePoses.Length];
+        ZMapTiming sampleCold = queries.SampleHeights(map, samplePoints, got);
+        ZMapTiming probeCold = queries.ProbeMaterial(map, probePoses, depths);
+        ZMapTiming sampleTiming = sampleCold;
+        ZMapTiming probeTiming = probeCold;
+        for (int run = 1; run < opt.Repeat; run++)
+        {
+            var s = queries.SampleHeights(map, samplePoints, got);
+            var p = queries.ProbeMaterial(map, probePoses, depths);
+            if (s.WallMs < sampleTiming.WallMs) sampleTiming = s;
+            if (p.WallMs < probeTiming.WallMs) probeTiming = p;
+        }
+        if (name == "cpu") referenceHeights = (float[])got.Clone();
+
+        float worstHeight = 0, worstDepth = 0;
+        bool haveHeightReference = name != "cpu" && referenceHeights.Length == got.Length;
+        bool haveDepthReference = name != "cpu";
+        if (haveHeightReference)
+            for (int i = 0; i < got.Length; i++)
+                worstHeight = Math.Max(worstHeight, Math.Abs(referenceHeights[i] - got[i]));
+        if (name != "cpu")
+            for (int i = 0; i < depths.Length; i++)
+                worstDepth = Math.Max(worstDepth, Math.Abs(referenceDepths[i] - depths[i]));
+        else referenceDepths = depths;
+
+        Console.WriteLine($"{name,-5} sample {samplePoints.Length} points: kernel {sampleTiming.KernelMs,8:F3} ms  " +
+                          $"up {sampleTiming.UploadMs,7:F3}  down {sampleTiming.DownloadMs,7:F3}  " +
+                          $"wall {sampleTiming.WallMs,8:F3} ms" + ColdSuffix(sampleTiming, sampleCold) +
+                          $"  max dh {(haveHeightReference ? worstHeight.ToString("E2", inv) : "-")} mm");
+        Console.WriteLine($"{name,-5} probe  {probePoses.Length} poses:  kernel {probeTiming.KernelMs,8:F3} ms  " +
+                          $"up {probeTiming.UploadMs,7:F3}  down {probeTiming.DownloadMs,7:F3}  " +
+                          $"wall {probeTiming.WallMs,8:F3} ms" + ColdSuffix(probeTiming, probeCold) +
+                          $"  max dd {(haveDepthReference ? worstDepth.ToString("E2", inv) : "-")} mm");
+
+        // Worth printing only when the warm-up actually bought something.
+        static string ColdSuffix(ZMapTiming best, ZMapTiming cold) =>
+            best.WallMs < cold.WallMs * 0.98 ? $"  (cold {cold.WallMs,7:F3})" : "";
+
+        // What the read-back costs with and without pinned memory, on the same field and the same device, and what
+        // a batch costs when the field is left on the device and the volume is reduced there instead.
+        if (backend is not CudaBackend || opt.PinnedReadBack is false) continue;
+        int bytes = cellsX * cellsY * sizeof(float);
+        foreach (bool pin in new[] { true, false })
+        {
+            var plain = new CudaBackend { PinnedReadBack = pin };
+            var plainMap = ZMap.FromScene(scene, cellsX, cellsY, plain);
+            Runner.Apply(plainMap, steps, opt.Chunk);
+            double best = double.MaxValue;
+            for (int run = 0; run < opt.Repeat; run++) best = Math.Min(best, plainMap.ReadHeights());
+            Console.WriteLine($"cuda  read-back {(pin ? "pinned  " : "pageable")}: {best,8:F3} ms  " +
+                              $"{bytes / best / 1e6,7:F2} GB/s");
+        }
+
+        var never = ZMap.FromScene(scene, cellsX, cellsY, backend);
+        double neverKernel = double.MaxValue, neverWall = double.MaxValue, volumeMs = double.MaxValue;
+        for (int run = 0; run <= opt.Repeat; run++)
+        {
+            Runner.Apply(never, steps, opt.Chunk, ZMapReadBack.Never);
+            if (run == 0) continue;   // the first call also creates the device field
+            neverKernel = Math.Min(neverKernel, never.LastTiming.KernelMs);
+            neverWall = Math.Min(neverWall, never.LastTiming.WallMs);
+            volumeMs = Math.Min(volumeMs, Measure(() => never.BackendRemovedVolumeMm3));
+        }
+        Console.WriteLine($"cuda  batch without read-back: kernel {neverKernel,7:F3} ms  wall {neverWall,7:F3} ms  " +
+                          $"device volume {volumeMs:F4} ms, {never.BackendRemovedVolumeMm3:F6} mm3");
+    }
+}
 
 if (opt.Stl is { } stlPath)
 {
@@ -186,10 +281,56 @@ if (opt.Out is { } outDir)
 
 return 0;
 
+/// <summary>Cells in y for a given width in x, from the aspect ratio of the box.</summary>
+int CellsY(int cellsX)
+{
+    double aspect = (scene.BoxMaxMm.Y - scene.BoxMinMm.Y) / (scene.BoxMaxMm.X - scene.BoxMinMm.X);
+    int cellsY = Math.Max(2, (int)Math.Round(cellsX * aspect));
+    return cellsY % 2 == 0 ? cellsY : cellsY + 1;
+}
+
+/// <summary>The backend for a name, honouring the pinning option.</summary>
+IZMapBackend? Make(string name, Options opt) => name switch
+{
+    "cpu" => CpuBackend.Instance,
+    "cuda" => new CudaBackend { PinnedReadBack = opt.PinnedReadBack ?? true },
+    _ => null,
+};
+
+/// <summary>Wall time of one call, in milliseconds.</summary>
+double Measure(Func<double> call)
+{
+    var sw = Stopwatch.StartNew();
+    call();
+    sw.Stop();
+    return sw.Elapsed.TotalMilliseconds;
+}
+
 sealed record Row(string Backend, int CellsX, int CellsY, int Steps, ZMapTiming Timing,
     double RemovedMm3, double RemainingMm3, float[]? Heights)
 {
     public double? MaxHeightDifferenceMm { get; set; }
+}
+
+static class Queries
+{
+    /// <summary>
+    /// A regular grid of <paramref name="count"/> points over the box of the scene, in absolute mm, one row per
+    /// grid line so that the access pattern of the host loop is the same as the one of the device.
+    /// </summary>
+    internal static SamplePoint[] Points(ExpandedScene scene, int count)
+    {
+        double x0 = scene.BoxMinMm.X, x1 = scene.BoxMaxMm.X;
+        double y0 = scene.BoxMinMm.Y, y1 = scene.BoxMaxMm.Y;
+        int rows = Math.Max(1, (int)Math.Sqrt(count));
+        int columns = Math.Max(1, count / rows);
+        var points = new SamplePoint[rows * columns];
+        int p = 0;
+        for (int j = 0; j < rows; j++)
+            for (int i = 0; i < columns; i++)
+                points[p++] = new SamplePoint(x0 + (x1 - x0) * i / columns, y0 + (y1 - y0) * j / rows);
+        return points;
+    }
 }
 
 static class Runner
@@ -198,15 +339,15 @@ static class Runner
     /// Applies the steps in one call, or in chunks of <paramref name="chunk"/> steps. Chunking is what a page does to
     /// report progress, and it shows the price of one launch per step instead of one for the whole batch.
     /// </summary>
-    internal static void Apply(ZMap map, BallStep[] steps, int chunk)
+    internal static void Apply(ZMap map, BallStep[] steps, int chunk, ZMapReadBack readBack = ZMapReadBack.Always)
     {
         if (chunk <= 0 || chunk >= steps.Length)
         {
-            map.ApplySteps(steps);
+            map.ApplySteps(steps, readBack);
             return;
         }
         for (int i = 0; i < steps.Length; i += chunk)
-            map.ApplySteps(steps.AsSpan(i, Math.Min(chunk, steps.Length - i)));
+            map.ApplySteps(steps.AsSpan(i, Math.Min(chunk, steps.Length - i)), readBack);
     }
 }
 
@@ -274,6 +415,9 @@ sealed class Options
     public required int Chunk { get; init; }
     public required bool Cold { get; init; }
     public required bool Diff { get; init; }
+    public required bool Queries { get; init; }
+    public required int Points { get; init; }
+    public bool? PinnedReadBack { get; init; }
     public double? Reference { get; init; }
     public string? Stl { get; init; }
     public string? Out { get; init; }
@@ -283,7 +427,7 @@ sealed class Options
         if (args.Length == 0 || args[0].StartsWith('-'))
             throw new ArgumentException("usage: <expanded.json> [--grids 128,256,1024] [--backends cpu,cuda] " +
                                         "[--repeat 3] [--steps N] [--chunk N] [--reference mm3] [--diff] " +
-                                        "[--stl path] [--out dir] [--cold]");
+                                        "[--stl path] [--out dir] [--cold] [--queries] [--points N] [--no-pin]");
 
         string? Value(string name)
         {
@@ -302,6 +446,9 @@ sealed class Options
             Chunk = int.Parse(Value("--chunk") ?? "0"),
             Cold = args.Contains("--cold"),
             Diff = args.Contains("--diff"),
+            Queries = args.Contains("--queries"),
+            Points = int.Parse(Value("--points") ?? "1000000"),
+            PinnedReadBack = args.Contains("--no-pin") ? false : null,
             Reference = Value("--reference") is { } r ? double.Parse(r, CultureInfo.InvariantCulture) : null,
             Stl = Value("--stl"),
             Out = Value("--out"),

@@ -105,9 +105,106 @@ Chunking by, say, 32 steps would keep the progress updates and cost a fiftieth o
 ### Transfer bandwidth
 
 The download moves the whole height field: 50.3 MB in 7.73 ms at 4096 × 3072, that is 6.5 GB/s. That is pageable-host
-speed, not what PCIe 5.0 x16 can do; a pinned host buffer (`cudaHostAlloc`) should roughly double it. The upload is
+speed, not what PCIe 5.0 x16 can do, and the first round expected a pinned host buffer (`cudaHostAlloc`) to roughly
+double it — it does not, see *Pinned host memory* below. The upload is
 42 KB of packed steps and is noise (0.05 ms) at every resolution. At 1024 × 768 the download is 0.46 ms against
 1.5 ms of kernel, so transfers are already a third of the wall time there and three quarters of it at 4096 × 3072.
+
+## Round 2: the caller decides about the read-back, batch queries, the volume on the device
+
+Three things the first round left open, all built and measured.
+
+### The caller decides about the read-back
+
+The wrapper change the first round recommended: `IZMapBackend.Apply(map, steps, readBack)` takes a `ZMapReadBack`, and
+`ZMap.ApplySteps` passes it on. With `ZMapReadBack.Never` the field stays on the device, the copy back is skipped, and
+
+- `ZMap.IsHeightsCurrent` goes false, and every host read of `ZMap.Heights` (`RemovedVolumeMm3`, `ToMesh`, the CPU query
+  backend) throws `InvalidOperationException` instead of quietly answering from a stale array;
+- `ZMap.ReadHeights()` copies the field back and returns the copy time in ms;
+- `ZMap.BackendRemovedVolumeMm3` asks the backend, and on CUDA that is a reduction on the device that works while the
+  field is still on the device.
+
+So progress reporting after every batch of steps costs a reduction over the field (0.16 ms, below) instead of a copy of
+the whole field (0.4 ms at 1024 × 768, 7.7 ms at 4096 × 3072), and the heights come back only when someone actually
+wants to look at them. The whole 876 step toolpath, applied with `Never` at 1024 × 768: kernel 1.545 ms, wall 1.655 ms
+against 2.5 ms with the copy.
+
+### Batch queries
+
+`ZMap.SampleHeights` (height at each point) and `ZMap.ProbeMaterial` (how far a ball reaches into the material at each
+pose) are the second case from the plan, and they are the queries that make a preview worth having on the server: the
+input and the output stay small for a whole tool path, so a program can be checked for air cuts without ever reading
+the height field back. Both backends answer them (`IZMapQueryBackend`); the CUDA one uploads the query, runs one kernel
+over it and copies the answers back.
+
+At 1024 × 768, warm, best of 5, the cold first call in brackets:
+
+| Query | Input | CPU wall | CUDA kernel | CUDA upload | CUDA download | CUDA wall | Agreement |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| heights at 1 000 000 points | 16 MB | 3.474 ms (4.007) | 0.064 ms | 1.658 ms | 0.428 ms | **2.187 ms** (3.489) | max Δh 1.9e-6 mm |
+| penetration at 876 tool poses | 14 KB | **0.039 ms** (0.443) | 0.004 ms | 0.044 ms | 0.028 ms | 0.116 ms (0.542) | Δ = 0 |
+
+Three findings, in the order they turned up.
+
+**The first version of this table was a single cold call, and it was wrong by an order of magnitude.** The bench
+measured each query once, on arrays that had just been allocated, and the CUDA download came out at 6.7 ms for 4 MB —
+0.6 GB/s, against the 8.7 GB/s the very same machine reaches on the field read-back. The cost was not the copy but the
+first touch of the destination: a fresh 4 MB array is about a thousand pages that the collector has never seen, and
+faulting them in costs more than the transfer. The CPU numbers had the same problem in reverse (0.443 ms cold against
+0.039 ms warm, a factor of eleven). The bench now warms up like the preview phase and reports the best of `--repeat`
+beside the cold call, and every query number in this file is a warm one. Lesson worth keeping: a first-call timing is a
+statement about the first call.
+
+**Half of the query's wall time was a host-side packing loop.** `CudaBackend` used to copy the query into a flat float
+array relative to the map origin before uploading it, to halve the bytes on the wire. The loop cost 2.8 ms for a
+million points against 0.9 ms of saved transfer, and the wall came out at 4.135 ms — *slower than the CPU*. The
+kernel can do the same arithmetic for free: `nc_zmap_sample` now takes the points as they are (two doubles, absolute)
+and `sample_d_kernel` subtracts the origin and narrows to float per thread. The transfer grows from 8 MB to 16 MB and
+the wall drops to 2.187 ms, a 1.9× improvement over the packed version and 1.6× better than the CPU backend, with the
+same answers to the last bit (`max Δh 1.9e-6 mm` before and after). The host side is now 0.1 ms of the 2.187 ms.
+
+**A point query is transfer-bound, and the pose query cannot win at all.** The million-point query spends 2.086 of its
+2.187 ms on the two copies and 0.064 ms in the kernel: at this size the PCIe link, not the device, is the limit, and
+the answer still comes back in the same traffic the question went out in. The pose query is the opposite: 14 KB in and
+3.5 KB out, a 0.004 ms kernel, and a wall of 0.116 ms — *three times slower than the 0.039 ms the CPU needs for the same
+876 poses*. Two pageable copies of a few kilobytes cost 0.072 ms of nothing but round-trip latency, and no amount of
+kernel makes that back. So the split is: sample a million points on the GPU, probe a few hundred poses on the CPU, and
+do not send a pose query to the device until the pose count is in the millions, where the fixed 0.07 ms stops mattering
+next to 14 MB of upload.
+
+The copy back is timed on the host clock, not with a stream event: a pageable device-to-host copy is synchronous, and the
+driver is free to run it outside the caller's stream, in which case an event pair around it carries the same timestamp
+twice and the phase reads as zero. That is exactly what it did before, and it is why the first version of this table
+had downloads of 0.000 ms.
+
+### The removed volume on the device
+
+`ZMap.BackendRemovedVolumeMm3` is the sum over all cells of (stock top − height) times the cell area, reduced on the
+device: one partial-sum kernel with a shared-memory staging step and a final kernel over the blocks, which returns a
+single double. For the whole 876 step toolpath at 1024 × 768 it costs **0.1416 ms** and reports 11 229.542774 mm³.
+
+That is cheaper than the 0.4 ms read-back it avoids, so a caller that wants a progress number per batch should ask the
+backend for the volume and leave the field where it is. The host-side `RemovedVolumeMm3` still exists and is the
+reference (it sums `Heights` in double), so the two can be compared; they agree to the last digit.
+
+### Pinned host memory: measured, and not worth it
+
+The first round predicted that a pinned host buffer would roughly double the download and listed it as the obvious
+next step. It was built (`--no-pin` switches it off) and the prediction is **wrong on this machine**:
+
+| Read-back of 3 MB (1024 × 768) | Time | Bandwidth |
+| --- | ---: | ---: |
+| pinned (`cudaHostAlloc`), best of 8 | 0.362 ms | 8.68 GB/s |
+| pageable, best of 8 | 0.362 ms | 8.70 GB/s |
+
+Measured in the same process, on the same field, back to back, the two are the same number to three digits. Across
+processes the order flips (0.361 pinned against 0.360 pageable in one run, 0.494 against 0.380 in another), which is
+what two equal measurements look like. The large-transfer numbers above say why: 6.3–8.7 GB/s in both directions is
+this link's ceiling, and a copy that the driver stages through its own buffer reaches the same place. So there is
+nothing to win here, and the pinned buffer is off by default. On a machine where a copy really does hit the bus limit (a
+server with a passive root port and a GPU, or a much larger grid) the pinned path stays available in the wrapper.
+
 
 ## Accuracy: the deviation split into its three causes
 
@@ -192,16 +289,23 @@ parameter with S(t) ≥ 0 describes a real ball position and can only be too hig
 
 ### Not done
 
-- **The second case from the plan (batch queries: heights at millions of points, collision checks over thousands of
-  tool poses) was not built.** The first case pays off, so the plan's condition is met, but the answer is already
-  clear enough to state without measuring it: a batch query is one kernel launch over independent points with no
-  height field to read back, so it is *more* GPU-friendly than the Z-map, not less — the Z-map's weak spot is the
-  50 MB download, which a point query does not have in the same way. If a roughness map or a fixture collision check
-  ever becomes a real requirement, that is the next thing to prototype, and the wrapper as it stands supports it.
-- **No pinned host memory**, so the download runs at 6.5 GB/s instead of what the bus could do.
+- **A batch query is transfer-bound, and the fix that made it pay was to stop preparing it on the host.** Sampling a
+  million points now costs 2.187 ms against 3.474 ms on the CPU, but 2.086 ms of that is PCIe traffic; the kernel is
+  0.064 ms. The pose query is the opposite and cannot be rescued at this size — 0.116 ms against 0.039 ms on the CPU,
+  all of it round-trip latency — so it should stay on the CPU until a program asks about millions of poses. What would
+  help both is a query that lives on the device between calls (upload the point set once, then sample it repeatedly),
+  which is the obvious next step and is not built.
+- **A first call is not a measurement.** Every query number in this file needed a warm-up to mean anything; the first
+  table was off by a factor of ten because the bench called each query exactly once on freshly allocated arrays. The
+  bench now warms up and prints the cold call beside the warm one.
 - **No multi-GPU, no streams, no overlap of transfer and compute.** One kernel on the default stream is all this
   prototype needs.
 - **The Z-map cannot represent overhangs or a tool buried in the stock**, and does not try. That is the standard
   height-field convention, it is documented on `ZMap` and
   `GpuZMapTests.AToolBuriedInTheStockIsTheKnownZMapLimit` asserts the behaviour instead of hiding it.
+- **The read-back still copies the whole field.** A caller that only needs the volume after every batch never pays it
+  (`ZMapReadBack.Never` plus `BackendRemovedVolumeMm3`), but a caller that wants a *picture* of the field while it is
+  being cut still has to take the whole copy, and a partial copy (a row band, say) is not built.
+- **Part 1 of the plan, the server mode** (`samples/Stykker.NanoCut.Server`, geometry on the server, progress over
+  SignalR, cancellable) is still not built; only the GPU half is done.
 - **ILGPU was not used at all**, as decided in `docs/server-gpu-plan.md`. Nothing here depends on it.

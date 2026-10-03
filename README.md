@@ -153,8 +153,12 @@ A GPU is used for previews, not for the exact result. `src/Stykker.NanoCut.Gpu` 
 (one height per grid cell) with two interchangeable backends: `Cpu` in plain C#, and `Cuda` on an optional native
 kernel. On an RTX 5070 Ti the 876-step pocket-large previews in 2.5 ms wall against 4.66 s for the exact kernel; the CPU
 backend alone needs 286 ms and runs everywhere, CI and browser included. The preview deviates by 0.106 %, almost all of it
-a property of the height field that no grid size removes. Measurements and the recommendation:
-[docs/gpu-findings.md](docs/gpu-findings.md). One page: [bench/results-2026-10-03-gpu.html](bench/results-2026-10-03-gpu.html).
+a property of the height field that no grid size removes. The caller decides whether a step batch reads the field back
+(`ZMapReadBack`) and can ask the device for the removed volume instead, and the field answers batch queries directly:
+heights at a million points in 2.2 ms (1.6× the CPU), while a few hundred probed tool poses are faster on the CPU.
+Measurements and the recommendation: [docs/gpu-findings.md](docs/gpu-findings.md). One page:
+[bench/results-2026-10-03-gpu.html](bench/results-2026-10-03-gpu.html), round 2:
+[bench/results-2026-10-03-gpu-round2.html](bench/results-2026-10-03-gpu-round2.html).
 
 ## Processes: acting shape + motion
 

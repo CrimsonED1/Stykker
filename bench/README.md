@@ -229,3 +229,44 @@ representation error is a property of the height field and does not shrink with 
 preview. Measurements, error decomposition and the recommendation: `docs/gpu-findings.md`. One-page result:
 [`results-2026-10-03-gpu.html`](results-2026-10-03-gpu.html).
 
+## GPU prototype, round 2: read-back on request, batch queries, the volume on the device (2026-10-03)
+
+Same scene and machine. `IZMapBackend.Apply` takes a `ZMapReadBack`, so a caller that only wants a progress number after
+a batch of steps never pays for the copy of the field, and `ZMap.BackendRemovedVolumeMm3` reduces the removed volume on
+the device instead. 1024 × 768, warm, best of 5:
+
+| | Kernel | Upload | Download | Wall |
+| --- | ---: | ---: | ---: | ---: |
+| CUDA, read-back after every call | 1,5 ms | 0,05 ms | 0,42 ms | 2,4 ms |
+| CUDA, `ZMapReadBack.Never` + volume on the device | 1,544 ms | 0,05 ms | – | 1,665 ms |
+| CPU backend | 266,2 ms | – | – | 266,2 ms |
+
+The volume reduction inside that second row costs 0,1416 ms and returns 11 229,542774 mm³, against the 0,42 ms of copy
+it replaces.
+
+Batch queries (`SampleHeights`, `ProbeMaterial`), warm, best of 5, cold first call in brackets:
+
+| Query | CPU | CUDA kernel | CUDA upload | CUDA download | CUDA wall | Agreement |
+| --- | ---: | ---: | ---: | ---: | ---: | --- |
+| heights at 1 000 000 points (16 MB in, 4 MB out) | 3,474 ms (4,007) | 0,064 ms | 1,658 ms | 0,428 ms | **2,187 ms** (3,489) | max Δh 1,9e-6 mm |
+| penetration at 876 tool poses (14 KB in) | **0,039 ms** (0,443) | 0,004 ms | 0,044 ms | 0,028 ms | 0,116 ms (0,542) | Δ = 0 |
+
+Three things came out of it:
+
+- **The point query is transfer-bound, and the packing on the host was what made it lose.** `CudaBackend` used to copy
+  the query into a flat float array before uploading (2,8 ms of packing to save 0,9 ms of transfer, 4,135 ms wall).
+  `nc_zmap_sample` now takes the points as they are and `sample_d_kernel` subtracts the origin on the device: 2,187 ms,
+  1,6× faster than the CPU, same answers to the last bit.
+- **The pose query is round-trip latency and cannot win at this size** — 0,116 ms against 0,039 ms for the same 876 poses
+  on the CPU, with a 0,004 ms kernel. Probe a few hundred poses on the CPU.
+- **Pinned host memory buys nothing here**: 0,362 ms / 8,68 GB/s pinned against 0,362 ms / 8,70 GB/s pageable, measured
+  back to back in one process, with the order flipping between processes. It is off by default.
+
+And one methodological finding worth more than the numbers: every query measurement had to be warmed up first. The
+first table was off by a factor of ten because the bench called each query exactly once on freshly allocated arrays
+(first touch of a 4 MB destination costs more than the copy). The bench now warms up like the preview phase and prints
+the cold call beside the warm one.
+
+Details and the full reasoning: `docs/gpu-findings.md`. One-page result:
+[`results-2026-10-03-gpu-round2.html`](results-2026-10-03-gpu-round2.html).
+

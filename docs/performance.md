@@ -78,7 +78,8 @@ part of the suite: `tests/Stykker.NanoCut.Tests/OptimizationVerification*Tests.c
   - `Face3.Split` rejects non-convex input.
   - Introselect replaces plain quickselect.
 
-All 177 tests and the 4 oracle tests are green.
+All 183 tests and the 4 oracle tests are green, including the GPU tests, which run against the `nvcc`-built library when
+it is present and against the CPU backend only when it is not.
 
 ## GPU prototype: Z-map preview
 
@@ -110,6 +111,39 @@ tool's crown) and does not shrink with a finer grid – the analytic integral gi
 So 512 × 384 is enough for a preview, and a stock-remainder check must not be decided on one. Full measurements and the
 recommendation (worth it for a preview a person watches, not for the exact result): [gpu-findings.md](gpu-findings.md).
 
+### Round 2: the caller decides about the read-back, batch queries, the volume on the device
+
+The three items the first round left open, all built and measured. `IZMapBackend.Apply(map, steps, readBack)` takes a
+`ZMapReadBack`, so with `Never` the height field stays on the device, `ZMap.IsHeightsCurrent` goes false and every host
+read of a stale field throws instead of answering wrongly; `ZMap.ReadHeights()` brings it back on demand, and
+`ZMap.BackendRemovedVolumeMm3` reduces the removed volume *on the device* (0,1416 ms for 11 229,542774 mm³, agreeing with
+the host sum to the last digit). 1024 × 768, warm, best of 5:
+
+| 876 steps at 1024 × 768 | kernel | upload | download | wall |
+| --- | ---: | ---: | ---: | ---: |
+| CUDA, read-back after every call | 1,5 ms | 0,05 ms | 0,42 ms | 2,4 ms |
+| CUDA, `ZMapReadBack.Never` + volume on the device | 1,544 ms | 0,05 ms | – | 1,665 ms |
+
+`IZMapQueryBackend` answers batch queries on both backends — heights at N points, ball penetration at N poses — so the
+GPU result stays checkable cell by cell:
+
+| Query | CPU | CUDA kernel | CUDA upload | CUDA download | CUDA wall | Agreement |
+| --- | ---: | ---: | ---: | ---: | ---: | --- |
+| heights at 1 000 000 points (16 MB in, 4 MB out) | 3,474 ms | 0,064 ms | 1,658 ms | 0,428 ms | **2,187 ms** | max Δh 1,9e-6 mm |
+| penetration at 876 tool poses (14 KB in) | **0,039 ms** | 0,004 ms | 0,044 ms | 0,028 ms | 0,116 ms | Δ = 0 |
+
+The point query wins, but only after the host stopped preparing it: packing the query into a flat float array cost
+2,8 ms to save 0,9 ms of transfer and put the wall at 4,135 ms — *slower than the CPU*. `nc_zmap_sample` now takes the
+points as they are and the kernel does that arithmetic (0,064 ms), which is where the 2,187 ms come from. What remains
+is 95 % PCIe: the next win is a point set that stays on the device between calls. The pose query is the opposite and
+cannot be rescued at this size — 0,072 ms of round-trip latency against a 0,004 ms kernel, so a few hundred poses go to
+the CPU. Pinned host memory, which round 1 predicted would roughly double the download, buys nothing here: 8,68 GB/s
+pinned against 8,70 GB/s pageable, measured back to back in one process with the order flipping between processes, so
+it is off by default.
+
+One-page result: [results-2026-10-03-gpu-round2.html](../bench/results-2026-10-03-gpu-round2.html). The full reasoning,
+including why the first version of that table was wrong by a factor of ten: [gpu-findings.md](gpu-findings.md).
+
 ## Lessons learned
 
 - **Measure with a real CPU profiler.** The .NET EventPipe thread-time sampler only samples at safe points, so it showed
@@ -139,11 +173,32 @@ recommendation (worth it for a preview a person watches, not for the exact resul
   height field. Who decides whether data comes back is an API decision, not a kernel one.
 - **A fixed-size representation sets an accuracy floor.** One height per column cannot represent overhangs, so no grid
   size buys that error down. Measure the floor before buying resolution.
+- **A first call is not a measurement.** The first query table was wrong by a factor of ten: the bench called each query
+  exactly once, on arrays the collector had never touched, and faulting in a fresh 4 MB destination cost more than the
+  copy (6,7 ms of "download" that was really page faults). Warm up, then take the best of N, and print the cold number
+  beside it.
+- **Do not prepare a query on the host if a kernel can do it for free.** Packing a million points into a flat float
+  array cost 2,8 ms to save 0,9 ms of transfer and made the GPU query slower than the CPU one. The kernel had 0,064 ms
+  of headroom to do the same arithmetic. Bandwidth saved on the wire is not free — it is paid for in the loop that
+  saves it.
+- **Small queries lose to round-trip latency, not to bandwidth.** 876 poses are 14 KB and 3,5 KB; the kernel takes
+  0,004 ms, the two copies 0,072 ms, and the CPU does the same work in 0,039 ms. Know where the fixed cost of a device
+  round trip puts the break-even point before moving work onto it.
+- **On a planar sweep, keep the piece order the geometry wants.** Uniting the pieces interval by interval made the union
+  7× cheaper and the subtract 2× more expensive, because each batch stopped being one contiguous ribbon and left
+  degenerate loops in the result. And the pose parts are load-bearing under rotation: dropping them keeps the area
+  exact to nine decimals and costs 206 µm of flank error. Measure the cost of both halves, not one
+  ([processes.md](processes.md)).
 
 ## Open
 
 - Fixed costs per cut for short tasks: C++ is still 1.3–2.3× faster there.
 - Exact face sweep for 3D rotations, which today use hulls of poses and small steps (see [processes.md](processes.md)).
 - Server mode: the second half of the plan behind [server-gpu-plan.md](server-gpu-plan.md), still unbuilt. The GPU half is
-  done and measured above; what is still missing there is the caller's choice about read-back, batch queries and pinned
-  host memory. The exact kernel stays on the CPU either way.
+  done and measured above, including the caller's choice about read-back, the batch queries and the pinned-memory
+  question. What is still missing on the GPU side is a query that stays on the device between calls, and a partial
+  read-back for a caller that wants a picture of part of the stock while the cut runs. The exact kernel stays on the CPU
+  either way.
+- The gear case is analysed but not fixed: `Process2.Cut` spends 17,7 s in the unions of the pose parts and 23 s in the
+  subtracts, and the win has to come from grouping the pieces by the region they remove, not from the piece order or the
+  batch size ([processes.md](processes.md)).

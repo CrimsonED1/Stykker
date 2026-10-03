@@ -144,8 +144,8 @@ geometric (undeformed); h_cu is sampled along the tip path, not integrated over 
 
 | Process | Result | Time |
 | --- | --- | --- |
-| Gear generation with a rack, m = 2 mm, z = 20, sweep 30 nm | flank deviation from the ideal involute ≤ 5.6 nm, 2560 roll steps | 22–31 s |
-| Same, sweep 300 nm | ≤ 20 nm | 10 s |
+| Gear generation with a rack, m = 2 mm, z = 20, sweep 30 nm | flank deviation from the ideal involute ≤ 5.6 nm (5.4 nm measured), 2560 roll steps, 209 089 swept pieces, 69 contours | 32 s |
+| Same, sweep 300 nm | ≤ 20 nm (20.1 nm measured), 640 roll steps, 104 560 pieces | 9 s |
 | Turning a Ø20 × 40 mm bar, 8 moves | 89 profile vertices | 1 s |
 | Ball-nose pocket, 8 moves, chord 1 µm | 39 207 faces | 3 s |
 | Same, chord 50 nm | 664 246 faces | 51 s |
@@ -169,6 +169,63 @@ three bugs, all fixed:
    are now split across the fold range (11.9 nm in the same case).
 
 ## Performance notes (measured)
+
+### The gear case: where the 32 s go
+
+`Process2.Cut` on the rack case (m = 2 mm, z = 20, `Tolerance.Default`) is the slowest planar process, so it was
+measured phase by phase. 2560 roll steps, 209 089 swept pieces, result 1231.252941475 mm² in 69 contours, flank
+deviation 5.4 nm from the ideal involute (the same metric the test asserts at ≤ 5.6 nm):
+
+| Phase | Time | What it is |
+| --- | ---: | --- |
+| `SweepPieces` | 0.4 s | the 209 089 convex pieces |
+| bounds filter | 0.01 s | `Overlaps` against the workpiece box |
+| 80 `UnionAll` calls over the pose parts | 17.7 s | 32 near-congruent 3687 mm² copies of the 8-part rack per batch, 0.76 ms per piece |
+| 621 subtracts of the growing result | 23 s | growing with the loop count of the result |
+| **total** | **32.1 s** | 69 contours, 5.4 nm |
+
+Two costs, with opposite behaviour. `UnionAll` is superlinear in the number of *overlapping near-congruent* polygons
+— the exact kernel is single-threaded and has to merge every one of those rack copies with the others — so a batch of
+256 pose parts costs 0.76 ms per piece against 0.011 ms for a batch of edge-sweep bands. The subtract is the other way
+round: it costs what the *result's* loop count costs, and every batch leaves its slivers behind in it.
+
+That is why the shipped piece order (all pose parts first, then the bands) is the right one, and why the obvious
+"unite neighbouring intervals instead of neighbouring poses" is a trap. Every variant was built and timed:
+
+| Variant | Union | Subtract | Total | Result contours | Flank |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| **shipped order, batches of 256** | 17.7 s | 23 s | **32.1 s** | **69** | 5.4 nm |
+| interval order, batches of 256 | 2.2–2.5 s | 47–52 s | 57.9 s | 1151–2013 | exact |
+| interval order, batches of 1024 | 11.6 s | 22.9 s | 34.5 s | 3946 | exact |
+| interval order, batches overlapping by 32 pieces | | | 44.2 s | 1554 | exact |
+| interval order, batches overlapping by 64 pieces | | | 32.7 s | 3459 | exact |
+| one union for all 209 089 pieces | does not finish in 9 min | | | | |
+| coarser fold split (2 instead of 4 sub-intervals) | | | 49.5 s | | 33 067 nm |
+| finer fold split (hoist the fold point) | | 188 769 → 150 033 pieces, no win in time | | | exact |
+| pose parts dropped, bands only | | | | | 205 614 nm |
+
+Reading the table:
+
+- **Reordering makes the union 7× cheaper and the subtract 2× more expensive**, because a batch that is no longer one
+  contiguous ribbon subtracts as a set of slivers and leaves degenerate loops in the result. The 20 % win at batch 1024
+  costs 57× more contours, and the result stays that way for every later batch.
+- **The pose parts are load-bearing, not redundancy.** The Minkowski identity (a convex polygon plus a translation is
+  the union of the edge trapezoids) holds for translations only; under a rotation the pose parts are what covers the
+  concave side of the fold. Dropping them keeps the area right to nine decimals and costs 206 µm of flank error —
+  40 000× the tolerance — which is the dangerous kind of failure, because a check that only compares areas passes.
+- **The fold split cannot be tuned into a win.** Coarser loses the flank by five orders of magnitude; finer changes
+  nothing, because the fold point is essentially stationary over a 30 nm step and there is less of the edge to split.
+
+**Conclusion: the shipped order is a local optimum, and the win has to come from the grouping, not the order or the
+batch size.** The change worth making is to group the swept pieces by the region of the workpiece they remove, so each
+batch is one contiguous ribbon and each subtract sees a result whose loop count stays near 69. That is a change to how
+`Process2.Cut` batches, not to the sweep, and it is listed in `docs/todo.md`.
+
+The one change that survived from this investigation is the bounds filter: it runs on every piece of every sweep, and
+the four LINQ passes over the vertices became a single pass (0.01 s of 32.1 s — kept because it is strictly less work,
+not because it moved the needle).
+
+### Other processes
 
 Cube 8 mm moving and turning through a 20 mm cube, path error 50 µm (128 steps per 45°):
 

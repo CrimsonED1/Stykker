@@ -50,6 +50,30 @@ internal static partial class CudaNative
     [LibraryImport(LibraryName, EntryPoint = "nc_zmap_read")]
     internal static partial int ZMapRead(nint zmap, Span<float> heights, out double downloadMs);
 
+    /// <summary>
+    /// Sums the removed depth over the device height field and returns it in mm³, reduced on the device so the
+    /// height field itself does not have to come back.
+    /// </summary>
+    [LibraryImport(LibraryName, EntryPoint = "nc_zmap_volume")]
+    internal static partial int ZMapVolume(nint zmap, out double volumeMm3, out double kernelMs);
+
+    /// <summary>
+    /// Reads the height of the field at <paramref name="count"/> points, two doubles each in absolute mm, bilinear
+    /// between cell centres, and reports where the time went. The points are converted to field coordinates on the
+    /// device, so the caller does not have to pack them.
+    /// </summary>
+    [LibraryImport(LibraryName, EntryPoint = "nc_zmap_sample")]
+    internal static partial int ZMapSample(nint zmap, ReadOnlySpan<SamplePoint> points, int count, double originX,
+        double originY, Span<float> outHeights, out double kernelMs, out double uploadMs, out double downloadMs);
+
+    /// <summary>
+    /// Reads how far a ball reaches into the material at <paramref name="count"/> poses, four floats (x, y, z, r)
+    /// each, and reports where the time went.
+    /// </summary>
+    [LibraryImport(LibraryName, EntryPoint = "nc_zmap_probe")]
+    internal static partial int ZMapProbe(nint zmap, ReadOnlySpan<float> poses, int count,
+        Span<float> outPenetrationMm, out double kernelMs, out double uploadMs, out double downloadMs);
+
     /// <summary>Frees the height field.</summary>
     [LibraryImport(LibraryName, EntryPoint = "nc_zmap_destroy")]
     internal static partial void ZMapDestroy(nint zmap);

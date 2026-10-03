@@ -99,33 +99,49 @@ public sealed class ZMap
     /// <summary>The backend this map runs its steps on.</summary>
     public IZMapBackend Backend => _backend;
 
-    /// <summary>Time of the last <see cref="ApplySteps(ReadOnlySpan{BallStep})"/> call.</summary>
+    /// <summary>Time of the last <see cref="ApplySteps(ReadOnlySpan{BallStep}, ZMapReadBack)"/> call.</summary>
     public ZMapTiming LastTiming { get; private set; }
 
-    /// <summary>Time of every <see cref="ApplySteps(ReadOnlySpan{BallStep})"/> call on this map added together.</summary>
+    /// <summary>Time of every <see cref="ApplySteps(ReadOnlySpan{BallStep}, ZMapReadBack)"/> call on this map added together.</summary>
     public ZMapTiming TotalTiming { get; private set; }
 
     /// <summary>Number of steps applied so far.</summary>
     public int AppliedSteps { get; private set; }
 
+    /// <summary>
+    /// Whether <see cref="Heights"/> holds the field as of the last applied step. It starts true, because the array is
+    /// filled with the stock top, and it goes false when a batch is applied with
+    /// <see cref="ZMapReadBack.Never"/> and the backend keeps the field to itself. Everything on the host that reads
+    /// <see cref="Heights"/> checks this, so a stale field is an exception and not a wrong answer.
+    /// </summary>
+    public bool IsHeightsCurrent { get; private set; } = true;
+
     /// <summary>Lowers the height field by every step, in order.</summary>
     /// <param name="steps">The tool steps in absolute mm.</param>
-    public void ApplySteps(ReadOnlySpan<BallStep> steps)
+    /// <param name="readBack">
+    /// Whether the field is copied back to <see cref="Heights"/>. A GPU backend saves the copy with
+    /// <see cref="ZMapReadBack.Never"/>, at the price of every host read of the field throwing until
+    /// <see cref="ReadHeights"/> is called.
+    /// </param>
+    public void ApplySteps(ReadOnlySpan<BallStep> steps, ZMapReadBack readBack = ZMapReadBack.Always)
     {
         if (steps.IsEmpty) return;
         var sw = Stopwatch.StartNew();
-        var t = _backend.Apply(this, steps);
+        var t = _backend.Apply(this, steps, readBack);
         sw.Stop();
         LastTiming = t with { WallMs = t.WallMs > 0 ? t.WallMs : sw.Elapsed.TotalMilliseconds };
         TotalTiming += LastTiming;
         AppliedSteps += steps.Length;
+        IsHeightsCurrent = readBack == ZMapReadBack.Always || _backend.KeepsHeightsOnHost;
     }
 
     /// <summary>Lowers the height field by a range of steps, in order.</summary>
     /// <param name="steps">The tool steps in absolute mm.</param>
     /// <param name="index">First step to apply.</param>
     /// <param name="count">Number of steps to apply.</param>
-    public void ApplySteps(IReadOnlyList<BallStep> steps, int index, int count)
+    /// <param name="readBack">Whether the field is copied back to <see cref="Heights"/>.</param>
+    public void ApplySteps(IReadOnlyList<BallStep> steps, int index, int count,
+        ZMapReadBack readBack = ZMapReadBack.Always)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(index);
         ArgumentOutOfRangeException.ThrowIfNegative(count);
@@ -133,17 +149,40 @@ public sealed class ZMap
         if (count == 0) return;
         var slice = new BallStep[count];
         for (int i = 0; i < count; i++) slice[i] = steps[index + i];
-        ApplySteps(slice);
+        ApplySteps(slice, readBack);
     }
 
     /// <summary>
-    /// The material the steps took out of the stock, in mm³: the sum over all cells of (stock top − height) times
-    /// the cell area. Computed in double on the host, so it does not depend on the backend.
+    /// Copies the height field back to <see cref="Heights"/> from wherever the backend keeps it and reports the copy
+    /// time in milliseconds. On a batch applied with <see cref="ZMapReadBack.Never"/> this is the price of the copy
+    /// that was avoided; on a CPU backend it does nothing, because the array is the state.
     /// </summary>
+    public double ReadHeights()
+    {
+        double downloadMs = _backend.ReadHeights(this);
+        IsHeightsCurrent = true;
+        return downloadMs;
+    }
+
+    /// <summary>
+    /// The material the steps took out of the stock in mm³, as the backend computes it. On the CUDA backend this is
+    /// a reduction on the device that returns a single double, so it works while the field stays on the device and
+    /// costs a few microseconds instead of a read-back of the whole field.
+    /// </summary>
+    public double BackendRemovedVolumeMm3 => _backend.RemovedVolumeMm3(this);
+
+    /// <summary>
+    /// The material the steps took out of the stock, in mm³: the sum over all cells of (stock top − height) times
+    /// the cell area. Computed in double on the host from <see cref="Heights"/>, so it needs that field to be
+    /// current — call <see cref="ReadHeights"/> first when the last batch was applied with
+    /// <see cref="ZMapReadBack.Never"/>. Compare with <see cref="BackendRemovedVolumeMm3"/>, which does not.
+    /// </summary>
+    /// <exception cref="InvalidOperationException"><see cref="Heights"/> is not the field as of the last step.</exception>
     public double RemovedVolumeMm3
     {
         get
         {
+            RequireCurrentHeights();
             double top = TopMm - OriginMm.Z, sum = 0;
             foreach (float h in Heights) sum += top - h;
             return sum * CellSizeXMm * CellSizeYMm;
@@ -161,11 +200,80 @@ public sealed class ZMap
         (TopMm - BottomMm) * CellsX * CellSizeXMm * CellsY * CellSizeYMm;
 
     /// <summary>
+    /// Height of the field at each point in absolute mm, bilinear between cell centres and clamped to the field, and
+    /// where the time went. A point outside the workpiece sees the border height, it is not extrapolated.
+    /// </summary>
+    /// <param name="points">The points to ask about, in absolute mm.</param>
+    /// <param name="outHeights">Receives one absolute height in mm per point; at least as long as <paramref name="points"/>.</param>
+    /// <returns>Kernel, upload, download and wall time of the query.</returns>
+    /// <exception cref="NotSupportedException">The backend cannot answer queries.</exception>
+    /// <exception cref="InvalidOperationException">
+    /// The backend answers from <see cref="Heights"/>, which is not current.
+    /// </exception>
+    public ZMapTiming SampleHeights(ReadOnlySpan<SamplePoint> points, Span<float> outHeights)
+    {
+        if (points.IsEmpty) return ZMapTiming.Zero;
+        if (outHeights.Length < points.Length)
+        {
+            throw new ArgumentException($"outHeights has {outHeights.Length} entries for {points.Length} points.",
+                nameof(outHeights));
+        }
+
+        // The backend answers in the relative mm of the grid, the caller asked in absolute mm. Shifting the result is
+        // a host pass over the output, so it is deliberately not part of the reported kernel time.
+        ZMapTiming timing = Query().SampleHeights(this, points, outHeights);
+        float dz = (float)OriginMm.Z;
+        for (int i = 0; i < points.Length; i++) outHeights[i] += dz;
+        return timing;
+    }
+
+    /// <summary>
+    /// How far a ball reaches into the material at each pose: the height of the field minus the bottom of the ball,
+    /// zero where the ball hangs in air, and where the time went. This is the query that keeps its input and output
+    /// in the tens of kilobytes for a whole tool path, so a caller can check a program for air cuts without ever
+    /// reading the height field back.
+    /// </summary>
+    /// <param name="poses">The tool poses, in absolute mm.</param>
+    /// <param name="outPenetrationMm">Receives one depth in mm per pose, never negative; at least as long as <paramref name="poses"/>.</param>
+    /// <returns>Kernel, upload, download and wall time of the query.</returns>
+    /// <exception cref="NotSupportedException">The backend cannot answer queries.</exception>
+    /// <exception cref="InvalidOperationException">
+    /// The backend answers from <see cref="Heights"/>, which is not current.
+    /// </exception>
+    public ZMapTiming ProbeMaterial(ReadOnlySpan<ToolPose> poses, Span<float> outPenetrationMm)
+    {
+        if (poses.IsEmpty) return ZMapTiming.Zero;
+        if (outPenetrationMm.Length < poses.Length)
+        {
+            throw new ArgumentException(
+                $"outPenetrationMm has {outPenetrationMm.Length} entries for {poses.Length} poses.",
+                nameof(outPenetrationMm));
+        }
+        return Query().ProbeMaterial(this, poses, outPenetrationMm);
+    }
+
+    /// <summary>The backend as a query backend, or an exception when it is not one.</summary>
+    private IZMapQueryBackend Query() => _backend as IZMapQueryBackend
+        ?? throw new NotSupportedException($"backend '{_backend.Name}' cannot answer height queries");
+
+    /// <summary>Throws when <see cref="Heights"/> is not the field as of the last step.</summary>
+    private void RequireCurrentHeights()
+    {
+        if (!IsHeightsCurrent)
+        {
+            throw new InvalidOperationException(
+                "the height field is on the backend, not in Heights; call ReadHeights() or use BackendRemovedVolumeMm3");
+        }
+    }
+
+    /// <summary>
     /// The height field as a triangle mesh for a viewer: one vertex per cell centre, two triangles per interior
     /// quad, smooth normals from the height differences. The mesh is open at the bottom, it is a preview surface.
     /// </summary>
+    /// <exception cref="InvalidOperationException"><see cref="Heights"/> is not the field as of the last step.</exception>
     public ZMapMesh ToMesh()
     {
+        RequireCurrentHeights();
         int nx = CellsX, ny = CellsY;
         float cx = (float)CellSizeXMm, cy = (float)CellSizeYMm;
         var pos = new float[nx * ny * 3];
