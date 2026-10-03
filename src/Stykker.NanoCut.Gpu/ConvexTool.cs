@@ -161,7 +161,7 @@ public sealed class ConvexTool
     /// and shrunk by the radius of their own corners, which is the largest body with those normals that still fits
     /// inside the ball.
     /// </remarks>
-    public static ConvexTool Ball(double radiusMm, int planeCount = 32, double cx = 0, double cy = 0, double cz = 0)
+    public static ConvexTool Ball(double radiusMm, int planeCount = MaxPlanes, double cx = 0, double cy = 0, double cz = 0)
     {
         if (!(radiusMm > 0)) throw new ArgumentOutOfRangeException(nameof(radiusMm), radiusMm, "the radius must be positive.");
         ArgumentOutOfRangeException.ThrowIfLessThan(planeCount, 4);

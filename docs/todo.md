@@ -67,6 +67,26 @@ Open features and ideas, newest first. Each entry says what is wanted and which 
 Plan and log: [long-programs.md](long-programs.md). Steps 1 (the baseline), 2 (the step binning) and 3 (a convex tool
 on a pose sequence) are done; steps 4 to 6 are the preview itself.
 
+- ~~**A convex program followed by a ball one emptied the map on the GPU.**~~ Fixed, and the fault was a pointer and
+  not an algorithm: the kernel tells a sphere from a polytope by the plane pointer it is handed, `reserve_planes`
+  keeps the half-spaces of an earlier convex run, and the ball launch passed them on with a count of zero — so the
+  ball became a tool that removes the whole height of every column its bin reaches (1476.83 mm³ where it should have
+  removed 84.82 mm³, with the overflow counter still at zero). The launch takes the pointer from the count it was
+  given, and `ConvexDexelTests.AConvexToolThenASphereOnTheSameDevice` runs convex → sphere against the CPU, which is
+  the order the earlier test did not have.
+- **"The order of steps inside a tile does not matter" is written down and is false.**
+  `docs/long-programs.md:83-84` claims it, with the parenthetical "only the overflow counting can differ". The
+  capacity guard in `dexel_subtract` (`if (left && right && n + 1 > capacity)`) keeps the part *below* a cut and drops
+  the roof above it, so which side survives depends on the order the cuts arrive in — the intervals move, not only
+  the count. It holds for columns that never reach capacity. Step 3 puts the convex path through the same
+  `dexel_apply_column`, so the same guard and the same caveat apply there. Correcting the sentence needs no
+  measurement; what would need one is a counter-example to put next to it.
+- **The sampling bound in `ConvexDexelTests.SamplingBound` is the maximum over the steps, not their union.** For a
+  program that fans out — the rotating case — the box one step contributes is smaller than the area the whole program
+  sweeps, so what the test asks for (0.1253 mm³ at 500 cells) is not "the volume a column model can be off by" as the
+  prose says; the union geometry gives about 0.19 mm³. No verdict changes — a smaller bound is the stricter test, and
+  the rotating case sits at 0.0147 mm³ inside either — but the bound is not yet the quantity the text claims, and
+  that matters as soon as step 4 asks whether a ground surface is inside the rim it samples.
 - **The interval search is O(m³) in the half-spaces, and that is the next thing to make cheaper.** Where a column
   meets a sweep, `ConvexProfile.Span` (and `convex_span`) walks every crossing of two of the m lines and evaluates the
   envelope there over all m of them. Building the envelope once instead — sort the slopes, stack, m operations — is

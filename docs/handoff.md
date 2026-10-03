@@ -17,7 +17,7 @@ Newest entries at the top of "Log". Code, comments and docs in English; the user
 
 ```powershell
 dotnet build -c Release
-dotnet test -c Release                                   # 250 + 4 with step 3 of the long-program plan (24 of the 250 are new; 221 + 4 on d111193)
+dotnet test -c Release                                   # 251 + 4 with step 3 of the long-program plan (25 of the 251 are new; 221 + 4 on d111193)
 powershell -ExecutionPolicy Bypass -File src/Stykker.NanoCut.Gpu.Native/build.ps1   # nanocut_gpu.dll (nvcc 13.4 + VS 2022)
 dotnet build src/Stykker.NanoCut.Gpu -c Release          # copies the dll next to the managed assembly
 py -3 bench/run.py bench/scenes/pocket-large.json --engines nanocut --repeat 3   # exact kernel; writes bench/out/<scene>/expanded.json
@@ -102,6 +102,22 @@ Steps (tick when done):
 
 ### 2026-10-04, Qwen
 
+- **Step 3 verified independently, and the verification earned its keep.** A read-only verifier was pointed at the
+  half of the commit nobody had read — the CUDA kernel and the new tests — and found a way to empty a map that no test
+  could see: the kernel tells a sphere from a polytope by the plane pointer it is handed, `reserve_planes` keeps the
+  half-spaces of an earlier convex run, and the ball launch passed them on with a count of zero, so a ball program
+  after a convex one became a tool that removes the whole height of every column its bin reaches (1476.83 mm³ where it
+  should have removed 84.82 mm³, overflow counter 0). One line fixes it, and the test that holds it
+  (`AConvexToolThenASphereOnTheSameDevice`, convex → sphere against the CPU — the order the earlier test did not have)
+  was checked to fail without the fix. The two implementations of `convex_span` and `ConvexProfile.Span` came back
+  statement-for-statement identical, which answers the question the briefing was most worried about, and the convex
+  branch of `StepBins.Tiles` turned out to have a completeness test of its own with a non-zero precondition.
+  251 + 4 tests green in Release.
+- Three doc errors the same pass found, all now corrected against the source: `docs/performance.md` quoted 0.44 % for
+  the box at 1000 cells where its own table says +1.224 %, `docs/long-programs.md` said 32 half-spaces against
+  `kConvexPlanes = 16`, and it credited the convex bit-identity test with 301 cells where it runs 241. Still open and
+  written down in `docs/todo.md`: the false order-independence claim at `docs/long-programs.md:83-84`, and the fact
+  that `SamplingBound` takes the maximum over the steps rather than their union.
 - Step 3 of [long-programs.md](long-programs.md) done on `long-programs-step-1`: `ConvexTool` (a tool is half-spaces,
   at most 16), `ConvexStep` (an orientation and two positions), `ConvexProfile` and `convex_span` in `zmap.cu`, reached
   through `DexelMap.ApplyConvexSteps` and binned by the same CSR as a ball program. A tool on a pose sequence is what
