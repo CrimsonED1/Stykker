@@ -169,6 +169,14 @@ calls, while a few hundred probed tool poses are faster on the CPU. Measurements
 [bench/results-2026-10-03-gpu-round2.html](bench/results-2026-10-03-gpu-round2.html), round 3:
 [bench/results-2026-10-03-gpu-round3.html](bench/results-2026-10-03-gpu-round3.html).
 
+Long programs are the next topic: the whole generated gear (34.7 s for z = 20, 209 089 swept pieces, 147.6 s for
+z = 40) and a fully covered grinding wheel (0.20 s for the demo's 60 grains up to 5.8 s for 1920). The preview so far
+only knows a ball on straight segments; what those two programs need is any convex tool on rotating poses, binned by
+tile. Step 1 of the plan is the baseline a preview will be checked against — time **and** result: the generated area
+against the ideal involute gear, the removed volume, Ra and Rz — measured by `bench/Stykker.NanoCut.LongPrograms`.
+Plan, steps and log: [docs/long-programs.md](docs/long-programs.md), one page:
+[bench/results-2026-10-03-long-programs.html](bench/results-2026-10-03-long-programs.html).
+
 ## Processes: acting shape + motion
 
 ```csharp
