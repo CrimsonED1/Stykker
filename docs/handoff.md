@@ -17,7 +17,7 @@ Newest entries at the top of "Log". Code, comments and docs in English; the user
 
 ```powershell
 dotnet build -c Release
-dotnet test -c Release                                   # 225 + 4 with step 2 of the long-program plan (221 + 4 on d111193)
+dotnet test -c Release                                   # 250 + 4 with step 3 of the long-program plan (24 of the 250 are new; 221 + 4 on d111193)
 powershell -ExecutionPolicy Bypass -File src/Stykker.NanoCut.Gpu.Native/build.ps1   # nanocut_gpu.dll (nvcc 13.4 + VS 2022)
 dotnet build src/Stykker.NanoCut.Gpu -c Release          # copies the dll next to the managed assembly
 py -3 bench/run.py bench/scenes/pocket-large.json --engines nanocut --repeat 3   # exact kernel; writes bench/out/<scene>/expanded.json
@@ -43,15 +43,23 @@ not authorised: pull requests are opened by the user through the compare link
 ## Open items, in order
 
 1. **Long programs on the GPU** (main topic now): plan, steps and log in `docs/long-programs.md`. The work is on the
-   branch `long-programs-step-1` (pushed), not on `main`. **Steps 1 and 2 are done.** Step 1,
+   branch `long-programs-step-1` (pushed), not on `main`. **Steps 1 to 3 are done.** Step 1,
    `bench/Stykker.NanoCut.LongPrograms`, measures both programs on the exact kernel with time and result (gear 34.7 s at
    z = 20 with 1231.252941 mm² and 5.4 nm flank, 147.6 s at z = 40; grinding 0.200 s at 60 grains up to 5.820 s at 1920),
    one page `bench/results-2026-10-03-long-programs.html`. Step 2 bins the steps of the ball dexel kernel into tiles of
    16 × 16 columns on the host and launches one block per tile: on a finishing pass of 793 600 steps over 160 000
    columns the kernel costs 2.7 ms against 640.7 ms unbinned (~240×, and the same removed volume in both), one page
-   `bench/results-2026-10-04-long-programs-dexel.html`. Next is step 3, convex tool + pose sequence in the dexel kernel;
-   it has to decide what to do about the host-side binning, which is O(steps) and by then the larger half of the wall
-   (18.9 ms of 36.8 ms at 793 600 steps, docs/todo.md). One open question the baseline opened: after the 2D gear kernel
+   `bench/results-2026-10-04-long-programs-dexel.html`. Step 3 adds a convex tool on a pose sequence: a tool is
+   half-spaces, a step is an orientation and two positions, and where a column meets the sweep is a linear program in
+   (z, t) on both backends (`ConvexTool`, `ConvexStep`, `ConvexProfile`, `convex_span` in the kernel), binned like a
+   ball program. Against the exact kernel on the same body: the octahedron to −0.001 %, a box turned 1.2 rad while
+   travelling to +0.362 %, both inside the volume a column model can be off by at the grid it samples — the tests check
+   that sampling bound instead of a convergence a column model cannot give (the box case at 1000 cells sits on it to the
+   last digit). Next is step 4, the grinding preview, on the two blocks that are now in place: 16 half-spaces for a gear
+   tooth, and a pose sequence of a whole wheel. Open and unchanged by step 3: the host-side binning is O(steps) and by
+   then the larger half of the wall (18.9 ms of 36.8 ms at 793 600 steps, docs/todo.md), and the exact kernel samples a
+   rotation linearly in the angle (~50 000 poses at the default 30 nm, 512 at the 4 µm the tests use). One open
+   question the baseline opened: after the 2D gear kernel
    the same 3D grinding case is up to 4.4× slower in the same process (docs/todo.md, "Long programs – follow-ups") —
    the bench therefore measures grinding before gear.
 2. Ideas for later, not started: a mesh of the dexel cavities for the viewer (today only the top surface); a dexel
@@ -94,6 +102,27 @@ Steps (tick when done):
 
 ### 2026-10-04, Qwen
 
+- Step 3 of [long-programs.md](long-programs.md) done on `long-programs-step-1`: `ConvexTool` (a tool is half-spaces,
+  at most 16), `ConvexStep` (an orientation and two positions), `ConvexProfile` and `convex_span` in `zmap.cu`, reached
+  through `DexelMap.ApplyConvexSteps` and binned by the same CSR as a ball program. A tool on a pose sequence is what
+  steps 4 and 5 need: 16 half-spaces for a gear tooth, a whole wheel as poses. 250 + 4 tests green in Release, 24 of them
+  new in `ConvexDexelTests`.
+- Where a column meets the sweep is a 2D linear program in (z, t), and `F = {t : L(t) ≤ U(t)}` is exactly the
+  conjunction of the pair conditions `ℓᵢ(t) ≤ uⱼ(t)`, so it is one interval per column from a min/max chain. The first
+  version tested candidates for feasibility instead and dropped half of them at random at a root (a 9.10 mm error, thrown
+  away); both backends now take the interval.
+- Measured against the exact kernel on the same body: octahedron to −0.001 %, a box turned 1.2 rad while travelling to
+  +0.362 %. The tests check the *sampling bound* and not a convergence, because a column model cannot shrink its error
+  with the grid — a face exactly on the centre line of a grid takes a whole extra row of columns (closed rule), and the
+  box case at 1000 cells sits on that bound to the last digit (0.4408 against 0.4408 mm³). Written up in
+  docs/performance.md and the log of long-programs.md.
+- CUDA agrees with the CPU reference (no differing columns; interval ends 4.3e-05…1.3e-04 mm at a cell-relative
+  threshold of `cell / 100` ≈ 8.3e-04 mm), and the binned launch is bit-identical to the unbinned one. The rotating case
+  needs 4 µm of sweep against the exact kernel: `Process3.Sample` holds `diameter · dθ / 2` under its sweep tolerance, so
+  the default 30 nm asks for ~50 000 poses and the test runs at 512 exact intervals in 72 s — the slowest test in the
+  suite, and on the critical path for steps 4 and 5.
+- Not done, on purpose: no time measurement of the convex path. The plan puts that on steps 4 and 5, where a whole
+  program is previewed; docs/performance.md and bench/README.md say so rather than quoting a number from a single case.
 - Step 2 of [long-programs.md](long-programs.md) done on `long-programs-step-1`: `StepBins.cs` (host CSR of the steps
   per tile of 16 × 16 columns), `nc_dexel_apply_steps_binned` in `zmap.cu` (one block per tile), `CudaBackend.BinSteps`
   and a `BinMs` on `ZMapTiming` so the host cost is reported apart from the kernel. New bench mode `dexel` measures the

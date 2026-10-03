@@ -821,6 +821,21 @@ constexpr int kMaxDexelIntervals = 16;
 /// <summary>Columns per tile and rows per tile of the binned launch: one tile is one thread block.</summary>
 constexpr int kDexelTile = 16;
 
+/// <summary>Half-spaces the convex tool sweep accepts. Mirrors ConvexProfile.MaxPlanes.</summary>
+constexpr int kConvexPlanes = 16;
+
+/// <summary>Floats per half-space: the unit normal and the distance.</summary>
+constexpr int kPlaneFloats = 4;
+
+/// <summary>Floats per packed convex step. Mirrors ConvexProfile.StepFloats.</summary>
+constexpr int kConvexStepFloats = 32;
+
+/// <summary>Offsets into a packed convex step: T_A, the move w, and then the rotation. The half-space count and the
+/// swept box that precede them are read by the host, not here.</summary>
+constexpr int kConvexFrom = 4;
+constexpr int kConvexMove = 7;
+constexpr int kConvexRot = 11;
+
 struct Dexel
 {
     int nx = 0;
@@ -834,6 +849,9 @@ struct Dexel
     unsigned long long* overflows = nullptr;
     float* steps = nullptr;
     int stepsCapacity = 0;
+    int stepsStride = 0;                 // floats per step, which differs between the two layouts
+    float* planes = nullptr;             // planeCount * kPlaneFloats, shared by every step of a program
+    int planesCapacity = 0;
     int* tileStart = nullptr;            // tiles + 1
     int tileCapacity = 0;
     int* tileSteps = nullptr;
@@ -875,6 +893,143 @@ __device__ __forceinline__ bool swept_span(float x, float y, const float* __rest
     const float tt = fminf(fmaxf(ts + c * a, lo), hi), dt = tt - ts;
     high = z0 + wz * tt + sqrtf(fmaxf(a2 - w2 * dt * dt, 0.f));
     return true;
+}
+
+/// <summary>
+/// Narrows t's range to where the column is inside the sweep, in place. Mirrors ConvexProfile.Where.
+/// </summary>
+/// <remarks>A point on the column is in the body at t when its z is over the lower bound and under the upper one, so
+/// every line from below has to sit under every line from above, and each of those pairs is one bound on t. This is
+/// done as a bound on t rather than as a test per candidate on purpose: a candidate where the body opens or closes has
+/// the two bounds equal there, which in float they are not -- a couple of ulps apart, and which way is the compiler's
+/// business. Testing such a candidate drops half of them at random, and the end that was to come from the one that got
+/// dropped is then taken from a different t, a whole slice of the sweep away. Narrowing t instead is a chain of min and
+/// max, so a ulop moves an end of the range by an ulop and nothing else.</remarks>
+__device__ __forceinline__ bool convex_where(const float* __restrict__ below, int nLo,
+                                             const float* __restrict__ above, int nHi, float& tLo, float& tHi)
+{
+    for (int i = 0; i < nLo; i++)
+    {
+        const float ai = below[2 * i], bi = below[2 * i + 1];
+        for (int j = 0; j < nHi; j++)
+        {
+            // The pair reads ai + bi·t ≤ aj + bj·t, that is (ai − aj) + (bi − bj)·t ≤ 0.
+            const float k = ai - above[2 * j], s = bi - above[2 * j + 1];
+            if (s > 0.f) tHi = fminf(tHi, -k / s);
+            else if (s < 0.f) tLo = fmaxf(tLo, -k / s);
+            else if (k > 0.f) return false;   // parallel, and the lower one sits above the upper one
+        }
+    }
+    return tLo <= tHi;
+}
+
+/// <summary>
+/// The envelope of a bound's lines at t: the highest of them for the lower bound, the lowest for the upper.
+/// Mirrors ConvexProfile.ExtremumAt.
+/// </summary>
+__device__ __forceinline__ float convex_envelope(const float* __restrict__ g, int count, float t, bool low)
+{
+    float v = low ? -INFINITY : INFINITY;
+    for (int k = 0; k < count; k++)
+    {
+        const float q = g[2 * k] + g[2 * k + 1] * t;
+        v = low ? fmaxf(v, q) : fminf(v, q);
+    }
+    return v;
+}
+
+/// <summary>
+/// The lower end of an envelope of lines (max of them) or the upper one (min), taken over t's range. Mirrors
+/// ConvexProfile.Extremum, operation for operation, so both backends land on the same float.
+/// </summary>
+/// <remarks>Both walk the same candidates: the ends of t's range, then the place where two lines cross. Every
+/// candidate is scored on the envelope, the two ends included -- a line's own value only bounds the envelope's,
+/// and taking it at the ends would put an end below the body the tool actually sweeps.</remarks>
+__device__ __forceinline__ float convex_extremum(const float* __restrict__ g, int count, float tLo, float tHi,
+                                                  bool low)
+{
+    if (count == 0) return low ? -INFINITY : INFINITY;
+
+    float best = convex_envelope(g, count, tLo, low);
+    const float end = convex_envelope(g, count, tHi, low);
+    best = low ? fminf(best, end) : fmaxf(best, end);
+
+    for (int i = 0; i < count; i++)
+    {
+        const float ai = g[2 * i], bi = g[2 * i + 1];
+        for (int j = i + 1; j < count; j++)
+        {
+            const float aj = g[2 * j], bj = g[2 * j + 1];
+            if (bi == bj) continue;   // parallel or identical: there is no crossing to walk to
+            const float t = (aj - ai) / (bi - bj);
+            if (t < tLo || t > tHi) continue;
+            const float v = convex_envelope(g, count, t, low);
+            best = low ? fminf(best, v) : fmaxf(best, v);
+        }
+    }
+    return best;
+}
+
+/// <summary>
+/// The interval [low, high] where the column meets the convex tool swept by one step, or false. Mirrors
+/// ConvexProfile.Span: where a vertical line meets a convex body is one interval, and both of its ends come out of
+/// a small linear program in (z, t) over the tool's half-spaces.
+/// <para>
+/// For the half-spaces turned into world coordinates the constraint of a point on the column is
+/// m·(p(z) − T_A) − t·(m·w) ≤ d, which with z the height is mz·z ≤ c + g·t, and the ones with mz &lt; 0 bound z from
+/// below while the ones with mz &gt; 0 bound it from above. The ones with mz = 0 say nothing about z at all and only
+/// narrow t.
+/// <para>
+/// The sign of m·T_A is the one that matters here: moving the column's p into the half-space gives
+/// m·p ≤ d + m·T_A + t·(m·w), so c = d + m·T_A − (m_x·x + m_y·y) and not d − m·T_A. With the wrong sign every
+/// interval comes out mirrored about the grid's own origin and the tool cuts below the stock instead of into it.
+/// </para>
+/// </summary>
+__device__ __forceinline__ bool convex_span(float x, float y, const float* __restrict__ p,
+                                            const float* __restrict__ planes, int planeCount, float& low, float& high)
+{
+    const float ax = p[kConvexFrom], ay = p[kConvexFrom + 1], az = p[kConvexFrom + 2];
+    const float wx = p[kConvexMove], wy = p[kConvexMove + 1], wz = p[kConvexMove + 2];
+    const float r00 = p[kConvexRot], r01 = p[kConvexRot + 1], r02 = p[kConvexRot + 2];
+    const float r10 = p[kConvexRot + 3], r11 = p[kConvexRot + 4], r12 = p[kConvexRot + 5];
+    const float r20 = p[kConvexRot + 6], r21 = p[kConvexRot + 7], r22 = p[kConvexRot + 8];
+
+    // The bounds as lines, two floats each: the intercepts first, the slopes second. The planes with a negative
+    // normal's z give the lower bound, the rest the upper. They go in separate lists because where a line lands
+    // depends on how many of the other kind there are, and that count is only known at the end of the loop.
+    float gLo[2 * kConvexPlanes], gHi[2 * kConvexPlanes];
+    int nLo = 0, nHi = 0;
+    float tLo = 0.f, tHi = 1.f;
+
+    for (int i = 0; i < planeCount; i++)
+    {
+        const float nx = planes[kPlaneFloats * i], ny = planes[kPlaneFloats * i + 1];
+        const float nz = planes[kPlaneFloats * i + 2], d = planes[kPlaneFloats * i + 3];
+        const float mx = r00 * nx + r01 * ny + r02 * nz;
+        const float my = r10 * nx + r11 * ny + r12 * nz;
+        const float mz = r20 * nx + r21 * ny + r22 * nz;
+        const float dot = mx * wx + my * wy + mz * wz;
+        const float c = d + (mx * ax + my * ay + mz * az) - mx * x - my * y;
+
+        if (mz == 0.f)
+        {
+            // A horizontal half-space bounds t alone: -dot·t ≤ c.
+            if (dot > 0.f) tLo = fmaxf(tLo, -c / dot);
+            else if (dot < 0.f) tHi = fminf(tHi, -c / dot);
+            else if (c < 0.f) return false;
+            continue;
+        }
+        const float inv = 1.f / mz;
+        float* g = mz < 0.f ? gLo : gHi;
+        const int at = 2 * (mz < 0.f ? nLo++ : nHi++);
+        g[at] = c * inv;
+        g[at + 1] = dot * inv;
+    }
+
+    if (tLo > tHi || !convex_where(gLo, nLo, gHi, nHi, tLo, tHi)) return false;
+    low = convex_extremum(gLo, nLo, tLo, tHi, true);
+    high = convex_extremum(gHi, nHi, tLo, tHi, false);
+    return high > low;
 }
 
 /// <summary>Subtracts [lo, hi] from a column's sorted intervals. Mirrors DexelMap.Subtract.</summary>
@@ -920,13 +1075,17 @@ __global__ void dexel_init_kernel(float* intervals, unsigned char* counts, size_
 /// <param name="stepIndex">The list the half-open range counts into: null for the batch itself, the tile's CSR entries
 /// for the binned launch. The two are the same steps, in the same order, so the column ends up where the unbinned
 /// launch puts it.</param>
+/// <param name="planes">The tool's half-spaces, or null for the sphere; <paramref name="planeCount"/> tells the two
+/// apart, so the layout is the host's to state and not something the kernel guesses.</param>
+/// <param name="stride">Floats per step: <c>kStepFloats</c> for the sphere, <c>kConvexStepFloats</c> for the polytope.</param>
 /// <remarks>Both dexel kernels go through here, so a column sees the same steps in the same order whichever launch runs
 /// it and the intervals and the overflow count cannot drift apart.</remarks>
 __device__ __forceinline__ unsigned int dexel_apply_column(float* __restrict__ intervals,
                                                            unsigned char* __restrict__ counts, int i, int j, int nx,
                                                            int ny, int k, float cellX, float cellY,
                                                            const float* __restrict__ steps,
-                                                           const int* __restrict__ stepIndex, int first, int last)
+                                                           const int* __restrict__ stepIndex, int first, int last,
+                                                           const float* __restrict__ planes, int planeCount, int stride)
 {
     if (i >= nx || j >= ny) return 0;
 
@@ -942,8 +1101,11 @@ __device__ __forceinline__ unsigned int dexel_apply_column(float* __restrict__ i
     for (int s = first; s < last && n > 0; ++s)
     {
         const int index = stepIndex == nullptr ? s : stepIndex[s];
+        const float* p = steps + static_cast<size_t>(index) * stride;
         float lo, hi;
-        if (!swept_span(x, y, steps + static_cast<size_t>(index) * kStepFloats, lo, hi)) continue;
+        const bool hit = planes == nullptr ? swept_span(x, y, p, lo, hi)
+                                           : convex_span(x, y, p, planes, planeCount, lo, hi);
+        if (!hit) continue;
         if (dexel_subtract(local, n, k, lo, hi)) over++;
     }
 
@@ -955,11 +1117,13 @@ __device__ __forceinline__ unsigned int dexel_apply_column(float* __restrict__ i
 /// <summary>One thread per column, its intervals in local memory while it loops over every step of the batch.</summary>
 __global__ void dexel_apply_kernel(float* __restrict__ intervals, unsigned char* __restrict__ counts,
                                    unsigned long long* __restrict__ overflows, int nx, int ny, int k, float cellX,
-                                   float cellY, const float* __restrict__ steps, int stepCount)
+                                   float cellY, const float* __restrict__ steps, int stepCount,
+                                   const float* __restrict__ planes, int planeCount, int stride)
 {
     const int i = blockIdx.x * blockDim.x + threadIdx.x;
     const int j = blockIdx.y * blockDim.y + threadIdx.y;
-    const unsigned int over = dexel_apply_column(intervals, counts, i, j, nx, ny, k, cellX, cellY, steps, nullptr, 0, stepCount);
+    const unsigned int over = dexel_apply_column(intervals, counts, i, j, nx, ny, k, cellX, cellY, steps, nullptr, 0,
+                                                 stepCount, planes, planeCount, stride);
     if (over != 0) atomicAdd(overflows, static_cast<unsigned long long>(over));
 }
 
@@ -970,13 +1134,14 @@ __global__ void dexel_apply_kernel(float* __restrict__ intervals, unsigned char*
 __global__ void dexel_apply_binned_kernel(float* __restrict__ intervals, unsigned char* __restrict__ counts,
                                           unsigned long long* __restrict__ overflows, int nx, int ny, int k, float cellX,
                                           float cellY, const float* __restrict__ steps, const int* __restrict__ tileStart,
-                                          const int* __restrict__ tileSteps, int tilesX)
+                                          const int* __restrict__ tileSteps, int tilesX,
+                                          const float* __restrict__ planes, int planeCount, int stride)
 {
     const int tile = static_cast<int>(blockIdx.x);
     const int i = (tile % tilesX) * blockDim.x + static_cast<int>(threadIdx.x);
     const int j = (tile / tilesX) * blockDim.y + static_cast<int>(threadIdx.y);
     const unsigned int over = dexel_apply_column(intervals, counts, i, j, nx, ny, k, cellX, cellY, steps, tileSteps,
-                                                 tileStart[tile], tileStart[tile + 1]);
+                                                 tileStart[tile], tileStart[tile + 1], planes, planeCount, stride);
     if (over != 0) atomicAdd(overflows, static_cast<unsigned long long>(over));
 }
 
@@ -1011,6 +1176,7 @@ void free_dexel(Dexel* d)
     if (d->counts != nullptr) cudaFree(d->counts);
     if (d->overflows != nullptr) cudaFree(d->overflows);
     if (d->steps != nullptr) cudaFree(d->steps);
+    if (d->planes != nullptr) cudaFree(d->planes);
     if (d->tileStart != nullptr) cudaFree(d->tileStart);
     if (d->tileSteps != nullptr) cudaFree(d->tileSteps);
     if (d->volumePartials != nullptr) cudaFree(d->volumePartials);
@@ -1064,15 +1230,39 @@ NC_API void* nc_dexel_create(int nx, int ny, float cellX, float cellY, float top
     return d;
 }
 
-/// <summary>Makes the device buffer for <paramref name="count"/> packed steps big enough, growing it only when it must.</summary>
-cudaError_t reserve_steps(Dexel* d, int count)
+/// <summary>Makes the device buffer for <paramref name="count"/> packed steps big enough, growing it only when it must.
+/// A batch in the other layout invalidates what is there, so the stride is part of what is being reserved.</summary>
+cudaError_t reserve_steps(Dexel* d, int count, int stride)
 {
+    if (d->steps != nullptr && d->stepsStride != stride)
+    {
+        cudaFree(d->steps);
+        d->steps = nullptr;
+        d->stepsCapacity = 0;
+    }
     if (d->stepsCapacity >= count) return cudaSuccess;
     if (d->steps != nullptr) cudaFree(d->steps);
     d->steps = nullptr;
     d->stepsCapacity = 0;
-    const cudaError_t e = cudaMalloc(&d->steps, static_cast<size_t>(count) * kStepFloats * sizeof(float));
-    if (e == cudaSuccess) d->stepsCapacity = count;
+    const cudaError_t e = cudaMalloc(&d->steps, static_cast<size_t>(count) * stride * sizeof(float));
+    if (e == cudaSuccess)
+    {
+        d->stepsCapacity = count;
+        d->stepsStride = stride;
+    }
+    return e;
+}
+
+/// <summary>The same for the tool's half-spaces, which every step of a program reads and which are uploaded once.</summary>
+cudaError_t reserve_planes(Dexel* d, int planeCount)
+{
+    if (planeCount <= 0) return cudaSuccess;
+    if (d->planesCapacity >= planeCount) return cudaSuccess;
+    if (d->planes != nullptr) cudaFree(d->planes);
+    d->planes = nullptr;
+    d->planesCapacity = 0;
+    const cudaError_t e = cudaMalloc(&d->planes, static_cast<size_t>(planeCount) * kPlaneFloats * sizeof(float));
+    if (e == cudaSuccess) d->planesCapacity = planeCount;
     return e;
 }
 
@@ -1089,6 +1279,93 @@ cudaError_t reserve_ints(int** buffer, int* capacity, int count)
     return e;
 }
 
+/// <summary>
+/// Uploads a batch and runs one of the two dexel launches, for either tool layout.
+/// <para>
+/// <paramref name="planeCount"/> of zero is the sphere, whose steps are <paramref name="kStepFloats"/> floats each;
+/// anything else is the polytope, whose steps are <paramref name="kConvexStepFloats"/> and whose half-spaces
+/// (<paramref name="planes"/>) are the same for every step of a program. <paramref name="tileStart"/> of null is the
+/// unbinned launch, which walks every step of every column; otherwise the CSR is uploaded and a tile only sees the
+/// steps that reach it.
+/// </para>
+/// </summary>
+cudaError_t dexel_apply_common(Dexel* d, const float* steps, int stepCount, int stride, const float* planes,
+                               int planeCount, const int* tileStart, int tileCount, const int* tileSteps,
+                               int tileStepCount, double* kernelMs, double* uploadMs, const char* what)
+{
+    if (kernelMs != nullptr) *kernelMs = 0;
+    if (uploadMs != nullptr) *uploadMs = 0;
+    const bool binned = tileStart != nullptr;
+    const int tilesX = (d->nx + kDexelTile - 1) / kDexelTile;
+    const int tilesY = (d->ny + kDexelTile - 1) / kDexelTile;
+    if (binned && tileCount != tilesX * tilesY)
+    {
+        set_error("%s: %d tiles for a %d x %d map, expected %d", what, tileCount, d->nx, d->ny, tilesX * tilesY);
+        return cudaErrorInvalidValue;
+    }
+
+    cudaError_t e = reserve_steps(d, stepCount, stride);
+    if (e == cudaSuccess) e = reserve_planes(d, planeCount);
+    if (e == cudaSuccess && binned) e = reserve_ints(&d->tileStart, &d->tileCapacity, tileCount + 1);
+    if (e == cudaSuccess && binned) e = reserve_ints(&d->tileSteps, &d->tileStepsCapacity, tileStepCount);
+    if (e != cudaSuccess)
+    {
+        set_error("%s: cudaMalloc: %s", what, cudaGetErrorString(e));
+        return e;
+    }
+
+    cudaEvent_t t0, t1, t2;
+    if (!make_events(t0, t1, t2))
+    {
+        set_error("%s: cudaEventCreate: %s", what, cudaGetErrorString(cudaErrorUnknown));
+        return cudaErrorUnknown;
+    }
+    cudaEventRecord(t0);
+    e = cudaMemcpy(d->steps, steps, static_cast<size_t>(stepCount) * stride * sizeof(float), cudaMemcpyHostToDevice);
+    if (e == cudaSuccess && planes != nullptr)
+        e = cudaMemcpy(d->planes, planes, static_cast<size_t>(planeCount) * kPlaneFloats * sizeof(float),
+                       cudaMemcpyHostToDevice);
+    if (e == cudaSuccess && binned)
+        e = cudaMemcpy(d->tileStart, tileStart, (tileCount + 1) * sizeof(int), cudaMemcpyHostToDevice);
+    if (e == cudaSuccess && binned && tileStepCount > 0)
+        e = cudaMemcpy(d->tileSteps, tileSteps, static_cast<size_t>(tileStepCount) * sizeof(int),
+                       cudaMemcpyHostToDevice);
+    cudaEventRecord(t1);
+    if (e == cudaSuccess)
+    {
+        if (!binned)
+        {
+            dim3 block(16, 16);
+            dim3 grid((static_cast<unsigned int>(d->nx) + block.x - 1) / block.x,
+                      (static_cast<unsigned int>(d->ny) + block.y - 1) / block.y);
+            dexel_apply_kernel<<<grid, block>>>(d->intervals, d->counts, d->overflows, d->nx, d->ny, d->k, d->cellX,
+                                                d->cellY, d->steps, stepCount, d->planes, planeCount, stride);
+        }
+        else
+        {
+            dexel_apply_binned_kernel<<<static_cast<unsigned int>(tileCount), dim3(kDexelTile, kDexelTile)>>>(
+                d->intervals, d->counts, d->overflows, d->nx, d->ny, d->k, d->cellX, d->cellY, d->steps, d->tileStart,
+                d->tileSteps, tilesX, d->planes, planeCount, stride);
+        }
+        e = cudaGetLastError();
+    }
+    cudaEventRecord(t2);
+    if (e == cudaSuccess) e = cudaDeviceSynchronize();
+    if (e != cudaSuccess)
+    {
+        set_cuda_error(what, e);
+        destroy_events(t0, t1, t2);
+        return e;
+    }
+    float upload = 0.f, kernel = 0.f;
+    cudaEventElapsedTime(&upload, t0, t1);
+    cudaEventElapsedTime(&kernel, t1, t2);
+    destroy_events(t0, t1, t2);
+    if (uploadMs != nullptr) *uploadMs = upload;
+    if (kernelMs != nullptr) *kernelMs = kernel;
+    return cudaSuccess;
+}
+
 NC_API int nc_dexel_apply_steps(void* dexel, const float* steps, int stepCount, double* kernelMs, double* uploadMs)
 {
     auto* d = static_cast<Dexel*>(dexel);
@@ -1097,45 +1374,9 @@ NC_API int nc_dexel_apply_steps(void* dexel, const float* steps, int stepCount, 
         set_error("nc_dexel_apply_steps: invalid argument");
         return 1;
     }
-    if (kernelMs != nullptr) *kernelMs = 0;
-    if (uploadMs != nullptr) *uploadMs = 0;
-
-    const size_t bytes = static_cast<size_t>(stepCount) * kStepFloats * sizeof(float);
-    cudaError_t e = reserve_steps(d, stepCount);
-    if (e != cudaSuccess)
-    {
-        set_cuda_error("nc_dexel_apply_steps: cudaMalloc", e);
-        return static_cast<int>(e);
-    }
-
-    cudaEvent_t t0, t1, t2;
-    if (!make_events(t0, t1, t2)) return static_cast<int>(cudaErrorUnknown);
-    cudaEventRecord(t0);
-    e = cudaMemcpy(d->steps, steps, bytes, cudaMemcpyHostToDevice);
-    cudaEventRecord(t1);
-    if (e == cudaSuccess)
-    {
-        dim3 block(16, 16);
-        dim3 grid((static_cast<unsigned int>(d->nx) + block.x - 1) / block.x,
-                  (static_cast<unsigned int>(d->ny) + block.y - 1) / block.y);
-        dexel_apply_kernel<<<grid, block>>>(d->intervals, d->counts, d->overflows, d->nx, d->ny, d->k, d->cellX,
-                                            d->cellY, d->steps, stepCount);
-        e = cudaGetLastError();
-    }
-    cudaEventRecord(t2);
-    if (e == cudaSuccess) e = cudaDeviceSynchronize();
-    if (e != cudaSuccess)
-    {
-        set_cuda_error("nc_dexel_apply_steps", e);
-        destroy_events(t0, t1, t2);
-        return static_cast<int>(e);
-    }
-    float upload = 0.f, kernel = 0.f;
-    cudaEventElapsedTime(&upload, t0, t1);
-    cudaEventElapsedTime(&kernel, t1, t2);
-    destroy_events(t0, t1, t2);
-    if (uploadMs != nullptr) *uploadMs = upload;
-    if (kernelMs != nullptr) *kernelMs = kernel;
+    const cudaError_t e = dexel_apply_common(d, steps, stepCount, kStepFloats, nullptr, 0, nullptr, 0, nullptr, 0,
+                                             kernelMs, uploadMs, "nc_dexel_apply_steps");
+    if (e != cudaSuccess) return static_cast<int>(e);
     return 0;
 }
 
@@ -1156,58 +1397,52 @@ NC_API int nc_dexel_apply_steps_binned(void* dexel, const float* steps, int step
         set_error("nc_dexel_apply_steps_binned: invalid argument");
         return 1;
     }
-    const int tilesX = (d->nx + kDexelTile - 1) / kDexelTile;
-    const int tilesY = (d->ny + kDexelTile - 1) / kDexelTile;
-    if (tileCount != tilesX * tilesY)
+    const cudaError_t e = dexel_apply_common(d, steps, stepCount, kStepFloats, nullptr, 0, tileStart, tileCount,
+                                             tileSteps, tileStepCount, kernelMs, uploadMs,
+                                             "nc_dexel_apply_steps_binned");
+    if (e != cudaSuccess) return static_cast<int>(e);
+    return 0;
+}
+
+/// <summary>
+/// Applies a batch of convex-tool steps: the polytope swept between two poses is cut like the sphere is, and the
+/// sweep's interval on a column comes out of a small linear program over <paramref name="planes"/>.
+/// </summary>
+/// <param name="planes">The tool's half-spaces, <paramref name="planeCount"/> of them, four floats each: the unit
+/// normal and the distance. They are the same for every step of a program.</param>
+/// <param name="stepCount">Steps of <paramref name="kConvexStepFloats"/> floats each, as ConvexProfile.Pack writes them.</param>
+NC_API int nc_dexel_apply_convex_steps(void* dexel, const float* steps, int stepCount, const float* planes,
+                                       int planeCount, double* kernelMs, double* uploadMs)
+{
+    auto* d = static_cast<Dexel*>(dexel);
+    if (d == nullptr || steps == nullptr || stepCount <= 0 || planes == nullptr || planeCount <= 0 ||
+        planeCount > kConvexPlanes)
     {
-        set_error("nc_dexel_apply_steps_binned: %d tiles for a %d x %d map, expected %d", tileCount, d->nx, d->ny,
-                  tilesX * tilesY);
+        set_error("nc_dexel_apply_convex_steps: invalid argument");
         return 1;
     }
-    if (kernelMs != nullptr) *kernelMs = 0;
-    if (uploadMs != nullptr) *uploadMs = 0;
+    const cudaError_t e = dexel_apply_common(d, steps, stepCount, kConvexStepFloats, planes, planeCount, nullptr, 0,
+                                             nullptr, 0, kernelMs, uploadMs, "nc_dexel_apply_convex_steps");
+    if (e != cudaSuccess) return static_cast<int>(e);
+    return 0;
+}
 
-    cudaError_t e = reserve_steps(d, stepCount);
-    if (e == cudaSuccess) e = reserve_ints(&d->tileStart, &d->tileCapacity, tileCount + 1);
-    if (e == cudaSuccess) e = reserve_ints(&d->tileSteps, &d->tileStepsCapacity, tileStepCount);
-    if (e != cudaSuccess)
+/// <summary>The binned launch of <see cref="nc_dexel_apply_convex_steps"/>, with the CSR of the same meaning.</summary>
+NC_API int nc_dexel_apply_convex_steps_binned(void* dexel, const float* steps, int stepCount, const float* planes,
+                                              int planeCount, const int* tileStart, int tileCount, const int* tileSteps,
+                                              int tileStepCount, double* kernelMs, double* uploadMs)
+{
+    auto* d = static_cast<Dexel*>(dexel);
+    if (d == nullptr || steps == nullptr || stepCount <= 0 || planes == nullptr || planeCount <= 0 ||
+        planeCount > kConvexPlanes || tileStart == nullptr || tileSteps == nullptr || tileCount <= 0)
     {
-        set_cuda_error("nc_dexel_apply_steps_binned: cudaMalloc", e);
-        return static_cast<int>(e);
+        set_error("nc_dexel_apply_convex_steps_binned: invalid argument");
+        return 1;
     }
-
-    cudaEvent_t t0, t1, t2;
-    if (!make_events(t0, t1, t2)) return static_cast<int>(cudaErrorUnknown);
-    cudaEventRecord(t0);
-    e = cudaMemcpy(d->steps, steps, static_cast<size_t>(stepCount) * kStepFloats * sizeof(float),
-                   cudaMemcpyHostToDevice);
-    if (e == cudaSuccess)
-        e = cudaMemcpy(d->tileStart, tileStart, (tileCount + 1) * sizeof(int), cudaMemcpyHostToDevice);
-    if (e == cudaSuccess && tileStepCount > 0)
-        e = cudaMemcpy(d->tileSteps, tileSteps, static_cast<size_t>(tileStepCount) * sizeof(int),
-                       cudaMemcpyHostToDevice);
-    cudaEventRecord(t1);
-    if (e == cudaSuccess)
-    {
-        dexel_apply_binned_kernel<<<static_cast<unsigned int>(tileCount), dim3(kDexelTile, kDexelTile)>>>(
-            d->intervals, d->counts, d->overflows, d->nx, d->ny, d->k, d->cellX, d->cellY, d->steps, d->tileStart,
-            d->tileSteps, tilesX);
-        e = cudaGetLastError();
-    }
-    cudaEventRecord(t2);
-    if (e == cudaSuccess) e = cudaDeviceSynchronize();
-    if (e != cudaSuccess)
-    {
-        set_cuda_error("nc_dexel_apply_steps_binned", e);
-        destroy_events(t0, t1, t2);
-        return static_cast<int>(e);
-    }
-    float upload = 0.f, kernel = 0.f;
-    cudaEventElapsedTime(&upload, t0, t1);
-    cudaEventElapsedTime(&kernel, t1, t2);
-    destroy_events(t0, t1, t2);
-    if (uploadMs != nullptr) *uploadMs = upload;
-    if (kernelMs != nullptr) *kernelMs = kernel;
+    const cudaError_t e = dexel_apply_common(d, steps, stepCount, kConvexStepFloats, planes, planeCount, tileStart,
+                                             tileCount, tileSteps, tileStepCount, kernelMs, uploadMs,
+                                             "nc_dexel_apply_convex_steps_binned");
+    if (e != cudaSuccess) return static_cast<int>(e);
     return 0;
 }
 

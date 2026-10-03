@@ -178,7 +178,11 @@ Step 2 removes what made long programs impossible for the preview: the steps are
 16 × 16 columns and a block only sees the steps that reach its tile, so the dexel kernel no longer costs
 columns × steps. On a finishing pass of 793 600 steps over 160 000 columns that is 2.7 ms against 640.7 ms
 (≈ 240×), with the same removed volume to the last digit — the binning decides what a block looks at, never what comes
-out. Plan, steps and log: [docs/long-programs.md](docs/long-programs.md), one page per step:
+out. Step 3 gives the preview the tool and the motion those two programs need: a convex polytope as a list of
+half-spaces, a pose sequence of orientation plus translation, and the interval where a column meets a swept body read
+as a small linear program in (z, t) — on the CPU as the reference and in the CUDA kernel, binned like a ball program.
+Against the exact kernel on the same body, the octahedron comes out 0.001 % off and a box turned 1.2 rad while
+travelling 3 mm 0.36 % off. Plan, steps and log: [docs/long-programs.md](docs/long-programs.md), one page per step:
 [bench/results-2026-10-03-long-programs.html](bench/results-2026-10-03-long-programs.html),
 [bench/results-2026-10-04-long-programs-dexel.html](bench/results-2026-10-04-long-programs-dexel.html).
 

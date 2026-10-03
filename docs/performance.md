@@ -241,6 +241,47 @@ the kernel. Below ~10⁵ steps that is noise; above ~10⁶ per call it is the li
 (coarser tiles, or binning on the device). One-page result:
 [results-2026-10-04-long-programs-dexel.html](../bench/results-2026-10-04-long-programs-dexel.html).
 
+## Long programs: a convex tool on a pose sequence (step 3)
+
+Step 2 made long programs affordable for a ball on straight segments. Step 3 removes the other two limits of that
+model: the tool has to be any convex polytope and the motion has to rotate. `ConvexTool` is a list of half-spaces,
+`ConvexStep` an orientation plus two positions, and where a column meets the sweep is a small linear program in (z, t)
+— `ConvexProfile.Span` on the CPU, `convex_span` in the kernel, reached through `nc_dexel_apply_convex_steps` and its
+binned twin, so a convex program is binned exactly like a ball one. Up to 16 half-spaces per tool (`MaxPlanes`).
+
+**What is measured here is correctness, not time.** The plan puts the timing with the programs that use it (step 4,
+the grinding preview, and step 5), and until then a number for the convex kernel would be a number for a program
+nobody runs. What the tests pin down is the result against the exact kernel, on the same body:
+
+| Case (grid) | Preview | Exact (`Process3`) | Difference | Sampling bound |
+| --- | ---: | ---: | ---: | ---: |
+| Box 2 × 2 × 2 mm, swept 7 mm (250 / 500 / 1000 cells) | 35.8400 / 36.0000 / 36.4408 mm³ | 36.0000 mm³ | −0.444 / 0.000 / +1.224 % | 1.7728 / 0.8832 / 0.4408 mm³ |
+| Octahedron r = 2.5 mm, swept (6, 8, 9) → (13, 11, 12) (250 / 500 / 1000) | 108.3404 / 108.3321 / 108.3320 mm³ | 108.3333 mm³ | +0.007 / −0.001 / −0.001 % | 12.8512 / 6.4128 / 3.2032 mm³ |
+| Box 2.4 × 0.6 × 0.6 mm, 1.2 rad turn about z and 3 mm of travel (500) | 4.0848 mm³ | 4.0701 mm³ | +0.362 % | 0.1253 mm³ |
+
+The last column is the volume a column model can be off by at that grid — the rim it samples, P·h/2 of area over the
+silhouette's perimeter times the swept height. It is the check that replaces "the error shrinks with every finer grid",
+which a column model does not do (see the lessons below). Details and the numbers of the interval itself are in
+[long-programs.md](long-programs.md).
+
+Three costs that step 4 inherits, all visible without a benchmark:
+
+- **O(m³) in the half-spaces per column and step.** The search walks every crossing of two of the m lines and evaluates
+  the envelope there over all m of them. Building the envelope once (sort the slopes, stack, m operations) is O(m) and
+  is what both implementations' remarks point at; it needs a sort in local memory and a tie-break on parallel lines.
+  A tool with more than 16 half-spaces has to be split by the caller until then.
+- **The host-side binning is unchanged.** A convex program goes through the same `StepBins.Build`, so it pays the same
+  O(steps) on the host: 18.9 ms at 793 600 steps, about 24 ns per step. That is a different regime from step 2's
+  finishing pass — the baseline's covered wheel is 3793 passes over 1920 grains, 13 841 hulls, so a preview program is
+  of the order of 10⁴ steps and the binning is a fraction of a millisecond rather than seven times the kernel. Step 4
+  measures it properly instead of trusting this arithmetic.
+- **On the exact side, a rotation is sampled linearly in the angle.** `Process3.Sample` holds
+  `diameter · dθ / 2` under its sweep tolerance on top of the chord, so the default 30 nm asks for ~50 000 poses for
+  the 1.2 rad turn of a 2.4 mm tooth (the subdivision is binary, so it would be 65 536) — one exact hull and one Boolean
+  each. The preview's own sampling for the same turn is 11 steps. The comparison test runs on 4 µm and 512 exact
+  intervals, 72 s, which is the slowest test in the suite and is the price of having a reference for the rotation
+  case.
+
 ## Lessons learned
 
 - **Measure with a real CPU profiler.** The .NET EventPipe thread-time sampler only samples at safe points, so it showed
@@ -278,6 +319,11 @@ the kernel. Below ~10⁵ steps that is noise; above ~10⁶ per call it is the li
   height field. Who decides whether data comes back is an API decision, not a kernel one.
 - **A fixed-size representation sets an accuracy floor.** One height per column cannot represent overhangs, so no grid
   size buys that error down. Measure the floor before buying resolution.
+- **A column model's error is not monotone in the cell size either.** Even where the representation is fine enough, a
+  centre that sits exactly on the tool's edge counts as inside (the interval rule is closed), so a face that lands on
+  the centre line of a grid takes a whole extra row of columns: the box case is 0.44 % at 1000 cells, 0.00 % at 500,
+  0.44 % at 250. Ask for the sampling bound — the rim the model can be off by, O(h) — instead of a trend, and expect
+  the bound to be the only honest statement.
 - **A first call is not a measurement.** The first query table was wrong by a factor of ten: the bench called each query
   exactly once, on arrays the collector had never touched, and faulting in a fresh 4 MB destination cost more than the
   copy (6,7 ms of "download" that was really page faults). Warm up, then take the best of N, and print the cold number
@@ -298,6 +344,12 @@ the kernel. Below ~10⁵ steps that is noise; above ~10⁶ per call it is the li
 - **Small queries lose to round-trip latency, not to bandwidth.** 876 poses are 14 KB and 3,5 KB; the kernel takes
   0,004 ms, the two copies 0,072 ms, and the CPU does the same work in 0,039 ms. Know where the fixed cost of a device
   round trip puts the break-even point before moving work onto it.
+- **A feasibility test per candidate is a coin toss at a root.** The obvious way to find where a sweep opens and closes
+  on a column is to walk the candidates and keep those where the two bounds cross. There, the bounds are *equal*, and
+  in float they are two or three ulops apart, so half of the roots are dropped at random and the end is then taken
+  from a neighbouring candidate — 9.10 mm of error on a case the exact kernel puts within 0.0013 mm³. Compute the set
+  where the column is inside as a *range* (it is a conjunction of affine conditions, so it is one interval, and a
+  chain of min and max moves by an ulop when its input does) instead of a decision per candidate.
 - **On a planar sweep, keep the piece order the geometry wants.** Uniting the pieces interval by interval made the union
   7× cheaper and the subtract 2× more expensive, because each batch stopped being one contiguous ribbon and left
   degenerate loops in the result. And the pose parts are load-bearing under rotation: dropping them keeps the area
@@ -307,9 +359,11 @@ the kernel. Below ~10⁵ steps that is noise; above ~10⁶ per call it is the li
 ## Open
 
 - Long programs: the baseline is measured ([long-programs.md](long-programs.md), step 1), the preview is not. Step 2 bins
-  the steps of the existing ball dexel/Z-map by tile (CSR), step 3 gives the kernel any convex tool on a pose sequence,
-  steps 4 and 5 the grinding and gear previews against the numbers above. One thing the baseline opened: why the 2D
-  kernel slows the 3D kernel in the same process ([todo.md](todo.md)).
+  the steps of the existing ball dexel/Z-map by tile (CSR) and step 3 gives the kernel any convex tool on a pose
+  sequence (correctness pinned against the exact kernel above, no timing yet — the interval search is O(m³) in the
+  half-spaces and the envelope would make it O(m)); steps 4 and 5 the grinding and gear previews against the numbers
+  in the baseline, which is where the convex path first gets timed on a program anyone runs. One thing the baseline
+  opened: why the 2D kernel slows the 3D kernel in the same process ([todo.md](todo.md)).
 - Fixed costs per cut for short tasks: C++ is still 1.3–2.3× faster there.
 - Exact face sweep for 3D rotations, which today use hulls of poses and small steps (see [processes.md](processes.md)).
 - Server mode: the second half of the plan behind [server-gpu-plan.md](server-gpu-plan.md), still unbuilt. The GPU half is

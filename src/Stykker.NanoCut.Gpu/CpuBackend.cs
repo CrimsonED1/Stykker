@@ -216,6 +216,44 @@ public sealed class CpuBackend : IZMapBackend, IZMapQueryBackend, IDexelBackend
     }
 
     /// <inheritdoc />
+    public ZMapTiming ApplyConvexDexels(DexelMap map, ConvexTool tool, ReadOnlySpan<ConvexStep> steps, ZMapReadBack readBack)
+    {
+        float[] packed = ConvexProfile.Pack(steps, tool, map.OriginMm);
+        float[] planes = ConvexProfile.PackPlanes(tool);
+        int stepCount = steps.Length, nx = map.CellsX, ny = map.CellsY, k = map.MaxIntervals;
+        float cx = (float)map.CellSizeXMm, cy = (float)map.CellSizeYMm;
+        float[] iv = map.Intervals;
+        byte[] counts = map.Counts;
+        long overflows = 0;
+        var options = new ParallelOptions { MaxDegreeOfParallelism = Parallelism };
+
+        var sw = Stopwatch.StartNew();
+        Parallel.For(0, ny, options, () => 0L, (j, _, local) =>
+        {
+            float y = (j + 0.5f) * cy;
+            for (int i = 0; i < nx; i++)
+            {
+                float x = (i + 0.5f) * cx;
+                long column = (long)j * nx + i;
+                var span = iv.AsSpan((int)(column * k * 2), k * 2);
+                int n = counts[column];
+                for (int s = 0; s < stepCount && n > 0; s++)
+                {
+                    if (!ConvexProfile.Span(x, y, packed, planes, s, out float lo, out float hi)) continue;
+                    if (DexelMap.Subtract(span, ref n, k, lo, hi)) local++;
+                }
+                counts[column] = (byte)n;
+            }
+            return local;
+        }, local => Interlocked.Add(ref overflows, local));
+        sw.Stop();
+        map.Overflows += overflows;
+
+        double ms = sw.Elapsed.TotalMilliseconds;
+        return new ZMapTiming(ms, 0, 0, 0, ms);
+    }
+
+    /// <inheritdoc />
     public double ReadDexels(DexelMap map) => 0;
 
     /// <inheritdoc />

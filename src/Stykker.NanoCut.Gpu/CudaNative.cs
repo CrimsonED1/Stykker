@@ -115,6 +115,20 @@ internal static partial class CudaNative
         ReadOnlySpan<int> tileStart, int tileCount, ReadOnlySpan<int> tileSteps, int tileStepCount,
         out double kernelMs, out double uploadMs);
 
+    /// <summary>
+    /// Subtracts the convex tool swept by the packed steps from every column; reports kernel and upload time. The
+    /// half-spaces of <paramref name="planes"/> are the tool's, four floats each, and the same for every step.
+    /// </summary>
+    [LibraryImport(LibraryName, EntryPoint = "nc_dexel_apply_convex_steps")]
+    internal static partial int DexelApplyConvexSteps(nint dexel, ReadOnlySpan<float> steps, int stepCount,
+        ReadOnlySpan<float> planes, int planeCount, out double kernelMs, out double uploadMs);
+
+    /// <summary>The binned launch of <see cref="DexelApplyConvexSteps"/>, with the CSR of the same meaning.</summary>
+    [LibraryImport(LibraryName, EntryPoint = "nc_dexel_apply_convex_steps_binned")]
+    internal static partial int DexelApplyConvexStepsBinned(nint dexel, ReadOnlySpan<float> steps, int stepCount,
+        ReadOnlySpan<float> planes, int planeCount, ReadOnlySpan<int> tileStart, int tileCount,
+        ReadOnlySpan<int> tileSteps, int tileStepCount, out double kernelMs, out double uploadMs);
+
     /// <summary>Copies intervals, counts and the overflow count to the host.</summary>
     [LibraryImport(LibraryName, EntryPoint = "nc_dexel_read")]
     internal static partial int DexelRead(nint dexel, Span<float> intervals, Span<byte> counts, out long overflows,

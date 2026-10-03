@@ -307,7 +307,7 @@ public sealed class CudaBackend : IZMapBackend, IZMapQueryBackend, IDexelBackend
         if (BinSteps)
         {
             var bin = Stopwatch.StartNew();
-            StepBins.Bins bins = StepBins.Build(packed, map.CellsX, map.CellsY,
+            StepBins.Bins bins = StepBins.Build(packed, ToolProfile.StepFloats, convex: false, map.CellsX, map.CellsY,
                 (float)map.CellSizeXMm, (float)map.CellSizeYMm);
             bin.Stop();
             binMs = bin.Elapsed.TotalMilliseconds;
@@ -320,6 +320,39 @@ public sealed class CudaBackend : IZMapBackend, IZMapQueryBackend, IDexelBackend
             binMs = 0;
             CudaNative.Check(CudaNative.DexelApplySteps(device.Handle, packed, steps.Length,
                 out kernelMs, out uploadMs), "nc_dexel_apply_steps");
+        }
+        double downloadMs = readBack == ZMapReadBack.Always ? ReadDexelDevice(device, map) : 0;
+        wall.Stop();
+        return new ZMapTiming(kernelMs, uploadMs, downloadMs, firstCall, wall.Elapsed.TotalMilliseconds, binMs);
+    }
+
+    /// <inheritdoc />
+    public ZMapTiming ApplyConvexDexels(DexelMap map, ConvexTool tool, ReadOnlySpan<ConvexStep> steps, ZMapReadBack readBack)
+    {
+        string? why = UnavailableReason;
+        if (why is not null) throw new GpuNativeException("nc_dexel_apply_convex_steps", -1, why);
+
+        var wall = Stopwatch.StartNew();
+        float[] packed = ConvexProfile.Pack(steps, tool, map.OriginMm);
+        float[] planes = ConvexProfile.PackPlanes(tool);
+        DeviceDexel device = DexelOf(map, out double firstCall);
+        double kernelMs, uploadMs, binMs;
+        if (BinSteps)
+        {
+            var bin = Stopwatch.StartNew();
+            StepBins.Bins bins = StepBins.Build(packed, ConvexProfile.StepFloats, convex: true, map.CellsX, map.CellsY,
+                (float)map.CellSizeXMm, (float)map.CellSizeYMm);
+            bin.Stop();
+            binMs = bin.Elapsed.TotalMilliseconds;
+            CudaNative.Check(CudaNative.DexelApplyConvexStepsBinned(device.Handle, packed, steps.Length, planes,
+                planes.Length / ConvexProfile.PlaneFloats, bins.TileStart, bins.TileCount, bins.TileSteps,
+                bins.References, out kernelMs, out uploadMs), "nc_dexel_apply_convex_steps_binned");
+        }
+        else
+        {
+            binMs = 0;
+            CudaNative.Check(CudaNative.DexelApplyConvexSteps(device.Handle, packed, steps.Length, planes,
+                planes.Length / ConvexProfile.PlaneFloats, out kernelMs, out uploadMs), "nc_dexel_apply_convex_steps");
         }
         double downloadMs = readBack == ZMapReadBack.Always ? ReadDexelDevice(device, map) : 0;
         wall.Stop();

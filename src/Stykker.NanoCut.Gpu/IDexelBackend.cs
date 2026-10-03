@@ -1,6 +1,9 @@
 namespace Stykker.NanoCut.Gpu;
 
-/// <summary>Runs ball-tool steps on a <see cref="DexelMap"/>: the CPU reference or the CUDA library.</summary>
+/// <summary>
+/// Runs tool steps on a <see cref="DexelMap"/>: the CPU reference or the CUDA library. The tool is either the sphere
+/// of a <see cref="BallStep"/> or a <see cref="ConvexTool"/> between two poses.
+/// </summary>
 public interface IDexelBackend
 {
     /// <summary>Short name for reports, for example "cpu-16" or "cuda:0".</summary>
@@ -21,6 +24,14 @@ public interface IDexelBackend
     /// <param name="readBack">Whether the intervals are copied to the host afterwards.</param>
     /// <returns>Kernel, upload, download and wall time of the call.</returns>
     ZMapTiming ApplyDexels(DexelMap map, ReadOnlySpan<BallStep> steps, ZMapReadBack readBack);
+
+    /// <summary>Subtracts the swept convex tool of all steps, in order, from every column.</summary>
+    /// <param name="map">The map to change.</param>
+    /// <param name="tool">The tool, as the intersection of its half-spaces.</param>
+    /// <param name="steps">The steps in absolute mm, each with the tool's orientation during it.</param>
+    /// <param name="readBack">Whether the intervals are copied to the host afterwards.</param>
+    /// <returns>Kernel, upload, download and wall time of the call.</returns>
+    ZMapTiming ApplyConvexDexels(DexelMap map, ConvexTool tool, ReadOnlySpan<ConvexStep> steps, ZMapReadBack readBack);
 
     /// <summary>Copies the intervals, their counts and the overflow count to the host; returns the copy time in ms.</summary>
     /// <param name="map">The map to read.</param>
