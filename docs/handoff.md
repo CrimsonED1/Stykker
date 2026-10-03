@@ -39,7 +39,8 @@ not authorised: pull requests are opened by the user through the compare link
 
 ## Open items, in order
 
-1. Nothing open from the GPU and server work; both are in `main`.
+1. **Long programs on the GPU** (main topic now): plan, steps and log in `docs/long-programs.md`. Work happens directly
+   on `main` (user's decision, 2026-10-03).
 2. Ideas for later, not started: a mesh of the dexel cavities for the viewer (today only the top surface); a dexel
    preview page in the demo/server (live preview of a G-code program with a CPU/CUDA switch); half-precision
    read-back for pictures (see docs/gpu-findings.md, "Not done").
