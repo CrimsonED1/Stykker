@@ -138,11 +138,14 @@ input and the output stay small for a whole tool path, so a program can be check
 the height field back. Both backends answer them (`IZMapQueryBackend`); the CUDA one uploads the query, runs one kernel
 over it and copies the answers back.
 
-At 1024 × 768, warm, best of 5, the cold first call in brackets:
+At 1024 × 768, warm, best of 5, the cold first call in brackets. "CPU call" is what the caller waits for, measured
+around the whole call, because the CPU backend reports only its parallel loop and leaves its staging copy out of that
+number — the section on the point set below has the two figures side by side.
 
-| Query | Input | CPU wall | CUDA kernel | CUDA upload | CUDA download | CUDA wall | Agreement |
+| Query | Input | CPU call | CUDA kernel | CUDA upload | CUDA download | CUDA wall | Agreement |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
-| heights at 1 000 000 points | 16 MB | 3.474 ms (4.007) | 0.064 ms | 1.658 ms | 0.428 ms | **2.187 ms** (3.489) | max Δh 1.9e-6 mm |
+| heights at 1 000 000 points | 16 MB | 5.873 ms | 0.064 ms | 1.677 ms | 0.430 ms | **2.204 ms** (cold 3.624) | max Δh 1.9e-6 mm |
+| the same points from a kept set | – | 3.522 ms | 0.061 ms | 0.001 ms | 0.421 ms | **0.514 ms** | Δ = 0 against the span query |
 | penetration at 876 tool poses | 14 KB | **0.039 ms** (0.443) | 0.004 ms | 0.044 ms | 0.028 ms | 0.116 ms (0.542) | Δ = 0 |
 
 Three findings, in the order they turned up.
@@ -178,6 +181,59 @@ driver is free to run it outside the caller's stream, in which case an event pai
 twice and the phase reads as zero. That is exactly what it did before, and it is why the first version of this table
 had downloads of 0.000 ms.
 
+### The point set that lives where it is asked from
+
+The query above spends 2.10 of its 2.20 ms on the wire and 0.064 ms in the kernel, and the round above it named the
+obvious fix: a caller that asks about the *same* points again should not send them again. A viewer samples its pixel
+grid after every batch of steps, a stock check samples one grid every time a program changes, and in both cases the
+16 MB of points is identical every time. So the points can stay where the kernel is:
+
+```csharp
+using PointSet pixels = map.UploadPoints(points);   // once: 2.349 ms on the device
+map.ApplySteps(batch, ZMapReadBack.Never);          // 1.7 ms, field stays on the device
+map.SampleHeights(pixels, frame);                   // every frame: 0.514 ms, nothing uploaded
+```
+
+`IZMapQueryBackend.UploadPoints` hands the points to the backend once — `nc_pointset_create` copies them into their
+own device allocation, outside the map, so they outlive the query and can be asked about any map — and
+`nc_zmap_sample_set` runs the *same* `sample_d_kernel` over them. The only difference to `nc_zmap_sample` is that
+there is no `cudaMemcpy` before the launch. The answers are the answers of the span query, to the bit.
+
+| 1 000 000 points at 1024 × 768 | kernel | upload | download | wall | what the caller waits for |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| CUDA, points per call | 0.064 ms | 1.677 ms | 0.430 ms | 2.204 ms | 2.205 ms |
+| CUDA, points kept on the device | 0.061 ms | 0.001 ms | 0.421 ms | **0.514 ms** | 0.515 ms |
+| CPU, points per call | 3.457 ms | – | – | 3.457 ms | 5.873 ms |
+| CPU, points kept in an array | 3.332 ms | – | – | 3.332 ms | **3.522 ms** |
+
+**4.3× on the GPU, and 11× against what a CPU call costs.** The upload is gone (0.001 ms is the pair of timing events),
+and what is left is the download: 0.421 of 0.514 ms is the 4 MB answer coming back over a link that tops out at
+8.7 GB/s, so the query is now at the floor of what this hardware can do with four bytes per pixel. The kernel is 12 %
+of the call.
+
+It pays for itself at the second query: 2.349 ms to upload the set once against 1.69 ms saved per call
+(2.204 → 0.514), so one span query plus one resident query is already cheaper than two span queries. A caller that
+wants exactly one answer should keep using the span overload and skip the object; the set is only worth its allocation
+when it will be asked more than once.
+
+Two things came out of building it that were not expected.
+
+**The CPU backend gains more than the GPU does, in relative terms, and nobody could see it before.** A `ref` struct
+cannot be captured by the parallel loop, so `CpuBackend` copies the span into an array on every call: 16 MB in and
+4 MB out around a loop that is 3.4 ms. That copy was *outside* the backend's stopwatch, so the reported time never
+showed it — the query looked like 3.457 ms and cost the caller 5.873 ms. With a kept set the copy happens once and the
+same call costs 3.522 ms, a 1.7× improvement that the reported number never moved for. The lesson is the general one: a
+timing that excludes work is not a wall time, and comparing a host figure that hides a 2.4 ms copy against a device
+figure that includes its transfers flatters the host. The bench now times the call from outside and prints it beside
+the backend's own number, for every query.
+
+**The sample query was not serialised against the other queries, although the interface promised it.** Both queries
+stage their input in the map's `queryIn` buffer and write their answer through `queryOut`; the pose query took the
+per-map lock and the height query did not, so two concurrent queries against one map could overwrite each other's
+input and answer. It is the kind of bug that shows up as an occasional wrong height in a viewer and nowhere else. The
+height query takes the same lock now, and `IZMapQueryBackend` says so: a query from a point set has no input buffer to
+share but still writes through the map's output buffer, so it locks too.
+
 ### The removed volume on the device
 
 `ZMap.BackendRemovedVolumeMm3` is the sum over all cells of (stock top − height) times the cell area, reduced on the
@@ -199,11 +255,17 @@ next step. It was built (`--no-pin` switches it off) and the prediction is **wro
 | pageable, best of 8 | 0.362 ms | 8.70 GB/s |
 
 Measured in the same process, on the same field, back to back, the two are the same number to three digits. Across
-processes the order flips (0.361 pinned against 0.360 pageable in one run, 0.494 against 0.380 in another), which is
-what two equal measurements look like. The large-transfer numbers above say why: 6.3–8.7 GB/s in both directions is
-this link's ceiling, and a copy that the driver stages through its own buffer reaches the same place. So there is
-nothing to win here, and the pinned buffer is off by default. On a machine where a copy really does hit the bus limit (a
-server with a passive root port and a GPU, or a much larger grid) the pinned path stays available in the wrapper.
+processes the order flips (0.361 pinned against 0.360 pageable in one run, 0.494 against 0.380 in another,
+0.359 against 0.362 in a third, 0.391 against 0.365 in a fourth), which is what two equal measurements look like. The
+large-transfer numbers above say why: 6.3–8.7 GB/s in both directions is this link's ceiling, and a copy that the
+driver stages through its own buffer reaches the same place. So there is nothing to win here, and the pinned buffer is
+off by default. On a machine where a copy really does hit the bus limit (a server with a passive root port and a GPU,
+or a much larger grid) the pinned path stays available in the wrapper.
+
+One methodological note for whoever repeats it: the pinned variant is measured first, and a best-of-N can still catch
+one-off costs if the first run is the expensive one — one run in six came out at 0.556 ms pinned against 0.361 ms
+pageable, which is a first-touch artefact and not a property of pinning. Two equal numbers should be shown as a range
+across processes, not as the single run that happened to disagree.
 
 
 ## Accuracy: the deviation split into its three causes
@@ -289,15 +351,18 @@ parameter with S(t) ≥ 0 describes a real ball position and can only be too hig
 
 ### Not done
 
-- **A batch query is transfer-bound, and the fix that made it pay was to stop preparing it on the host.** Sampling a
-  million points now costs 2.187 ms against 3.474 ms on the CPU, but 2.086 ms of that is PCIe traffic; the kernel is
-  0.064 ms. The pose query is the opposite and cannot be rescued at this size — 0.116 ms against 0.039 ms on the CPU,
-  all of it round-trip latency — so it should stay on the CPU until a program asks about millions of poses. What would
-  help both is a query that lives on the device between calls (upload the point set once, then sample it repeatedly),
-  which is the obvious next step and is not built.
+- **A batch query is transfer-bound, and the fix was to stop preparing it on the host — and then to stop sending it.**
+  Sampling a million points costs 0.514 ms against 5.873 ms for the same query on the CPU, but 0.421 of that 0.514
+  is the 4 MB answer coming back; the upload is gone (`PointSet`, uploaded once) and the kernel is 0.061 ms, so what
+  is left is the link. A cheaper answer would mean fewer bytes: half precision for a picture that is only shaded, or
+  a renderer that consumes the field on the device instead of asking for it point by point. Neither is built. The pose
+  query is the opposite and cannot be rescued at this size — 0.116 ms against 0.039 ms on the CPU, all of it
+  round-trip latency — so it should stay on the CPU until a program asks about millions of poses.
 - **A first call is not a measurement.** Every query number in this file needed a warm-up to mean anything; the first
   table was off by a factor of ten because the bench called each query exactly once on freshly allocated arrays. The
-  bench now warms up and prints the cold call beside the warm one.
+  bench now warms up and prints the cold call beside the warm one. A second, quieter version of the same mistake is
+  in the CPU backend, which reported a loop it had already finished copying for; the bench now also times the call
+  from outside, because a number that excludes work is not a wall time.
 - **No multi-GPU, no streams, no overlap of transfer and compute.** One kernel on the default stream is all this
   prototype needs.
 - **The Z-map cannot represent overhangs or a tool buried in the stock**, and does not try. That is the standard

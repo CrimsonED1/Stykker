@@ -65,6 +65,18 @@ struct ZMap
     double* volumeOut = nullptr;
 };
 
+/// <summary>
+/// A set of points that outlives the query that brought it in: two doubles (x, y) each, in absolute mm, exactly as
+/// the caller handed them over. A viewer asks for the same pixels after every batch of steps, and the upload of a
+/// million points is 1.7 ms of the 2.2 ms a query costs; paying it once turns the per-frame cost into the download.
+/// The origin stays out of it, so one set can be asked about any map.
+/// </summary>
+struct PointSet
+{
+    double* xy = nullptr;
+    int count = 0;
+};
+
 /// <summary>Blocks used by the volume reduction; a fixed count keeps the result independent of the grid size.</summary>
 constexpr int kVolumeBlocks = 1024;
 
@@ -635,6 +647,107 @@ NC_API int nc_zmap_sample(void* zmap, const double* points, int count, double or
     if (e != cudaSuccess)
     {
         set_cuda_error("nc_zmap_sample", e);
+        return static_cast<int>(e);
+    }
+
+    double upload = 0.0, kernel = 0.0;
+    timing.Report(upload, kernel, download);
+    if (uploadMs != nullptr) *uploadMs = upload;
+    if (kernelMs != nullptr) *kernelMs = kernel;
+    if (downloadMs != nullptr) *downloadMs = download;
+    return 0;
+}
+
+/// <summary>
+/// Copies <paramref name="count"/> points, two doubles (x, y) each in absolute mm, into a point set that stays on
+/// the device until <c>nc_pointset_destroy</c>. Returns the set, or null on failure, and reports the copy on the host
+/// clock in milliseconds.
+/// </summary>
+NC_API void* nc_pointset_create(const double* points, int count, double* uploadMs)
+{
+    if (uploadMs != nullptr) *uploadMs = 0;
+    if (points == nullptr || count <= 0)
+    {
+        set_error("nc_pointset_create: invalid argument");
+        return nullptr;
+    }
+
+    auto* set = new (std::nothrow) PointSet();
+    if (set == nullptr)
+    {
+        set_error("nc_pointset_create: out of memory");
+        return nullptr;
+    }
+    set->count = count;
+
+    const size_t bytes = static_cast<size_t>(2 * count) * sizeof(double);
+    cudaError_t e = cudaMalloc(&set->xy, bytes);
+    const auto start = std::chrono::steady_clock::now();
+    if (e == cudaSuccess) e = cudaMemcpy(set->xy, points, bytes, cudaMemcpyHostToDevice);
+    const double upload =
+        std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+    if (uploadMs != nullptr) *uploadMs = upload;
+    if (e != cudaSuccess)
+    {
+        set_cuda_error("nc_pointset_create", e);
+        delete set;
+        return nullptr;
+    }
+    return set;
+}
+
+/// <summary>Frees a point set and its device memory. A null set is ignored.</summary>
+NC_API void nc_pointset_destroy(void* pointSet)
+{
+    auto* set = static_cast<PointSet*>(pointSet);
+    if (set == nullptr) return;
+    if (set->xy != nullptr) cudaFree(set->xy);
+    delete set;
+}
+
+/// <summary>
+/// Height of the field at every point of a set that is already on the device: the same kernel as
+/// <c>nc_zmap_sample</c>, with nothing uploaded, so <paramref name="uploadMs"/> reads as the cost of the timing
+/// events alone. Writes <c>count</c> floats, one per point of the set.
+/// </summary>
+NC_API int nc_zmap_sample_set(void* zmap, void* pointSet, double originX, double originY, float* outHeights,
+                              double* kernelMs, double* uploadMs, double* downloadMs)
+{
+    auto* z = static_cast<ZMap*>(zmap);
+    auto* ps = static_cast<PointSet*>(pointSet);
+    if (z == nullptr || ps == nullptr || ps->xy == nullptr || outHeights == nullptr || ps->count <= 0)
+    {
+        set_error("nc_zmap_sample_set: invalid argument");
+        return 1;
+    }
+    if (kernelMs != nullptr) *kernelMs = 0;
+    if (uploadMs != nullptr) *uploadMs = 0;
+    if (downloadMs != nullptr) *downloadMs = 0;
+
+    const int count = ps->count;
+    QueryTiming timing;
+    if (!timing.ok) return static_cast<int>(cudaErrorUnknown);
+
+    // The two events are back to back because there is no upload to separate: what the pair reports is the launch
+    // path, not a transfer.
+    cudaEventRecord(timing.start);
+    cudaEventRecord(timing.uploaded);
+    cudaError_t e = reserve_query_out(z, count);
+    if (e == cudaSuccess)
+    {
+        const int threads = 256;
+        const int blocks = (count + threads - 1) / threads;
+        sample_d_kernel<<<blocks, threads>>>(z->heights, z->nx, z->ny, z->cellX, z->cellY, ps->xy, originX, originY,
+                                             count, z->queryOut);
+        e = cudaGetLastError();
+    }
+    cudaEventRecord(timing.computed);
+    if (e == cudaSuccess) e = cudaDeviceSynchronize();
+    double download = 0.0;
+    if (e == cudaSuccess) download = copy_back(outHeights, z->queryOut, static_cast<size_t>(count) * sizeof(float), e);
+    if (e != cudaSuccess)
+    {
+        set_cuda_error("nc_zmap_sample_set", e);
         return static_cast<int>(e);
     }
 

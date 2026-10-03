@@ -228,6 +228,42 @@ public sealed class ZMap
     }
 
     /// <summary>
+    /// Hands a set of points to the backend to keep, so repeated queries about them do not pay for them again. On the
+    /// CUDA backend that is an upload to the device, once; the caller owns the result and should dispose it.
+    /// </summary>
+    /// <param name="points">The points to keep, in absolute mm.</param>
+    /// <exception cref="NotSupportedException">The backend cannot answer queries.</exception>
+    public PointSet UploadPoints(ReadOnlySpan<SamplePoint> points)
+    {
+        if (points.IsEmpty) throw new ArgumentException("no points to keep", nameof(points));
+        return Query().UploadPoints(points);
+    }
+
+    /// <summary>
+    /// Height of the field at every point of a set this map's backend already holds, bilinear between cell centres
+    /// and clamped to the field, and where the time went. The answer is the one
+    /// <see cref="SampleHeights(ReadOnlySpan{SamplePoint}, Span{float})"/> gives for the same points.
+    /// </summary>
+    /// <param name="points">A set from <see cref="UploadPoints"/>.</param>
+    /// <param name="outHeights">Receives one absolute height in mm per point; at least <see cref="PointSet.Count"/> long.</param>
+    /// <returns>Kernel, upload, download and wall time of the query.</returns>
+    /// <exception cref="NotSupportedException">The backend cannot answer queries.</exception>
+    public ZMapTiming SampleHeights(PointSet points, Span<float> outHeights)
+    {
+        ArgumentNullException.ThrowIfNull(points);
+        if (outHeights.Length < points.Count)
+        {
+            throw new ArgumentException($"outHeights has {outHeights.Length} entries for {points.Count} points.",
+                nameof(outHeights));
+        }
+
+        ZMapTiming timing = Query().SampleHeights(this, points, outHeights);
+        float dz = (float)OriginMm.Z;
+        for (int i = 0; i < points.Count; i++) outHeights[i] += dz;
+        return timing;
+    }
+
+    /// <summary>
     /// How far a ball reaches into the material at each pose: the height of the field minus the bottom of the ball,
     /// zero where the ball hangs in air, and where the time went. This is the query that keeps its input and output
     /// in the tens of kilobytes for a whole tool path, so a caller can check a program for air cuts without ever

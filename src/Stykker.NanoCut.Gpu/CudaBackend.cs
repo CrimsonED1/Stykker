@@ -105,8 +105,59 @@ public sealed class CudaBackend : IZMapBackend, IZMapQueryBackend
         var wall = Stopwatch.StartNew();
         // The points go to the device as they are: the kernel subtracts the origin and narrows them to float, which
         // is cheaper than a host-side packing loop (2.8 ms for a million points against 0.9 ms of extra transfer).
-        CudaNative.Check(CudaNative.ZMapSample(device.Handle, points, points.Length, map.OriginMm.X, map.OriginMm.Y,
-            outHeights, out double kernelMs, out double uploadMs, out double downloadMs), "nc_zmap_sample");
+        // The lock is the same one the pose query takes, because both write their answer through queryOut and both
+        // stage their input in queryIn: two queries on one map at the same time would otherwise overwrite each other.
+        double kernelMs, uploadMs, downloadMs;
+        lock (device.Gate)
+        {
+            CudaNative.Check(CudaNative.ZMapSample(device.Handle, points, points.Length, map.OriginMm.X,
+                map.OriginMm.Y, outHeights, out kernelMs, out uploadMs, out downloadMs), "nc_zmap_sample");
+        }
+        wall.Stop();
+
+        return new ZMapTiming(kernelMs, uploadMs, downloadMs, firstCall, wall.Elapsed.TotalMilliseconds);
+    }
+
+    /// <inheritdoc />
+    public PointSet UploadPoints(ReadOnlySpan<SamplePoint> points)
+    {
+        string? why = UnavailableReason;
+        if (why is not null) throw new GpuNativeException("nc_pointset_create", -1, why);
+
+        nint handle = CudaNative.PointSetCreate(points, points.Length, out _);
+        if (handle == 0) throw new GpuNativeException("nc_pointset_create", -1, CudaNative.LastErrorMessage());
+        return PointSet.OnDevice(handle, points.Length, DeviceIndex);
+    }
+
+    /// <inheritdoc />
+    public ZMapTiming SampleHeights(ZMap map, PointSet points, Span<float> outHeights)
+    {
+        string? why = UnavailableReason;
+        if (why is not null) throw new GpuNativeException("nc_zmap_sample_set", -1, why);
+        // Device memory belongs to the device it was allocated on, so a set from another one is a caller error, not
+        // a slow query.
+        if (points.DeviceIndex != DeviceIndex)
+        {
+            throw new ArgumentException(
+                $"the point set is on device {points.DeviceIndex}, this backend is on device {DeviceIndex}",
+                nameof(points));
+        }
+        if (outHeights.Length < points.Count)
+        {
+            throw new ArgumentException($"outHeights has {outHeights.Length} entries for {points.Count} points.",
+                nameof(outHeights));
+        }
+
+        DeviceMap device = MapOf(map, out double firstCall);
+        var wall = Stopwatch.StartNew();
+        // No upload: the points have been on the device since UploadPoints. Only the answer comes back, so this is
+        // the query a viewer can afford after every batch of steps.
+        double kernelMs, uploadMs, downloadMs;
+        lock (device.Gate)
+        {
+            CudaNative.Check(CudaNative.ZMapSampleSet(device.Handle, points.Handle, map.OriginMm.X, map.OriginMm.Y,
+                outHeights, out kernelMs, out uploadMs, out downloadMs), "nc_zmap_sample_set");
+        }
         wall.Stop();
 
         return new ZMapTiming(kernelMs, uploadMs, downloadMs, firstCall, wall.Elapsed.TotalMilliseconds);

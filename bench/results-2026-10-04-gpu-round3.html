@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NanoCut GPU, Runde 3: Ein Punktensatz, der bleibt – und eine Zeitmessung, die Arbeit ausblendet</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one narrow technical sheet — verdict, the query without its upload, what the set costs back, the two findings, tables, notes in two columns */
+:root {
+  --bg: #f3f5f6;
+  --paper: #ffffff;
+  --fg: #1b2328;
+  --muted: #5c6a73;
+  --rule: #d5dde1;
+  --steel: #8a99a3;
+  --accent: #c25a00;
+  --accent-soft: #f6e3d2;
+  --good: #1f7a4d;
+  --font-display: "Barlow Condensed", "Arial Narrow", sans-serif;
+  --font-body: "IBM Plex Sans", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #12171a; --paper: #1a2126; --fg: #e4eaed; --muted: #94a3ac; --rule: #2d373e;
+    --steel: #5d6c75; --accent: #f08a2c; --accent-soft: #3a2614; --good: #4cc08a; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #12171a; --paper: #1a2126; --fg: #e4eaed; --muted: #94a3ac; --rule: #2d373e;
+  --steel: #5d6c75; --accent: #f08a2c; --accent-soft: #3a2614; --good: #4cc08a; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--fg); font: 15px/1.55 var(--font-body); padding-inline: 16px; padding-block: 32px 48px; }
+.sheet { max-width: 920px; margin: 0 auto; background: var(--paper); border: 1px solid var(--rule); padding: clamp(20px, 4vw, 44px); display: grid; gap: 32px; }
+header { display: grid; gap: 10px; }
+.eyebrow { font: 500 12px/1 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+h1 { font: 700 clamp(30px, 5.4vw, 48px)/1.02 var(--font-display); letter-spacing: -.01em; margin: 0; text-wrap: balance; }
+h1 em { font-style: normal; color: var(--accent); }
+.lede { margin: 0; max-width: 64ch; color: var(--fg); }
+h2 { font: 600 22px/1.1 var(--font-display); letter-spacing: .01em; margin: 0 0 4px; text-wrap: balance; }
+.sub { margin: 0 0 16px; color: var(--muted); font-size: 13.5px; }
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1px; background: var(--rule); border: 1px solid var(--rule); }
+.kpi { background: var(--paper); padding: 14px 16px; display: grid; gap: 2px; }
+.kpi b { font: 600 34px/1 var(--font-display); font-variant-numeric: tabular-nums; }
+.kpi span { font-size: 13px; color: var(--muted); }
+.kpi.hl b { color: var(--accent); }
+
+.bars { display: grid; gap: 10px; }
+.bar { display: grid; grid-template-columns: minmax(120px, 190px) 1fr; gap: 12px; align-items: center; }
+.bar .lab { font-size: 13.5px; line-height: 1.25; min-width: 0; }
+.bar .lab small { display: block; color: var(--muted); font: 12px var(--font-mono); }
+.track { position: relative; height: 26px; }
+.track.duo { display: grid; gap: 3px; align-content: center; }
+.track.duo .fill { height: 15px; }
+.fill { height: 100%; background: var(--steel); display: flex; align-items: center; justify-content: flex-end; padding-right: 8px; min-width: 52px; }
+.fill.old { background: transparent; border: 1.5px dashed var(--steel); }
+.fill.nc { background: var(--accent); }
+.fill span { font: 500 12.5px var(--font-mono); font-variant-numeric: tabular-nums; color: var(--paper); }
+.fill.old span { color: var(--muted); }
+.fill.nc span { color: var(--paper); }
+.axis { display: grid; grid-template-columns: minmax(120px, 190px) 1fr; gap: 12px; }
+.axis .ticks { display: flex; justify-content: space-between; font: 11px var(--font-mono); color: var(--muted); border-top: 1px solid var(--rule); padding-top: 4px; }
+.legend { display: flex; flex-wrap: wrap; gap: 16px; margin: 0 0 12px; font-size: 13px; color: var(--muted); }
+.legend i { display: inline-block; width: 22px; height: 10px; margin-right: 7px; vertical-align: baseline; }
+.legend i.cpu { background: var(--steel); }
+.legend i.gpu { background: var(--accent); }
+.legend i.dash { background: transparent; border: 1.5px dashed var(--steel); }
+
+.tablewrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; min-width: 620px; font-size: 13.5px; }
+th, td { padding: 7px 10px; text-align: right; border-bottom: 1px solid var(--rule); font-variant-numeric: tabular-nums; white-space: nowrap; }
+th:first-child, td:first-child { text-align: left; }
+thead th { font: 500 11.5px var(--font-mono); letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+td.scene { font-weight: 600; }
+td.scene small { display: block; font: 400 11.5px var(--font-mono); color: var(--muted); }
+td.win { color: var(--accent); font-weight: 600; }
+td.f { font-family: var(--font-mono); font-size: 12.5px; }
+td.pos { color: var(--good); }
+td.sum { font-weight: 600; border-top: 1.5px solid var(--fg); }
+.up { color: var(--good); }
+
+.cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 28px; }
+.cols > section { min-width: 0; }
+ul { margin: 0; padding-left: 18px; display: grid; gap: 7px; }
+li::marker { color: var(--muted); }
+.mini { width: 100%; border-collapse: collapse; font-size: 13.5px; min-width: 0; }
+.mini td { padding: 6px 8px; border-bottom: 1px solid var(--rule); }
+.mini td:last-child { text-align: right; font-family: var(--font-mono); white-space: nowrap; }
+.hw { width: 100%; border-collapse: collapse; font-size: 12.5px; min-width: 0; }
+.hw td { padding: 4px 8px 4px 0; border-bottom: 1px solid var(--rule); text-align: left; }
+.hw td:last-child { color: var(--muted); text-align: right; font-family: var(--font-mono); white-space: normal; }
+footer { border-top: 1px solid var(--rule); padding-top: 14px; font: 12px/1.6 var(--font-mono); color: var(--muted); }
+code { font: 12.5px var(--font-mono); background: var(--accent-soft); padding: 1px 4px; }
+</style>
+</head>
+<body>
+<main class="sheet">
+<header>
+<div class="eyebrow">Stykker NanoCut · GPU-Prototyp, Runde 3 · 4. Oktober 2026</div>
+<h1>Ein Punktensatz, der bleibt – und eine <em>Zeitmessung</em>, die Arbeit ausblendet</h1>
+<p class="lede">Runde 2 hat die Punktabfrage auf 2,187 ms gebracht und dabei 2,086 ms davon als PCIe-Verkehr
+ausgewiesen – mit dem ausdrücklichen Hinweis, als Nächstes die Punktmenge einmal hochzuladen und dann mehrfach
+abzufragen. Runde 3 hat genau das gebaut: <code>UploadPoints</code> überlässt eine Punktmenge dem Backend,
+<code>nc_zmap_sample_set</code> fragt sie ab, ohne sie noch einmal zu schicken. Ergebnis: <em>0,514 ms</em> für eine
+Million Punkte, und eine Überraschung, die nichts mit der GPU zu tun hat – das CPU-Backend hatte 2,4 ms pro Aufruf in
+einer Stoppuhr versteckt, die nicht lief.</p>
+</header>
+
+<div class="kpis">
+<div class="kpi hl"><b>4,3×</b><span>Millionenpunkte-Abfrage, wenn die Punkte schon auf dem Gerät liegen (0,514 gegen 2,204 ms)</span></div>
+<div class="kpi hl"><b>0,51 ms</b><span>pro Bild, 1 000 000 Pixel · davon 0,42 ms Download, 0,001 ms Upload</span></div>
+<div class="kpi"><b>1,7×</b><span>gewinnt auch die CPU: 5,873 → 3,522 ms, wenn die Punkte einmal kopiert werden</span></div>
+<div class="kpi"><b>ab der 2.</b><span>Abfrage rentiert sich der Punktensatz: 2,349 ms einmal, 1,69 ms Ersatz je Aufruf</span></div>
+</div>
+
+<section>
+<h2>Die Abfrage ohne ihren Upload</h2>
+<p class="sub">Höhe des Feldes an 1 000 000 Punkten, 1024 × 768, vorgewärmt, bester von 5. Lineare Achse 0 … 6 ms; die
+Balken zeigen, was der Aufrufer tatsächlich wartet.</p>
+<div class="bars">
+<div class="bar"><div class="lab">CPU, Punkte je Aufruf<small>16 Threads · staging liegt außerhalb der Uhr</small></div><div class="track"><div class="fill" style="width:97.9%"><span>5,873 ms</span></div></div></div>
+<div class="bar"><div class="lab">CUDA, Punkte je Aufruf<small>1,677 ms Upload + 0,430 ms Download</small></div><div class="track"><div class="fill nc" style="width:36.7%"><span>2,204 ms</span></div></div></div>
+<div class="bar"><div class="lab">CPU, Punkte einmal kopiert<small>1,7× schneller</small></div><div class="track"><div class="fill" style="width:58.7%"><span>3,522 ms</span></div></div></div>
+<div class="bar"><div class="lab">CUDA, Punkte auf dem Gerät<small>0,001 ms Upload · 11× gegen die CPU</small></div><div class="track"><div class="fill nc" style="width:8.6%"><span>0,514 ms</span></div></div></div>
+<div class="bar"><div class="lab">davon nur der CUDA-Kernel<small>0,061 ms · 12 % der Wandzeit</small></div><div class="track"><div class="fill" style="width:1%"><span>0,061</span></div></div></div>
+</div>
+<div class="axis" aria-hidden="true"><div></div><div class="ticks"><span>0 ms</span><span>1,2</span><span>2,4</span><span>3,6</span><span>4,8</span><span>6,0 ms</span></div></div>
+<p class="sub" style="margin-top:14px">Der Kern ist derselbe Kernel wie in Runde 2 (<code>sample_d_kernel</code>), auf
+denselben Zahlen, und die Antworten sind <em>bitgleich</em>: Δ = 0 gegen die Span-Abfrage, 1,9·10⁻⁶ mm gegen das
+CPU-Backend, genau wie vorher. Der einzige Unterschied ist, dass vor dem Start kein <code>cudaMemcpy</code> steht. Was
+bleibt, ist der Download: 0,421 der 0,514 ms sind die 4 MB Antwort über einen Link, der bei 8,7 GB/s gedeckelt ist – die
+Abfrage steht damit auf dem Boden, den diese Hardware mit vier Byte pro Pixel hergibt.</p>
+</section>
+
+<section>
+<h2>Es rentiert sich ab der zweiten Abfrage</h2>
+<p class="sub">Der Punktensatz kostet einmal 2,349 ms und spart danach 1,69 ms je Aufruf. Ein Aufrufer, der genau einmal
+fragt, soll beim Span-Aufruf bleiben; ab der zweiten Abfrage ist der Satz billiger.</p>
+<div class="tablewrap">
+<table>
+<thead><tr><th>Abfragen</th><th>Punkte je Aufruf schicken</th><th>Punktensatz, einmal hochgeladen</th></tr></thead>
+<tbody>
+<tr><td class="scene">1</td><td>2,204 ms</td><td class="f">2,863 ms</td></tr>
+<tr><td class="scene">2<small>die zweite holt den Satz ins Rennen</small></td><td>4,408 ms</td><td class="f win">3,377 ms</td></tr>
+<tr><td class="scene">10<small>eine Vorschau, die nach jedem Stapel neu zeichnet</small></td><td>22,040 ms</td><td class="f win">7,489 ms</td></tr>
+</tbody>
+</table>
+</div>
+<p class="sub" style="margin-top:12px">Genau das ist der Anwendungsfall, den Runde 2 benannt hat: ein Viewer fragt
+sein Pixelraster nach jedem Stapel ab, eine Bestandsprüfung dasselbe Raster, sobald sich das Programm ändert. Der
+Aufrufer besitzt den Satz und gibt ihn frei; er liegt in eigener Geräteallokation außerhalb der Karte, also kann
+derselbe Satz an jede Karte gestellt werden. <code>ZMapReadBack.Never</code> und <code>BackendRemovedVolumeMm3</code>
+halten das Feld auf dem Gerät – ein Bild kostet damit 1,7 ms Stapel plus 0,51 ms Abfrage.</p>
+</section>
+
+<section>
+<h2>Die CPU hatte 2,4 ms pro Aufruf versteckt</h2>
+<p class="sub">Das war nicht geplant und hat nichts mit dem Gerät zu tun. Ein <code>ref</code>-Strukturtyp lässt sich
+nicht in eine Parallel-Loop einfangen, also kopiert <code>CpuBackend</code> das Span vor der Schleife in ein Array –
+16 MB hinein, 4 MB heraus, um eine Schleife, die 3,4 ms braucht. Diese Kopie lag <em>außerhalb</em> der Stoppuhr des
+Backends. Lineare Achse 0 … 6 ms, gestrichelt = was die Uhr des Backends meldete.</p>
+<div class="legend"><span><i class="dash"></i>gemeldet von <code>CpuBackend</code></span><span><i class="cpu"></i>gemessen um den Aufruf herum</span></div>
+<div class="bars">
+<div class="bar"><div class="lab">gemeldet<small>die Parallel-Loop</small></div><div class="track"><div class="fill old" style="width:57.6%"><span>3,457 ms</span></div></div></div>
+<div class="bar"><div class="lab">gewartet<small>mit der Kopie davor</small></div><div class="track"><div class="fill" style="width:97.9%"><span>5,873 ms</span></div></div></div>
+<div class="bar"><div class="lab">gewartet, mit Punktensatz<small>die Kopie entfällt</small></div><div class="track"><div class="fill" style="width:58.7%"><span>3,522 ms</span></div></div></div>
+</div>
+<div class="axis" aria-hidden="true"><div></div><div class="ticks"><span>0 ms</span><span>1,2</span><span>2,4</span><span>3,6</span><span>4,8</span><span>6,0 ms</span></div></div>
+<p class="sub" style="margin-top:14px">Damit war jede CPU/ZCUDA-Tabelle in diesem Projekt zu günstig für die CPU
+gerechnet: eine Hostzahl, die 2,4 ms Kopie ausblendet, gegen eine Gerätezahl, die ihre Transfers einschließt. Der Bench
+misst die Abfragen jetzt zusätzlich von außen und stellt beide Zahlen nebeneinander. Die Regel ist allgemein: <b>eine
+Zeitmessung, die Arbeit ausblendet, ist keine Wandzeit</b> – und dieselbe Kopie war auch der Grund, warum das
+CPU-Backend vom Punktensatz profitiert, ohne dass sich seine gemeldete Zahl bewegt hat.</p>
+</section>
+
+<section>
+<h2>Und ein Versprechen, das der Code nicht hielt</h2>
+<p class="sub">Beim Durchsehen des Query-Pfads fand sich ein Wettlauf, den kein Test zeigen konnte: beide Abfragen
+benutzen denselben Eingangs- und AusgangsPuffer der Karte, aber nur die Posenabfrage nahm das Schloss, das
+<code>IZMapQueryBackend</code> seinen Aufrufern verspricht. Zwei gleichzeitige Abfragen auf dieselbe Karte konnten sich
+gegenseitig Eingang und Antwort überschreiben – sichtbar als gelegentlich falsche Höhe in einem Viewer und nirgends
+sonst. Die Höhenabfrage nimmt jetzt dasselbe Schloss, und das Interface sagt, welche Abfrage warum sperrt.</p>
+<div class="tablewrap">
+<table>
+<thead><tr><th>1 000 000 Punkte, 1024 × 768</th><th>Kernel</th><th>Upload</th><th>Download</th><th>Wand</th><th>gewartet</th></tr></thead>
+<tbody>
+<tr><td class="scene">CUDA, Punkte je Aufruf</td><td class="f">0,064 ms</td><td class="f">1,677 ms</td><td class="f">0,430 ms</td><td>2,204 ms</td><td>2,205 ms</td></tr>
+<tr><td class="scene">CUDA, Punktensatz<small>derselbe Kernel, kein Upload</small></td><td class="f">0,061 ms</td><td class="f">0,001 ms</td><td class="f">0,421 ms</td><td class="win">0,514 ms</td><td>0,515 ms</td></tr>
+<tr><td class="scene">CPU, Punkte je Aufruf</td><td class="f">3,457 ms</td><td class="f">–</td><td class="f">–</td><td>3,457 ms</td><td>5,873 ms</td></tr>
+<tr><td class="scene">CPU, Punktensatz</td><td class="f">3,332 ms</td><td class="f">–</td><td class="f">–</td><td>3,332 ms</td><td class="win">3,522 ms</td></tr>
+</tbody>
+</table>
+</div>
+</section>
+
+<div class="cols">
+<section>
+<h2>Was jetzt gilt</h2>
+<ul>
+<li><b>Vorschau:</b> 2,4 ms Wandzeit für 876 Schritte, 111× gegen das CPU-Backend. Unverändert aus Runde 1.</li>
+<li><b>Bild pro Stapel:</b> Punktensatz einmal hochladen, dann <code>SampleHeights(pixels, frame)</code>.
+0,514 ms statt 2,204 ms, mit identischen Höhen.</li>
+<li><b>Höhen abfragen:</b> GPU, sobald es viele Punkte sind – 0,514 ms gegen 5,873 ms für einen CPU-Aufruf.</li>
+<li><b>Einmal fragen:</b> den Span-Aufruf nehmen. Der Punktensatz kostet 2,349 ms, die er bei einer einzigen Abfrage
+nicht einspart.</li>
+<li><b>Kollision prüfen:</b> CPU. Bei 876 Posen ist sie dort dreimal so schnell.</li>
+<li><b>Immer aufwärmen</b> und <b>immer den Aufruf mitmessen</b>, nicht nur die Arbeit darin.</li>
+</ul>
+</section>
+<section>
+<h2>Nicht gebaut</h2>
+<ul>
+<li><b>Eine billigere Antwort.</b> Der Download ist inzwischen die ganze Abfrage. Als Nächstes lohnen sich weniger
+Byte: halbe Genauigkeit für ein Bild, das nur schattiert wird, oder ein Renderer, der das Höhenfeld direkt auf dem
+Gerät abtastet.</li>
+<li><b>Kein teilweises Read-back</b> (ein Zeilenband des Feldes) für einen Aufrufer, der mitten im Schnitt ein Bild
+sehen will. Nur die Vollkopie wächst mit dem Gitter.</li>
+<li><b>Keine Streams, kein Multi-GPU, keine Überlappung von Transfer und Rechnung.</b> Ein Kernel auf dem
+Standard-Stream reicht für diesen Prototyp.</li>
+<li><b>Teil 1 des Plans, der Server-Modus</b> (<code>samples/Stykker.NanoCut.Server</code>, Fortschritt über SignalR,
+abbrechbar), ist nicht gebaut; nur die GPU-Hälfte ist fertig.</li>
+</ul>
+</section>
+</div>
+
+<footer>
+Gemessen am 4. Oktober 2026 auf diesem Rechner, auf <code>feature/server-gpu</code>: AMD Ryzen 7 5800X3D (8 Kerne, 16
+Threads), NVIDIA GeForce RTX 5070 Ti 16 275 MiB (Blackwell, compute capability 12.0 / sm_120), CUDA Toolkit 13.4
+(<code>nvcc</code> V13.4.59), Visual Studio 2022 Community als Host-Compiler, Windows 11 Home, .NET SDK 10.0.401.
+Szene <code>pocket-large</code>: 876 Schnitte, 80 × 60 × 20 mm, Kugel r = 3 mm, 1024 × 768 Zellen, 2 212 Punkte je
+Schritt. Abfragewerte vorgewärmt und der beste von 5; über drei Läufe lag die Punktabfrage aus dem Satz bei
+0,514 … 0,535 ms. Der Test <code>CudaResidentPointsUploadOnceAndAnswerLikeTheSpan</code> pinnt die Gleichheit der
+Antworten, <code>APointSetAnswersWhatTheSpanAnswers</code> dieselbe Eigenschaft auf dem CPU-Backend und über das
+Freigeben des Satzes. Gepinnter Host-Speicher bleibt aus: 8,04 … 8,75 GB/s gegen 8,62 … 8,72 GB/s pageable über vier
+Läufe, die Reihenfolge kippt. Vollständige Messreihen und die Begründung stehen in
+<code>docs/gpu-findings.md</code>, die Runden davor in <code>bench/results-2026-10-03-gpu.html</code> und
+<code>bench/results-2026-10-03-gpu-round2.html</code>.
+</footer>
+</main>
+</body>
+</html>

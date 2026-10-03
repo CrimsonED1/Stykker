@@ -11,8 +11,9 @@
 //   --stl <path>             write the height field of the finest grid as binary STL
 //   --out <dir>              write zmap-results.json and zmap-results.md into <dir>
 //   --cold                   time the very first call instead of warming up on a separate map
-//   --queries                measure the batch queries at the finest grid: height sampling, tool probing and the
-//                            read-back into pinned and into pageable memory
+//   --queries                measure the batch queries at the finest grid: height sampling, the same sampling from
+//                            a point set the backend keeps, tool probing and the read-back into pinned and into
+//                            pageable memory
 //   --points N               sample points for the query phase (default 1000000)
 //   --no-pin                 let the CUDA backend read back into pageable memory, to measure what pinning is worth
 //
@@ -152,15 +153,26 @@ if (opt.Queries)
         // Same warm-up as the preview phase: a single cold query is dominated by one-off costs (the query buffers
         // and the first touch of the pageable point and result arrays, ~1000 page faults for a 4 MB result) and
         // says nothing about the steady state. Report the best of --repeat, and keep the cold number beside it.
+        //
+        // The stopwatch around the call is a second number and not a duplicate: a backend-reported wall time only
+        // covers what the backend considers the call. The CPU backend times its parallel loop alone, with the 16 MB
+        // staging copy of a span and the answer copy outside it, so "call" is what the caller actually waits for and
+        // the only figure that can be compared with the CUDA one, whose wall time does include its transfers.
         var got = new float[samplePoints.Length];
         var depths = new float[probePoses.Length];
+        var call = Stopwatch.StartNew();
         ZMapTiming sampleCold = queries.SampleHeights(map, samplePoints, got);
+        call.Stop();
+        double sampleCall = call.Elapsed.TotalMilliseconds;
         ZMapTiming probeCold = queries.ProbeMaterial(map, probePoses, depths);
         ZMapTiming sampleTiming = sampleCold;
         ZMapTiming probeTiming = probeCold;
         for (int run = 1; run < opt.Repeat; run++)
         {
+            call.Restart();
             var s = queries.SampleHeights(map, samplePoints, got);
+            call.Stop();
+            sampleCall = Math.Min(sampleCall, call.Elapsed.TotalMilliseconds);
             var p = queries.ProbeMaterial(map, probePoses, depths);
             if (s.WallMs < sampleTiming.WallMs) sampleTiming = s;
             if (p.WallMs < probeTiming.WallMs) probeTiming = p;
@@ -180,12 +192,42 @@ if (opt.Queries)
 
         Console.WriteLine($"{name,-5} sample {samplePoints.Length} points: kernel {sampleTiming.KernelMs,8:F3} ms  " +
                           $"up {sampleTiming.UploadMs,7:F3}  down {sampleTiming.DownloadMs,7:F3}  " +
-                          $"wall {sampleTiming.WallMs,8:F3} ms" + ColdSuffix(sampleTiming, sampleCold) +
+                          $"wall {sampleTiming.WallMs,8:F3} ms (call {sampleCall,7:F3})" +
+                          ColdSuffix(sampleTiming, sampleCold) +
                           $"  max dh {(haveHeightReference ? worstHeight.ToString("E2", inv) : "-")} mm");
         Console.WriteLine($"{name,-5} probe  {probePoses.Length} poses:  kernel {probeTiming.KernelMs,8:F3} ms  " +
                           $"up {probeTiming.UploadMs,7:F3}  down {probeTiming.DownloadMs,7:F3}  " +
                           $"wall {probeTiming.WallMs,8:F3} ms" + ColdSuffix(probeTiming, probeCold) +
                           $"  max dd {(haveDepthReference ? worstDepth.ToString("E2", inv) : "-")} mm");
+
+        // The query a viewer runs after every batch of steps: the same points, but already where the backend answers
+        // from, so only the answer travels. The one-time upload is reported next to it, because that is what the
+        // caller has to weigh against the number of times it will ask.
+        var keptWatch = Stopwatch.StartNew();
+        using PointSet kept = queries.UploadPoints(samplePoints);
+        keptWatch.Stop();
+        var keptHeights = new float[samplePoints.Length];
+        call.Restart();
+        ZMapTiming keptTiming = queries.SampleHeights(map, kept, keptHeights);
+        call.Stop();
+        double keptCall = call.Elapsed.TotalMilliseconds;
+        for (int run = 1; run < opt.Repeat; run++)
+        {
+            call.Restart();
+            ZMapTiming k = queries.SampleHeights(map, kept, keptHeights);
+            call.Stop();
+            keptCall = Math.Min(keptCall, call.Elapsed.TotalMilliseconds);
+            if (k.WallMs < keptTiming.WallMs) keptTiming = k;
+        }
+        float worstKept = 0;
+        if (haveHeightReference)
+            for (int i = 0; i < keptHeights.Length; i++)
+                worstKept = Math.Max(worstKept, Math.Abs(referenceHeights[i] - keptHeights[i]));
+        Console.WriteLine($"{name,-5} sample {samplePoints.Length} points from a kept set: " +
+                          $"kernel {keptTiming.KernelMs,8:F3} ms  up {keptTiming.UploadMs,7:F3}  " +
+                          $"down {keptTiming.DownloadMs,7:F3}  wall {keptTiming.WallMs,8:F3} ms " +
+                          $"(call {keptCall,7:F3})  set uploaded once in {keptWatch.Elapsed.TotalMilliseconds,7:F3} ms  " +
+                          $"max dh {(haveHeightReference ? worstKept.ToString("E2", inv) : "-")} mm");
 
         // Worth printing only when the warm-up actually bought something.
         static string ColdSuffix(ZMapTiming best, ZMapTiming cold) =>

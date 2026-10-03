@@ -78,7 +78,7 @@ part of the suite: `tests/Stykker.NanoCut.Tests/OptimizationVerification*Tests.c
   - `Face3.Split` rejects non-convex input.
   - Introselect replaces plain quickselect.
 
-All 183 tests and the 4 oracle tests are green, including the GPU tests, which run against the `nvcc`-built library when
+All 185 tests and the 4 oracle tests are green, including the GPU tests, which run against the `nvcc`-built library when
 it is present and against the CPU backend only when it is not.
 
 ## GPU prototype: Z-map preview
@@ -134,15 +134,48 @@ GPU result stays checkable cell by cell:
 
 The point query wins, but only after the host stopped preparing it: packing the query into a flat float array cost
 2,8 ms to save 0,9 ms of transfer and put the wall at 4,135 ms — *slower than the CPU*. `nc_zmap_sample` now takes the
-points as they are and the kernel does that arithmetic (0,064 ms), which is where the 2,187 ms come from. What remains
-is 95 % PCIe: the next win is a point set that stays on the device between calls. The pose query is the opposite and
-cannot be rescued at this size — 0,072 ms of round-trip latency against a 0,004 ms kernel, so a few hundred poses go to
-the CPU. Pinned host memory, which round 1 predicted would roughly double the download, buys nothing here: 8,68 GB/s
-pinned against 8,70 GB/s pageable, measured back to back in one process with the order flipping between processes, so
-it is off by default.
+points as they are and the kernel does that arithmetic (0,064 ms), which is where the 2,187 ms come from. The CPU
+figure in that table is its parallel loop alone; the call around it costs 5,873 ms, because `CpuBackend` copies the
+span into an array before the loop and does not count that copy. Round 3 below measures both. The pose query is the
+opposite and cannot be rescued at this size — 0,072 ms of round-trip latency against a 0,004 ms kernel, so a few
+hundred poses go to the CPU. Pinned host memory, which round 1 predicted would roughly double the download, buys
+nothing here: 8,68 GB/s pinned against 8,70 GB/s pageable, measured back to back in one process with the order
+flipping between processes, so it is off by default.
 
 One-page result: [results-2026-10-03-gpu-round2.html](../bench/results-2026-10-03-gpu-round2.html). The full reasoning,
 including why the first version of that table was wrong by a factor of ten: [gpu-findings.md](gpu-findings.md).
+
+### Round 3: a query that lives on the device
+
+Round 2 ended with the point query spending 2,086 of its 2,187 ms on the wire and named the fix: a caller that asks
+about the *same* points again should not send them again. `IZMapQueryBackend.UploadPoints` hands a point set to the
+backend once (`nc_pointset_create`, its own device allocation, so it outlives the query and works with any map), and
+`nc_zmap_sample_set` runs the same `sample_d_kernel` over it with no copy before the launch. The answers are the
+answers of the span query, to the bit — a test asserts that on both backends.
+
+1 000 000 points at 1024 × 768, warm, best of 5, pocket-large on the same RTX 5070 Ti:
+
+| 1 000 000 points | kernel | upload | download | reported wall | what the caller waits for |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| CUDA, points per call | 0,064 ms | 1,677 ms | 0,430 ms | 2,204 ms | 2,205 ms |
+| CUDA, points kept on the device | 0,061 ms | 0,001 ms | 0,421 ms | **0,514 ms** | 0,515 ms |
+| CPU, points per call | 3,457 ms | – | – | 3,457 ms | 5,873 ms |
+| CPU, points kept in an array | 3,332 ms | – | – | 3,332 ms | **3,522 ms** |
+
+**4,3× on the GPU and 11× against a CPU call**, and the set pays for itself at the second query: 2,349 ms once against
+1,69 ms saved per call. What is left is the download — 0,421 of the 0,514 ms is the 4 MB answer over a link that tops
+out at 8,7 GB/s — so the query now sits at the floor of what four bytes per pixel can cost on this hardware.
+
+The CPU row is the one nobody predicted. A `ref` struct cannot be captured by a parallel loop, so `CpuBackend` copies
+the span into an array on every call, and that copy sits *outside* its stopwatch: the query reported 3,457 ms and cost
+the caller 5,873 ms. Keeping the points in an array the set owns takes the call to 3,522 ms — a 1,7× win that the
+reported number never moved for. The bench now times every query from outside and prints that beside the backend's own
+figure.
+
+Two defects fell out of the same work: the height query shared the map's query buffers with the pose query but, unlike
+the pose query, did not take the per-map lock that the interface promises, so two concurrent queries on one map could
+overwrite each other; and the CPU backend reported a loop it had already finished copying for. One-page result:
+[results-2026-10-04-gpu-round3.html](../bench/results-2026-10-04-gpu-round3.html). Details: [gpu-findings.md](gpu-findings.md).
 
 ## Lessons learned
 
@@ -181,6 +214,15 @@ including why the first version of that table was wrong by a factor of ten: [gpu
   array cost 2,8 ms to save 0,9 ms of transfer and made the GPU query slower than the CPU one. The kernel had 0,064 ms
   of headroom to do the same arithmetic. Bandwidth saved on the wire is not free — it is paid for in the loop that
   saves it.
+- **A timing that excludes work is not a wall time.** `CpuBackend` reported 3,457 ms for a query the caller waited
+  5,873 ms for, because the span-to-array copy sat outside its stopwatch. The same missing copy was worth 2,4 ms per
+  call and no reported number ever showed it. Time the call from outside as well as inside, and print both.
+- **Input that crosses the bus more than once should cross it once.** A point set the backend keeps took the million
+  point query from 2,204 ms to 514 ms, and the answers were identical to the bit. When a workload repeats its input,
+  the API question "who owns this buffer" is worth as much as the kernel.
+- **Promising serialisation in an interface is a promise the code has to keep.** Two queries on one map shared their
+  input and output buffers; only one of them took the lock. The race is invisible in a single-threaded test and shows
+  up as an occasional wrong answer in production.
 - **Small queries lose to round-trip latency, not to bandwidth.** 876 poses are 14 KB and 3,5 KB; the kernel takes
   0,004 ms, the two copies 0,072 ms, and the CPU does the same work in 0,039 ms. Know where the fixed cost of a device
   round trip puts the break-even point before moving work onto it.
@@ -195,10 +237,11 @@ including why the first version of that table was wrong by a factor of ten: [gpu
 - Fixed costs per cut for short tasks: C++ is still 1.3–2.3× faster there.
 - Exact face sweep for 3D rotations, which today use hulls of poses and small steps (see [processes.md](processes.md)).
 - Server mode: the second half of the plan behind [server-gpu-plan.md](server-gpu-plan.md), still unbuilt. The GPU half is
-  done and measured above, including the caller's choice about read-back, the batch queries and the pinned-memory
-  question. What is still missing on the GPU side is a query that stays on the device between calls, and a partial
-  read-back for a caller that wants a picture of part of the stock while the cut runs. The exact kernel stays on the CPU
-  either way.
+  done and measured above, including the caller's choice about read-back, the batch queries, the point set that stays
+  on the device and the pinned-memory question. What is still missing on the GPU side is a cheaper answer — the
+  download is 0,42 of the 0,51 ms the query costs, so a half-precision picture or a renderer that consumes the field
+  on the device is the next thing to try — and a partial read-back for a caller that wants a picture of part of the
+  stock while the cut runs. The exact kernel stays on the CPU either way.
 - The gear case is analysed but not fixed: `Process2.Cut` spends 17,7 s in the unions of the pose parts and 23 s in the
   subtracts, and the win has to come from grouping the pieces by the region they remove, not from the piece order or the
   batch size ([processes.md](processes.md)).

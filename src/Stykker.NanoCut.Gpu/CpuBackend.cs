@@ -76,10 +76,17 @@ public sealed class CpuBackend : IZMapBackend, IZMapQueryBackend
 
     /// <summary>
     /// Reads the height at every point, in the same way as the CUDA kernel, from the field in
-    /// <see cref="ZMap.Heights"/>. The two spans are staged into arrays first, because a
-    /// <see langword="ref"/> struct cannot be captured by the parallel loop.
+    /// <see cref="ZMap.Heights"/>. The span is staged into an array first, because a <see langword="ref"/> struct
+    /// cannot be captured by the parallel loop; that copy per call is what a set of points saves.
     /// </summary>
-    public ZMapTiming SampleHeights(ZMap map, ReadOnlySpan<SamplePoint> points, Span<float> outHeights)
+    public ZMapTiming SampleHeights(ZMap map, ReadOnlySpan<SamplePoint> points, Span<float> outHeights) =>
+        SampleHeights(map, PointSet.OnHost(points.ToArray()), outHeights);
+
+    /// <summary>
+    /// The same query about points the backend already holds in an array, so there is no staging copy per call. The
+    /// answer is the one the span overload gives, to the bit.
+    /// </summary>
+    public ZMapTiming SampleHeights(ZMap map, PointSet points, Span<float> outHeights)
     {
         RequireCurrent(map);
         int nx = map.CellsX, ny = map.CellsY;
@@ -88,7 +95,7 @@ public sealed class CpuBackend : IZMapBackend, IZMapQueryBackend
         float ox = (float)map.OriginMm.X, oy = (float)map.OriginMm.Y;
         var options = new ParallelOptions { MaxDegreeOfParallelism = Parallelism };
 
-        var ask = points.ToArray();
+        SamplePoint[] ask = points.Points;
         var answer = new float[ask.Length];
         var sw = Stopwatch.StartNew();
         Parallel.For(0, ask.Length, options, i =>
@@ -102,6 +109,12 @@ public sealed class CpuBackend : IZMapBackend, IZMapQueryBackend
         double ms = sw.Elapsed.TotalMilliseconds;
         return new ZMapTiming(ms, 0, 0, 0, ms);
     }
+
+    /// <summary>
+    /// Copies the points into an array the set owns, and that is the whole preparation: the span overload has to copy
+    /// them on every call because a span cannot be captured by the parallel loop, this one does not.
+    /// </summary>
+    public PointSet UploadPoints(ReadOnlySpan<SamplePoint> points) => PointSet.OnHost(points.ToArray());
 
     /// <summary>
     /// Reads how deep the ball cuts at every pose, in the same way as the CUDA kernel, from the field in

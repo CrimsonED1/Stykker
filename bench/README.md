@@ -270,3 +270,45 @@ the cold call beside the warm one.
 Details and the full reasoning: `docs/gpu-findings.md`. One-page result:
 [`results-2026-10-03-gpu-round2.html`](results-2026-10-03-gpu-round2.html).
 
+## GPU prototype, round 3: a query that lives on the device (2026-10-04)
+
+Round 2 ended with the point query spending 2.086 of its 2.187 ms on the wire and a clear instruction: a caller that
+asks about the same points again should not send them again. `IZMapQueryBackend.UploadPoints` hands a point set to the
+backend once (`nc_pointset_create`, its own device allocation outside the map), and `nc_zmap_sample_set` runs the same
+`sample_d_kernel` over it with no copy before the launch. Same scene and machine, 1024 × 768, 1 000 000 points, warm,
+best of 5:
+
+| 1 000 000 points | kernel | upload | download | reported wall | caller waits |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| CUDA, points per call | 0,064 ms | 1,677 ms | 0,430 ms | 2,204 ms | 2,205 ms |
+| CUDA, points kept on the device | 0,061 ms | 0,001 ms | 0,421 ms | **0,514 ms** | 0,515 ms |
+| CPU, points per call | 3,457 ms | – | – | 3,457 ms | 5,873 ms |
+| CPU, points kept in an array | 3,332 ms | – | – | 3,332 ms | **3,522 ms** |
+
+The set costs 2,349 ms to upload once and saves 1,69 ms per call, so it pays for itself at the second query. The
+answers are identical to the span query to the bit (`max Δh` against the CPU reference is 1,9e-6 mm either way), and
+0,421 of the remaining 0,514 ms is the 4 MB answer coming back — the query now sits at the floor of what this link can
+do with four bytes per pixel.
+
+Two findings beyond the number:
+
+- **The CPU backend was hiding 2,4 ms per call.** A `ref` struct cannot be captured by a parallel loop, so
+  `CpuBackend` copies the span into an array before the loop, and that copy sits outside its stopwatch: 3,457 ms
+  reported, 5,873 ms waited. Keeping the points in an array the set owns takes the call to 3,522 ms. The bench now
+  times every query from outside and prints that next to the backend's own figure, because a timing that excludes work
+  is not a wall time.
+- **The height query did not take the per-map lock** that `IZMapQueryBackend` promises, although it shares the map's
+  input and output buffers with the pose query, which does. Two concurrent queries on one map could overwrite each
+  other. Fixed, and the interface now says which queries lock and why.
+
+Reproduce:
+
+```
+dotnet build bench/Stykker.NanoCut.GpuBench -c Release
+dotnet bench/Stykker.NanoCut.GpuBench/bin/Release/net10.0/Stykker.NanoCut.GpuBench.dll `
+    bench/out/pocket-large/expanded.json --grids 1024 --repeat 5 --queries --reference 84860.612636583
+```
+
+Details: `docs/gpu-findings.md`. One-page result:
+[`results-2026-10-04-gpu-round3.html`](results-2026-10-04-gpu-round3.html).
+
