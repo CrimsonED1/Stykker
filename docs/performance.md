@@ -213,6 +213,34 @@ anything. The exact kernel pays per swept convex piece (398 178 pieces at z = 40
 one interval subtraction per column, so the target of the preview is set by poses and columns that meet, not by pieces.
 One-page result: [results-2026-10-03-long-programs.html](../bench/results-2026-10-03-long-programs.html).
 
+## Long programs: step binning (step 2)
+
+The baseline above measures what a preview has to reproduce. Step 2 of [long-programs.md](long-programs.md) removes the
+thing that makes long programs impossible for the preview: until now every column tested every step, so the dexel kernel
+cost O(columns × steps). `StepBins.cs` bins the steps on the host into tiles of 16 × 16 columns (CSR, step indices
+ascending) and the CUDA kernel launches one block per tile with only the steps that reach it — a block is a tile, so the
+geometry does not change.
+
+A serpentine finishing pass of a 0.2 mm ball over a 20 mm square map at 0.05 mm cells (160 000 columns), 4 intervals per
+column, steps 0.05 mm apart. RTX 5070 Ti, best of 2, both launches on the same program:
+
+| Steps | Binned kernel | Bin (host) | Binned wall | Unbinned kernel | Unbinned wall | Kernel × | Wall × | Removed (both) |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 24 800 | 0.1 ms | 0.6 ms | 2.3 ms | 13.6 ms | 14.9 ms | 102× | 6.5× | 90.183421 mm³ |
+| 99 200 | 0.4 ms | 2.2 ms | 5.2 ms | 77.9 ms | 80.1 ms | 212× | 15.4× | 99.454883 mm³ |
+| 396 800 | 1.3 ms | 9.4 ms | 18.0 ms | 320.4 ms | 327.9 ms | 247× | 18.2× | 99.965987 mm³ |
+| 793 600 | 2.7 ms | 18.9 ms | 36.8 ms | 640.7 ms | 655.0 ms | 240× | 17.8× | 99.991493 mm³ |
+
+The factor does not depend on the program length, because the binned kernel's work is what the ball touches: 2.7 ms for
+793 600 steps against 640.7 ms for the same program unbinned. The removed volume is identical to the last digit in both
+launches at every size — the whole point, since the binning must not change the answer, and `StepBinsTests` plus
+`DexelMapTests.BinnedLaunchGivesTheSameBitsAsTheUnbinnedOne` pin it down cell by cell.
+
+What is left is the host. The binning is O(steps) and costs 18.9 ms of the 36.8 ms wall at 793 600 steps — seven times
+the kernel. Below ~10⁵ steps that is noise; above ~10⁶ per call it is the limit, and it belongs on the list for step 3
+(coarser tiles, or binning on the device). One-page result:
+[results-2026-10-04-long-programs-dexel.html](../bench/results-2026-10-04-long-programs-dexel.html).
+
 ## Lessons learned
 
 - **Measure with a real CPU profiler.** The .NET EventPipe thread-time sampler only samples at safe points, so it showed

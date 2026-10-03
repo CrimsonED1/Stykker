@@ -454,3 +454,38 @@ files are what a preview of the same program is compared against.
 
 One-page result: [`results-2026-10-03-long-programs.html`](results-2026-10-03-long-programs.html).
 
+## Long programs: step binning on a finishing pass (2026-10-04)
+
+Mode `dexel` of the same bench measures what the plan (`docs/long-programs.md`, step 2) needed measured: a long ball
+program on the CUDA dexel kernel, once with the steps binned into tiles of 16 × 16 columns and once with every column
+looking at every step. A block is a tile, so the binning changes what a block sees and nothing else — and the two
+launches report the same removed volume to the last digit at every size, which is what makes the factor below a
+property of the preview rather than of a different computation.
+
+RTX 5070 Ti (sm_120, driver 617.14, CUDA 13.4), Windows 11, .NET 10. A serpentine finishing pass of a 0.2 mm ball over
+a 20 mm square map at 0.05 mm cells (400 × 400 = 160 000 columns), 4 intervals per column, steps 0.05 mm apart, best of
+2. The CUDA context is created before the first case and not measured (87 ms).
+
+| Steps | Rows | Column steps (unbinned) | Binned kernel | Bin (host) | Upload | Binned wall | Unbinned kernel | Unbinned wall | Kernel × | Wall × | Removed (both) |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 24 800 | 62 | 9 920 000 | 0.1 ms | 0.6 ms | 0.3 ms | 2.3 ms | 13.6 ms | 14.9 ms | 102× | 6.5× | 90.183421 mm³ |
+| 99 200 | 248 | 39 680 000 | 0.4 ms | 2.2 ms | 0.7 ms | 5.2 ms | 77.9 ms | 80.1 ms | 212× | 15.4× | 99.454883 mm³ |
+| 396 800 | 992 | 158 720 000 | 1.3 ms | 9.4 ms | 2.4 ms | 18.0 ms | 320.4 ms | 327.9 ms | 247× | 18.2× | 99.965987 mm³ |
+| 793 600 | 1984 | 317 440 000 | 2.7 ms | 18.9 ms | 5.1 ms | 36.8 ms | 640.7 ms | 655.0 ms | 240× | 17.8× | 99.991493 mm³ |
+
+The unbinned kernel grows exactly with columns × steps (640.7 / 320.4 ≈ 2, and 640.7 / 13.6 ≈ 47 against 32× the
+steps), while the binned one grows with what the ball touches: 2.7 ms for 793 600 steps. The factor settles at ~240×.
+What is left is the host: the binning is O(steps) and costs 18.9 ms of the 36.8 ms wall at the longest case, seven times
+the kernel — the next thing to attack above ~10⁶ steps per call.
+
+```bash
+dotnet build bench/Stykker.NanoCut.LongPrograms -c Release
+dotnet bench/Stykker.NanoCut.LongPrograms/bin/Release/net10.0/Stykker.NanoCut.LongPrograms.dll dexel --repeat 2 --out bench/out/long-programs-dexel
+```
+
+`--map-mm`, `--cell-mm`, `--step-mm`, `--radius-mm` and `--intervals` set the map and the tool; `--steps` the program
+lengths. The mode writes into `long-programs-results.json` and `-results.md` like the other two, in the same `--out`
+directory (kept separate here so the step-1 rows stay where they are).
+
+One-page result: [`results-2026-10-04-long-programs-dexel.html`](results-2026-10-04-long-programs-dexel.html).
+

@@ -196,6 +196,45 @@ public class DexelMapTests(ITestOutputHelper output)
         Assert.Equal(cpu.Overflows, gpu.Overflows);
     }
 
+    /// <summary>
+    /// The binned launch against the unbinned one, bit for bit. The binning only decides which steps a block looks at,
+    /// so it cannot change the result; this is what says so, and it is the check the speed-up rests on.
+    /// </summary>
+    [Fact]
+    public void BinnedLaunchGivesTheSameBitsAsTheUnbinnedOne()
+    {
+        var binned = new CudaBackend { BinSteps = true };
+        var plain = new CudaBackend { BinSteps = false };
+        if (!binned.IsAvailable)
+        {
+            output.WriteLine($"not run: {binned.UnavailableReason}");
+            return;
+        }
+        var steps = MixedSteps();
+        foreach (int cells in new[] { 16, 32, 64, 301 })
+        {
+            var a = Stock(cells, k: 6, backend: binned);
+            var b = Stock(cells, k: 6, backend: plain);
+            a.ApplySteps(steps);
+            b.ApplySteps(steps);
+            int k2 = a.MaxIntervals * 2, bad = 0;
+            double worst = 0;
+            for (long c = 0; c < a.Counts.Length; c++)
+            {
+                if (a.Counts[c] != b.Counts[c]) { bad++; continue; }
+                for (int q = 0; q < 2 * a.Counts[c]; q++)
+                    worst = Math.Max(worst, Math.Abs(a.Intervals[c * k2 + q] - b.Intervals[c * k2 + q]));
+            }
+            output.WriteLine($"{cells,3} cells: {bad} columns differ in count, worst {worst:E2} mm, " +
+                             $"volume {a.RemovedVolumeMm3:F4} against {b.RemovedVolumeMm3:F4}, " +
+                             $"overflows {a.Overflows} / {b.Overflows}, bin {a.LastTiming.BinMs:F3} ms");
+
+            Assert.Equal(0, bad);
+            Assert.Equal(0, worst);
+            Assert.Equal(b.Overflows, a.Overflows);
+        }
+    }
+
     [Fact]
     public void CudaChunksGiveTheSameBitsAsOneBatch()
     {

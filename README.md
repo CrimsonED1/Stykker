@@ -174,8 +174,13 @@ z = 40) and a fully covered grinding wheel (0.20 s for the demo's 60 grains up t
 only knows a ball on straight segments; what those two programs need is any convex tool on rotating poses, binned by
 tile. Step 1 of the plan is the baseline a preview will be checked against — time **and** result: the generated area
 against the ideal involute gear, the removed volume, Ra and Rz — measured by `bench/Stykker.NanoCut.LongPrograms`.
-Plan, steps and log: [docs/long-programs.md](docs/long-programs.md), one page:
-[bench/results-2026-10-03-long-programs.html](bench/results-2026-10-03-long-programs.html).
+Step 2 removes what made long programs impossible for the preview: the steps are binned on the host into tiles of
+16 × 16 columns and a block only sees the steps that reach its tile, so the dexel kernel no longer costs
+columns × steps. On a finishing pass of 793 600 steps over 160 000 columns that is 2.7 ms against 640.7 ms
+(≈ 240×), with the same removed volume to the last digit — the binning decides what a block looks at, never what comes
+out. Plan, steps and log: [docs/long-programs.md](docs/long-programs.md), one page per step:
+[bench/results-2026-10-03-long-programs.html](bench/results-2026-10-03-long-programs.html),
+[bench/results-2026-10-04-long-programs-dexel.html](bench/results-2026-10-04-long-programs-dexel.html).
 
 ## Processes: acting shape + motion
 

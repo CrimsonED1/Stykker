@@ -818,6 +818,9 @@ namespace {
 /// <summary>Largest k the kernel supports; DexelMap allows 1 to 16.</summary>
 constexpr int kMaxDexelIntervals = 16;
 
+/// <summary>Columns per tile and rows per tile of the binned launch: one tile is one thread block.</summary>
+constexpr int kDexelTile = 16;
+
 struct Dexel
 {
     int nx = 0;
@@ -831,6 +834,10 @@ struct Dexel
     unsigned long long* overflows = nullptr;
     float* steps = nullptr;
     int stepsCapacity = 0;
+    int* tileStart = nullptr;            // tiles + 1
+    int tileCapacity = 0;
+    int* tileSteps = nullptr;
+    int tileStepsCapacity = 0;
     double* volumePartials = nullptr;
     double* volumeOut = nullptr;
 };
@@ -909,14 +916,19 @@ __global__ void dexel_init_kernel(float* intervals, unsigned char* counts, size_
     counts[i] = 1;
 }
 
-/// <summary>One thread per column, its intervals in local memory while it loops over every step of the batch.</summary>
-__global__ void dexel_apply_kernel(float* __restrict__ intervals, unsigned char* __restrict__ counts,
-                                   unsigned long long* __restrict__ overflows, int nx, int ny, int k, float cellX,
-                                   float cellY, const float* __restrict__ steps, int stepCount)
+/// <summary>Subtracts the steps [first, last) from one column and returns how many of them overflowed its intervals.</summary>
+/// <param name="stepIndex">The list the half-open range counts into: null for the batch itself, the tile's CSR entries
+/// for the binned launch. The two are the same steps, in the same order, so the column ends up where the unbinned
+/// launch puts it.</param>
+/// <remarks>Both dexel kernels go through here, so a column sees the same steps in the same order whichever launch runs
+/// it and the intervals and the overflow count cannot drift apart.</remarks>
+__device__ __forceinline__ unsigned int dexel_apply_column(float* __restrict__ intervals,
+                                                           unsigned char* __restrict__ counts, int i, int j, int nx,
+                                                           int ny, int k, float cellX, float cellY,
+                                                           const float* __restrict__ steps,
+                                                           const int* __restrict__ stepIndex, int first, int last)
 {
-    const int i = blockIdx.x * blockDim.x + threadIdx.x;
-    const int j = blockIdx.y * blockDim.y + threadIdx.y;
-    if (i >= nx || j >= ny) return;
+    if (i >= nx || j >= ny) return 0;
 
     const float x = (i + 0.5f) * cellX;
     const float y = (j + 0.5f) * cellY;
@@ -927,15 +939,44 @@ __global__ void dexel_apply_kernel(float* __restrict__ intervals, unsigned char*
     for (int q = 0; q < 2 * n; q++) local[q] = global[q];
 
     unsigned int over = 0;
-    for (int s = 0; s < stepCount && n > 0; ++s)
+    for (int s = first; s < last && n > 0; ++s)
     {
+        const int index = stepIndex == nullptr ? s : stepIndex[s];
         float lo, hi;
-        if (!swept_span(x, y, steps + static_cast<size_t>(s) * kStepFloats, lo, hi)) continue;
+        if (!swept_span(x, y, steps + static_cast<size_t>(index) * kStepFloats, lo, hi)) continue;
         if (dexel_subtract(local, n, k, lo, hi)) over++;
     }
 
     for (int q = 0; q < 2 * n; q++) global[q] = local[q];
     counts[column] = static_cast<unsigned char>(n);
+    return over;
+}
+
+/// <summary>One thread per column, its intervals in local memory while it loops over every step of the batch.</summary>
+__global__ void dexel_apply_kernel(float* __restrict__ intervals, unsigned char* __restrict__ counts,
+                                   unsigned long long* __restrict__ overflows, int nx, int ny, int k, float cellX,
+                                   float cellY, const float* __restrict__ steps, int stepCount)
+{
+    const int i = blockIdx.x * blockDim.x + threadIdx.x;
+    const int j = blockIdx.y * blockDim.y + threadIdx.y;
+    const unsigned int over = dexel_apply_column(intervals, counts, i, j, nx, ny, k, cellX, cellY, steps, nullptr, 0, stepCount);
+    if (over != 0) atomicAdd(overflows, static_cast<unsigned long long>(over));
+}
+
+/// <summary>One block per tile of columns, over only the steps that reach the tile (the CSR the host binned).</summary>
+/// <remarks>Launch with a <see cref="kDexelTile"/> square block, so one block covers exactly one tile and the tile
+/// index splits into column and row with <paramref name="tilesX"/>. The steps inside a tile are in ascending order,
+/// which is why the result does not depend on the binning.</remarks>
+__global__ void dexel_apply_binned_kernel(float* __restrict__ intervals, unsigned char* __restrict__ counts,
+                                          unsigned long long* __restrict__ overflows, int nx, int ny, int k, float cellX,
+                                          float cellY, const float* __restrict__ steps, const int* __restrict__ tileStart,
+                                          const int* __restrict__ tileSteps, int tilesX)
+{
+    const int tile = static_cast<int>(blockIdx.x);
+    const int i = (tile % tilesX) * blockDim.x + static_cast<int>(threadIdx.x);
+    const int j = (tile / tilesX) * blockDim.y + static_cast<int>(threadIdx.y);
+    const unsigned int over = dexel_apply_column(intervals, counts, i, j, nx, ny, k, cellX, cellY, steps, tileSteps,
+                                                 tileStart[tile], tileStart[tile + 1]);
     if (over != 0) atomicAdd(overflows, static_cast<unsigned long long>(over));
 }
 
@@ -970,6 +1011,8 @@ void free_dexel(Dexel* d)
     if (d->counts != nullptr) cudaFree(d->counts);
     if (d->overflows != nullptr) cudaFree(d->overflows);
     if (d->steps != nullptr) cudaFree(d->steps);
+    if (d->tileStart != nullptr) cudaFree(d->tileStart);
+    if (d->tileSteps != nullptr) cudaFree(d->tileSteps);
     if (d->volumePartials != nullptr) cudaFree(d->volumePartials);
     if (d->volumeOut != nullptr) cudaFree(d->volumeOut);
     delete d;
@@ -1021,6 +1064,31 @@ NC_API void* nc_dexel_create(int nx, int ny, float cellX, float cellY, float top
     return d;
 }
 
+/// <summary>Makes the device buffer for <paramref name="count"/> packed steps big enough, growing it only when it must.</summary>
+cudaError_t reserve_steps(Dexel* d, int count)
+{
+    if (d->stepsCapacity >= count) return cudaSuccess;
+    if (d->steps != nullptr) cudaFree(d->steps);
+    d->steps = nullptr;
+    d->stepsCapacity = 0;
+    const cudaError_t e = cudaMalloc(&d->steps, static_cast<size_t>(count) * kStepFloats * sizeof(float));
+    if (e == cudaSuccess) d->stepsCapacity = count;
+    return e;
+}
+
+/// <summary>The same for one of the int buffers the binning uploads.</summary>
+cudaError_t reserve_ints(int** buffer, int* capacity, int count)
+{
+    if (count <= 0) return cudaSuccess;
+    if (*capacity >= count) return cudaSuccess;
+    if (*buffer != nullptr) cudaFree(*buffer);
+    *buffer = nullptr;
+    *capacity = 0;
+    const cudaError_t e = cudaMalloc(reinterpret_cast<void**>(buffer), static_cast<size_t>(count) * sizeof(int));
+    if (e == cudaSuccess) *capacity = count;
+    return e;
+}
+
 NC_API int nc_dexel_apply_steps(void* dexel, const float* steps, int stepCount, double* kernelMs, double* uploadMs)
 {
     auto* d = static_cast<Dexel*>(dexel);
@@ -1033,24 +1101,17 @@ NC_API int nc_dexel_apply_steps(void* dexel, const float* steps, int stepCount, 
     if (uploadMs != nullptr) *uploadMs = 0;
 
     const size_t bytes = static_cast<size_t>(stepCount) * kStepFloats * sizeof(float);
-    if (d->stepsCapacity < stepCount)
+    cudaError_t e = reserve_steps(d, stepCount);
+    if (e != cudaSuccess)
     {
-        if (d->steps != nullptr) cudaFree(d->steps);
-        d->steps = nullptr;
-        d->stepsCapacity = 0;
-        cudaError_t e = cudaMalloc(&d->steps, bytes);
-        if (e != cudaSuccess)
-        {
-            set_cuda_error("nc_dexel_apply_steps: cudaMalloc", e);
-            return static_cast<int>(e);
-        }
-        d->stepsCapacity = stepCount;
+        set_cuda_error("nc_dexel_apply_steps: cudaMalloc", e);
+        return static_cast<int>(e);
     }
 
     cudaEvent_t t0, t1, t2;
     if (!make_events(t0, t1, t2)) return static_cast<int>(cudaErrorUnknown);
     cudaEventRecord(t0);
-    cudaError_t e = cudaMemcpy(d->steps, steps, bytes, cudaMemcpyHostToDevice);
+    e = cudaMemcpy(d->steps, steps, bytes, cudaMemcpyHostToDevice);
     cudaEventRecord(t1);
     if (e == cudaSuccess)
     {
@@ -1066,6 +1127,78 @@ NC_API int nc_dexel_apply_steps(void* dexel, const float* steps, int stepCount, 
     if (e != cudaSuccess)
     {
         set_cuda_error("nc_dexel_apply_steps", e);
+        destroy_events(t0, t1, t2);
+        return static_cast<int>(e);
+    }
+    float upload = 0.f, kernel = 0.f;
+    cudaEventElapsedTime(&upload, t0, t1);
+    cudaEventElapsedTime(&kernel, t1, t2);
+    destroy_events(t0, t1, t2);
+    if (uploadMs != nullptr) *uploadMs = upload;
+    if (kernelMs != nullptr) *kernelMs = kernel;
+    return 0;
+}
+
+/// <summary>Applies the same steps as <see cref="nc_dexel_apply_steps"/>, but a tile of columns only sees the steps that
+/// reach it, so the work grows with what the tool touches instead of with columns times steps.</summary>
+/// <param name="tileStart">The CSR: <paramref name="tileStart"/>[t] to <paramref name="tileStart"/>[t + 1] index
+/// <paramref name="tileSteps"/>, with tileCount + 1 entries.</param>
+/// <param name="tileSteps">The step indices per tile, ascending inside each tile — which is why the intervals and the
+/// overflow count do not depend on the binning.</param>
+NC_API int nc_dexel_apply_steps_binned(void* dexel, const float* steps, int stepCount, const int* tileStart,
+                                        int tileCount, const int* tileSteps, int tileStepCount, double* kernelMs,
+                                        double* uploadMs)
+{
+    auto* d = static_cast<Dexel*>(dexel);
+    if (d == nullptr || steps == nullptr || stepCount <= 0 || tileStart == nullptr || tileSteps == nullptr ||
+        tileCount <= 0)
+    {
+        set_error("nc_dexel_apply_steps_binned: invalid argument");
+        return 1;
+    }
+    const int tilesX = (d->nx + kDexelTile - 1) / kDexelTile;
+    const int tilesY = (d->ny + kDexelTile - 1) / kDexelTile;
+    if (tileCount != tilesX * tilesY)
+    {
+        set_error("nc_dexel_apply_steps_binned: %d tiles for a %d x %d map, expected %d", tileCount, d->nx, d->ny,
+                  tilesX * tilesY);
+        return 1;
+    }
+    if (kernelMs != nullptr) *kernelMs = 0;
+    if (uploadMs != nullptr) *uploadMs = 0;
+
+    cudaError_t e = reserve_steps(d, stepCount);
+    if (e == cudaSuccess) e = reserve_ints(&d->tileStart, &d->tileCapacity, tileCount + 1);
+    if (e == cudaSuccess) e = reserve_ints(&d->tileSteps, &d->tileStepsCapacity, tileStepCount);
+    if (e != cudaSuccess)
+    {
+        set_cuda_error("nc_dexel_apply_steps_binned: cudaMalloc", e);
+        return static_cast<int>(e);
+    }
+
+    cudaEvent_t t0, t1, t2;
+    if (!make_events(t0, t1, t2)) return static_cast<int>(cudaErrorUnknown);
+    cudaEventRecord(t0);
+    e = cudaMemcpy(d->steps, steps, static_cast<size_t>(stepCount) * kStepFloats * sizeof(float),
+                   cudaMemcpyHostToDevice);
+    if (e == cudaSuccess)
+        e = cudaMemcpy(d->tileStart, tileStart, (tileCount + 1) * sizeof(int), cudaMemcpyHostToDevice);
+    if (e == cudaSuccess && tileStepCount > 0)
+        e = cudaMemcpy(d->tileSteps, tileSteps, static_cast<size_t>(tileStepCount) * sizeof(int),
+                       cudaMemcpyHostToDevice);
+    cudaEventRecord(t1);
+    if (e == cudaSuccess)
+    {
+        dexel_apply_binned_kernel<<<static_cast<unsigned int>(tileCount), dim3(kDexelTile, kDexelTile)>>>(
+            d->intervals, d->counts, d->overflows, d->nx, d->ny, d->k, d->cellX, d->cellY, d->steps, d->tileStart,
+            d->tileSteps, tilesX);
+        e = cudaGetLastError();
+    }
+    cudaEventRecord(t2);
+    if (e == cudaSuccess) e = cudaDeviceSynchronize();
+    if (e != cudaSuccess)
+    {
+        set_cuda_error("nc_dexel_apply_steps_binned", e);
         destroy_events(t0, t1, t2);
         return static_cast<int>(e);
     }

@@ -83,13 +83,46 @@ Steps are binned by tiles of columns: each step's bounding box (tool box swept b
 touches (CSR on the host), and a GPU block works on one tile with only those steps. Removal is a union, so the order of
 steps inside a tile does not matter for the result (only the overflow counting can differ).
 
+## Binning (step 2)
+
+Built: `src/Stykker.NanoCut.Gpu/StepBins.cs` builds the CSR on the host — for every step the swept box of the tool,
+grown by the radius and a margin of 1 nm, is intersected with the tiles of 16 × 16 columns, the count-then-place pass
+writes every tile's step indices in ascending order. `nc_dexel_apply_steps_binned` in `zmap.cu` uploads it and launches
+one block per tile; `CudaBackend.BinSteps` (on by default) chooses between that and the old launch. Both go through the
+same `dexel_apply_column`, so a column is subtracted in the same order whichever launch runs it.
+
+Measured with `bench/Stykker.NanoCut.LongPrograms dexel` on the machine of `docs/gpu-findings.md` (RTX 5070 Ti,
+sm_120): a serpentine finishing pass of a 0.2 mm ball over a 20 mm square map at 0.05 mm cells (400 × 400 = 160 000
+columns), 4 intervals per column, steps 0.05 mm apart, best of 2. Both launches get the same program on the same map.
+
+| Steps | Rows | Column steps (unbinned) | Binned kernel | Bin (host) | Upload | Binned wall | Unbinned kernel | Unbinned wall | Kernel × | Wall × | Removed (both) |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 24 800 | 62 | 9 920 000 | 0.1 ms | 0.6 ms | 0.3 ms | 2.3 ms | 13.6 ms | 14.9 ms | 102× | 6.5× | 90.183421 mm³ |
+| 99 200 | 248 | 39 680 000 | 0.4 ms | 2.2 ms | 0.7 ms | 5.2 ms | 77.9 ms | 80.1 ms | 212× | 15.4× | 99.454883 mm³ |
+| 396 800 | 992 | 158 720 000 | 1.3 ms | 9.4 ms | 2.4 ms | 18.0 ms | 320.4 ms | 327.9 ms | 247× | 18.2× | 99.965987 mm³ |
+| 793 600 | 1984 | 317 440 000 | 2.7 ms | 18.9 ms | 5.1 ms | 36.8 ms | 640.7 ms | 655.0 ms | 240× | 17.8× | 99.991493 mm³ |
+
+What the table says:
+
+- **The result does not move.** Both launches report the *same* removed volume to the last digit at every size (0
+  overflows in every case, since a finishing pass never fills a column), which is what `DexelMapTests
+  .BinnedLaunchGivesTheSameBitsAsTheUnbinnedOne` asserts cell by cell on smaller maps, and what the ascending CSR is
+  for.
+- **The kernel follows what the tool touches, not the length of the program.** 793 600 steps cost 2.7 ms, against 640.7
+  ms for the same program with every column looking at every step. The factor settles at ~240×; it is lower at the
+  smallest case only because the kernel there is 0.1 ms of work.
+- **The host-side binning is what is left to win.** It is O(steps) — 18.9 ms of the 36.8 ms wall at 793 600 steps, more
+  than the kernel itself by 7×. Above about 10⁶ steps per call the CSR build, not the GPU, sets the pace; larger tiles,
+  or a binning kernel on the device, are the ways out. Logged as a follow-up in `docs/todo.md`.
+
 ## Steps
 
 - [x] **1. Baselines.** `bench/Stykker.NanoCut.LongPrograms` (new): the gear generation with a rack for z = 10, 20, 40
       and grinding with 60 … 1920 grains on the exact kernel, with time **and result** (area against the ideal
       involute gear, flank deviation, removed volume, Ra/Rz), plus the profiles as CSV under `--out`. Numbers above.
-- [ ] **2. Binning for the existing ball dexel/Z-map** (tiles + CSR), measured on a long synthetic ball program
+- [x] **2. Binning for the existing ball dexel/Z-map** (tiles + CSR), measured on a long synthetic ball program
       (e.g. a finishing pass with 0.05 mm steps, 10^5 to 10^6 steps): the speed-up that every later step relies on.
+      Numbers in "Binning (step 2)" below.
 - [ ] **3. Convex tool + pose sequence** in the dexel kernel (CPU reference + CUDA), tests against the exact kernel on
       small cases (a box tool, an octahedron, a rotating tool).
 - [ ] **4. Grinding preview**: grains of a `GrindingWheel` as convex tools on their trochoids; compare the removed
@@ -101,6 +134,30 @@ steps inside a tile does not matter for the result (only the overflow counting c
 ## Log
 
 Newest first.
+
+### 2026-10-04, Qwen
+
+- Step 2 done: the steps are binned into tiles of 16 × 16 columns on the host (`StepBins.cs`, CSR) and the CUDA dexel
+  kernel launches one block per tile with only the steps that reach it (`nc_dexel_apply_steps_binned`). Measured on a
+  finishing pass of 24 800 … 793 600 steps over 160 000 columns: the kernel goes from 640.7 ms to 2.7 ms at the longest
+  case, a factor of ~240 that does not change with the program, because the work follows what the ball touches instead
+  of columns × steps. Both launches return the same removed volume to the last digit at every size. Table above, bench
+  mode `dexel`, one page: `bench/results-2026-10-04-long-programs-dexel.html`.
+- **The result is pinned, not hoped for.** `StepBinsTests.EveryStepThatReachesAColumnIsInThatColumnsTile` walks 400
+  steps over a 96 × 96 map and checks every one of the 20 348 (step, column) pairs that `ToolProfile.Span` accepts
+  against the CSR: none may be missing, or the launch silently leaves columns uncut and cannot report it.
+  `DexelMapTests.BinnedLaunchGivesTheSameBitsAsTheUnbinnedOne` runs the same 300-step program at 16, 32, 64 and 301
+  cells on both launches and compares every column's count and intervals bit for bit, overflows included.
+- **The first version of the binned kernel was wrong, and the binning was not.** The CSR was complete (no step that
+  reaches a column missing) while the result was not: at 301 cells, 83 336 of 90 601 columns differed and the removed
+  volume read 9.29 mm³ against 3944.06 mm³. Two candidates, and the cheap experiment settled it: with the CSR slice
+  ignored and the kernel looping all steps, the binned launch reproduced the unbinned result exactly — so the launch
+  geometry and the tile → column mapping were fine. The fault was that `dexel_apply_column` read `first … last` as
+  step indices while a CSR range is positions in `tileSteps`. It takes an optional index list now, null for the batch
+  itself, and the two launches share the helper.
+- **What the binning costs.** It is O(steps) on the host: 18.9 ms of the 36.8 ms wall at 793 600 steps, seven times the
+  kernel itself. That is invisible at 25 000 steps and dominant at 10⁶, so it belongs on the list of what step 3 has to
+  think about (coarser tiles, or binning on the device); `docs/todo.md` carries it.
 
 ### 2026-10-03, Qwen
 

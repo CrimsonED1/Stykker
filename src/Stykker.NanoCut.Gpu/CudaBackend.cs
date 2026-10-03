@@ -41,6 +41,15 @@ public sealed class CudaBackend : IZMapBackend, IZMapQueryBackend, IDexelBackend
     /// </summary>
     public bool PinnedReadBack { get; init; } = true;
 
+    /// <summary>
+    /// Whether the steps are binned into tiles of columns before a dexel launch (on by default). A binned launch gives
+    /// each block only the steps that reach its columns, so the work follows what the tool touches instead of
+    /// columns × steps; the price is the host-side binning, reported as <see cref="ZMapTiming.BinMs"/>. Turn it off to
+    /// measure the unbinned launch, which is what the CPU backend and <see cref="Apply(ZMap, ReadOnlySpan{BallStep},
+    /// ZMapReadBack)"/> always use.
+    /// </summary>
+    public bool BinSteps { get; init; } = true;
+
     /// <inheritdoc />
     public string Name => $"cuda:{DeviceIndex}";
 
@@ -294,11 +303,27 @@ public sealed class CudaBackend : IZMapBackend, IZMapQueryBackend, IDexelBackend
         var wall = Stopwatch.StartNew();
         float[] packed = ToolProfile.Pack(steps, map.OriginMm);
         DeviceDexel device = DexelOf(map, out double firstCall);
-        CudaNative.Check(CudaNative.DexelApplySteps(device.Handle, packed, steps.Length,
-            out double kernelMs, out double uploadMs), "nc_dexel_apply_steps");
+        double kernelMs, uploadMs, binMs;
+        if (BinSteps)
+        {
+            var bin = Stopwatch.StartNew();
+            StepBins.Bins bins = StepBins.Build(packed, map.CellsX, map.CellsY,
+                (float)map.CellSizeXMm, (float)map.CellSizeYMm);
+            bin.Stop();
+            binMs = bin.Elapsed.TotalMilliseconds;
+            CudaNative.Check(CudaNative.DexelApplyStepsBinned(device.Handle, packed, steps.Length,
+                bins.TileStart, bins.TileCount, bins.TileSteps, bins.References,
+                out kernelMs, out uploadMs), "nc_dexel_apply_steps_binned");
+        }
+        else
+        {
+            binMs = 0;
+            CudaNative.Check(CudaNative.DexelApplySteps(device.Handle, packed, steps.Length,
+                out kernelMs, out uploadMs), "nc_dexel_apply_steps");
+        }
         double downloadMs = readBack == ZMapReadBack.Always ? ReadDexelDevice(device, map) : 0;
         wall.Stop();
-        return new ZMapTiming(kernelMs, uploadMs, downloadMs, firstCall, wall.Elapsed.TotalMilliseconds);
+        return new ZMapTiming(kernelMs, uploadMs, downloadMs, firstCall, wall.Elapsed.TotalMilliseconds, binMs);
     }
 
     /// <inheritdoc />

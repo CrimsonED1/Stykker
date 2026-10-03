@@ -1,4 +1,4 @@
-// Usage: dotnet LongPrograms.dll [gear|grinding|all] [options]
+// Usage: dotnet LongPrograms.dll [gear|grinding|dexel|all] [options]
 //
 // Step 1 of docs/long-programs.md: the baselines of the two long programs on the exact kernel. Every later GPU preview
 // is checked against what this bench writes, so a row carries the *result* (area, flank deviation, removed volume,
@@ -11,6 +11,12 @@
 //   --grains 60,240      grinding: grain counts of a random wheel (--seed)
 //   --seed 1             grinding: seed of the wheel
 //   --length 0.8         grinding: feed length in mm (otherwise the demo default: 20 mm/s, 3000 rpm)
+//   --steps 25000,...    dexel: step counts of the finishing pass (--map-mm, --cell-mm, --step-mm, --radius-mm)
+//   --map-mm 20          dexel: edge of the square map in mm
+//   --cell-mm 0.05       dexel: cell size in mm; the map has (map / cell)² columns
+//   --step-mm 0.05       dexel: distance between two steps in mm
+//   --radius-mm 0.2      dexel: ball radius in mm
+//   --intervals 4        dexel: intervals per column (1 to 16)
 //   --repeat 1           runs per case, the best wall time is reported (a gear case is already minutes)
 //   --cold                do not warm up (a grinding case is short enough to measure the JIT otherwise)
 //   --out <dir>          write long-programs-results.json, -results.md and the reference profiles into <dir>
@@ -23,6 +29,8 @@
 // A grinding run is warmed up first, on the smallest wheel, until three consecutive runs agree within 10 % and at
 // least five have run (bench/Stykker.NanoCut.Bench, --warm: round 6's lesson is that one pass still runs tier-0 code,
 // which is worth a factor of 4.7 on the 60-grain case); the gear case runs for minutes and needs no warm-up.
+// The dexel mode runs on the CUDA device and needs none of that: the same kernel serves every case, and the first
+// call's context creation is reported apart (FirstCallMs).
 using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.InteropServices;
@@ -33,12 +41,13 @@ using Stykker.NanoCut;
 using Stykker.NanoCut.Cutting;
 using Stykker.NanoCut.Geometry2D;
 using Stykker.NanoCut.Geometry3D;
+using Stykker.NanoCut.Gpu;
 
 var opt = Options.Parse(args);
 
-Console.WriteLine($"long programs on the exact kernel: {Environment.ProcessorCount} logical processors, " +
+Console.WriteLine($"long programs: {Environment.ProcessorCount} logical processors, " +
                   $"{RuntimeInformation.FrameworkDescription}, " +
-                  $"{(opt.Repeat > 1 ? $"best of {opt.Repeat}" : "single run")}");
+                  $"{(opt.Repeat > 1 ? $"best of {opt.Repeat}" : "single run")}, mode {opt.Mode}");
 Console.WriteLine();
 
 // Grinding before gear, and that order is part of the measurement: after the 2D gear kernel has run, the same 3D
@@ -46,8 +55,11 @@ Console.WriteLine();
 // is not the GC mode (server GC: 355 ms), not tiered compilation (TieredCompilation=0: 411 ms), not the machine (a
 // fresh process right after the same load reads 198 ms) and not the process running long (5.8 s of 3D work first:
 // 185 ms). Gear after grinding is unaffected, so the order below measures both in their own steady state.
-var grindRows = opt.Mode == "gear" ? new List<GrindingRow>() : GrindingCases.Run(opt);
-var gearRows = opt.Mode == "grinding" ? new List<GearRow>() : GearCases.Run(opt);
+var grindRows = opt.Mode is "gear" or "dexel" ? new List<GrindingRow>() : GrindingCases.Run(opt);
+var gearRows = opt.Mode is "grinding" or "dexel" ? new List<GearRow>() : GearCases.Run(opt);
+// The dexel mode last: it is the only one on the device, and a CUDA context built after minutes of CPU work would
+// make its first call read worse than it is.
+var dexelRows = opt.Mode is "gear" or "grinding" ? new List<DexelRow>() : DexelCases.Run(opt);
 
 if (opt.Out is { } outDir)
 {
@@ -97,11 +109,33 @@ if (opt.Out is { } outDir)
             ["profileXmm"] = r.ProfileXmm,
             ["cells"] = r.Cells,
         })]),
+        ["dexel"] = new JsonArray([.. dexelRows.Select(r => (JsonNode)new JsonObject
+        {
+            ["steps"] = r.Steps,
+            ["rows"] = r.Rows,
+            ["mapMm"] = r.MapMm,
+            ["cellMm"] = r.CellMm,
+            ["stepMm"] = r.StepMm,
+            ["radiusMm"] = r.RadiusMm,
+            ["columns"] = r.Columns,
+            ["maxIntervals"] = r.MaxIntervals,
+            ["firstCallMs"] = r.FirstCallMs,
+            ["binnedKernelMs"] = r.BinnedKernelMs,
+            ["binnedUploadMs"] = r.BinnedUploadMs,
+            ["binnedBinMs"] = r.BinnedBinMs,
+            ["binnedWallMs"] = r.BinnedWallMs,
+            ["unbinnedKernelMs"] = r.UnbinnedKernelMs,
+            ["unbinnedUploadMs"] = r.UnbinnedUploadMs,
+            ["unbinnedWallMs"] = r.UnbinnedWallMs,
+            ["removedMm3"] = r.RemovedMm3,
+            ["volumeAgreement"] = r.VolumeAgreement,
+            ["overflows"] = r.Overflows,
+        })]),
     };
     File.WriteAllText(Path.Combine(outDir, "long-programs-results.json"),
         json.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
     File.WriteAllText(Path.Combine(outDir, "long-programs-results.md"),
-        Report.Markdown(opt, gearRows, grindRows), Encoding.UTF8);
+        Report.Markdown(opt, gearRows, grindRows, dexelRows), Encoding.UTF8);
     foreach (var r in gearRows) GearCases.WriteProfile(outDir, r);
     foreach (var r in grindRows) GrindingCases.WriteProfile(outDir, r);
     Console.WriteLine($"\nwrote {Path.Combine(outDir, "long-programs-results.json")}, -results.md and the reference profiles");
@@ -128,6 +162,24 @@ sealed record GrindingRow(int Grains, int Seed, double WallMs, double StockMm3, 
 {
     /// <summary>Surface across the ground width at <see cref="ProfileXmm"/> (mm), kept for the same reason.</summary>
     public double[]? Surface { get; init; }
+}
+
+/// <summary>
+/// One length of the synthetic finishing pass on the CUDA device, run twice: once with the steps binned into tiles
+/// of columns (<c>CudaBackend.BinSteps</c>) and once with every column looking at every step. Both runs get the same
+/// program on the same map, and the removed volume says whether the binning changed anything -- it must not.
+/// </summary>
+sealed record DexelRow(int Steps, int Rows, double MapMm, double CellMm, double StepMm, double RadiusMm,
+    int Columns, int MaxIntervals, double FirstCallMs,
+    double BinnedKernelMs, double BinnedUploadMs, double BinnedBinMs, double BinnedWallMs,
+    double UnbinnedKernelMs, double UnbinnedUploadMs, double UnbinnedWallMs,
+    double RemovedMm3, bool VolumeAgreement, long Overflows)
+{
+    /// <summary>What the binned launch saves on the kernel alone.</summary>
+    public double SpeedUp => UnbinnedKernelMs / BinnedKernelMs;
+
+    /// <summary>What it saves on the whole call, the host-side binning included.</summary>
+    public double WallSpeedUp => UnbinnedWallMs / BinnedWallMs;
 }
 
 static class GearCases
@@ -328,9 +380,114 @@ static class GrindingCases
     }
 }
 
+/// <summary>
+/// Step 2 of docs/long-programs.md: a finishing pass -- the long ball program a preview is for -- on the CUDA dexel
+/// kernel, with and without the tile binning. Map, cell and step distance stay fixed while the program grows, so the
+/// unbinned launch's work (every column against every step) grows with the program and the binned launch's grows only
+/// with what the tool actually touches.
+/// </summary>
+static class DexelCases
+{
+    internal const double StockMm = 2.0;
+
+    /// <summary>
+    /// A serpentine finishing pass: rows along x at a fixed height, <paramref name="perRow"/> steps of
+    /// <paramref name="stepMm"/> each. The rows are spread over the map, so a longer program is a finer y pitch
+    /// rather than a longer trail -- the shape a finishing pass has.
+    /// </summary>
+    private static BallStep[] Pass(int rows, int perRow, double mapMm, double stepMm, double radiusMm, double z)
+    {
+        var steps = new BallStep[rows * perRow];
+        for (int j = 0; j < rows; j++)
+        {
+            double y = mapMm * (j + 0.5) / rows;
+            bool forward = (j & 1) == 0;
+            for (int i = 0; i < perRow; i++)
+            {
+                double x = stepMm * (0.5 + (forward ? i : perRow - 1 - i));
+                steps[j * perRow + i] = new BallStep((x, y, z), (x + stepMm, y, z), radiusMm);
+            }
+        }
+        return steps;
+    }
+
+    private readonly record struct Launch(double KernelMs, double UploadMs, double BinMs, double WallMs,
+        double VolumeMm3, long Overflows);
+
+    /// <summary>One launch of the whole program on a map of its own, timed by the map itself.</summary>
+    private static Launch Measure(Options opt, CudaBackend backend, BallStep[] steps, int cells)
+    {
+        var map = new DexelMap(0, 0, 0, opt.MapMm, opt.MapMm, StockMm, cells, cells, opt.Intervals, backend);
+        map.ApplySteps(steps, ZMapReadBack.Never);
+        double volume = map.BackendRemovedVolumeMm3;
+        return new Launch(map.LastTiming.KernelMs, map.LastTiming.UploadMs, map.LastTiming.BinMs,
+            map.LastTiming.WallMs, volume, map.Overflows);
+    }
+
+    internal static List<DexelRow> Run(Options opt)
+    {
+        var rows = new List<DexelRow>();
+        var binned = new CudaBackend { BinSteps = true };
+        var plain = new CudaBackend { BinSteps = false };
+        if (!binned.IsAvailable)
+        {
+            Console.WriteLine($"dexel not run: {binned.UnavailableReason}");
+            return rows;
+        }
+
+        int cells = (int)Math.Round(opt.MapMm / opt.CellMm);
+        int perRow = (int)Math.Round(opt.MapMm / opt.StepMm);
+        // The ball's centre just under the top: a finishing pass takes off about one radius, not the whole stock.
+        double z = StockMm - 0.25 * opt.RadiusMm;
+        Console.WriteLine($"finishing pass on the dexel kernel: {cells}x{cells} columns over {opt.MapMm:F1} mm " +
+                          $"({opt.CellMm:F3} mm cells, {opt.Intervals} intervals per column), ball r {opt.RadiusMm:F2} mm, " +
+                          $"steps {opt.StepMm:F3} mm apart, device {binned.Name}");
+
+        // The context and the module are created before the first measured case, so its FirstCallMs is what the
+        // cases read and not a one-off that belongs to no case.
+        var warm = new DexelMap(0, 0, 0, opt.MapMm, opt.MapMm, StockMm, 16, 16, opt.Intervals, binned);
+        warm.ApplySteps(Pass(2, 4, opt.MapMm, opt.StepMm, opt.RadiusMm, z), ZMapReadBack.Never);
+        Console.WriteLine($"context and module ready in {warm.LastTiming.FirstCallMs:F0} ms, not measured");
+        Console.WriteLine();
+
+        foreach (int want in opt.Steps)
+        {
+            int caseRows = Math.Max(1, want / perRow), count = caseRows * perRow;
+            BallStep[] steps = Pass(caseRows, perRow, opt.MapMm, opt.StepMm, opt.RadiusMm, z);
+            Console.WriteLine($"{count,7} steps over {caseRows,4} rows ({count * cells,10:N0} column steps unbinned) ...");
+
+            Launch bestBinned = default, bestPlain = default;
+            bool haveBinned = false, havePlain = false;
+            for (int run = 0; run < opt.Repeat; run++)
+            {
+                Launch b = Measure(opt, binned, steps, cells);
+                if (!haveBinned || b.WallMs < bestBinned.WallMs) { bestBinned = b; haveBinned = true; }
+                Launch p = Measure(opt, plain, steps, cells);
+                if (!havePlain || p.WallMs < bestPlain.WallMs) { bestPlain = p; havePlain = true; }
+            }
+
+            var row = new DexelRow(count, caseRows, opt.MapMm, opt.CellMm, opt.StepMm, opt.RadiusMm, cells * cells,
+                opt.Intervals, warm.LastTiming.FirstCallMs,
+                bestBinned.KernelMs, bestBinned.UploadMs, bestBinned.BinMs, bestBinned.WallMs,
+                bestPlain.KernelMs, bestPlain.UploadMs, bestPlain.WallMs,
+                bestBinned.VolumeMm3, bestBinned.VolumeMm3 == bestPlain.VolumeMm3, bestBinned.Overflows);
+            Console.WriteLine($"  binned    kernel {row.BinnedKernelMs,9:F1} ms   bin {row.BinnedBinMs,8:F1} ms   " +
+                              $"upload {row.BinnedUploadMs,6:F1} ms   wall {row.BinnedWallMs,9:F1} ms");
+            Console.WriteLine($"  unbinned  kernel {row.UnbinnedKernelMs,9:F1} ms   {new string(' ', 11)}   " +
+                              $"upload {row.UnbinnedUploadMs,6:F1} ms   wall {row.UnbinnedWallMs,9:F1} ms");
+            Console.WriteLine($"  kernel {row.SpeedUp,6:F1}x   wall {row.WallSpeedUp,5:F1}x   removed {row.RemovedMm3:F6} mm3 " +
+                              $"({(row.VolumeAgreement ? "identical" : "DIFFERENT")} in both launches)   " +
+                              $"overflows {row.Overflows}");
+            Console.WriteLine();
+            rows.Add(row);
+        }
+        return rows;
+    }
+}
+
 static class Report
 {
-    internal static string Markdown(Options opt, List<GearRow> gear, List<GrindingRow> grind)
+    internal static string Markdown(Options opt, List<GearRow> gear, List<GrindingRow> grind, List<DexelRow> dexel)
     {
         var inv = CultureInfo.InvariantCulture;
         string N(double v, string format) => v.ToString(format, inv);
@@ -373,6 +530,27 @@ static class Report
                           $"{N(r.MaxChipMm * 1000, "F2")} | {N(r.RaMm * 1000, "F2")} | {N(r.RzMm * 1000, "F2")} |");
             lines.Add("");
         }
+        if (dexel.Count > 0)
+        {
+            lines.Add("## Step binning on a finishing pass (CUDA dexel kernel)");
+            lines.Add("");
+            lines.Add($"A serpentine finishing pass of a {dexel[0].RadiusMm:0.##} mm ball over a {dexel[0].MapMm:0.##} mm " +
+                      $"square map of {dexel[0].Columns:N0} columns at {dexel[0].StepMm:0.###} mm steps. The binned launch " +
+                      "gives every block of 16x16 columns only the steps that reach it; the unbinned one has every " +
+                      "column test every step. Both run the same program on the same map, so the removed volume must " +
+                      "come out the same -- that is what the test " +
+                      "`DexelMapTests.BinnedLaunchGivesTheSameBitsAsTheUnbinnedOne` pins down.");
+            lines.Add("");
+            lines.Add("| Steps | Rows | Binned kernel (ms) | Bin (ms) | Upload (ms) | Binned wall (ms) | " +
+                      "Unbinned kernel (ms) | Upload (ms) | Unbinned wall (ms) | Kernel × | Wall × | Removed (mm³) |");
+            lines.Add("| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |");
+            foreach (var r in dexel)
+                lines.Add($"| {r.Steps} | {r.Rows} | {N(r.BinnedKernelMs, "F1")} | {N(r.BinnedBinMs, "F1")} | " +
+                          $"{N(r.BinnedUploadMs, "F1")} | {N(r.BinnedWallMs, "F1")} | {N(r.UnbinnedKernelMs, "F1")} | " +
+                          $"{N(r.UnbinnedUploadMs, "F1")} | {N(r.UnbinnedWallMs, "F1")} | {N(r.SpeedUp, "F1")} | " +
+                          $"{N(r.WallSpeedUp, "F2")} | {N(r.RemovedMm3, "F6")} |");
+            lines.Add("");
+        }
         return string.Join('\n', lines) + "\n";
     }
 }
@@ -388,6 +566,12 @@ sealed class Options
     public required int[] Grains { get; init; }
     public required int Seed { get; init; }
     public required double LengthMm { get; init; }
+    public required int[] Steps { get; init; }
+    public required double MapMm { get; init; }
+    public required double CellMm { get; init; }
+    public required double StepMm { get; init; }
+    public required double RadiusMm { get; init; }
+    public required int Intervals { get; init; }
     public required int Repeat { get; init; }
     public required bool Cold { get; init; }
     public string? Out { get; init; }
@@ -404,10 +588,12 @@ sealed class Options
         if (args.Length > 0 && !args[0].StartsWith('-'))
         {
             mode = args[0];
-            if (mode is not ("gear" or "grinding" or "all"))
-                throw new ArgumentException($"unknown mode {mode}: use gear, grinding or all. Options: [--teeth 20,40] " +
-                                            "[--module 2] [--rack-teeth 7] [--sweep 30] [--grains 60,240] [--seed 1] " +
-                                            "[--length 0.8] [--repeat 1] [--cold] [--out dir]");
+            if (mode is not ("gear" or "grinding" or "dexel" or "all"))
+                throw new ArgumentException($"unknown mode {mode}: use gear, grinding, dexel or all. Options: " +
+                                            "[--teeth 20,40] [--module 2] [--rack-teeth 7] [--sweep 30] " +
+                                            "[--grains 60,240] [--seed 1] [--length 0.8] [--steps 25000] " +
+                                            "[--map-mm 20] [--cell-mm 0.05] [--step-mm 0.05] [--radius-mm 0.2] " +
+                                            "[--intervals 4] [--repeat 1] [--cold] [--out dir]");
         }
         return new Options
         {
@@ -420,6 +606,12 @@ sealed class Options
             Grains = Ints(Value("--grains") ?? "60,240,960,1920"),
             Seed = int.Parse(Value("--seed") ?? "1", CultureInfo.InvariantCulture),
             LengthMm = double.Parse(Value("--length") ?? "0.8", CultureInfo.InvariantCulture),
+            Steps = Ints(Value("--steps") ?? "24800,99200,396800,793600"),
+            MapMm = double.Parse(Value("--map-mm") ?? "20", CultureInfo.InvariantCulture),
+            CellMm = double.Parse(Value("--cell-mm") ?? "0.05", CultureInfo.InvariantCulture),
+            StepMm = double.Parse(Value("--step-mm") ?? "0.05", CultureInfo.InvariantCulture),
+            RadiusMm = double.Parse(Value("--radius-mm") ?? "0.2", CultureInfo.InvariantCulture),
+            Intervals = int.Parse(Value("--intervals") ?? "4", CultureInfo.InvariantCulture),
             Repeat = int.Parse(Value("--repeat") ?? "1", CultureInfo.InvariantCulture),
             Cold = args.Contains("--cold"),
             Out = Value("--out"),

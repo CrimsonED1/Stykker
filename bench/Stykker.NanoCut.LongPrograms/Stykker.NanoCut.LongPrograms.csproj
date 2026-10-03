@@ -1,5 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <!-- Long-program bench CLI: baselines of the two long programs on the exact kernel (docs/long-programs.md, step 1).
+  <!-- Long-program bench CLI: baselines of the two long programs on the exact kernel (docs/long-programs.md, step 1)
+       and the GPU step binning measured on a long synthetic ball program (step 2).
        Nothing here ships; it measures what a GPU preview of the same program has to reproduce. -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>
@@ -14,5 +15,7 @@
     <ProjectReference Include="../../src/Stykker.NanoCut.Geometry2D/Stykker.NanoCut.Geometry2D.csproj" />
     <ProjectReference Include="../../src/Stykker.NanoCut.Geometry3D/Stykker.NanoCut.Geometry3D.csproj" />
     <ProjectReference Include="../../src/Stykker.NanoCut.Cutting/Stykker.NanoCut.Cutting.csproj" />
+    <!-- The GPU preview the dexel mode measures (CudaBackend.BinSteps). -->
+    <ProjectReference Include="../../src/Stykker.NanoCut.Gpu/Stykker.NanoCut.Gpu.csproj" />
   </ItemGroup>
 </Project>
