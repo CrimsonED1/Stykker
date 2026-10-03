@@ -7,7 +7,7 @@ namespace Stykker.NanoCut.Gpu;
 /// the rows of the height field. It needs nothing but the runtime, so it is what CI and every machine without a GPU
 /// uses, and what the GPU results are checked against.
 /// </summary>
-public sealed class CpuBackend : IZMapBackend
+public sealed class CpuBackend : IZMapBackend, IZMapQueryBackend
 {
     /// <summary>A shared backend on all logical processors.</summary>
     public static CpuBackend Instance { get; } = new();
@@ -32,7 +32,10 @@ public sealed class CpuBackend : IZMapBackend
     public string? UnavailableReason => null;
 
     /// <inheritdoc />
-    public ZMapTiming Apply(ZMap map, ReadOnlySpan<BallStep> steps)
+    public bool KeepsHeightsOnHost => true;
+
+    /// <inheritdoc />
+    public ZMapTiming Apply(ZMap map, ReadOnlySpan<BallStep> steps, ZMapReadBack readBack)
     {
         float[] packed = ToolProfile.Pack(steps, map.OriginMm);
         int stepCount = steps.Length;
@@ -63,5 +66,99 @@ public sealed class CpuBackend : IZMapBackend
 
         double ms = sw.Elapsed.TotalMilliseconds;
         return new ZMapTiming(ms, 0, 0, 0, ms);
+    }
+
+    /// <inheritdoc />
+    public double ReadHeights(ZMap map) => 0;
+
+    /// <inheritdoc />
+    public double RemovedVolumeMm3(ZMap map) => map.RemovedVolumeMm3;
+
+    /// <summary>
+    /// Reads the height at every point, in the same way as the CUDA kernel, from the field in
+    /// <see cref="ZMap.Heights"/>. The two spans are staged into arrays first, because a
+    /// <see langword="ref"/> struct cannot be captured by the parallel loop.
+    /// </summary>
+    public ZMapTiming SampleHeights(ZMap map, ReadOnlySpan<SamplePoint> points, Span<float> outHeights)
+    {
+        RequireCurrent(map);
+        int nx = map.CellsX, ny = map.CellsY;
+        float cx = (float)map.CellSizeXMm, cy = (float)map.CellSizeYMm;
+        float[] heights = map.Heights;
+        float ox = (float)map.OriginMm.X, oy = (float)map.OriginMm.Y;
+        var options = new ParallelOptions { MaxDegreeOfParallelism = Parallelism };
+
+        var ask = points.ToArray();
+        var answer = new float[ask.Length];
+        var sw = Stopwatch.StartNew();
+        Parallel.For(0, ask.Length, options, i =>
+        {
+            var p = ask[i];
+            answer[i] = Sample(heights, nx, ny, cx, cy, (float)p.X - ox, (float)p.Y - oy);
+        });
+        sw.Stop();
+
+        answer.CopyTo(outHeights);
+        double ms = sw.Elapsed.TotalMilliseconds;
+        return new ZMapTiming(ms, 0, 0, 0, ms);
+    }
+
+    /// <summary>
+    /// Reads how deep the ball cuts at every pose, in the same way as the CUDA kernel, from the field in
+    /// <see cref="ZMap.Heights"/>. The two spans are staged into arrays first, because a
+    /// <see langword="ref"/> struct cannot be captured by the parallel loop.
+    /// </summary>
+    public ZMapTiming ProbeMaterial(ZMap map, ReadOnlySpan<ToolPose> poses, Span<float> outPenetrationMm)
+    {
+        RequireCurrent(map);
+        int nx = map.CellsX, ny = map.CellsY;
+        float cx = (float)map.CellSizeXMm, cy = (float)map.CellSizeYMm;
+        float[] heights = map.Heights;
+        float ox = (float)map.OriginMm.X, oy = (float)map.OriginMm.Y, oz = (float)map.OriginMm.Z;
+        var options = new ParallelOptions { MaxDegreeOfParallelism = Parallelism };
+
+        var ask = poses.ToArray();
+        var answer = new float[ask.Length];
+        var sw = Stopwatch.StartNew();
+        Parallel.For(0, ask.Length, options, i =>
+        {
+            var p = ask[i];
+            float h = Sample(heights, nx, ny, cx, cy, (float)p.X - ox, (float)p.Y - oy);
+            answer[i] = MathF.Max(0f, h - ((float)p.Z - oz - (float)p.RadiusMm));
+        });
+        sw.Stop();
+
+        answer.CopyTo(outPenetrationMm);
+        double ms = sw.Elapsed.TotalMilliseconds;
+        return new ZMapTiming(ms, 0, 0, 0, ms);
+    }
+
+    /// <summary>
+    /// Bilinear height between the four surrounding cell centres, clamped to the field. This mirrors
+    /// <c>sample_height</c> in <c>zmap.cu</c> operation for operation, so the CUDA kernel and this reference differ
+    /// only by the fused multiply-add that nvcc contracts.
+    /// </summary>
+    internal static float Sample(float[] heights, int nx, int ny, float cellX, float cellY, float x, float y)
+    {
+        float gx = Math.Clamp(x / cellX - 0.5f, 0f, nx - 1);
+        float gy = Math.Clamp(y / cellY - 0.5f, 0f, ny - 1);
+        int i0 = (int)gx, j0 = (int)gy;
+        int i1 = i0 + 1 < nx ? i0 + 1 : nx - 1;
+        int j1 = j0 + 1 < ny ? j0 + 1 : ny - 1;
+        float fx = gx - i0, fy = gy - j0;
+        int r0 = j0 * nx, r1 = j1 * nx;
+        float a = heights[r0 + i0] + (heights[r0 + i1] - heights[r0 + i0]) * fx;
+        float b = heights[r1 + i0] + (heights[r1 + i1] - heights[r1 + i0]) * fx;
+        return a + (b - a) * fy;
+    }
+
+    /// <summary>Throws when the field this backend answers from is not on the host.</summary>
+    private static void RequireCurrent(ZMap map)
+    {
+        if (!map.IsHeightsCurrent)
+        {
+            throw new InvalidOperationException(
+                "the height field is on the backend, not in Heights; call ReadHeights() first");
+        }
     }
 }

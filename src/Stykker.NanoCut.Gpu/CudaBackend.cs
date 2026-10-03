@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 
 namespace Stykker.NanoCut.Gpu;
 
@@ -11,9 +12,11 @@ namespace Stykker.NanoCut.Gpu;
 /// <remarks>
 /// The height field of a map lives on the device for as long as the map does, so applying steps in several batches
 /// costs only the step upload and the height read-back per call, not a new allocation. The first call also creates
-/// the CUDA context, which is reported separately as <see cref="ZMapTiming.FirstCallMs"/>.
+/// the CUDA context, which is reported separately as <see cref="ZMapTiming.FirstCallMs"/>. With
+/// <see cref="ZMapReadBack.Never"/> not even the read-back happens: the field stays on the device, where
+/// <see cref="RemovedVolumeMm3"/> reduces it and <see cref="IZMapQueryBackend"/> reads it.
 /// </remarks>
-public sealed class CudaBackend : IZMapBackend
+public sealed class CudaBackend : IZMapBackend, IZMapQueryBackend
 {
     private readonly ConditionalWeakTable<ZMap, DeviceMap> _maps = new();
     private readonly object _gate = new();
@@ -29,6 +32,14 @@ public sealed class CudaBackend : IZMapBackend
     /// <summary>CUDA device this backend uses.</summary>
     public int DeviceIndex { get; }
 
+    /// <summary>
+    /// Whether the height read-back copies into pinned host memory. Pinned pages are not staged through a driver
+    /// bounce buffer on the way out, so a 3 MB field arrives at the full link speed instead of the pageable rate; the
+    /// price is that the page stays pinned for the duration of the copy, which blocks the collector from moving it.
+    /// On by default; turn it off to measure what the staging costs.
+    /// </summary>
+    public bool PinnedReadBack { get; init; } = true;
+
     /// <inheritdoc />
     public string Name => $"cuda:{DeviceIndex}";
 
@@ -43,26 +54,146 @@ public sealed class CudaBackend : IZMapBackend
             : null;
 
     /// <inheritdoc />
-    public ZMapTiming Apply(ZMap map, ReadOnlySpan<BallStep> steps)
+    public bool KeepsHeightsOnHost => false;
+
+    /// <inheritdoc />
+    public ZMapTiming Apply(ZMap map, ReadOnlySpan<BallStep> steps, ZMapReadBack readBack)
     {
         string? why = UnavailableReason;
         if (why is not null) throw new GpuNativeException("nc_zmap_apply_steps", -1, why);
 
         var wall = Stopwatch.StartNew();
         float[] packed = ToolProfile.Pack(steps, map.OriginMm);
-        double firstCall = CudaRuntime.EnsureInitialised(DeviceIndex);
-
-        DeviceMap device;
-        lock (_gate) device = _maps.GetValue(map, m => DeviceMap.Create(m));
-        firstCall += device.PendingCreateMs;
-        device.PendingCreateMs = 0;
+        DeviceMap device = MapOf(map, out double firstCall);
 
         CudaNative.Check(CudaNative.ZMapApplySteps(device.Handle, packed, steps.Length,
             out double kernelMs, out double uploadMs), "nc_zmap_apply_steps");
-        CudaNative.Check(CudaNative.ZMapRead(device.Handle, map.Heights, out double downloadMs), "nc_zmap_read");
+
+        double downloadMs = readBack == ZMapReadBack.Always ? ReadDevice(device, map) : 0;
         wall.Stop();
 
         return new ZMapTiming(kernelMs, uploadMs, downloadMs, firstCall, wall.Elapsed.TotalMilliseconds);
+    }
+
+    /// <inheritdoc />
+    public double ReadHeights(ZMap map)
+    {
+        string? why = UnavailableReason;
+        if (why is not null) throw new GpuNativeException("nc_zmap_read", -1, why);
+        return ReadDevice(MapOf(map, out _), map);
+    }
+
+    /// <inheritdoc />
+    public double RemovedVolumeMm3(ZMap map)
+    {
+        string? why = UnavailableReason;
+        if (why is not null) throw new GpuNativeException("nc_zmap_volume", -1, why);
+
+        DeviceMap device = MapOf(map, out _);
+        double volume = 0;
+        CudaNative.Check(CudaNative.ZMapVolume(device.Handle, out volume, out _), "nc_zmap_volume");
+        return volume;
+    }
+
+    /// <inheritdoc />
+    public ZMapTiming SampleHeights(ZMap map, ReadOnlySpan<SamplePoint> points, Span<float> outHeights)
+    {
+        string? why = UnavailableReason;
+        if (why is not null) throw new GpuNativeException("nc_zmap_sample", -1, why);
+
+        DeviceMap device = MapOf(map, out double firstCall);
+        var wall = Stopwatch.StartNew();
+        // The points go to the device as they are: the kernel subtracts the origin and narrows them to float, which
+        // is cheaper than a host-side packing loop (2.8 ms for a million points against 0.9 ms of extra transfer).
+        CudaNative.Check(CudaNative.ZMapSample(device.Handle, points, points.Length, map.OriginMm.X, map.OriginMm.Y,
+            outHeights, out double kernelMs, out double uploadMs, out double downloadMs), "nc_zmap_sample");
+        wall.Stop();
+
+        return new ZMapTiming(kernelMs, uploadMs, downloadMs, firstCall, wall.Elapsed.TotalMilliseconds);
+    }
+
+    /// <inheritdoc />
+    public ZMapTiming ProbeMaterial(ZMap map, ReadOnlySpan<ToolPose> poses, Span<float> outPenetrationMm)
+    {
+        string? why = UnavailableReason;
+        if (why is not null) throw new GpuNativeException("nc_zmap_probe", -1, why);
+
+        DeviceMap device = MapOf(map, out double firstCall);
+        var wall = Stopwatch.StartNew();
+        double kernelMs, uploadMs, downloadMs;
+        lock (device.Gate)
+        {
+            float[] packed = PackPoses(poses, map, device.PackedPoses);
+            device.PackedPoses = packed;
+            CudaNative.Check(CudaNative.ZMapProbe(device.Handle, packed, poses.Length, outPenetrationMm,
+                out kernelMs, out uploadMs, out downloadMs), "nc_zmap_probe");
+        }
+        wall.Stop();
+
+        return new ZMapTiming(kernelMs, uploadMs, downloadMs, firstCall, wall.Elapsed.TotalMilliseconds);
+    }
+
+    /// <summary>Packs the poses into the flat (x, y, z, r) float layout the kernel reads, relative to the origin.</summary>
+    /// <remarks>
+    /// Unlike the points, a pose carries four values and the poses of a program are few, so packing them is
+    /// negligible. The buffer is still kept with the device map, because the largest query in a program can be
+    /// millions of poses.
+    /// </remarks>
+    private static float[] PackPoses(ReadOnlySpan<ToolPose> poses, ZMap map, float[]? reuse)
+    {
+        int length = poses.Length * 4;
+        var buf = Grow(reuse, length);
+        float ox = (float)map.OriginMm.X, oy = (float)map.OriginMm.Y, oz = (float)map.OriginMm.Z;
+        for (int i = 0; i < poses.Length; i++)
+        {
+            var p = poses[i];
+            buf[4 * i] = (float)p.X - ox;
+            buf[4 * i + 1] = (float)p.Y - oy;
+            buf[4 * i + 2] = (float)p.Z - oz;
+            buf[4 * i + 3] = (float)p.RadiusMm;
+        }
+        return buf;
+    }
+
+    /// <summary>The buffer itself when it is large enough, a larger one otherwise.</summary>
+    private static float[] Grow(float[]? buf, int length) =>
+        buf is { } b && b.Length >= length ? b : new float[length];
+
+    /// <summary>The device copy of a map, created on first use, with the cost of that creation split out.</summary>
+    private DeviceMap MapOf(ZMap map, out double firstCallMs)
+    {
+        firstCallMs = CudaRuntime.EnsureInitialised(DeviceIndex);
+        DeviceMap device;
+        lock (_gate) device = _maps.GetValue(map, m => DeviceMap.Create(m));
+        firstCallMs += device.PendingCreateMs;
+        device.PendingCreateMs = 0;
+        return device;
+    }
+
+    /// <summary>Copies the device height field into <see cref="ZMap.Heights"/> and returns the copy time in ms.</summary>
+    private double ReadDevice(DeviceMap device, ZMap map)
+    {
+        if (!PinnedReadBack)
+        {
+            CudaNative.Check(CudaNative.ZMapRead(device.Handle, map.Heights, out double downloadMs),
+                "nc_zmap_read");
+            return downloadMs;
+        }
+
+        // The handle is taken and released around the call, never kept: a pinned GCHandle held in the device map
+        // would keep the whole ZMap alive for as long as the weak table holds the device map.
+        var handle = GCHandle.Alloc(map.Heights, GCHandleType.Pinned);
+        try
+        {
+            ref float first = ref MemoryMarshal.GetArrayDataReference(map.Heights);
+            var pinned = MemoryMarshal.CreateSpan(ref first, map.Heights.Length);
+            CudaNative.Check(CudaNative.ZMapRead(device.Handle, pinned, out double downloadMs), "nc_zmap_read");
+            return downloadMs;
+        }
+        finally
+        {
+            handle.Free();
+        }
     }
 
     /// <summary>Allocates and frees the device memory of the maps this backend has seen.</summary>
@@ -70,6 +201,11 @@ public sealed class CudaBackend : IZMapBackend
     {
         internal nint Handle;
         internal double PendingCreateMs;
+
+        /// <summary>Guards the packed pose buffer, which the native library reads for the duration of a call.</summary>
+        internal readonly object Gate = new();
+
+        internal float[]? PackedPoses;
 
         private DeviceMap(nint handle, double createMs)
         {

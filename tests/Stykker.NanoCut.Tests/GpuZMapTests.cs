@@ -338,7 +338,9 @@ public class GpuZMapTests(ITestOutputHelper output)
         else
         {
             Assert.False(string.IsNullOrWhiteSpace(cuda.UnavailableReason));
-            Assert.Throws<GpuNativeException>(() => cuda.Apply(Stock(4, 4), [BallStep.At((2, 2, 10), 1)]));
+            Assert.Throws<GpuNativeException>(() =>
+                cuda.Apply(Stock(4, 4), [BallStep.At((2, 2, 10), 1)], ZMapReadBack.Always));
+            Assert.Throws<GpuNativeException>(() => cuda.RemovedVolumeMm3(Stock(4, 4)));
         }
     }
 
@@ -399,6 +401,309 @@ public class GpuZMapTests(ITestOutputHelper output)
         output.WriteLine($"{CudaRuntime.Devices[cuda.DeviceIndex].Name}: kernel {gpu.TotalTiming.KernelMs:F3} ms, " +
                          $"upload {gpu.TotalTiming.UploadMs:F3} ms, download {gpu.TotalTiming.DownloadMs:F3} ms, " +
                          $"first call {gpu.TotalTiming.FirstCallMs:F1} ms for {steps.Length} steps");
+    }
+
+    /// <summary>
+    /// The bilinear sampling of the CPU reference, against hand-computed values on a field that is not flat and not
+    /// at the origin: the grid is 3 × 2 cells over 3 × 2 mm, so the cell centres sit at 0.5, 1.5, 2.5 and the
+    /// interpolation weights are exact halves.
+    /// </summary>
+    [Fact]
+    public void SamplingIsBilinearBetweenCellCentresAndReturnsAbsoluteMm()
+    {
+        // Heights are relative to the origin z = -4, so 0..5 in the array is -4..1 absolute.
+        var map = new ZMap(0, 0, -4, 3, 2, 6, 3, 2, new CpuBackend(1));
+        Array.Copy(new float[] { 0, 1, 2, 3, 4, 5 }, map.Heights, 6);
+
+        SamplePoint[] points =
+        [
+            new(0.5, 0.5),   // a cell centre: the value is the cell value
+            new(1.0, 0.5),   // half way between two columns, on a row centre: 0 + (1 - 0) / 2
+            new(1.0, 1.0),   // half way in both directions: 0.5 + (3.5 - 0.5) / 2
+            new(2.5, 1.5),   // the far cell centre: 5 relative
+            new(-100, -100),  // clamped to the field: the low corner, not an extrapolation
+            new(1000, 1000),  // clamped to the field: the far corner
+        ];
+        float[] expected = [-4f, -3.5f, -2f, 1f, -4f, 1f];
+
+        var got = new float[points.Length];
+        ZMapTiming timing = map.SampleHeights(points, got);
+
+        for (int i = 0; i < points.Length; i++)
+        {
+            Assert.Equal(expected[i], got[i], 5);
+            output.WriteLine($"({points[i].X}, {points[i].Y}) -> {got[i]:F4} mm, expected {expected[i]:F4}");
+        }
+        Assert.True(timing.KernelMs > 0);
+    }
+
+    /// <summary>
+    /// The probe of the CPU reference against the field: the depth is the field height minus the bottom of the
+    /// ball, clamped at zero, so a ball in air reads zero and a ball below the surface reads the material above it.
+    /// </summary>
+    [Fact]
+    public void ProbingReadsHowDeepTheBallCuts()
+    {
+        // A flat 10 mm plate, so the field is 10 everywhere and the first four answers are whole millimetres.
+        var map = new ZMap(0, 0, 0, 10, 10, 10, 32, 32, new CpuBackend(1));
+        ToolPose[] poses =
+        [
+            new(5, 5, 11, 2),   // bottom at 9: cuts 1 mm
+            new(5, 5, 10, 2),   // bottom at 8: cuts 2 mm
+            new(5, 5, 12, 2),   // bottom at 10: just touching, nothing removed
+            new(5, 5, 13, 2),   // bottom at 11: in air
+        ];
+        float[] expected = [1f, 2f, 0f, 0f];
+
+        var got = new float[poses.Length];
+        map.ProbeMaterial(poses, got);
+
+        for (int i = 0; i < poses.Length; i++)
+        {
+            Assert.Equal(expected[i], got[i], 5);
+            output.WriteLine($"pose {poses[i]} -> {got[i]:F4} mm, expected {expected[i]:F4}");
+        }
+
+        // After a dwell the field under the ball is no longer a round number -- the query reads the interpolated
+        // field between the cell centres, not the analytic sphere -- so the answer is stated against the height the
+        // same map reports at that point. That is the definition of the probe, and it is what makes the two agree.
+        map.ApplySteps([BallStep.At((5, 5, 10), 4)]);
+        var at = new[] { new SamplePoint(5, 5) };
+        var height = new float[1];
+        map.SampleHeights(at, height);
+        Assert.True(height[0] < 10f, $"the dwell should have lowered the field, it is at {height[0]:F6} mm");
+        output.WriteLine($"after the dwell the field at (5, 5) is {height[0]:F6} mm");
+
+        map.ProbeMaterial([new ToolPose(5, 5, height[0] + 2, 2)], got);
+        Assert.Equal(0f, got[0], 5);   // ball bottom exactly at the field
+        map.ProbeMaterial([new ToolPose(5, 5, height[0] + 1, 2)], got);
+        Assert.Equal(1f, got[0], 5);   // ball bottom 1 mm below the field
+        map.ProbeMaterial([new ToolPose(5, 5, height[0] + 4, 2)], got);
+        Assert.Equal(0f, got[0], 5);   // ball bottom above the field: in air
+    }
+
+    /// <summary>
+    /// The read-back contract, on a backend that has a second copy of the field: with
+    /// <see cref="ZMapReadBack.Never"/> the field stays on the backend, the host array is untouched, and everything
+    /// that would read a stale surface throws instead of answering. The CUDA backend has exactly this shape, and
+    /// this is asserted without a GPU.
+    /// </summary>
+    [Fact]
+    public void ReadBackNeverLeavesAStaleSurfaceBehind()
+    {
+        var backend = new StubBackend();
+        var map = Stock(8, 8, backend: backend);
+        float[] before = (float[])map.Heights.Clone();
+
+        map.ApplySteps([BallStep.At((5, 5, 10), 3)], ZMapReadBack.Never);
+
+        Assert.Equal(ZMapReadBack.Never, backend.LastReadBack);
+        Assert.False(map.IsHeightsCurrent);
+        Assert.Equal(before, map.Heights);
+        Assert.Throws<InvalidOperationException>(() => map.RemovedVolumeMm3);
+        Assert.Throws<InvalidOperationException>(() => map.ToMesh());
+
+        // The backend volume needs no read-back, so progress can be reported while the field stays put.
+        double fromBackend = map.BackendRemovedVolumeMm3;
+        Assert.True(fromBackend > 0);
+        Assert.False(map.IsHeightsCurrent);
+
+        map.ReadHeights();
+        Assert.True(map.IsHeightsCurrent);
+        Assert.Equal(ZMapReadBack.Always, backend.LastReadBack);
+        Assert.Equal(map.RemovedVolumeMm3, fromBackend, 9);
+        Assert.True(map.ToMesh().VertexCount > 0);
+
+        // A CPU-like backend has no second copy, so the flag stays true even when the caller asks for no read-back.
+        var cpu = Stock(8, 8, backend: new CpuBackend(1));
+        cpu.ApplySteps([BallStep.At((5, 5, 10), 3)], ZMapReadBack.Never);
+        Assert.True(cpu.IsHeightsCurrent);
+        Assert.True(cpu.RemovedVolumeMm3 > 0);
+    }
+
+    /// <summary>A backend that cannot answer queries says so instead of pretending.</summary>
+    [Fact]
+    public void ABackendWithoutQueriesIsReported()
+    {
+        var map = Stock(4, 4, backend: new StubBackend());
+        Assert.Throws<NotSupportedException>(() => map.SampleHeights([new SamplePoint(1, 1)], new float[1]));
+        Assert.Throws<NotSupportedException>(() => map.ProbeMaterial([new ToolPose(1, 1, 1, 1)], new float[1]));
+
+        // An empty query is answered without the backend at all, so a loop over no items never throws.
+        Assert.Equal(ZMapTiming.Zero, map.SampleHeights([], new float[0]));
+    }
+
+    /// <summary>CUDA sampling and probing against the CPU reference. Same early return as the other GPU tests.</summary>
+    [Fact]
+    public void CudaQueriesAgreeWithTheCpuReference()
+    {
+        var cuda = new CudaBackend();
+        if (!cuda.IsAvailable)
+        {
+            output.WriteLine($"not run: {cuda.UnavailableReason}");
+            return;
+        }
+
+        BallStep[] steps =
+        [
+            new((1, 1, 10), (9, 1, 10), 2),
+            new((7, 3, 10), (7, 8, 9), 2),
+            BallStep.At((4, 5, 10), 1.5),
+        ];
+
+        var cpu = Stock(64, 64, backend: new CpuBackend(1));
+        var gpu = Stock(64, 64, backend: cuda);
+        cpu.ApplySteps(steps, ZMapReadBack.Never);
+        gpu.ApplySteps(steps, ZMapReadBack.Never);
+
+        // A mix of cell centres, cell edges and points outside the field, on a regular grid over the plate.
+        SamplePoint[] points = new SamplePoint[41 * 41];
+        int p = 0;
+        for (int j = 0; j <= 40; j++)
+            for (int i = 0; i <= 40; i++)
+                points[p++] = new SamplePoint(-2 + 12.0 * i / 40, -2 + 12.0 * j / 40);
+
+        ToolPose[] poses = new ToolPose[steps.Length * 3];
+        p = 0;
+        for (int s = 0; s < steps.Length; s++)
+        {
+            poses[p++] = ToolPose.From(steps[s]);
+            poses[p++] = new ToolPose(steps[s].From.X, steps[s].From.Y, steps[s].From.Z + 3, steps[s].RadiusMm);
+            poses[p++] = new ToolPose(steps[s].From.X, steps[s].From.Y, 20, steps[s].RadiusMm);
+        }
+
+        var cpuHeights = new float[points.Length];
+        var gpuHeights = new float[points.Length];
+        cpu.ReadHeights();
+        gpu.ReadHeights();
+        ZMapTiming cpuSample = cpu.SampleHeights(points, cpuHeights);
+        ZMapTiming gpuSample = gpu.SampleHeights(points, gpuHeights);
+        Assert.True(gpuSample.KernelMs > 0, "the CUDA backend should report a kernel time for the query");
+
+        float worstHeight = 0;
+        for (int i = 0; i < points.Length; i++)
+        {
+            float difference = Math.Abs(cpuHeights[i] - gpuHeights[i]);
+            if (difference > worstHeight) worstHeight = difference;
+        }
+
+        var cpuDepths = new float[poses.Length];
+        var gpuDepths = new float[poses.Length];
+        ZMapTiming cpuProbe = cpu.ProbeMaterial(poses, cpuDepths);
+        ZMapTiming gpuProbe = gpu.ProbeMaterial(poses, gpuDepths);
+        Assert.True(gpuProbe.KernelMs > 0, "the CUDA backend should report a kernel time for the probe");
+
+        float worstDepth = 0;
+        for (int i = 0; i < poses.Length; i++)
+        {
+            float difference = Math.Abs(cpuDepths[i] - gpuDepths[i]);
+            if (difference > worstDepth) worstDepth = difference;
+        }
+
+        output.WriteLine($"{points.Length} points: cpu {cpuSample.KernelMs:F3} ms, cuda kernel {gpuSample.KernelMs:F3} ms, " +
+                         $"upload {gpuSample.UploadMs:F3} ms, download {gpuSample.DownloadMs:F3} ms, worst height {worstHeight:E2} mm");
+        output.WriteLine($"{poses.Length} poses: cpu {cpuProbe.KernelMs:F3} ms, cuda kernel {gpuProbe.KernelMs:F3} ms, " +
+                         $"upload {gpuProbe.UploadMs:F3} ms, download {gpuProbe.DownloadMs:F3} ms, worst depth {worstDepth:E2} mm");
+
+        Assert.True(worstHeight < 1e-4f, $"the largest height difference was {worstHeight:E2} mm");
+        Assert.True(worstDepth < 1e-4f, $"the largest depth difference was {worstDepth:E2} mm");
+        Assert.Contains(0f, cpuDepths);   // the poses 10 mm above the stock must read as air on both backends
+    }
+
+    /// <summary>
+    /// The device volume reduction against the host sum of the same field. The point is not only the value but the
+    /// fact that it is available while the field stays on the device, which is what makes it usable for progress.
+    /// </summary>
+    [Fact]
+    public void CudaDeviceVolumeAgreesWithTheHostSum()
+    {
+        var cuda = new CudaBackend();
+        if (!cuda.IsAvailable)
+        {
+            output.WriteLine($"not run: {cuda.UnavailableReason}");
+            return;
+        }
+
+        var map = Stock(128, 96, backend: cuda);
+        map.ApplySteps(
+        [
+            new BallStep((1, 1, 10), (9, 1, 10), 2),
+            new BallStep((2, 3, 10), (7, 8, 9), 2),
+            BallStep.At((4, 5, 10), 1.5),
+        ], ZMapReadBack.Never);
+
+        double device = map.BackendRemovedVolumeMm3;
+        Assert.False(map.IsHeightsCurrent);
+        Assert.Throws<InvalidOperationException>(() => map.RemovedVolumeMm3);
+
+        double downloadMs = map.ReadHeights();
+        double host = map.RemovedVolumeMm3;
+
+        output.WriteLine($"device {device:F9} mm³, host {host:F9} mm³, " +
+                         $"difference {(device - host) / host:E2}, read-back {downloadMs:F3} ms");
+        Assert.True(Math.Abs(device - host) < 1e-6 * host,
+            $"the device reduced {device:R} mm³, the host sum is {host:R} mm³");
+    }
+
+    /// <summary>
+    /// A backend with a second copy of the field, standing in for the CUDA one where a GPU is not around: it records
+    /// what it was asked and only fills <see cref="ZMap.Heights"/> when it was asked to.
+    /// </summary>
+    private sealed class StubBackend : IZMapBackend
+    {
+        public string Name => "stub";
+
+        public bool IsAvailable => true;
+
+        public string? UnavailableReason => null;
+
+        public bool KeepsHeightsOnHost => false;
+
+        public int VolumeCalls { get; private set; }
+
+        public ZMapReadBack LastReadBack { get; private set; } = ZMapReadBack.Always;
+
+        public ZMapTiming Apply(ZMap map, ReadOnlySpan<BallStep> steps, ZMapReadBack readBack)
+        {
+            LastReadBack = readBack;
+            float[] packed = ToolProfile.Pack(steps, map.OriginMm);
+            Field = (float[])map.Heights.Clone();
+            float[] device = Field;
+            for (int j = 0; j < map.CellsY; j++)
+            {
+                for (int i = 0; i < map.CellsX; i++)
+                {
+                    float x = map.CellCentreX(i), y = map.CellCentreY(j), lowest = device[j * map.CellsX + i];
+                    for (int s = 0; s < steps.Length; s++)
+                    {
+                        float b = ToolProfile.Bottom(x, y, packed, s);
+                        if (b < lowest) lowest = b > map.BottomRelative ? b : map.BottomRelative;
+                    }
+                    device[j * map.CellsX + i] = lowest;
+                }
+            }
+
+            if (readBack == ZMapReadBack.Always) ReadHeights(map);
+            return new ZMapTiming(0, 0, 0, 0, 0);
+        }
+
+        public double ReadHeights(ZMap map)
+        {
+            LastReadBack = ZMapReadBack.Always;
+            Field.CopyTo(map.Heights, 0);
+            return 0;
+        }
+
+        public double RemovedVolumeMm3(ZMap map)
+        {
+            VolumeCalls++;
+            double top = map.TopRelative, sum = 0;
+            foreach (float h in Field) sum += top - h;
+            return sum * map.CellSizeXMm * map.CellSizeYMm;
+        }
+
+        /// <summary>The field as the backend holds it, which is not <see cref="ZMap.Heights"/> until a read-back.</summary>
+        public float[] Field { get; private set; } = [];
     }
 
     /// <summary>Horizontal distance from a column to the segment of a step, in mm.</summary>
