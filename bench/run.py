@@ -97,6 +97,9 @@ def command(engine, expanded, out):
 
 
 def main():
+    # The table has non-ASCII characters (ΔV, mm³, ×); a Windows console defaults to cp1252 and cannot print them.
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     ap = argparse.ArgumentParser()
     ap.add_argument("scene")
     ap.add_argument("--engines", default="nanocut,manifoldsharp,cgal,manifold")
