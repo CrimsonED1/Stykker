@@ -115,6 +115,63 @@ What the table says:
   than the kernel itself by 7×. Above about 10⁶ steps per call the CSR build, not the GPU, sets the pace; larger tiles,
   or a binning kernel on the device, are the ways out. Logged as a follow-up in `docs/todo.md`.
 
+## Convex tool + pose sequence (step 3)
+
+Built: `src/Stykker.NanoCut.Gpu/ConvexTool.cs` (a tool as half-spaces, plus the corners the binning rotates),
+`ConvexStep.cs` (orientation plus the two positions) and `ConvexProfile.cs` (the packing and the interval search), with
+the same in the CUDA kernel (`convex_span` in `zmap.cu`) reached through `nc_dexel_apply_convex_steps` and its binned
+twin. `CudaBackend.ApplyConvexDexels` picks between the two launches, so a convex program is binned like a ball one.
+
+The interval itself is a small linear program in (z, t). For a half-space turned into world coordinates the constraint
+of a point on the column is `m·(p(z) − T_A) − t·(m·w) ≤ d`, which with z the height is `mz·z ≤ c + g·t`, where
+`m = R·n`, `c = d + m·T_A − (m_x·x + m_y·y)`. The half-spaces with `mz < 0` bound z from below, the ones with `mz > 0`
+from above, and the ones with `mz = 0` bound t alone. So:
+
+    low  = min over t of z_min(t),  where z_min(t) = max over the lines from below
+    high = max over t of z_max(t),  where z_max(t) = min over the lines from above
+
+`z_min` is convex and piecewise linear, so its minimum is at an end of t's range or at a kink of the envelope; the walk
+is over exactly those candidates, scoring each on the whole envelope rather than on the crossing pair, and that inner
+loop over all lines is what makes it O(m³) in the half-spaces. `ConvexProfile.MaxPlanes` is 16 for the same reason —
+twice the planes is eight times the work, and a larger tool is split instead, which is what `ToolShape` does anyway.
+
+**Where the t's range comes from is the whole trick, and the first version got it wrong.** A point on the column is
+inside the body at t only when z is over the lower bound *and* under the upper one, so every line from below has to sit
+under every line from above, and each of those pairs is one bound on t. The first version did not narrow t and took the
+minimum of the lower bound and the maximum of the upper bound over all of t separately. The two then come from two
+different t, and they cross on a column the tool never went near: the octahedron in the mixed tool program reported
+cuts on columns 3.9 mm outside its own silhouette. Narrowing t first is exact — `z_min ≤ z_max` *is* the conjunction of
+the pairs — and it is a chain of min and max, so nothing about it rounds badly.
+
+Against the exact kernel, `ConvexDexelTests` compares the preview against `Process3` on the very body the half-spaces
+describe (a hull of `ConvexTool.CornersMm`), so the two cannot drift apart by construction. All of it on a 20 mm block,
+the tool cut by the exact kernel over its own poses and the preview cut column by column:
+
+| Case (grid) | Preview | Exact | Difference | Sampling bound |
+| --- | ---: | ---: | ---: | ---: |
+| Box 2 × 2 × 2 mm, swept 7 mm sideways (250 / 500 / 1000 cells) | 35.8400 / 36.0000 / 36.4408 mm³ | 36.0000 mm³ | −0.444 % / 0.000 % / +1.224 % | 1.7728 / 0.8832 / 0.4408 mm³ |
+| Octahedron r = 2.5 mm, swept (6, 8, 9) → (13, 11, 12) (250 / 500 / 1000) | 108.3404 / 108.3321 / 108.3320 mm³ | 108.3333 mm³ | +0.007 % / −0.001 % / −0.001 % | 12.8512 / 6.4128 / 3.2032 mm³ |
+| Box 2.4 × 0.6 × 0.6 mm, 1.2 rad turn about z and 3 mm of travel (500) | 4.0848 mm³ | 4.0701 mm³ | +0.362 % | 0.1253 mm³ |
+
+**What the table checks, and what it does not.** A column is cut when its centre lies in the sweep, so the preview
+samples the silhouette where the exact kernel integrates it: its volume can be off by the rim it samples, P·h/2 of
+area over a perimeter P (times the height the tool sweeps, which is exact — nothing is sampled in z). That is the
+*sampling bound* in the last column, and it is what the test asks for, because it is O(h) while a body cut wrong sits
+at the tool's real volume at every grid. The octahedron and the rotating box stay orders of magnitude inside it
+(0.001 % and 0.36 %). The box at 1000 cells does not, and it is worth saying why: the preview counts a centre that
+sits exactly on the tool's edge (the rule is closed), and at 1000 cells the centres are on a 0.01 mm grid, where this
+box's faces at 4.13, 13.13, 9.07 and 11.07 mm land on centres. It then takes one extra column row on each side —
+451 × 101 instead of 450 × 100 — and the difference is 0.4408 mm³ against a bound of 0.4408 mm³, to the last digit.
+No refinement of the grid takes that away, so "the error shrinks with every finer grid" is not a property this
+model has, and the test asks for the bound instead. The same closed rule is why the 500-cell row of the same box
+lands on the exact number to the digit.
+
+CUDA against the CPU reference, four tools (6, 8, 12 and 6 planes), 220 steps, 241 × 241 columns, binned launch:
+no column differs in its interval count anywhere, and the ends agree to the conditioning of `1/mz` (4.3e-05 … 1.3e-04
+mm on a 0.083 mm grid, against a tolerance of a hundredth of a cell, 8.3e-04 mm — a fixed 1e-4 mm was too tight for
+the 12-plane ball and says nothing the grid does not already say). The binned launch against the unbinned one is
+bit-identical at 16, 32, 64 and 301 cells.
+
 ## Steps
 
 - [x] **1. Baselines.** `bench/Stykker.NanoCut.LongPrograms` (new): the gear generation with a rack for z = 10, 20, 40
@@ -123,8 +180,8 @@ What the table says:
 - [x] **2. Binning for the existing ball dexel/Z-map** (tiles + CSR), measured on a long synthetic ball program
       (e.g. a finishing pass with 0.05 mm steps, 10^5 to 10^6 steps): the speed-up that every later step relies on.
       Numbers in "Binning (step 2)" below.
-- [ ] **3. Convex tool + pose sequence** in the dexel kernel (CPU reference + CUDA), tests against the exact kernel on
-      small cases (a box tool, an octahedron, a rotating tool).
+- [x] **3. Convex tool + pose sequence** in the dexel kernel (CPU reference + CUDA), tests against the exact kernel on
+      small cases (a box tool, an octahedron, a rotating tool). Section below.
 - [ ] **4. Grinding preview**: grains of a `GrindingWheel` as convex tools on their trochoids; compare the removed
       volume and the surface profile with `GrindingSimulation` (exact) for 60 grains, then scale to a covered wheel.
 - [ ] **5. Gear preview (2D)**: rows as columns, the rack's convex parts as tools on the rolling poses; compare the area
@@ -137,6 +194,43 @@ Newest first.
 
 ### 2026-10-04, Qwen
 
+- Step 3 done: a tool is a list of half-spaces (`ConvexTool`, with the corners the binning rotates), a step is an
+  orientation and two positions (`ConvexStep`), and where a column meets the sweep is a small linear program in (z, t)
+  (`ConvexProfile.Span` on the CPU, `convex_span` in the kernel) reached through `nc_dexel_apply_convex_steps` and its
+  binned twin, so a convex program is binned like a ball one. `MaxPlanes = 16` is the runtime talking: the walk over
+  the crossings of two of the m lines and the envelope there over all m of them is O(m³) per column and step, and a
+  larger tool is split instead, which is what `ToolShape` does anyway. Against `Process3` on the very body the
+  half-spaces describe: the octahedron to −0.001 % (108.3320 against 108.3333 mm³), the rotating box to +0.362 %
+  (4.0848 against 4.0701 mm³), the box inside its sampling bound at every grid. Table above.
+- **The first version of the interval was wrong on columns the tool never went near.** It took `low` as the minimum of
+  the lower bound over all of t and `high` as the maximum of the upper bound over all of t, separately. Those two ends
+  come from two different t, and on a column the sweep misses they cross anyway: the octahedron in the mixed tool
+  program reported cuts on columns 3.9 mm outside its own silhouette, and hand-work on step 42 says it misses (its
+  edges need |vx| + |vy| ≥ 5.43 mm at every t, the radius is 2.2 mm).
+- **The obvious repair was much worse, and the reason is worth keeping.** Testing each candidate for "is the column in
+  the body" (`low ≤ high`) fixes the concept and ruins the numbers: at a candidate where the body opens or closes on
+  the column the two bounds are *equal*, and in float they are two or three ulops apart, so half of them get dropped
+  at random and the end that was to come from a dropped one is taken from a different t. The octahedron against
+  `Process3` came out 9.10 mm off over 390 columns. What works is narrowing t first: the set
+  `{t : z_min(t) ≤ z_max(t)}` *is* the conjunction of the pair conditions `ℓᵢ(t) ≤ uⱼ(t)`, the pairs are affine in t,
+  so what they leave is one interval whose ends are where the body opens and closes on the column. A chain of min and
+  max, in both the CPU reference and the kernel.
+- **Two things the comparison against the exact kernel taught, both about the model and not about the interval.**
+  First, "the difference shrinks with every finer grid" is not a property a column model has: a centre that sits
+  exactly on the tool's edge counts as inside, so a face that lands on the centre line of a grid takes a whole extra
+  row of columns there — the box at 1000 cells is off by exactly the rim it samples (0.4408 mm³ against a bound of
+  0.4408 mm³), while at 500 cells the same box lands on the exact number to the digit. The test asks for the bound
+  now, which is O(h) and therefore still separates sampling from a body cut wrong. Second, a rotation is the one
+  motion the exact kernel samples *linearly* in the angle: it holds `diameter · dθ / 2` under its sweep tolerance on
+  top of the chord, so the default 30 nm asks for ~50 000 poses for a 1.2 rad turn of a 2.4 mm tooth (the subdivision
+  is binary, so it would be 65 536), one exact hull and one Boolean each. The comparison runs on 4 µm (the preview's
+  own 2 µm chord with room for the hull to overcut, both far below the 40 µm cell), which is 512 exact intervals
+  against 11 preview steps and 72 s for that one test — the slowest in the suite, and worth it as the reference.
+- **The CUDA comparison needed a tolerance that says something.** The ends of an interval come out of a division by
+  `mz`, and the CUDA side contracts fma where C# does not, so a half-space whose normal lies near the horizontal moves
+  its end by an ulop times 1/mz. On the 12-plane ball that is 1.3e-04 mm on a 0.083 mm grid — above the fixed 1e-4 mm
+  the check carried from the ball tests. It is a hundredth of a cell now (8.3e-04 mm), which says what the check is
+  for: no column anywhere differs in its interval count, and the ends move by what the conditioning of `1/mz` costs.
 - Step 2 done: the steps are binned into tiles of 16 × 16 columns on the host (`StepBins.cs`, CSR) and the CUDA dexel
   kernel launches one block per tile with only the steps that reach it (`nc_dexel_apply_steps_binned`). Measured on a
   finishing pass of 24 800 … 793 600 steps over 160 000 columns: the kernel goes from 640.7 ms to 2.7 ms at the longest

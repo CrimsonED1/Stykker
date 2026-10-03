@@ -4,6 +4,15 @@ Open features and ideas, newest first. Each entry says what is wanted and which 
 
 ## Done
 
+- **Long programs, step 3: a convex tool on a pose sequence** (`ConvexTool`, `ConvexStep`, `ConvexProfile`,
+  `convex_span` in the kernel, plan in [long-programs.md](long-programs.md)): a tool is half-spaces, a step is an
+  orientation and two positions, and where a column meets the sweep is a small linear program in (z, t) on both
+  backends — binned like a ball program, so a long one costs steps instead of columns × steps. Against the exact
+  kernel on the same body: the octahedron to −0.001 %, a box turned 1.2 rad while travelling to +0.362 %, all three
+  cases inside the volume a column model can be off by at the grid it samples. The half that had to be got right
+  first: where the body opens and closes on the column is one interval in t (`Where`), and testing candidates for
+  feasibility instead drops half of them at random — the story is in the log.
+
 - **Long programs, step 2: step binning for the ball dexel kernel** (`StepBins.cs`, `nc_dexel_apply_steps_binned`,
   plan in [long-programs.md](long-programs.md)): the steps are binned on the host into tiles of 16 × 16 columns and a
   block only sees the steps that reach its tile, so the dexel kernel no longer costs columns × steps. Measured on a
@@ -55,13 +64,35 @@ Open features and ideas, newest first. Each entry says what is wanted and which 
 
 ## Long programs – follow-ups
 
-Plan and log: [long-programs.md](long-programs.md). Steps 1 (the baseline) and 2 (the step binning) are done; steps 3 to 6
-are the preview itself.
+Plan and log: [long-programs.md](long-programs.md). Steps 1 (the baseline), 2 (the step binning) and 3 (a convex tool
+on a pose sequence) are done; steps 4 to 6 are the preview itself.
 
+- **The interval search is O(m³) in the half-spaces, and that is the next thing to make cheaper.** Where a column
+  meets a sweep, `ConvexProfile.Span` (and `convex_span`) walks every crossing of two of the m lines and evaluates the
+  envelope there over all m of them. Building the envelope once instead — sort the slopes, stack, m operations — is
+  O(m) and is what the remarks on both point at; it needs a sort in local memory and a stable tie-break on parallel
+  lines, which is why the walk is what it is today. It matters at 16 planes and above, i.e. for the ball (12) and
+  anything bigger: a tool with more than `MaxPlanes` (16) half-spaces has to be split by the caller today.
+- **A column model cannot shrink its error with the grid, and the tests now say so instead.** A centre that sits
+  exactly on the tool's edge counts as inside (closed rule), so a face on the centre line of a grid takes a whole
+  extra row of columns there and no refinement takes that away — the box case at 1000 cells is off by exactly the rim
+  it samples, 0.4408 mm³ against a bound of 0.4408 mm³. `ConvexDexelTests` therefore checks the *sampling bound*
+  (P·h/2 of area over the silhouette's perimeter, times the swept height) at every grid, which is O(h) and still
+  separates sampling from a body cut wrong. Whether a preview should ever give a boundary column half its weight
+  instead of all of it is a question for step 4: the ground surface of a grinding wheel is what the bound shows.
+- **The exact kernel samples a rotation linearly in the angle.** `Process3.Sample` holds `diameter · dθ / 2` under
+  its sweep tolerance on top of the chord, so the default 30 nm asks for ~50 000 poses for a 1.2 rad move of a 2.4 mm
+  tooth (65 536 with the binary subdivision it uses), one exact hull and one Boolean each. The sagitta is quadratic
+  and would need a tenth of them; the linear guard is there for a reason (the hull of both poses overcuts by the
+  chord), but it is what makes any rotation on a small tool expensive.
+  `ConvexDexelTests.ARotatingToolAgreesWithTheExactCut` runs on 4 µm — 512 exact intervals against 11 preview steps,
+  72 s, the slowest test in the suite. Steps 4 and 5 both turn tools over a whole wheel, so this is on the critical
+  path for anything measured against the exact kernel.
 - **The host-side binning is now the limit above ~10⁶ steps per call.** `StepBins.Build` is O(steps) and costs 18.9 ms
   of a 36.8 ms wall at 793 600 steps — seven times the kernel it feeds. It is invisible at 25 000 steps and dominant
-  above a million, so step 3 has to decide how it goes away: coarser tiles (fewer, larger CSR entries per step), binning
-  on the device, or binning once per program instead of per call. Measuring it is `LongPrograms dexel`.
+  above a million, and step 3 did not change it: the convex launch goes through the same CSR, so a program of
+  rotating poses pays it too. The ways out are coarser tiles (fewer, larger CSR entries per step), binning on the
+  device, or binning once per program instead of per call. Measuring it is `LongPrograms dexel`.
 - ~~**The binned launch gave a different result than the unbinned one.**~~ Fixed, and the fault was not where it looked:
   the CSR was complete (no step that reaches a column missing) while 83 336 of 90 601 columns at 301 cells differed, because
   `dexel_apply_column` read the CSR range as step indices where it is positions in `tileSteps`. It takes an optional
@@ -79,8 +110,8 @@ are the preview itself.
   code uses "three runs within 10 %, at least five". A cold pass of the 60-grain case takes 1.8 s, so the documented
   wording ended the loop after one pass and reported 938 ms instead of 200 ms. README corrected, `LongPrograms` uses the
   code's rule.
-- Steps 3 to 6 (convex tool + pose sequence in the dexel kernel, grinding preview, 2D gear preview, into the server)
-  are listed in [long-programs.md](long-programs.md).
+- Steps 4 to 6 (grinding preview, 2D gear preview, into the server) are listed in
+  [long-programs.md](long-programs.md).
 
 ## GPU preview – follow-ups
 

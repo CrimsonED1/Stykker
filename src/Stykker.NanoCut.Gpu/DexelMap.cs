@@ -110,10 +110,10 @@ public sealed class DexelMap
     /// <summary>What runs the steps.</summary>
     public IDexelBackend Backend => _backend;
 
-    /// <summary>Timing of the last <see cref="ApplySteps"/> call.</summary>
+    /// <summary>Timing of the last <see cref="ApplySteps"/> or <see cref="ApplyConvexSteps"/> call.</summary>
     public ZMapTiming LastTiming { get; private set; }
 
-    /// <summary>Timing of all <see cref="ApplySteps"/> calls so far.</summary>
+    /// <summary>Timing of all <see cref="ApplySteps"/> and <see cref="ApplyConvexSteps"/> calls so far.</summary>
     public ZMapTiming TotalTiming { get; private set; }
 
     /// <summary>Steps applied so far.</summary>
@@ -132,6 +132,23 @@ public sealed class DexelMap
         if (steps.IsEmpty) return;
         var sw = System.Diagnostics.Stopwatch.StartNew();
         var t = _backend.ApplyDexels(this, steps, readBack);
+        sw.Stop();
+        LastTiming = t with { WallMs = t.WallMs > 0 ? t.WallMs : sw.Elapsed.TotalMilliseconds };
+        TotalTiming += LastTiming;
+        AppliedSteps += steps.Length;
+        IsCurrent = readBack == ZMapReadBack.Always || _backend.KeepsDexelsOnHost;
+    }
+
+    /// <summary>Subtracts the convex tool swept by every step, in order.</summary>
+    /// <param name="tool">The tool, as the intersection of its half-spaces.</param>
+    /// <param name="steps">The tool steps in absolute mm, each with its orientation.</param>
+    /// <param name="readBack">Whether the intervals are copied back to the host.</param>
+    public void ApplyConvexSteps(ConvexTool tool, ReadOnlySpan<ConvexStep> steps, ZMapReadBack readBack = ZMapReadBack.Always)
+    {
+        ArgumentNullException.ThrowIfNull(tool);
+        if (steps.IsEmpty) return;
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        var t = _backend.ApplyConvexDexels(this, tool, steps, readBack);
         sw.Stop();
         LastTiming = t with { WallMs = t.WallMs > 0 ? t.WallMs : sw.Elapsed.TotalMilliseconds };
         TotalTiming += LastTiming;

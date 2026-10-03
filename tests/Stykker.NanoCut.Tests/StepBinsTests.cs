@@ -46,7 +46,7 @@ public class StepBinsTests(ITestOutputHelper output)
         float cellX = size / cells, cellY = size / cells;
         BallStep[] steps = Walk(400, size);
         float[] packed = ToolProfile.Pack(steps, (0, 0, 0));
-        StepBins.Bins bins = StepBins.Build(packed, cells, cells, cellX, cellY);
+        StepBins.Bins bins = StepBins.Build(packed, ToolProfile.StepFloats, convex: false, cells, cells, cellX, cellY);
 
         int missed = 0, reached = 0, extra = 0;
         for (int s = 0; s < steps.Length; s++)
@@ -78,7 +78,7 @@ public class StepBinsTests(ITestOutputHelper output)
         float cellX = size / cells, cellY = size / cells;
         BallStep[] steps = Walk(150, size);
         float[] packed = ToolProfile.Pack(steps, (0, 0, 0));
-        StepBins.Bins bins = StepBins.Build(packed, cells, cells, cellX, cellY);
+        StepBins.Bins bins = StepBins.Build(packed, ToolProfile.StepFloats, convex: false, cells, cells, cellX, cellY);
 
         Assert.Equal(bins.TileSteps.Length, bins.TileStart[bins.TileCount]);
         Assert.Equal(bins.TileSteps.Length, bins.References);
@@ -101,7 +101,7 @@ public class StepBinsTests(ITestOutputHelper output)
         const double radius = 1.0;
         float cellX = size / cells, cellY = size / cells;
         float[] packed = ToolProfile.Pack([BallStep.At((1.0, 1.0, 1.0), radius)], (0, 0, 0));
-        StepBins.Bins bins = StepBins.Build(packed, cells, cells, cellX, cellY);
+        StepBins.Bins bins = StepBins.Build(packed, ToolProfile.StepFloats, convex: false, cells, cells, cellX, cellY);
         bool[] tiles = TilesOf(bins, 0);
 
         // Every column the ball reaches must sit in a listed tile, and every column of a listed tile is checked below.
@@ -127,5 +127,60 @@ public class StepBinsTests(ITestOutputHelper output)
         Assert.Equal(1, bins.References);
         Assert.True(listed > 0);
         Assert.True(reachableInListed == listed, $"{listed - reachableInListed} listed tiles reach nothing");
+    }
+
+    /// <summary>
+    /// The same completeness check for the convex layout, where the box comes from the swept polytope's corners
+    /// instead of a radius. A step the binning loses leaves its columns uncut and the launch cannot report it, so the
+    /// check runs against <see cref="ConvexProfile.Span"/>, the same evaluation the kernel applies.
+    /// </summary>
+    [Fact]
+    public void EveryConvexStepThatReachesAColumnIsInThatColumnsTile()
+    {
+        const int cells = 96;
+        const float size = 10f;
+        float cellX = size / cells, cellY = size / cells;
+        ConvexTool tool = ConvexTool.Ball(1.2, 12);
+        ConvexStep[] steps = WalkConvex(300, size);
+        float[] packed = ConvexProfile.Pack(steps, tool, (0, 0, 0));
+        float[] planes = ConvexProfile.PackPlanes(tool);
+        StepBins.Bins bins = StepBins.Build(packed, ConvexProfile.StepFloats, convex: true, cells, cells, cellX, cellY);
+
+        int missed = 0, reached = 0, extra = 0;
+        for (int s = 0; s < steps.Length; s++)
+        {
+            bool[] tiles = TilesOf(bins, s);
+            for (int j = 0; j < cells; j++)
+            {
+                float y = (j + 0.5f) * cellY;
+                for (int i = 0; i < cells; i++)
+                {
+                    if (!ConvexProfile.Span((i + 0.5f) * cellX, y, packed, planes, s, out _, out _)) continue;
+                    reached++;
+                    if (!tiles[(j / StepBins.Tile) * bins.TilesX + i / StepBins.Tile]) missed++;
+                }
+            }
+            foreach (bool t in tiles) if (t) extra++;
+        }
+        output.WriteLine($"{bins.TileCount} tiles, {bins.References} references, {reached} (step, column) pairs reach, " +
+                         $"{extra} tiles listed");
+        Assert.Equal(0, missed);
+        Assert.True(reached > 5_000, $"only {reached} pairs reach, the case is too weak");
+    }
+
+    /// <summary>A serpentine of convex steps that turns as it goes, so the swept boxes are not all axis-aligned copies.</summary>
+    private static ConvexStep[] WalkConvex(int count, float size)
+    {
+        var steps = new List<ConvexStep>();
+        var at = (X: size * 0.5, Y: size * 0.5, Z: size * 0.5);
+        for (int i = 0; i < count; i++)
+        {
+            double t = i * 0.05;
+            var next = (X: size * (0.5 + 0.42 * Math.Sin(t)),
+                        Y: size * (0.5 + 0.42 * Math.Cos(1.3 * t)), size * 0.5);
+            steps.Add(new ConvexStep(Orientation3.AboutZ(0.3 * Math.Sin(t)), at, next));
+            at = next;
+        }
+        return [.. steps];
     }
 }

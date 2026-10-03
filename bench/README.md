@@ -489,3 +489,8 @@ directory (kept separate here so the step-1 rows stay where they are).
 
 One-page result: [`results-2026-10-04-long-programs-dexel.html`](results-2026-10-04-long-programs-dexel.html).
 
+Step 3 of the plan (any convex tool on a pose sequence) has no mode here yet: what it is measured on is the *result*,
+against the exact kernel on the same body, and that lives in the test suite (`ConvexDexelTests`, the table in
+[`../docs/long-programs.md`](../docs/long-programs.md)). A mode comes with step 4, where a grinding program that
+actually runs puts a number on the convex path.
+
