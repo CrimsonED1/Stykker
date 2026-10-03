@@ -66,8 +66,10 @@ Steps (tick when done):
       bit for bit the Z-map): intervals as float pairs, K per column, apply / volume / mesh (top surface only is
       fine for the viewer), overflow count. Tests: a ball buried in the stock removes 4/3·π·r³ (the case the Z-map
       cannot do); a roof stays when the crown is below the top; horizontal capsule; CPU thread count does not matter.
-- [ ] CUDA: `dexel_apply_kernel` + C API (`nc_dexel_create/apply_steps/read/volume/destroy`) in `zmap.cu`, `CudaBackend`
-      support, CUDA-vs-CPU test that skips without a device.
+- [x] CUDA: `dexel_apply_kernel` + C API (`nc_dexel_create/apply_steps/read/volume/destroy`) in `zmap.cu`, `CudaBackend`
+      implements `IDexelBackend`. Tests `DexelMapTests.Cuda*`: CUDA vs CPU (worst 6e-5 mm, no column with a different
+      interval count, same overflows), chunks vs one batch bit for bit on the intervals in use. Note: slots behind a
+      column's last interval hold stale values; never compare them.
 - [ ] GpuBench `--dexel K`, measure pocket-large and pocket-large-g1 at 512 … 4096, compare with 84 846.749 mm³.
 - [ ] Docs: section in docs/gpu-findings.md, bench/README.md, this file.
 

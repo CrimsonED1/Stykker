@@ -138,4 +138,93 @@ public class DexelMapTests(ITestOutputHelper output)
         }
         Assert.True(compared > 2000, $"only {compared} columns");
     }
+
+    private static BallStep[] MixedSteps()
+    {
+        var rng = new Random(42);
+        double R(double a, double b) => a + rng.NextDouble() * (b - a);
+        var steps = new List<BallStep>();
+        var at = (X: 10.0, Y: 10.0, Z: 22.0);
+        for (int i = 0; i < 300; i++)
+        {
+            var next = i % 7 == 0 ? (R(2, 18), R(2, 18), R(4, 16))      // a jump into the stock: buried moves
+                     : (at.X + R(-3, 3), at.Y + R(-3, 3), at.Z + R(-2, 2));
+            steps.Add(new BallStep(at, next, R(0.5, 2.5)));
+            at = next;
+        }
+        return [.. steps];
+    }
+
+    /// <summary>
+    /// CUDA against the CPU reference. Without the native library or a device (CI) the test says so and passes; the
+    /// unavailable path is covered by GpuZMapTests.CudaBackendReportsItsStateInsteadOfCrashing.
+    /// </summary>
+    [Fact]
+    public void CudaAgreesWithTheCpuReference()
+    {
+        var cuda = new CudaBackend();
+        if (!cuda.IsAvailable)
+        {
+            output.WriteLine($"not run: {cuda.UnavailableReason}");
+            return;
+        }
+        var steps = MixedSteps();
+        var cpu = Stock(301, k: 6);
+        var gpu = Stock(301, k: 6, backend: cuda);
+        cpu.ApplySteps(steps);
+        gpu.ApplySteps(steps);
+
+        // fma contraction moves a column by a few float units; only columns at a rim can then differ in their interval
+        // count. Everywhere else the intervals agree to float rounding.
+        int differing = 0, compared = 0;
+        double worst = 0;
+        int k2 = cpu.MaxIntervals * 2;
+        for (long c = 0; c < cpu.Counts.Length; c++)
+        {
+            if (cpu.Counts[c] != gpu.Counts[c]) { differing++; continue; }
+            for (int q = 0; q < 2 * cpu.Counts[c]; q++)
+                worst = Math.Max(worst, Math.Abs(cpu.Intervals[c * k2 + q] - gpu.Intervals[c * k2 + q]));
+            compared++;
+        }
+        output.WriteLine($"{compared} columns compared, worst {worst:E2} mm, {differing} differ in count; " +
+                         $"volume cpu {cpu.RemovedVolumeMm3:F6} cuda {gpu.BackendRemovedVolumeMm3:F6}; overflows {cpu.Overflows} / {gpu.Overflows}");
+        Assert.True(worst < 1e-4, $"intervals differ by {worst:E2} mm");
+        Assert.True(differing <= cpu.Counts.Length / 10_000, $"{differing} columns differ in their interval count");
+        Assert.Equal(cpu.RemovedVolumeMm3, gpu.BackendRemovedVolumeMm3, 1e-4 * cpu.RemovedVolumeMm3);
+        // The device multiplies by the float cell sizes (20/301 mm is not a float), the host by the double ones.
+        Assert.Equal(gpu.RemovedVolumeMm3, gpu.BackendRemovedVolumeMm3, 1e-6 * gpu.RemovedVolumeMm3);
+        Assert.Equal(cpu.Overflows, gpu.Overflows);
+    }
+
+    [Fact]
+    public void CudaChunksGiveTheSameBitsAsOneBatch()
+    {
+        var cuda = new CudaBackend();
+        if (!cuda.IsAvailable)
+        {
+            output.WriteLine($"not run: {cuda.UnavailableReason}");
+            return;
+        }
+        var steps = MixedSteps();
+        var one = Stock(257, backend: cuda);
+        var chunks = Stock(257, backend: cuda);
+        one.ApplySteps(steps);
+        for (int i = 0; i < steps.Length; i += 37)
+            chunks.ApplySteps(steps.AsSpan(i, Math.Min(37, steps.Length - i)), ZMapReadBack.Never);
+        chunks.ReadBack();
+        int k2 = one.MaxIntervals * 2, bad = 0;
+        for (long c = 0; c < one.Counts.Length; c++)
+        {
+            bool same = one.Counts[c] == chunks.Counts[c];
+            for (int q = 0; same && q < 2 * one.Counts[c]; q++) same = one.Intervals[c * k2 + q] == chunks.Intervals[c * k2 + q];
+            if (!same && bad++ < 3)
+                output.WriteLine($"column {c}: one {one.Counts[c]} [{string.Join(", ", one.Intervals.Skip((int)(c * k2)).Take(2 * one.Counts[c]))}] " +
+                                 $"chunks {chunks.Counts[c]} [{string.Join(", ", chunks.Intervals.Skip((int)(c * k2)).Take(2 * chunks.Counts[c]))}]");
+        }
+        // Only the intervals in use are compared: the slots behind a column's last interval keep whatever an earlier
+        // state left there, and that differs between one batch and several.
+        Assert.Equal(0, bad);
+        Assert.Equal(one.Overflows, chunks.Overflows);
+    }
 }
+

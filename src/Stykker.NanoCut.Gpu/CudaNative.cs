@@ -97,6 +97,28 @@ internal static partial class CudaNative
     [LibraryImport(LibraryName, EntryPoint = "nc_zmap_destroy")]
     internal static partial void ZMapDestroy(nint zmap);
 
+    /// <summary>Allocates a dexel map of nx × ny columns with room for k intervals each, all set to [0, top].</summary>
+    [LibraryImport(LibraryName, EntryPoint = "nc_dexel_create")]
+    internal static partial nint DexelCreate(int nx, int ny, float cellX, float cellY, float top, int k);
+
+    /// <summary>Subtracts the swept balls of the packed steps from every column; reports kernel and upload time.</summary>
+    [LibraryImport(LibraryName, EntryPoint = "nc_dexel_apply_steps")]
+    internal static partial int DexelApplySteps(nint dexel, ReadOnlySpan<float> steps, int stepCount,
+        out double kernelMs, out double uploadMs);
+
+    /// <summary>Copies intervals, counts and the overflow count to the host.</summary>
+    [LibraryImport(LibraryName, EntryPoint = "nc_dexel_read")]
+    internal static partial int DexelRead(nint dexel, Span<float> intervals, Span<byte> counts, out long overflows,
+        out double downloadMs);
+
+    /// <summary>The removed volume in mm³, reduced on the device, and the overflow count.</summary>
+    [LibraryImport(LibraryName, EntryPoint = "nc_dexel_volume")]
+    internal static partial int DexelVolume(nint dexel, out double volumeMm3, out long overflows, out double kernelMs);
+
+    /// <summary>Frees the dexel map.</summary>
+    [LibraryImport(LibraryName, EntryPoint = "nc_dexel_destroy")]
+    internal static partial void DexelDestroy(nint dexel);
+
     /// <summary>Text of the last error as a managed string, or a placeholder when there is none.</summary>
     internal static string LastErrorMessage()
     {
