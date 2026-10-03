@@ -72,7 +72,7 @@ The Z-map / dexel preview handles a **ball** moving on **straight** segments. Th
 
 ## Model
 
-A tool is a convex polytope given by its half-spaces (n·p ≤ d, at most 32 in the kernel). A program is a sequence of
+A tool is a convex polytope given by its half-spaces (n·p ≤ d, at most 16 in the kernel: `kConvexPlanes`). A program is a sequence of
 rigid poses; between two consecutive poses the tool is swept by the translation only (rotation handled by sampling the
 poses densely enough: the chord error of a rotated vertex between poses must stay below the preview tolerance). For one
 column (3D: a vertical line; 2D: a horizontal row) the swept region of a pose pair meets the line in one interval,
@@ -170,7 +170,7 @@ CUDA against the CPU reference, four tools (6, 8, 12 and 6 planes), 220 steps, 2
 no column differs in its interval count anywhere, and the ends agree to the conditioning of `1/mz` (4.3e-05 … 1.3e-04
 mm on a 0.083 mm grid, against a tolerance of a hundredth of a cell, 8.3e-04 mm — a fixed 1e-4 mm was too tight for
 the 12-plane ball and says nothing the grid does not already say). The binned launch against the unbinned one is
-bit-identical at 16, 32, 64 and 301 cells.
+bit-identical at 16, 32, 64 and 241 cells.
 
 ## Steps
 
@@ -226,6 +226,19 @@ Newest first.
   is binary, so it would be 65 536), one exact hull and one Boolean each. The comparison runs on 4 µm (the preview's
   own 2 µm chord with room for the hull to overcut, both far below the 40 µm cell), which is 512 exact intervals
   against 11 preview steps and 72 s for that one test — the slowest in the suite, and worth it as the reference.
+- **An independent read of the CUDA half found a way to empty the whole map, and it was one line.** The kernel tells a
+  sphere from a polytope by the plane pointer it is handed (`zmap.cu:1106`), and the device dexel is kept for as long
+  as its `DexelMap` (`CudaBackend.cs:386`). `reserve_planes` returns early on a plane count of zero without clearing
+  the pointer (`zmap.cu:1259`), and the launch passed `d->planes` on regardless of the caller. So a ball program that
+  ran on a map a convex program had already touched was cut by `convex_span` with `planeCount = 0`: no planes, so
+  `convex_extremum` answers −∞ and +∞ (`zmap.cu:951`), and the ball takes the **whole height of every column its bin
+  reaches** — in the regression test 1476.83 mm³ where the ball removes 84.82 mm³, 3072 of 16641 columns emptied, with
+  the overflow counter still at zero, plus an out-of-bounds read of `p[4..19]` out of a 12-float ball step. The launch
+  now takes the pointer from the plane count it was given. The test that holds it,
+  `AConvexToolThenASphereOnTheSameDevice`, runs convex → sphere against the same two programs on the CPU (84.8186
+  against 84.8186 mm³, worst 9.5e-07 mm) and fails without the fix. The cheap lesson is in the direction: the
+  existing test ran sphere → convex, which is the safe order, and the state was not in the test at all, it was in the
+  device — so a verifier that walks the paths the tests already walk never sees it.
 - **The CUDA comparison needed a tolerance that says something.** The ends of an interval come out of a division by
   `mz`, and the CUDA side contracts fma where C# does not, so a half-space whose normal lies near the horizontal moves
   its end by an ulop times 1/mz. On the 12-plane ball that is 1.3e-04 mm on a 0.083 mm grid — above the fixed 1e-4 mm

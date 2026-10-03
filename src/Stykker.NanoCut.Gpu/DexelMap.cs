@@ -142,8 +142,10 @@ public sealed class DexelMap
     /// <summary>Subtracts the convex tool swept by every step, in order.</summary>
     /// <param name="tool">The tool, as the intersection of its half-spaces.</param>
     /// <param name="steps">The tool steps in absolute mm, each with its orientation.</param>
-    /// <param name="readBack">Whether the intervals are copied back to the host.</param>
-    public void ApplyConvexSteps(ConvexTool tool, ReadOnlySpan<ConvexStep> steps, ZMapReadBack readBack = ZMapReadBack.Always)
+    /// <param name="readBack">Whether the intervals are copied back to the host. Default <see cref="ZMapReadBack.Never"/>,
+    /// because the read-back moves the whole 2K slot per column and is the largest cost left in a long program; ask
+    /// for <see cref="ZMapReadBack.Always"/> when the host copy is what the next call reads.</param>
+    public void ApplyConvexSteps(ConvexTool tool, ReadOnlySpan<ConvexStep> steps, ZMapReadBack readBack = ZMapReadBack.Never)
     {
         ArgumentNullException.ThrowIfNull(tool);
         if (steps.IsEmpty) return;

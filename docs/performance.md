@@ -321,9 +321,10 @@ Three costs that step 4 inherits, all visible without a benchmark:
   size buys that error down. Measure the floor before buying resolution.
 - **A column model's error is not monotone in the cell size either.** Even where the representation is fine enough, a
   centre that sits exactly on the tool's edge counts as inside (the interval rule is closed), so a face that lands on
-  the centre line of a grid takes a whole extra row of columns: the box case is 0.44 % at 1000 cells, 0.00 % at 500,
-  0.44 % at 250. Ask for the sampling bound — the rim the model can be off by, O(h) — instead of a trend, and expect
-  the bound to be the only honest statement.
+  the centre line of a grid takes a whole extra row of columns: the box case is +1.224 % at 1000 cells, 0.00 % at
+  500, −0.444 % at 250 — the error does not shrink with the grid, it grows where a face lands on a centre. Ask for
+  the sampling bound — the rim the model can be off by, O(h) — instead of a trend, and expect the bound to be the
+  only honest statement.
 - **A first call is not a measurement.** The first query table was wrong by a factor of ten: the bench called each query
   exactly once, on arrays the collector had never touched, and faulting in a fresh 4 MB destination cost more than the
   copy (6,7 ms of "download" that was really page faults). Warm up, then take the best of N, and print the cold number

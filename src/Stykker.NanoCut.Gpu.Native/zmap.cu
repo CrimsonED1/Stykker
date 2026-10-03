@@ -1333,19 +1333,23 @@ cudaError_t dexel_apply_common(Dexel* d, const float* steps, int stepCount, int 
     cudaEventRecord(t1);
     if (e == cudaSuccess)
     {
+        // The kernel tells the sphere from the polytope by this pointer alone, and reserve_planes leaves the
+        // half-spaces of an earlier convex run in place, so a ball program on the same map would otherwise be cut
+        // with planeCount 0 -- no tool at all, which takes the whole height of every column its bin reaches.
+        const float* devicePlanes = planeCount > 0 ? d->planes : nullptr;
         if (!binned)
         {
             dim3 block(16, 16);
             dim3 grid((static_cast<unsigned int>(d->nx) + block.x - 1) / block.x,
                       (static_cast<unsigned int>(d->ny) + block.y - 1) / block.y);
             dexel_apply_kernel<<<grid, block>>>(d->intervals, d->counts, d->overflows, d->nx, d->ny, d->k, d->cellX,
-                                                d->cellY, d->steps, stepCount, d->planes, planeCount, stride);
+                                                d->cellY, d->steps, stepCount, devicePlanes, planeCount, stride);
         }
         else
         {
             dexel_apply_binned_kernel<<<static_cast<unsigned int>(tileCount), dim3(kDexelTile, kDexelTile)>>>(
                 d->intervals, d->counts, d->overflows, d->nx, d->ny, d->k, d->cellX, d->cellY, d->steps, d->tileStart,
-                d->tileSteps, tilesX, d->planes, planeCount, stride);
+                d->tileSteps, tilesX, devicePlanes, planeCount, stride);
         }
         e = cudaGetLastError();
     }

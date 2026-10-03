@@ -578,8 +578,8 @@ public class ConvexDexelTests(ITestOutputHelper output)
             ConvexStep[] steps = MixedSteps(tool);
             var cpu = Stock(241, k: 6);
             var gpu = Stock(241, k: 6, backend: cuda);
-            cpu.ApplyConvexSteps(tool, steps);
-            gpu.ApplyConvexSteps(tool, steps);
+            cpu.ApplyConvexSteps(tool, steps, ZMapReadBack.Always);
+            gpu.ApplyConvexSteps(tool, steps, ZMapReadBack.Always);
             var (columns, worst, differing) = Compare(cpu, gpu);
             output.WriteLine($"{tool.PlaneCount,2} planes: {columns} columns, worst {worst:E2} mm, {differing} differ in " +
                              $"count; volume cpu {cpu.RemovedVolumeMm3:F6} cuda {gpu.BackendRemovedVolumeMm3:F6}; " +
@@ -610,13 +610,15 @@ public class ConvexDexelTests(ITestOutputHelper output)
         }
         ConvexTool tool = ConvexTool.Ball(1.6, 12);
         ConvexStep[] steps = MixedSteps(tool);
+        long overflows = 0;
         foreach (int cells in new[] { 16, 32, 64, 241 })
         {
             var a = Stock(cells, k: 6, backend: binned);
             var b = Stock(cells, k: 6, backend: plain);
-            a.ApplyConvexSteps(tool, steps);
-            b.ApplyConvexSteps(tool, steps);
+            a.ApplyConvexSteps(tool, steps, ZMapReadBack.Always);
+            b.ApplyConvexSteps(tool, steps, ZMapReadBack.Always);
             var (columns, worst, differing) = Compare(a, b);
+            overflows += a.Overflows;
             output.WriteLine($"{cells,3} cells: {differing} of {columns} columns differ in count, worst {worst:E2} mm, " +
                              $"volume {a.RemovedVolumeMm3:F4} against {b.RemovedVolumeMm3:F4}, " +
                              $"overflows {a.Overflows} / {b.Overflows}, bin {a.LastTiming.BinMs:F3} ms");
@@ -625,6 +627,11 @@ public class ConvexDexelTests(ITestOutputHelper output)
             Assert.Equal(0, worst);
             Assert.Equal(b.Overflows, a.Overflows);
         }
+
+        // Without this the comparison is 0 == 0 on a scene that never reaches the capacity guard, and says nothing
+        // about it. If it fails, the scene is the thing that is wrong -- not the assertion.
+        Assert.True(overflows > 0, $"no column overflowed at k = 6 over the four sizes, so the bit-for-bit " +
+                                   $"comparison never reaches the guard it is read as covering ({overflows})");
     }
 
     /// <summary>The two launches in a row on one device: the stride changes, so the step buffer has to follow it.</summary>
@@ -640,14 +647,55 @@ public class ConvexDexelTests(ITestOutputHelper output)
         var map = Stock(129, k: 6, backend: cuda);
         map.ApplySteps([new BallStep((5, 10, 10), (15, 10, 10), 1.5)]);
         var alone = Stock(129, k: 6, backend: cuda);
-        alone.ApplyConvexSteps(BoxTool(1, 1, 1), [ConvexStep.Move((5, 10, 10), (15, 10, 10))]);
+        alone.ApplyConvexSteps(BoxTool(1, 1, 1), [ConvexStep.Move((5, 10, 10), (15, 10, 10))], ZMapReadBack.Always);
 
         // The sphere ran first in both maps, so the convex part starts from the same state on both.
         var fresh = Stock(129, k: 6, backend: cuda);
-        fresh.ApplyConvexSteps(BoxTool(1, 1, 1), [ConvexStep.Move((5, 10, 10), (15, 10, 10))]);
+        fresh.ApplyConvexSteps(BoxTool(1, 1, 1), [ConvexStep.Move((5, 10, 10), (15, 10, 10))], ZMapReadBack.Always);
         Assert.Equal(fresh.Counts, alone.Counts);
         Assert.Equal(fresh.Intervals, alone.Intervals);
         Assert.True(map.Counts.Length > 0);
+    }
+
+    /// <summary>The other order on one device: a convex program, and a sphere program on the same map after it.</summary>
+    /// <remarks>
+    /// The device dexel lives as long as its <see cref="DexelMap"/>, and the kernel tells a sphere from a polytope
+    /// by the plane pointer it is handed. So the half-spaces of the convex run are still in the device when the ball
+    /// program arrives -- and without a plane count of its own the ball is cut with none, which is no tool at all: it
+    /// takes the whole map with it, silently, with the overflow counter still at zero. The reference is the same two
+    /// programs on the CPU, which has no such state to leak, compared the way
+    /// <see cref="CudaAgreesWithTheCpuReference"/> compares the two arms.
+    /// </remarks>
+    [Fact]
+    public void AConvexToolThenASphereOnTheSameDevice()
+    {
+        var cuda = new CudaBackend();
+        if (!cuda.IsAvailable)
+        {
+            output.WriteLine($"not run: {cuda.UnavailableReason}");
+            return;
+        }
+        ConvexTool box = BoxTool(1, 1, 1);
+        ConvexStep[] convex = [ConvexStep.Move((5, 10, 10), (15, 10, 10))];
+        BallStep[] ball = [new BallStep((5, 10, 10), (15, 10, 10), 1.5)];
+
+        var gpu = Stock(129, k: 6, backend: cuda);
+        gpu.ApplyConvexSteps(box, convex, ZMapReadBack.Always);
+        gpu.ApplySteps(ball);
+
+        var cpu = Stock(129, k: 6);
+        cpu.ApplyConvexSteps(box, convex);
+        cpu.ApplySteps(ball);
+        var (columns, worst, differing) = Compare(cpu, gpu);
+        output.WriteLine($"convex then sphere: {gpu.RemovedVolumeMm3:F4} against {cpu.RemovedVolumeMm3:F4} mm³, " +
+                         $"{differing} of {columns} columns differ in count, worst {worst:E2} mm, " +
+                         $"overflows {cpu.Overflows} / {gpu.Overflows}");
+
+        // The programs have to have removed something, or the comparison is empty against empty.
+        Assert.True(cpu.RemovedVolumeMm3 > 0);
+        float cell = (float)cpu.CellSizeXMm;
+        Assert.True(worst < cell / 100, $"intervals differ by {worst:E2} mm, over a hundredth of a {cell:F4} mm cell");
+        Assert.True(differing <= columns / 10_000, $"{differing} columns differ in their interval count");
     }
 
     /// <summary>The solid the octahedron is, so both sides of the comparison sweep the very same body.</summary>
