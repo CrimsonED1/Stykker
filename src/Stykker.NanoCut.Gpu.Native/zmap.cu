@@ -3,8 +3,8 @@
 // CPU backend is the reference and works everywhere, and CI has neither a GPU nor nvcc.
 //
 // The arithmetic mirrors ToolProfile.cs in src/Stykker.NanoCut.Gpu exactly: the same packed step layout (12 floats,
-// mm relative to the grid origin), the same reject, the same candidate set for the minimum. Small differences come
-// only from the compiler contracting a*b+c into fma, so results agree to about a float unit, not bit for bit.
+// mm relative to the grid origin), the same reject, the same clamped stationary point. Differences come only from
+// the compiler contracting a*b+c into fma, so results agree to a few float units of the coordinates, not bit for bit.
 //
 // Every entry point returns an error code and never throws across the boundary; nc_last_error explains a failure.
 
@@ -26,7 +26,7 @@
 
 namespace {
 
-// Floats per packed step: (x0, y0, z0, r), (wx, wy, wz, r^2), (w2, 1/w2, wz^2 + w2, wz^2).
+// Floats per packed step: (x0, y0, z0, r), (wx, wy, wz, r^2), (w2, 1/w2, c, zLow); see ToolProfile.Pack.
 constexpr int kStepFloats = 12;
 
 constexpr int kErrorLength = 512;
@@ -89,61 +89,41 @@ __global__ void fill_kernel(float* heights, size_t count, float value)
     if (i < count) heights[i] = value;
 }
 
-__device__ __forceinline__ bool in_unit_interval(float t) { return t >= 0.f && t <= 1.f; }
-
-/// <summary>Bottom of the ball at parameter t, or +inf when the column is outside that ball.</summary>
-__device__ __forceinline__ float bottom_at(float t, float z0, float wz, float base, float twoD, float w2)
-{
-    float s = base + t * (twoD - w2 * t);
-    return s < 0.f ? CUDART_INF_F : z0 + wz * t - sqrtf(s);
-}
-
 /// <summary>
-/// Lowest z of the ball swept along one step at the column (x, y), or +inf when the column is farther than the
-/// radius from the whole segment. g(t) = z0 + wz t - sqrt(S(t)) with S(t) = r^2 - p^2 + 2 d t - w2 t^2 is continuous
-/// wherever S >= 0, so its minimum over the valid part of [0, 1] is at an endpoint of that interval (t = 0, t = 1 or
-/// a root of S) or at a stationary point (wz sqrt(S) = d - w2 t, squared into a quadratic).
+/// Lowest z of the ball swept along one step at the column (x, y), or +inf when the step cannot reach the column.
+/// Measured from the point t* of the step line that is horizontally closest to the column, at horizontal distance e:
+/// with a^2 = r^2 - e^2 the bottom of the ball at t is g(t) = z0 + wz t - sqrt(a^2 - w2 (t - t*)^2), which is convex,
+/// so its minimum over the valid interval [max(0, t* - a/sqrt(w2)), min(1, t* + a/sqrt(w2))] is the stationary point
+/// t* - c a clamped to that interval. a^2 and t - t* are formed directly, never as a difference of terms of order
+/// L^2, which is what kept an earlier expansion around the step start from working on long steps in float.
 /// </summary>
 __device__ __forceinline__ float ball_bottom(float x, float y, const float* __restrict__ p)
 {
     const float x0 = p[0], y0 = p[1], z0 = p[2], r2 = p[7];
     const float wx = p[4], wy = p[5], wz = p[6];
-    const float w2 = p[8], invW2 = p[9], k = p[10], wz2 = p[11];
+    const float w2 = p[8], invW2 = p[9], c = p[10], zLow = p[11];
 
     const float px = x - x0, py = y - y0;
-    const float p2 = px * px + py * py;
-    const float d = px * wx + py * wy;
-
-    // Cheap reject: the horizontal distance from the column to the segment is the smallest one over all t.
-    const float tc = w2 > 0.f ? fminf(fmaxf(d * invW2, 0.f), 1.f) : 0.f;
-    const float ex = px - tc * wx, ey = py - tc * wy;
-    if (ex * ex + ey * ey > r2) return CUDART_INF_F;
-
-    const float base = r2 - p2, twoD = 2.f * d;
-    float best = fminf(bottom_at(0.f, z0, wz, base, twoD, w2), bottom_at(1.f, z0, wz, base, twoD, w2));
-
-    if (w2 > 0.f)
+    if (w2 == 0.f)
     {
-        // The reject above guarantees that S(t) >= 0 for some t in [0, 1], so both discriminants are >= 0 in exact
-        // arithmetic. In float they can come out slightly negative through cancellation -- above all the stationary
-        // one for a horizontal step, where it is exactly zero in theory but is computed as the difference of two
-        // equal products of size 4 d^2 w2^2. Clamping is safe: every candidate t with S(t) >= 0 is a real ball
-        // position, so an extra one can only be too high, never too low.
-        const float sq = sqrtf(fmaxf(d * d - w2 * (p2 - r2), 0.f));
-        const float ta = (d - sq) * invW2, tb = (d + sq) * invW2;
-        if (in_unit_interval(ta)) best = fminf(best, z0 + wz * ta);
-        if (in_unit_interval(tb)) best = fminf(best, z0 + wz * tb);
-
-        const float alpha = w2 * k;
-        const float beta = -2.f * d * k;
-        const float sq2 = sqrtf(fmaxf(beta * beta - 4.f * alpha * (d * d - wz2 * (r2 - p2)), 0.f));
-        const float inv = 0.5f / alpha;
-        const float t1 = (-beta - sq2) * inv, t2 = (-beta + sq2) * inv;
-        if (in_unit_interval(t1)) best = fminf(best, bottom_at(t1, z0, wz, base, twoD, w2));
-        if (in_unit_interval(t2)) best = fminf(best, bottom_at(t2, z0, wz, base, twoD, w2));
+        // Vertical step (or none): every ball position has the column at the same distance.
+        const float p2 = px * px + py * py;
+        return p2 > r2 ? CUDART_INF_F : zLow - sqrtf(r2 - p2);
     }
 
-    return best;
+    const float ts = (px * wx + py * wy) * invW2;
+    const float ex = px - ts * wx, ey = py - ts * wy;
+    const float a2 = r2 - (ex * ex + ey * ey);
+    if (a2 < 0.f) return CUDART_INF_F;
+
+    const float a = sqrtf(a2);
+    const float h = a * sqrtf(invW2);
+    const float lo = fmaxf(0.f, ts - h), hi = fminf(1.f, ts + h);
+    if (lo > hi) return CUDART_INF_F;
+
+    const float t = fminf(fmaxf(ts - c * a, lo), hi);
+    const float du = t - ts;
+    return z0 + wz * t - sqrtf(fmaxf(a2 - w2 * du * du, 0.f));
 }
 
 /// <summary>One thread per cell, looping over every step of the batch.</summary>
@@ -250,12 +230,12 @@ __global__ void volume_partial_kernel(const float* __restrict__ heights, size_t 
 /// block sums is bounded by kVolumeBlocks and the whole call is supposed to cost microseconds: a serial pass over a
 /// thousand doubles is nothing next to a kernel launch, and it cannot go wrong.
 /// </summary>
-__global__ void volume_finalize_kernel(const double* __restrict__ partials, int blocks, float cellArea,
+__global__ void volume_finalize_kernel(const double* __restrict__ partials, int blocks, double cellArea,
                                        double* __restrict__ out)
 {
     double sum = 0.0;
     for (int i = 0; i < blocks; i++) sum += partials[i];
-    *out = sum * static_cast<double>(cellArea);
+    *out = sum * cellArea;
 }
 
 /// <summary>Creates three events for timing and reports whether that worked.</summary>
@@ -586,7 +566,8 @@ NC_API int nc_zmap_volume(void* zmap, double* volumeMm3, double* kernelMs)
     cudaError_t e = cudaGetLastError();
     if (e == cudaSuccess)
     {
-        volume_finalize_kernel<<<1, 1>>>(z->volumePartials, blocks, z->cellX * z->cellY, z->volumeOut);
+        const double cellArea = static_cast<double>(z->cellX) * z->cellY;
+        volume_finalize_kernel<<<1, 1>>>(z->volumePartials, blocks, cellArea, z->volumeOut);
         e = cudaGetLastError();
     }
     cudaEventRecord(timing.computed);
