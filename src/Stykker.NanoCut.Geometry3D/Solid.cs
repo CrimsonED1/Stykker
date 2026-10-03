@@ -329,6 +329,93 @@ public sealed class Solid
     /// <summary>Difference.</summary>
     public static Solid operator -(Solid a, Solid b) => a.Boolean(b, SolidOp.Difference);
 
+    /// <summary>
+    /// Maximum number of threads the 3D kernel uses (face classification, hull faces, unions, cut chains). Defaults to
+    /// the processor count; 1 runs everything sequentially. Results do not depend on this setting.
+    /// </summary>
+    public static int MaxParallelism
+    {
+        get => SolidBoolean.MaxParallelism;
+        set => SolidBoolean.MaxParallelism = Math.Max(1, value);
+    }
+
+    /// <summary>
+    /// Subtracts the tools from the workpiece in order (a cut chain). Each tool is built by its factory; while one tool is
+    /// subtracted, the next is built on another core (tool construction such as a convex hull often costs as much as the
+    /// cut). The result is the same as subtracting one after another. Sequential if <c>MaxParallelism</c> is 1.
+    /// </summary>
+    public static Solid SubtractInOrder(Solid workpiece, IEnumerable<Func<Solid>> tools)
+    {
+        ArgumentNullException.ThrowIfNull(workpiece);
+        ArgumentNullException.ThrowIfNull(tools);
+        var work = workpiece;
+        if (SolidBoolean.MaxParallelism <= 1)
+        {
+            foreach (var make in tools) work -= Checked(make)();
+            return work;
+        }
+        using var e = tools.GetEnumerator();
+        if (!e.MoveNext()) return work;
+        var next = Task.Run(Checked(e.Current));
+        while (true)
+        {
+            var tool = next.GetAwaiter().GetResult(); // rethrows the factory's own exception
+            bool more = e.MoveNext();
+            if (more) next = Task.Run(Checked(e.Current));
+            try
+            {
+                work -= tool;
+            }
+            catch
+            {
+                if (more) next.ContinueWith(t => _ = t.Exception, TaskScheduler.Default); // observe, don't leak
+                throw;
+            }
+            if (!more) return work;
+        }
+    }
+
+    private static Func<Solid> Checked(Func<Solid>? make) =>
+        make ?? throw new ArgumentNullException("tools", "The sequence contains a null tool factory.");
+
+    /// <summary>
+    /// Union of many solids as a balanced tree (pairs of neighbours first): far fewer faces pass through each Boolean
+    /// than in a left-to-right chain. The pairs of one level are independent and run in parallel.
+    /// </summary>
+    public static Solid UnionAll(IReadOnlyList<Solid> solids)
+    {
+        ArgumentNullException.ThrowIfNull(solids);
+        if (solids.Count == 0) return Empty;
+        var level = solids.ToArray();
+        if (Array.IndexOf(level, null) >= 0) throw new ArgumentNullException(nameof(solids), "The list contains a null solid.");
+        while (level.Length > 1)
+        {
+            var next = new Solid[(level.Length + 1) / 2];
+            var current = level;
+            int pairs = current.Length / 2;
+            if (pairs > 1 && SolidBoolean.MaxParallelism > 1)
+            {
+                try
+                {
+                    Parallel.For(0, pairs, new ParallelOptions { MaxDegreeOfParallelism = SolidBoolean.MaxParallelism },
+                        i => next[i] = current[2 * i] | current[2 * i + 1]);
+                }
+                catch (AggregateException ae) when (ae.InnerExceptions.Count > 0)
+                {
+                    // Same exception type as the sequential path.
+                    System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(ae.InnerExceptions[0]).Throw();
+                    throw;
+                }
+            }
+            else
+                for (int i = 0; i < pairs; i++) next[i] = current[2 * i] | current[2 * i + 1];
+            if (current.Length % 2 == 1) next[^1] = current[^1];
+            level = next;
+        }
+        return level[0];
+    }
+
+
     /// <summary>All face vertices (with repetitions).</summary>
     public IEnumerable<Point3> Vertices => Faces.SelectMany(f => f.Vertices);
 

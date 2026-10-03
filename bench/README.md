@@ -136,3 +136,74 @@ earlier "2× behind" compared single-threaded NanoCut against multi-threaded Man
 | 10 | Hull working buffers reused per thread: large-object allocations caused page faults and kernel page zeroing |
 | 11 | Face classification in parallel, one buffer set per thread with results stored by index, so the output is deterministic. `SolidBoolean.MaxParallelism` controls it; the browser runs it sequentially. |
 
+## After the fourth optimisation round (2026-10-02)
+
+Round 3 is a separate effort by another agent; the numbers here compare round 4 with round 2 (commit 4384975).
+
+pocket-large, same machine (4 cores):
+
+| Engine | Language | Exact | Time (s) | per step (ms) | CPU (s, whole process) |
+| --- | --- | --- | ---: | ---: | ---: |
+| **nanocut** | C# | yes | **8.2** (rounds: 30.9 → 18.4 → 10.4 → 8.2) | 9.4 | 41.3 (incl. warm-up, about 20 per run) |
+| manifold | C++ | no | 9.3 | 10.6 | 34.8 |
+
+This round went through an external list of findings (`PerformanceFindings.md`) step by step, measuring with counters
+before each change:
+
+| Finding | Measured | Result |
+| --- | --- | --- |
+| B1: no float filter for side tests of grid points | 92k exact Int128 side tests per step on grid points (19k on exact points, 5.7 % fallback) | Filter using the cached face-plane doubles: about 1.2k exact evaluations per step left, Boolean −17 % |
+| C2/C3, FaceMerge index, BVH arrays: allocations | `Probe` 13 %, FaceMerge entries 9 %, BVH arrays 19 % of the Boolean's allocations | Reused per-thread probe, edge index and fragment lists; BVH arrays from `ArrayPool`. 2.5 → 1.5 MB per step. |
+| Hull face construction | about a third of the hull | Built in parallel by index: 5.1 → 3.9 ms |
+| B2: hull fallback via orient3d | rare path | Done (simpler, same sign) |
+| A1/A2: `FaceMerge.Join` | about 1 % of run time | Skipped. The proposed local test checked each vertex against the plane of its own edge (always 0), so it would accept non-convex merges. |
+| D1: cache the BVH in the solid | the workpiece is a new solid after every cut | No effect on cut chains; not done |
+| GC settings | measured in round 1 | No effect |
+
+## Round 5: cut chains overlap tool construction and cutting (2026-10-02)
+
+`Solid.SubtractInOrder(workpiece, toolFactories)` builds the next tool (here: the convex hull of the next step) on another
+core while the current one is subtracted. The result is identical to subtracting one after another. Engine
+`nanocut-pipeline` in `run.py`.
+
+| Scene | nanocut | **nanocut-pipeline** | manifold C++ |
+| --- | ---: | ---: | ---: |
+| ball-small (16 steps) | 151 ms | 114 ms | **21 ms** |
+| ball-medium (96 steps) | 832 ms | 639 ms | **469 ms** |
+| pocket-profile (372 steps) | 3.12 s | **2.17 s** | 2.91 s |
+| pocket-large (876 steps) | 7.52 s | **5.23 s** | 8.37 s |
+
+Same CPU time, identical volumes. On pocket-large NanoCut is now 1.6× faster than C++ Manifold. Short tasks remain C++'s
+domain, where fixed per-cut costs dominate.
+
+What did not help:
+
+| Attempt | NanoCut (pocket-profile) | Manifold (pocket-profile) | Why |
+| --- | --- | --- | --- |
+| Batching: unite k consecutive hulls, then cut once (`--batch k`) | 3.2 s → 3.9–4.4 s | 3.0 → 2.2 s | NanoCut's cost grows with interacting faces, and uniting nearly congruent hulls splits almost every face |
+| Overlap for Manifold (`manifold-pipeline`) | – | 2.9 → 3.1 s | Its hull is cheap, and it already parallelises internally |
+
+## Round 6: fixed costs per cut, and the JIT warm-up (2026-10-02)
+
+| Change | Effect |
+| --- | --- |
+| Skip a split when the single face spanning the plane cannot meet the fragment (exact separation test per fragment) | Small scene Boolean 5.2 → 4.4 ms per cut. Geometry unchanged: all 396 differential workload results have identical exact volumes. |
+| BVH build partitions around the median (quickselect) instead of sorting every range | pocket-profile Boolean 5.0 → 4.3–4.5 ms per cut |
+| **Bench warm-up repeats the scene until 1.5 s have passed** (was: once) | Short scenes were measuring JIT warm-up |
+
+The warm-up finding: a single pass of ball-small (about 100 ms) leaves hot methods in unoptimised tier-0 code. With
+`DOTNET_TieredCompilation=0` the same run takes 32 ms instead of 105 ms. Full optimisation from the start costs PGO on long
+runs, though (pocket-profile 2.05 → 2.51 s). The bench now measures steady state, as in a long-running service. For
+short-lived processes, ReadyToRun or `TieredCompilation=false` are the levers.
+
+Results, steady state, best of 3 (4 cores):
+
+| Scene | nanocut-pipeline | nanocut | manifoldsharp | manifold C++ |
+| --- | ---: | ---: | ---: | ---: |
+| ball-small (16 steps) | 52 ms | 55 ms | 39 ms | **23 ms** |
+| ball-medium (96 steps) | 607 ms | 784 ms | 908 ms | **451 ms** |
+| pocket-profile (372 steps) | **1.94 s** | – | – | 2.83 s |
+| pocket-large (876 steps) | **4.86 s** | – | – | 8.21 s |
+
+Short tasks: C++ ahead by 1.3–2.3× (was up to 5.5×). Long tasks: NanoCut ahead by 1.5–1.7×.
+

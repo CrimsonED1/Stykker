@@ -1,20 +1,27 @@
+using System.Buffers;
+
 namespace Stykker.NanoCut.Geometry3D;
 
-/// <summary>Static bounding volume hierarchy over faces (median split on the longest axis).</summary>
-internal sealed class Bvh3
+/// <summary>
+/// Static bounding volume hierarchy over faces (median split on the longest axis). Its arrays are rented from the shared
+/// pools (they exceed the large-object threshold for big solids); dispose it to return them.
+/// </summary>
+internal sealed class Bvh3 : IDisposable
 {
     private const int LeafSize = 8;
 
     private readonly IReadOnlyList<Face3> _faces;
-    private readonly int[] _order;
+    private readonly int _count;
+    private int[] _order;
     private double[]? _keys;
     // Nodes in a flat array: splitting more than LeafSize faces gives children of at least LeafSize / 2, so there are at
     // most n / 4 leaves and fewer than n / 2 nodes (+ slack for tiny inputs).
-    private readonly Node[] _nodes;
+    private Node[] _nodes;
     private int _nodeCount;
+    private bool _disposed;
     // Query-time copies in tree order: face boxes and faces as arrays (no list indexers, no property copies).
-    private readonly Box3[] _boxes;
-    private readonly Face3[] _sorted;
+    private Box3[] _boxes;
+    private Face3[] _sorted;
 
     private struct Node
     {
@@ -26,17 +33,32 @@ internal sealed class Bvh3
     public Bvh3(IReadOnlyList<Face3> faces)
     {
         _faces = faces;
-        _order = new int[faces.Count];
-        for (int i = 0; i < _order.Length; i++) _order[i] = i;
-        _nodes = new Node[faces.Count / 2 + 4];
-        if (faces.Count > 0) Build(0, faces.Count);
-        _sorted = new Face3[faces.Count];
-        _boxes = new Box3[faces.Count];
-        for (int i = 0; i < faces.Count; i++)
+        _count = faces.Count;
+        _order = ArrayPool<int>.Shared.Rent(_count);
+        for (int i = 0; i < _count; i++) _order[i] = i;
+        _nodes = ArrayPool<Node>.Shared.Rent(_count / 2 + 4);
+        if (_count > 0) Build(0, _count);
+        _sorted = ArrayPool<Face3>.Shared.Rent(_count);
+        _boxes = ArrayPool<Box3>.Shared.Rent(_count);
+        for (int i = 0; i < _count; i++)
         {
             _sorted[i] = faces[_order[i]];
             _boxes[i] = _sorted[i].Box;
         }
+        if (_keys is not null) { ArrayPool<double>.Shared.Return(_keys); _keys = null; }
+    }
+
+    /// <summary>Returns the pooled arrays. The hierarchy must not be used afterwards.</summary>
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        ArrayPool<int>.Shared.Return(_order);
+        ArrayPool<Node>.Shared.Return(_nodes);
+        ArrayPool<Face3>.Shared.Return(_sorted, clearArray: true); // drop the face references
+        ArrayPool<Box3>.Shared.Return(_boxes);
+        _order = []; _nodes = []; _sorted = []; _boxes = [];
+        _nodeCount = 0;
     }
 
     public Box3 Bounds => _nodeCount > 0 ? _nodes[0].Box : Box3.Empty;
@@ -52,15 +74,54 @@ internal sealed class Bvh3
         double dx = box.MaxX - box.MinX, dy = box.MaxY - box.MinY, dz = box.MaxZ - box.MinZ;
         int axis = dx >= dy && dx >= dz ? 0 : dy >= dz ? 1 : 2;
         // Sort the range by box centre with a key array (no comparison delegate).
-        var keys = _keys ??= new double[_order.Length];
+        var keys = _keys ??= ArrayPool<double>.Shared.Rent(_count);
         for (int i = start; i < start + count; i++) keys[i] = _faces[_order[i]].Box.Center(axis);
-        Array.Sort(keys, _order, start, count);
         int half = count / 2;
+        // Only the median split matters: partition around the half-th key instead of sorting the whole range.
+        Select(keys, _order, start, start + count - 1, start + half);
         int left = Build(start, half);
         int right = Build(start + half, count - half);
         _nodes[index].Left = left;
         _nodes[index].Right = right;
         return index;
+    }
+
+    // Quickselect (Hoare partition, median-of-three pivot, sorting fallback): afterwards keys[k] is the k-th smallest of keys[lo..hi], with
+    // smaller-or-equal keys before it and greater-or-equal keys after it; order[] is permuted alongside.
+    private static void Select(double[] keys, int[] order, int lo, int hi, int k)
+    {
+        // Introselect: after 2·log2(n) + 4 rounds without converging (adversarial key order), sort the rest instead,
+        // which bounds the work by O(n log n).
+        int budget = 2 * System.Numerics.BitOperations.Log2((uint)(hi - lo + 1)) + 4;
+        while (hi > lo)
+        {
+            if (budget-- == 0)
+            {
+                Array.Sort(keys, order, lo, hi - lo + 1);
+                return;
+            }
+            int mid = lo + (hi - lo) / 2;
+            if (keys[mid] < keys[lo]) Swap(lo, mid);
+            if (keys[hi] < keys[lo]) Swap(lo, hi);
+            if (keys[hi] < keys[mid]) Swap(mid, hi);
+            double pivot = keys[mid];
+            int i = lo, j = hi;
+            while (i <= j)
+            {
+                while (keys[i] < pivot) i++;
+                while (keys[j] > pivot) j--;
+                if (i <= j) { Swap(i, j); i++; j--; }
+            }
+            if (k <= j) hi = j;
+            else if (k >= i) lo = i;
+            else return;
+        }
+
+        void Swap(int a, int b)
+        {
+            (keys[a], keys[b]) = (keys[b], keys[a]);
+            (order[a], order[b]) = (order[b], order[a]);
+        }
     }
 
     /// <summary>Faces whose box overlaps <paramref name="box"/>.</summary>

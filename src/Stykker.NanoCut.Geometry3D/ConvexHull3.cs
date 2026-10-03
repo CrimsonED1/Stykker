@@ -64,20 +64,26 @@ public static class ConvexHull3
         // built for them: 2256 of 2304 groups for a 48-segment ball would be 2256 throwaway lists.
         var size = new int[tris.Count];
         for (int i = 0; i < tris.Count; i++) size[Find(i)]++;
-        var faces = new List<Face3>(tris.Count);
         var groups = new Dictionary<int, List<(int A, int B, int C)>>();
+        var single = new List<int>(tris.Count);
         for (int i = 0; i < tris.Count; i++)
         {
             int r = Find(i);
-            if (size[r] == 1)
-            {
-                var (a, b, c) = tris[i];
-                faces.Add(Face3.FromTriangle(pts[a], pts[b], pts[c]));
-                continue;
-            }
+            if (size[r] == 1) { single.Add(i); continue; }
             if (!groups.TryGetValue(r, out var g)) groups[r] = g = [];
             g.Add(tris[i]);
         }
+        // Face construction (exact planes, GCD normalisation) is independent per triangle: build in parallel by index,
+        // so the face order and the result do not depend on scheduling.
+        var built = new Face3[single.Count];
+        var pp = pts;
+        if (single.Count >= ParallelThreshold && SolidBoolean.MaxParallelism > 1)
+            Parallel.For(0, built.Length, new ParallelOptions { MaxDegreeOfParallelism = SolidBoolean.MaxParallelism },
+                k => built[k] = Triangle(pp, tris[single[k]]));
+        else
+            for (int k = 0; k < built.Length; k++) built[k] = Triangle(pp, tris[single[k]]);
+        var faces = new List<Face3>(built.Length + groups.Count);
+        faces.AddRange(built);
         var inner = new HashSet<long>();
         var loop = new List<Vec3>();
         foreach (var g in groups.Values)
@@ -195,6 +201,12 @@ public static class ConvexHull3
     // Edge key a·n + b. (Not (a << 32) | b: Int64's hash folds the halves with XOR, which collides for a ^ b.)
     private static long Key(int a, int b, long n) => a * n + b;
 
+    private const int ParallelThreshold = 256;
+
+    private const double MaxHullCoordinate = 1L << 40;
+
+    private static Face3 Triangle(Vec3[] pts, (int A, int B, int C) t) => Face3.FromTriangle(pts[t.A], pts[t.B], pts[t.C]);
+
     [ThreadStatic] private static Scratch? _scratch;
 
     private sealed class Scratch
@@ -247,6 +259,9 @@ public static class ConvexHull3
         // Largest |coordinate| of the input: the filter bound must hold for it (Vec3 itself is not range-checked).
         double maxCoord = 1;
         foreach (var v in p) maxCoord = Math.Max(maxCoord, Math.Max(Math.Abs((double)v.X), Math.Max(Math.Abs((double)v.Y), Math.Abs((double)v.Z))));
+        // Exact planes through the points fit Int128 only for |coordinate| ≤ 2^40 (|n| ≤ 2^83, |d| ≤ 3·2^123).
+        if (maxCoord > MaxHullCoordinate)
+            throw new ArgumentOutOfRangeException(nameof(points), "Hull coordinates must stay within ±2^40 nm.");
 
         // Initial tetrahedron.
         int i0 = 0, i1 = -1, i2 = -1, i3 = -1;
@@ -313,7 +328,7 @@ public static class ConvexHull3
             }
             if (certain) return v > bound;
             var (a, b, c) = faces[f];
-            return Predicates.Side(Plane3.FromPoints(p[a], p[b], p[c]), p[q]) > 0;
+            return Predicates.Orient3D(p[a], p[b], p[c], p[q]) > 0; // same sign as the face plane (outward normal)
         }
 
         // Orient the tetrahedron so that every face has the fourth point below it.
