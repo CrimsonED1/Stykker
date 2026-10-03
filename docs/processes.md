@@ -231,7 +231,8 @@ batch is one contiguous ribbon and each subtract sees a result whose loop count 
 
 The one change that survived from this investigation is the bounds filter: it runs on every piece of every sweep, and
 the four LINQ passes over the vertices became a single pass (0.01 s of 41.0 s — kept because it is strictly less work,
-not because it moved the needle).
+not because it moved the needle). It is a kernel change, so it went to the kernel optimisation branch (`perf-round-3`)
+rather than with the GPU work; the 0.01 s in the table above were measured with it.
 
 ### Other processes
 
