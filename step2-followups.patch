@@ -1,0 +1,127 @@
+diff --git a/docs/long-programs.md b/docs/long-programs.md
+index 73ba669..9fee2d4 100644
+--- a/docs/long-programs.md
++++ b/docs/long-programs.md
+@@ -80,8 +80,10 @@ found as a tiny linear program in (z, t): minimise and maximise z subject to n_i
+ That interval is subtracted from the column's intervals exactly as in the dexel map.
+ 
+ Steps are binned by tiles of columns: each step's bounding box (tool box swept by its translation) lists the tiles it
+-touches (CSR on the host), and a GPU block works on one tile with only those steps. Removal is a union, so the order of
+-steps inside a tile does not matter for the result (only the overflow counting can differ).
++touches (CSR on the host), and a GPU block works on one tile with only those steps. Removal is a union, but that alone
++does not make a tile order-independent: the dexel capacity guard keeps the part below a cut and discards the roof
++above it, so which side survives depends on the order the cuts arrive in, and the intervals move with it. What does
++hold is that a column sees its steps in the same order whichever launch runs it — see "Binning (step 2)" below.
+ 
+ ## Binning (step 2)
+ 
+diff --git a/src/Stykker.NanoCut.Gpu/CpuBackend.cs b/src/Stykker.NanoCut.Gpu/CpuBackend.cs
+index d840787..d97b570 100644
+--- a/src/Stykker.NanoCut.Gpu/CpuBackend.cs
++++ b/src/Stykker.NanoCut.Gpu/CpuBackend.cs
+@@ -181,7 +181,13 @@ public sealed class CpuBackend : IZMapBackend, IZMapQueryBackend, IDexelBackend
+     /// <inheritdoc />
+     public ZMapTiming ApplyDexels(DexelMap map, ReadOnlySpan<BallStep> steps, ZMapReadBack readBack)
+     {
++        // Timed separately and reported as PackMs, but deliberately outside the stopwatch below: the
++        // CPU wall has always meant the parallel loop only, and every CPU timing already recorded in
++        // the docs depends on that. The separate field is what makes the two backends comparable.
++        var pack = Stopwatch.StartNew();
+         float[] packed = ToolProfile.Pack(steps, map.OriginMm);
++        pack.Stop();
++        double packMs = pack.Elapsed.TotalMilliseconds;
+         int stepCount = steps.Length, nx = map.CellsX, ny = map.CellsY, k = map.MaxIntervals;
+         float cx = (float)map.CellSizeXMm, cy = (float)map.CellSizeYMm;
+         float[] iv = map.Intervals;
+@@ -212,7 +218,7 @@ public sealed class CpuBackend : IZMapBackend, IZMapQueryBackend, IDexelBackend
+         map.Overflows += overflows;
+ 
+         double ms = sw.Elapsed.TotalMilliseconds;
+-        return new ZMapTiming(ms, 0, 0, 0, ms);
++        return new ZMapTiming(ms, 0, 0, 0, ms, 0, packMs);
+     }
+ 
+     /// <inheritdoc />
+diff --git a/src/Stykker.NanoCut.Gpu/CudaBackend.cs b/src/Stykker.NanoCut.Gpu/CudaBackend.cs
+index 34d71bb..4296ba4 100644
+--- a/src/Stykker.NanoCut.Gpu/CudaBackend.cs
++++ b/src/Stykker.NanoCut.Gpu/CudaBackend.cs
+@@ -301,7 +301,10 @@ public sealed class CudaBackend : IZMapBackend, IZMapQueryBackend, IDexelBackend
+         if (why is not null) throw new GpuNativeException("nc_dexel_apply_steps", -1, why);
+ 
+         var wall = Stopwatch.StartNew();
++        var pack = Stopwatch.StartNew();
+         float[] packed = ToolProfile.Pack(steps, map.OriginMm);
++        pack.Stop();
++        double packMs = pack.Elapsed.TotalMilliseconds;
+         DeviceDexel device = DexelOf(map, out double firstCall);
+         double kernelMs, uploadMs, binMs;
+         if (BinSteps)
+@@ -323,7 +326,8 @@ public sealed class CudaBackend : IZMapBackend, IZMapQueryBackend, IDexelBackend
+         }
+         double downloadMs = readBack == ZMapReadBack.Always ? ReadDexelDevice(device, map) : 0;
+         wall.Stop();
+-        return new ZMapTiming(kernelMs, uploadMs, downloadMs, firstCall, wall.Elapsed.TotalMilliseconds, binMs);
++        return new ZMapTiming(kernelMs, uploadMs, downloadMs, firstCall, wall.Elapsed.TotalMilliseconds, binMs,
++            packMs);
+     }
+ 
+     /// <inheritdoc />
+diff --git a/src/Stykker.NanoCut.Gpu/ZMapTiming.cs b/src/Stykker.NanoCut.Gpu/ZMapTiming.cs
+index a8890bd..84c63ae 100644
+--- a/src/Stykker.NanoCut.Gpu/ZMapTiming.cs
++++ b/src/Stykker.NanoCut.Gpu/ZMapTiming.cs
+@@ -14,18 +14,23 @@ namespace Stykker.NanoCut.Gpu;
+ /// (<see cref="CudaBackend.BinSteps"/>). Zero for the CPU backend and for the unbinned launch. It is part of
+ /// <paramref name="WallMs"/>, reported apart so the saving of a binned launch is not credited with work it did not
+ /// save.</param>
++/// <param name="PackMs">Host-side cost of packing the steps into the flat layout the kernel reads
++/// (<see cref="ToolProfile.Pack"/>). Reported on both backends because it falls inside
++/// <paramref name="WallMs"/> on CUDA and outside it on the CPU, so without this field the two WallMs
++/// columns of a table cover different spans and cannot be compared against each other.</param>
+ public readonly record struct ZMapTiming(
+     double KernelMs,
+     double UploadMs,
+     double DownloadMs,
+     double FirstCallMs,
+     double WallMs,
+-    double BinMs = 0)
++    double BinMs = 0,
++    double PackMs = 0)
+ {
+     /// <summary>The sum of two timings, for accumulating over several calls.</summary>
+     public static ZMapTiming operator +(ZMapTiming a, ZMapTiming b) =>
+         new(a.KernelMs + b.KernelMs, a.UploadMs + b.UploadMs, a.DownloadMs + b.DownloadMs,
+-            a.FirstCallMs + b.FirstCallMs, a.WallMs + b.WallMs, a.BinMs + b.BinMs);
++            a.FirstCallMs + b.FirstCallMs, a.WallMs + b.WallMs, a.BinMs + b.BinMs, a.PackMs + b.PackMs);
+ 
+     /// <summary>Every part zero.</summary>
+     public static ZMapTiming Zero { get; }
+diff --git a/tests/Stykker.NanoCut.Tests/DexelMapTests.cs b/tests/Stykker.NanoCut.Tests/DexelMapTests.cs
+index 0f7d60d..1a98e0c 100644
+--- a/tests/Stykker.NanoCut.Tests/DexelMapTests.cs
++++ b/tests/Stykker.NanoCut.Tests/DexelMapTests.cs
+@@ -211,6 +211,7 @@ public class DexelMapTests(ITestOutputHelper output)
+             return;
+         }
+         var steps = MixedSteps();
++        long overflows = 0;
+         foreach (int cells in new[] { 16, 32, 64, 301 })
+         {
+             var a = Stock(cells, k: 6, backend: binned);
+@@ -232,7 +233,15 @@ public class DexelMapTests(ITestOutputHelper output)
+             Assert.Equal(0, bad);
+             Assert.Equal(0, worst);
+             Assert.Equal(b.Overflows, a.Overflows);
++            overflows += a.Overflows;
+         }
++
++        // "overflows included" is worth nothing unless the capacity guard actually fires: 0 == 0 would
++        // pass with the guard never reached, and the order the cuts arrive in would then never have been
++        // observed to matter. If this fails, the scene does not overflow and the claim in
++        // docs/long-programs.md is what needs correcting, not the test.
++        Assert.True(overflows > 0, $"no column overflowed at any of the four sizes ({overflows} in total), " +
++            "so this test does not exercise the capacity guard");
+     }
+ 
+     [Fact]
