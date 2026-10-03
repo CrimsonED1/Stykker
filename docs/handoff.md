@@ -88,7 +88,7 @@ Steps (tick when done):
 
 ### 2026-10-03, Qwen
 
-- Step 1 of [long-programs.md](long-programs.md) done and committed on `main` (not pushed): the new bench
+- Step 1 of [long-programs.md](long-programs.md) done, committed on `main` and pushed as `long-programs-step-1`: the new bench
   `bench/Stykker.NanoCut.LongPrograms`, one page `bench/results-2026-10-03-long-programs.html`, overview docs updated.
   The baseline reproduces the reference of `docs/processes.md` exactly (1231.252941 mm², 209 089 pieces, 5.4 nm at
   z = 20), so it can serve as the yardstick for the gear preview in step 5.

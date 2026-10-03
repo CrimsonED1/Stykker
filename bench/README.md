@@ -32,8 +32,8 @@ cmake -S bench/cgal -B bench/cgal/build -DCMAKE_BUILD_TYPE=Release && cmake --bu
 python3 bench/run.py bench/scenes/ball-small.json --repeat 3      # results in bench/out/<scene>/results.md
 ```
 
-By default C# is measured warm: the whole scene runs once in the same process before the timed run. `--cold` includes
-the JIT compilation instead.
+By default C# is measured warm: the scene repeats in the same process until it is steady (the rule is spelled out
+below, round 6). `--cold` includes the JIT compilation instead.
 
 ## First results (2026-10-02, cloud container, 4 cores, best of runs)
 
@@ -198,9 +198,9 @@ short-lived processes, ReadyToRun or `TieredCompilation=false` are the levers.
 
 What "steady" means in the code (`Stykker.NanoCut.Bench`, `--warm`): repeat the scene until **three consecutive runs
 agree within 10 % and at least five have run**, and give up when a single run costs more than 3 s. Not a fixed time
-budget: a cold pass of a case that is itself slower than the budget would end the loop after one run and leave exactly
-the tier-0 code the warm-up exists to remove — measured on the grinding baseline, where a single pass reads 938 ms and
-the warm case 202 ms.
+budget: a case that is itself slower than the budget would end the loop after one run and leave exactly the tier-0
+code the warm-up exists to remove — measured on the grinding baseline, where the first pass reads 1.8 s, the second
+938 ms and the warm case 202 ms.
 
 Results, steady state, best of 3 (4 cores):
 
@@ -427,8 +427,8 @@ the area still matches the ideal gear, so the profile itself is right.
 | 960 | 2.979 s | 0.040148 mm³ | 11.2 % | 186/960 | 337 | 1897 | 8033 | 42.3 µm | 4.72 µm | 29.2 µm |
 | 1920 | 5.820 s | 0.044690 mm³ | 12.4 % | 240/1920 | 413 | 3793 | 13 841 | 54.1 µm | 5.06 µm | 25.2 µm |
 
-The 60-grain row is the same scene as the "Grinding, demo default" page above, which measures 0.38 s there (server,
-compute only) against 0.200 s here: same work, no frames, no logging, no page around it.
+The 60-grain row is the same scene as the "Grinding grains" page of the "Server mode" table above, which measures
+0.38 s there (server, compute only) against 0.200 s here: same work, no frames, no logging, no page around it.
 
 **The order of the two programs is part of the measurement.** After the 2D gear kernel has run, the same 3D grinding
 case is slower in that process: 200 ms in a fresh one, 352 ms after a single 30 s gear case, 885 ms after the three gear

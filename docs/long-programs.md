@@ -12,9 +12,9 @@ measurement, see the log). Full tables: `bench/README.md`, "Long programs".
 
 | Program | What it is | Exact time | Source |
 | --- | --- | ---: | --- |
-| Gear generation | `Process2.Cut`: 7-tooth rack rolls a 20-tooth gear (m = 2), 2560 roll steps, 209 089 swept convex pieces, sweep tolerance 30 nm | 34.7 s (docs/processes.md measured 36.6 s) | `docs/long-programs.md`, "Baseline" |
+| Gear generation | `Process2.Cut`: 7-tooth rack rolls a 20-tooth gear (m = 2), 2560 roll steps, 209 089 swept convex pieces, sweep tolerance 30 nm | 34.7 s (`docs/processes.md` measured 41 s on an older build) | `docs/long-programs.md`, "Baseline" |
 | Gear generation, z = 40 | the same, 5120 roll steps, 398 178 pieces | 147.6 s | idem |
-| Grinding, demo default | `GrindingSimulation`: 60 octahedral grains (150 µm) on trochoids, 3000 rpm, 0.8 mm feed | 0.20 s (the demo page measures 0.38 s for the same scene) | `bench/README.md`, "Server mode" |
+| Grinding, 60-grain demo scene | `GrindingSimulation`: 60 octahedral grains (150 µm) on trochoids, 3000 rpm, 0.8 mm feed | 0.20 s (the demo's "Grinding grains" page measures 0.38 s for the same scene) | `bench/README.md`, "Server mode" |
 | Grinding, covered wheel | the same with 1920 grains, 3793 passes | 5.8 s | idem |
 
 ## Baseline (step 1)
