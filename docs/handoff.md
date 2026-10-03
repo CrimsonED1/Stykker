@@ -52,16 +52,18 @@ Model: the column's intersection with one swept ball (a capsule, convex) is a si
 existing `ToolProfile.Bottom`; high is the mirror image: the concave top curve z0 + wz·t + √(a² − w2·(t − t*)²) has its
 maximum at the stationary point t* + c·a clamped to the valid interval (vertical step: max(z0, z0 + wz) + √(r² − p²)).
 Each step subtracts [low, high] from the column's interval list (an interval can split in two). K fixed per map
-(default 4); a column that would need more than K intervals counts as an overflow and keeps the K lowest-by-index ones,
-the overflow count is reported, never hidden.
+(default 4); a subtraction that would split an interval in a full column cuts through to that interval's top instead (loses
+the roof piece, as a Z-map would) and is counted in `DexelMap.Overflows`, never hidden.
 
 Expected result: on pocket-large the dexel volume converges with the grid to the true-sphere value 84 846.749 mm³
 (docs/gpu-findings.md, "Accuracy"), i.e. only the tool-model error of the 48-segment ball remains (−13.863 mm³).
 
 Steps (tick when done):
 
-- [ ] `ToolProfile.Top` (C#) next to `Bottom`, same packed layout, tests against a double reference.
-- [ ] `DexelMap` (C#, CPU backend): intervals as float pairs, K per column, apply / volume / mesh (top surface only is
+- [x] `ToolProfile.Span` (C#) next to `Bottom`: low and high of the column's interval, same packed layout; tested
+      against the double reference on long ramps (`DexelMapTests.SpanMatchesTheExactInterval`).
+- [x] `DexelMap` (C#, CPU backend, `IDexelBackend` on `CpuBackend`; tests in `DexelMapTests`, 10 green; with K = 1 it is
+      bit for bit the Z-map): intervals as float pairs, K per column, apply / volume / mesh (top surface only is
       fine for the viewer), overflow count. Tests: a ball buried in the stock removes 4/3·π·r³ (the case the Z-map
       cannot do); a roof stays when the crown is below the top; horizontal capsule; CPU thread count does not matter.
 - [ ] CUDA: `dexel_apply_kernel` + C API (`nc_dexel_create/apply_steps/read/volume/destroy`) in `zmap.cu`, `CudaBackend`

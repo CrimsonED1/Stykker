@@ -312,8 +312,14 @@ public sealed class ZMap
     public ZMapMesh ToMesh()
     {
         RequireCurrentHeights();
-        int nx = CellsX, ny = CellsY;
-        float cx = (float)CellSizeXMm, cy = (float)CellSizeYMm;
+        return MeshOf(Heights, CellsX, CellsY, CellSizeXMm, CellSizeYMm, OriginMm);
+    }
+
+    /// <summary>A height field (row-major, relative heights) as the mesh <see cref="ToMesh"/> describes.</summary>
+    internal static ZMapMesh MeshOf(float[] heights, int nx, int ny, double cellX, double cellY,
+        (double X, double Y, double Z) origin)
+    {
+        float cx = (float)cellX, cy = (float)cellY;
         var pos = new float[nx * ny * 3];
         var nrm = new float[nx * ny * 3];
         for (int j = 0; j < ny; j++)
@@ -323,13 +329,13 @@ public sealed class ZMap
                 int v = j * nx + i;
                 pos[3 * v] = (i + 0.5f) * cx;
                 pos[3 * v + 1] = (j + 0.5f) * cy;
-                pos[3 * v + 2] = Heights[v];
+                pos[3 * v + 2] = heights[v];
 
                 // Central differences, one-sided at the border.
-                float hl = Heights[j * nx + (i > 0 ? i - 1 : i)];
-                float hr = Heights[j * nx + (i + 1 < nx ? i + 1 : i)];
-                float hd = Heights[(j > 0 ? j - 1 : j) * nx + i];
-                float hu = Heights[(j + 1 < ny ? j + 1 : j) * nx + i];
+                float hl = heights[j * nx + (i > 0 ? i - 1 : i)];
+                float hr = heights[j * nx + (i + 1 < nx ? i + 1 : i)];
+                float hd = heights[(j > 0 ? j - 1 : j) * nx + i];
+                float hu = heights[(j + 1 < ny ? j + 1 : j) * nx + i];
                 float dx = (i > 0 && i + 1 < nx) ? 2f * cx : cx;
                 float dy = (j > 0 && j + 1 < ny) ? 2f * cy : cy;
                 float gx = (hr - hl) / dx, gy = (hu - hd) / dy;
@@ -351,6 +357,6 @@ public sealed class ZMap
                 idx[k++] = b; idx[k++] = e; idx[k++] = c;
             }
         }
-        return new ZMapMesh(pos, nrm, idx, OriginMm);
+        return new ZMapMesh(pos, nrm, idx, origin);
     }
 }

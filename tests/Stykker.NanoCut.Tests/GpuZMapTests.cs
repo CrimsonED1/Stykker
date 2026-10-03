@@ -922,7 +922,7 @@ public class GpuZMapTests(ITestOutputHelper output)
     /// A straight step of <paramref name="length"/> mm in a direction that is not axis aligned, falling by
     /// <paramref name="slope"/>·length (rising when negative), and the grid origin below and before it.
     /// </summary>
-    private static (BallStep Step, (double X, double Y, double Z) Origin) LongRamp(double length, double radius, double slope)
+    internal static (BallStep Step, (double X, double Y, double Z) Origin) LongRamp(double length, double radius, double slope)
     {
         var (ux, uy) = (Math.Cos(0.37), Math.Sin(0.37));
         double startZ = 10 + Math.Max(slope, 0) * length;
@@ -936,7 +936,7 @@ public class GpuZMapTests(ITestOutputHelper output)
     /// interval of t from the distance to the step line, then a golden-section search for the minimum of the convex
     /// bottom curve on it.
     /// </summary>
-    private static double ExactBottom(double x, double y, BallStep s)
+    internal static double ExactBottom(double x, double y, BallStep s)
     {
         double px = x - s.From.X, py = y - s.From.Y;
         double wx = s.To.X - s.From.X, wy = s.To.Y - s.From.Y, wz = s.To.Z - s.From.Z, r2 = s.RadiusMm * s.RadiusMm;
@@ -968,7 +968,7 @@ public class GpuZMapTests(ITestOutputHelper output)
     }
 
     /// <summary>Horizontal distance from a column to the segment of a step, in mm.</summary>
-    private static double HorizontalDistance(double x, double y, BallStep s)
+    internal static double HorizontalDistance(double x, double y, BallStep s)
     {
         double wx = s.To.X - s.From.X, wy = s.To.Y - s.From.Y;
         double w2 = wx * wx + wy * wy;
