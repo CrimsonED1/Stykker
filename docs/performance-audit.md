@@ -213,7 +213,7 @@ Median aus 3 bzw. 30 Läufen):
 | Zahnrad − Bohrung − Scheibe | 64–69 ms | 60–65 ms | gleich |
 
 Alle Volumina gleich (die Extrusion bis auf die letzte Stelle der double-Summe, weil die Faces anders aufgeteilt sind).
-Die 60× kommen fast ganz aus dem Rasterindex im Ohrentest (Abschnitt 2D-Kern), nicht aus dem Verschmelzen.
+Wie sich die 60× auf den Rasterindex im Ohrentest und das Verschmelzen verteilen, ist hier nicht getrennt gemessen.
 
 **Was davon bleibt:** Die Extrusion ist nur die eine Hälfte. `Triangulator2.ConvexParts` ist O(n²) im Ear-Clipping über
 107 k Punkte, und die Seitenwände bleiben bei ~215 k Faces. Beides ist der nächste Schritt, nicht dieser.
