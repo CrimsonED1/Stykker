@@ -179,7 +179,8 @@ result's loop count costs.
   `docs/todo.md`.
 - **One change survived:** the bounds filter now makes one pass over the vertices instead of four LINQ passes. It runs
   on every piece of every sweep; it costs 0.01 s of 41.0 s, so it is kept because it is strictly less work, not because
-  it moved the needle. Everything else was reverted with `git checkout`.
+  it moved the needle. Everything else was reverted with `git checkout`. The change itself was later moved to the
+  kernel optimisation branch (`perf-round-3`), since this branch does not touch the kernel.
 
 ---
 
