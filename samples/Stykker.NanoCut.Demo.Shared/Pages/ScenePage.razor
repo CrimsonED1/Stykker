@@ -1,6 +1,7 @@
 @page "/scene/{Id}"
 @using Stykker.NanoCut.Geometry3D
 @inject Viewer Viewer
+@inject IComputeRunner Runner
 @implements IAsyncDisposable
 
 @if (_scene is null)
@@ -24,7 +25,7 @@ else
             <div id="viewport" class="viewport">
                 @if (_busy)
                 {
-                    <div class="busy"><div class="spinner"></div>Computing in WebAssembly…</div>
+                    <div class="busy"><div class="spinner"></div>Computing (@Runner.Where)…</div>
                 }
             </div>
         </section>
@@ -109,6 +110,7 @@ else
     private SceneResult? _result;
     private string? _error;
     private bool _busy;
+    private readonly CancellationTokenSource _stop = new();
     private string _engine = "three";
     private bool _attached;
     private string? _loadedId;
@@ -161,7 +163,8 @@ else
         await Task.Delay(30); // let the browser paint the busy indicator
         try
         {
-            _result = _scene.Run(_values);
+            var (scene, values) = (_scene, _values);
+            _result = await Runner.Run(() => scene.Run(values), _stop.Token);
             await Show();
         }
         catch (Exception ex)
@@ -217,6 +220,7 @@ else
 
     public async ValueTask DisposeAsync()
     {
+        _stop.Cancel();
         if (_attached) await Viewer.Clear();
     }
 }

@@ -3,6 +3,7 @@
 @using Stykker.NanoCut.Cutting
 @using Stykker.NanoCut.Geometry3D
 @inject Viewer Viewer
+@inject IComputeRunner Runner
 @implements IAsyncDisposable
 
 <div class="scene">
@@ -84,10 +85,10 @@
         <table class="metrics">
             <tr><td>Cutting speed</td><td>@F(Math.PI * _diameter * _rpm / 60000, "0.##") m/s</td></tr>
             <tr><td>Feed per revolution</td><td>@F(_feed / (_rpm / 60) * 1000, "0.#") µm</td></tr>
-            <tr><td>Active grains</td><td>@(_sim?.ActiveGrains ?? 0) / @_grainCount (@F((_sim?.ActiveRatio ?? 0) * 100, "0") %)</td></tr>
-            <tr><td>Grain passes</td><td>@(_sim?.Passes.Count(p => p.Done) ?? 0) / @(_sim?.Passes.Count ?? 0) (@(_sim?.Passes.Count(p => p.RemovedMm3 > 0) ?? 0) cutting)</td></tr>
-            <tr><td>Removed volume</td><td>@F((_sim?.RemovedMm3 ?? 0) * 1e9, "0") µm³</td></tr>
-            <tr><td>Max. chip thickness</td><td>@F(MaxChip * 1000, "0.00") µm</td></tr>
+            <tr><td>Active grains</td><td>@_stats.Active / @_grainCount (@F(_stats.Ratio * 100, "0") %)</td></tr>
+            <tr><td>Grain passes</td><td>@_stats.Done / @_stats.Passes (@_stats.Cutting cutting)</td></tr>
+            <tr><td>Removed volume</td><td>@F(_stats.Removed * 1e9, "0") µm³</td></tr>
+            <tr><td>Max. chip thickness</td><td>@F(_stats.MaxChip * 1000, "0.00") µm</td></tr>
             <tr><td>Compute time</td><td>@_computeMs ms</td></tr>
         </table>
 
@@ -161,6 +162,7 @@
     private double _simTime;
     private long _computeMs;
     private bool _attached, _computing, _cancel, _playing;
+    private readonly CancellationTokenSource _stop = new();
     private string? _error;
     private double[] _profile = [];
     private double _ra, _rz, _profileDepth = 0.05, _binUm = 1;
@@ -169,7 +171,17 @@
     private static string F(double v, string format) => double.IsNaN(v) ? "–" : v.ToString(format, CultureInfo.InvariantCulture);
 
     private double FeedX(double t) => _x0 + _feed * t;
-    private double MaxChip => _sim is null ? 0 : _sim.Grains.Max(g => g.MaxChipThicknessMm);
+    // What the metrics table shows, taken from the simulation after each frame. The table never reads the simulation
+    // itself: on the server host the next frame is computed on another thread while the page may render.
+    private sealed record SimStats(int Active, double Ratio, int Done, int Passes, int Cutting, double Removed, double MaxChip)
+    {
+        public static readonly SimStats None = new(0, 0, 0, 0, 0, 0, 0);
+
+        public static SimStats Of(GrindingSimulation s) => new(s.ActiveGrains, s.ActiveRatio, s.Passes.Count(p => p.Done),
+            s.Passes.Count, s.Passes.Count(p => p.RemovedMm3 > 0), s.RemovedMm3, s.Grains.Max(g => g.MaxChipThicknessMm));
+    }
+
+    private SimStats _stats = SimStats.None;
     private double ProfileX => Math.Clamp(_x0 + _length - 0.1, 0.05, BlockLength - 0.05);
     private int SliderValue => _frames.Count < 2 || _endTime <= 0 ? 0 : (int)Math.Round(1000 * _simTime / _endTime);
     private double ProfileY(double zMm) => 8 + 94 * (-zMm / _profileDepth);
@@ -189,6 +201,7 @@
         _x0 = -0.3;
         _endTime = _length / _feed;
         _sim = null;
+        _stats = SimStats.None;
         _frames.Clear();
         var block = Block();
         _frames.Add(new Frame(0, block.ToMeshBuffers(OriginMode.Absolute), MeshBuffers.Concat([]), MeshBuffers.Concat(_grainMeshes)));
@@ -260,16 +273,24 @@
             var clock = Stopwatch.StartNew();
             var feed = FeedMotion();
             var tol = Tolerance.Budget(totalUm: _sweepUm + 0.051, chordNm: 50, sweepNm: Math.Max(0.01, _sweepUm) * 1000);
-            _sim = new GrindingSimulation(Block(), _wheel!, feed, SpinningTool.Durations(feed, _feed), tol);
+            var block = Block();
+            var wheel = _wheel!;
+            var sim = await Runner.Run(() => new GrindingSimulation(block, wheel, feed, SpinningTool.Durations(feed, _feed), tol), _stop.Token);
             const int frames = 16;
             for (int i = 1; i <= frames && !_cancel; i++)
             {
                 double t = _endTime * i / frames;
-                _sim.AdvanceTo(i == frames ? double.PositiveInfinity : t);
-                var active = _sim.Grains.Where(g => g.Active).Select(g => _grainMeshes[g.Index]);
-                var inactive = _sim.Grains.Where(g => !g.Active).Select(g => _grainMeshes[g.Index]);
-                _frames.Add(new Frame(t, MeshBuffers.Concat(_sim.Cells.Select(c => c.ToMeshBuffers(OriginMode.Absolute))),
-                    MeshBuffers.Concat(active), MeshBuffers.Concat(inactive)));
+                bool last = i == frames;
+                var (frame, stats) = await Runner.Run(() =>
+                {
+                    sim.AdvanceTo(last ? double.PositiveInfinity : t);
+                    var active = sim.Grains.Where(g => g.Active).Select(g => _grainMeshes[g.Index]);
+                    var inactive = sim.Grains.Where(g => !g.Active).Select(g => _grainMeshes[g.Index]);
+                    return (new Frame(t, MeshBuffers.Concat(sim.Cells.Select(c => c.ToMeshBuffers(OriginMode.Absolute))),
+                        MeshBuffers.Concat(active), MeshBuffers.Concat(inactive)), SimStats.Of(sim));
+                }, _stop.Token);
+                _frames.Add(frame);
+                _stats = stats;
                 _computeMs = clock.ElapsedMilliseconds;
                 _simTime = t;
                 await ShowAt(t);
@@ -277,7 +298,9 @@
                 StateHasChanged();
                 await Task.Delay(1);
             }
-            Analyse();
+            // Published only now: the grain table reads it, and nothing changes it any more.
+            _sim = sim;
+            await Runner.Run(Analyse, _stop.Token);
         }
         catch (Exception ex) { _error = ex.Message; }
         finally
@@ -371,6 +394,7 @@
     {
         _playing = false;
         _cancel = true;
+        _stop.Cancel();
         if (_attached)
         {
             await Viewer.RemoveTool();

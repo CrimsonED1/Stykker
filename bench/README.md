@@ -207,3 +207,184 @@ Results, steady state, best of 3 (4 cores):
 
 Short tasks: C++ ahead by 1.3–2.3× (was up to 5.5×). Long tasks: NanoCut ahead by 1.5–1.7×.
 
+## GPU prototype: Z-map preview (2026-10-03)
+
+A preview of the same scene, not an exact solid: a height field over the workpiece (one height per cell) that every
+tool step lowers. `src/Stykker.NanoCut.Gpu` holds the managed API with two backends – `Cpu` (C#, the reference) and
+`Cuda` (`LibraryImport` into `src/Stykker.NanoCut.Gpu.Native/zmap.cu`, built by `build.ps1`, not part of `dotnet build`).
+`bench/Stykker.NanoCut.GpuBench` measures it.
+
+pocket-large, 876 steps, on the machine from `docs/gpu-findings.md` (RTX 5070 Ti, Ryzen 7 5800X3D), **not** comparable
+to the cloud tables above:
+
+| | Time for all 876 steps | per step | Remaining volume (mm³) |
+| --- | ---: | ---: | ---: |
+| Exact kernel (`nanocut`) | 4 655 ms | 5,31 ms | 84 860,612636583 |
+| Z-map, CPU backend, 16 threads | 286 ms | 0,327 ms | 84 770,457226 |
+| Z-map, CUDA backend (kernel only) | 1,5 ms | 0,0017 ms | 84 770,457226 |
+| Z-map, CUDA backend (wall, with transfers) | 2,5 ms | 0,0029 ms | 84 770,457226 |
+
+The deviation of −0,106 % splits into three causes: tool model −0,016 %, representation −0,090 %, grid +0,0005 %. The
+representation error is a property of the height field and does not shrink with a finer grid, so 512 × 384 is enough for a
+preview. Measurements, error decomposition and the recommendation: `docs/gpu-findings.md`. One-page result:
+[`results-2026-10-03-gpu.html`](results-2026-10-03-gpu.html).
+
+## GPU prototype, round 2: read-back on request, batch queries, the volume on the device (2026-10-03)
+
+Same scene and machine. `IZMapBackend.Apply` takes a `ZMapReadBack`, so a caller that only wants a progress number after
+a batch of steps never pays for the copy of the field, and `ZMap.BackendRemovedVolumeMm3` reduces the removed volume on
+the device instead. 1024 × 768, warm, best of 5:
+
+| | Kernel | Upload | Download | Wall |
+| --- | ---: | ---: | ---: | ---: |
+| CUDA, read-back after every call | 1,5 ms | 0,05 ms | 0,42 ms | 2,4 ms |
+| CUDA, `ZMapReadBack.Never` + volume on the device | 1,544 ms | 0,05 ms | – | 1,665 ms |
+| CPU backend | 266,2 ms | – | – | 266,2 ms |
+
+The volume reduction inside that second row costs 0,1416 ms and returns 11 229,542774 mm³, against the 0,42 ms of copy
+it replaces.
+
+Batch queries (`SampleHeights`, `ProbeMaterial`), warm, best of 5, cold first call in brackets:
+
+| Query | CPU | CUDA kernel | CUDA upload | CUDA download | CUDA wall | Agreement |
+| --- | ---: | ---: | ---: | ---: | ---: | --- |
+| heights at 1 000 000 points (16 MB in, 4 MB out) | 3,474 ms (4,007) | 0,064 ms | 1,658 ms | 0,428 ms | **2,187 ms** (3,489) | max Δh 1,9e-6 mm |
+| penetration at 876 tool poses (14 KB in) | **0,039 ms** (0,443) | 0,004 ms | 0,044 ms | 0,028 ms | 0,116 ms (0,542) | Δ = 0 |
+
+Three things came out of it:
+
+- **The point query is transfer-bound, and the packing on the host was what made it lose.** `CudaBackend` used to copy
+  the query into a flat float array before uploading (2,8 ms of packing to save 0,9 ms of transfer, 4,135 ms wall).
+  `nc_zmap_sample` now takes the points as they are and `sample_d_kernel` subtracts the origin on the device: 2,187 ms,
+  1,6× faster than the CPU, same answers to the last bit.
+- **The pose query is round-trip latency and cannot win at this size** — 0,116 ms against 0,039 ms for the same 876 poses
+  on the CPU, with a 0,004 ms kernel. Probe a few hundred poses on the CPU.
+- **Pinned host memory buys nothing here**: 0,362 ms / 8,68 GB/s pinned against 0,362 ms / 8,70 GB/s pageable, measured
+  back to back in one process, with the order flipping between processes. It is off by default.
+
+And one methodological finding worth more than the numbers: every query measurement had to be warmed up first. The
+first table was off by a factor of ten because the bench called each query exactly once on freshly allocated arrays
+(first touch of a 4 MB destination costs more than the copy). The bench now warms up like the preview phase and prints
+the cold call beside the warm one.
+
+Details and the full reasoning: `docs/gpu-findings.md`. One-page result:
+[`results-2026-10-03-gpu-round2.html`](results-2026-10-03-gpu-round2.html).
+
+## GPU prototype, round 3: a query that lives on the device (2026-10-03)
+
+Round 2 ended with the point query spending 2.086 of its 2.187 ms on the wire and a clear instruction: a caller that
+asks about the same points again should not send them again. `IZMapQueryBackend.UploadPoints` hands a point set to the
+backend once (`nc_pointset_create`, its own device allocation outside the map), and `nc_zmap_sample_set` runs the same
+`sample_d_kernel` over it with no copy before the launch. Same scene and machine, 1024 × 768, 1 000 000 points, warm,
+best of 5:
+
+| 1 000 000 points | kernel | upload | download | reported wall | caller waits |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| CUDA, points per call | 0,064 ms | 1,677 ms | 0,430 ms | 2,204 ms | 2,205 ms |
+| CUDA, points kept on the device | 0,061 ms | 0,001 ms | 0,421 ms | **0,514 ms** | 0,515 ms |
+| CPU, points per call | 3,457 ms | – | – | 3,457 ms | 5,873 ms |
+| CPU, points kept in an array | 3,332 ms | – | – | 3,332 ms | **3,522 ms** |
+
+The set costs 2,349 ms to upload once and saves 1,69 ms per call, so it pays for itself at the second query. The
+answers are identical to the span query to the bit (`max Δh` against the CPU reference is 1,9e-6 mm either way), and
+0,421 of the remaining 0,514 ms is the 4 MB answer coming back — the query now sits at the floor of what this link can
+do with four bytes per pixel.
+
+Two findings beyond the number:
+
+- **The CPU backend was hiding 2,4 ms per call.** A `ref` struct cannot be captured by a parallel loop, so
+  `CpuBackend` copies the span into an array before the loop, and that copy sits outside its stopwatch: 3,457 ms
+  reported, 5,873 ms waited. Keeping the points in an array the set owns takes the call to 3,522 ms. The bench now
+  times every query from outside and prints that next to the backend's own figure, because a timing that excludes work
+  is not a wall time.
+- **The height query did not take the per-map lock** that `IZMapQueryBackend` promises, although it shares the map's
+  input and output buffers with the pose query, which does. Two concurrent queries on one map could overwrite each
+  other. Fixed, and the interface now says which queries lock and why.
+
+Reproduce:
+
+```
+dotnet build bench/Stykker.NanoCut.GpuBench -c Release
+dotnet bench/Stykker.NanoCut.GpuBench/bin/Release/net10.0/Stykker.NanoCut.GpuBench.dll `
+    bench/out/pocket-large/expanded.json --grids 1024 --repeat 5 --queries --reference 84860.612636583
+```
+
+Details: `docs/gpu-findings.md`. One-page result:
+[`results-2026-10-03-gpu-round3.html`](results-2026-10-03-gpu-round3.html).
+
+## A toolpath of long moves (2026-10-03)
+
+`scenes/pocket-large-g1.json` is `pocket-large` with one straight move per path segment, as a CAM program would send
+it: 13 moves of 4 to 90 mm instead of 876 steps of 0.75 mm. The swept region is the same.
+
+| Engine | pocket-large (876 steps) | pocket-large-g1 (13 moves) | Volume, both |
+| --- | ---: | ---: | ---: |
+| `nanocut` (exact) | 4162–4217 ms | 42 ms (min 38) | 84 860.612636583 mm³ |
+| `manifoldsharp` | | 46 ms (min 41) | 84 860.612636583 mm³ |
+| Z-map CPU, 1024 × 768 | 255–268 ms | 4.4 ms | 84 770.457226 mm³ |
+| Z-map CUDA, 1024 × 768, wall | 2.4 ms | 0.8 ms | 84 770.457226 mm³ |
+
+RTX 5070 Ti, 16 logical processors, Windows 11, warm. The pocket-large-g1 times of the exact engines are the median
+of 30 runs (`--repeat 30`): a scene this short scatters by a factor of three to four between single runs (38 to 170 ms
+for NanoCut, with any parallelism, also with `--par 1`), so a median of three can land anywhere in that range; an
+earlier version of this table gave 72–113 ms from too few runs. The Z-map times are the best of 30. The exact kernel
+costs per cut, not per length, so long moves are what makes it fast; the Z-map numbers need the long-step fix of 2026-10-03 (`docs/gpu-findings.md`, "Independent
+verification") to give the same volume for both scenes.
+
+## Server mode
+
+The same demo pages in two hosts: `samples/Stykker.NanoCut.Demo` (Blazor WebAssembly, published with AOT as for
+GitHub Pages, geometry computed in the browser) and `samples/Stykker.NanoCut.Server` (Blazor Server, `-c Release`,
+geometry computed natively on the server with all cores, the browser only displays). Same machine for both: AMD Ryzen 7
+5800X3D (8 cores, 16 logical processors), 32 GB, Windows 11; browser: the Chromium-based browser pane of the Claude
+desktop app, on the same machine as the server, so the network is loopback.
+
+Wall time is measured in the page from the click to the last change of the page (the DOM quiet for 0.8 s), so it
+includes the transfer of the meshes to the viewer; "compute" is the page's own figure where it shows one. Second run of
+each (the first differs by JIT on the server and by little in the browser), default parameters unless noted.
+
+| Page | Browser (WASM, AOT) wall | Server wall | Faster | Browser compute | Server compute |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Spinning disc, saw blade, feed length 30 mm (40 frames) | 20 449 ms | 2 546 ms | 8.0× | 20 354 ms | 2 497 ms |
+| Grinding grains | 1 719 ms | 423 ms | 4.1× | 1 670 ms | 379 ms |
+| Profiles, spur gear, axial section (part built on every click) | 242 ms | 47 ms | 5.1× | 42 ms¹ | 9 ms¹ |
+| 3-axis mill, example G-code program (11 moves, fresh workpiece) | 1 674 ms | 288 ms | 5.8× | | |
+| Milling (ball-nose pocket) scene | 1 306 ms | 199 ms | 6.6× | 1 205 ms | 135 ms |
+
+¹ The section alone; the wall time also contains building the gear.
+
+The server is 4 to 8 times faster on every page (up to 9× on the computation alone). Two things add up: native code
+against WebAssembly, and the cores, since the browser build runs on one thread while the kernel's parallel parts use
+all 16 on the server; which share is which was not separated. Wall minus compute is 40 to 65 ms per click on the server
+(circuit round trip, meshes over the socket, drawing) against 50 to 100 ms in the browser (drawing alone), so the
+transfer costs nothing that matters at these mesh sizes, but on a page that computes for only a few milliseconds there
+is little to gain. The first run on the server is slower by the JIT (the milling scene 1165 ms cold against 135 ms
+warm); the browser build is compiled ahead of time and does not have that.
+
+Several users share one queue (`Compute:MaxConcurrentJobs`, default 2): every job already uses all cores, so more jobs
+at once only make each slower. A page that is left cancels its waiting jobs, and Stop ends a running computation after
+the current step (measured: 103 ms after the click on the long spinning cut). `/api/compute` reports the jobs, the
+queue and the time spent waiting.
+
+```bash
+dotnet run -c Release --project samples/Stykker.NanoCut.Server        # http://localhost:5180
+dotnet publish samples/Stykker.NanoCut.Demo -c Release -p:Aot=true -o out   # the browser build, serve out/wwwroot
+```
+
+## Dexel preview (2026-10-03)
+
+`DexelMap` keeps up to K material intervals per column instead of one height, so the roof of material above a shallow
+tool stays (details in `docs/gpu-findings.md`, "Dexel preview"). `pocket-large`, K = 4, RTX 5070 Ti, best of 3:
+
+| Grid | Remaining (CPU = CUDA) | against exact | CUDA wall | CPU wall |
+| --- | ---: | ---: | ---: | ---: |
+| 1024 × 768 | 84 847.733837 mm³ | −0.015 % | 2.9 ms | 261 ms |
+| 4096 × 3072 | 84 846.915579 mm³ | −0.016 % | 36.3 ms | 4 371 ms |
+
+The Z-map leaves 84 770.457226 mm³ (−0.106 %) at 1024 × 768; what is left for the dexel map is the 48-segment ball
+against a true sphere (−0.016 %).
+
+```bash
+dotnet bench/Stykker.NanoCut.GpuBench/bin/Release/net10.0/Stykker.NanoCut.GpuBench.dll bench/out/pocket-large/expanded.json --dexel 4 --grids 1024,4096 --backends cpu,cuda --reference 84860.612636583
+```
+
