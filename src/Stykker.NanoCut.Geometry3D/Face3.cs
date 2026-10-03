@@ -108,15 +108,40 @@ internal sealed class Face3
             st.HullFaces++;
             st.HullFromGridEdges += n;
         }
-        for (int i = 0; i < n; i++)
+for (int i = 0; i < n; i++)
         {
             Vec3 a = pts[i], b = pts[(i + 1) % n];
             if (a == b) throw new ArgumentException("Duplicate consecutive vertices.");
-            edges[i] = OrientedEdgePlane(Plane3.EdgePlane(a, b, k), pts, i, n);
+            // Convexity check. FromGrid is documented to take a convex polygon, and it has always taken that on trust:
+            // the side search stopped at the first vertex off the plane, so a polygon that was concave past that vertex
+            // produced a face whose plane held fewer corners than the polygon -- silently. With a cheap, bounded check
+            // that becomes an exception instead, which is what the coplanar merge in Solid.FromTriangleList needs.
+var e = Plane3.EdgePlane(a, b, k);
+            int next = i + 1 == n ? 0 : i + 1, side = 0;
+            // Bounded convexity check. FromGrid is documented to take a convex polygon and has always taken that on
+            // trust: the side search stopped at the first vertex off the plane, so a polygon concave past that vertex
+            // produced a face whose plane held fewer corners than the polygon, silently. Full checking is O(n^2) per
+            // face, which a large cap polygon cannot afford, so the first CheckVertices other vertices decide and the
+            // rest are trusted. Every face the kernel builds itself is convex, so the limit only ever hides a bug.
+            int check = n <= ConvexCheckLimit ? n : ConvexCheckLimit;
+            for (int j = 0; j < check; j++)
+            {
+                if (j == i || j == next) continue;   // on the edge plane by construction
+                int s = Predicates.Side(e, pts[j]);
+                if (s == 0) continue;                // collinear vertices are allowed
+                if (side == 0) side = s;
+                else if (s != side) throw new ArgumentException("Face polygon is not convex.");
+            }
+            if (side == 0) throw new ArgumentException("Degenerate face.");
+            if (side > 0) e = e.Flipped();
+            edges[i] = e;
             verts[i] = new Point3(a);
         }
         return new Face3(support, edges, verts);
     }
+
+    /// <summary>How many vertices of a face polygon are tested for convexity (see the call site for why it is bounded).</summary>
+    private const int ConvexCheckLimit = 12;
 
     /// <summary>
     /// The single-triangle case. Identical to <see cref="FromGrid"/> on three points, but without allocating the
