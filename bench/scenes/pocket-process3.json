@@ -1,0 +1,17 @@
+{
+  "name": "pocket-process3",
+  "kind": "process3",
+  "description": "Zig-zag pocket, ball r = 3 mm (48 segments), 7 overlapping passes 4 mm apart, 5 mm deep, over an 80 x 60 x 20 mm block -- the same geometry as pocket-large, but through Process3.Cut instead of one hull per step.",
+  "box": { "min": [0, 0, 0], "max": [80, 60, 20] },
+  "tool": { "ballMm": 3, "segments": 48 },
+  "paths": [
+    [[-5, 6, 18], [85, 6, 18]],
+    [[85, 10, 18], [-5, 10, 18]],
+    [[-5, 14, 18], [85, 14, 18]],
+    [[85, 18, 18], [-5, 18, 18]],
+    [[-5, 22, 18], [85, 22, 18]],
+    [[85, 26, 18], [-5, 26, 18]],
+    [[-5, 30, 18], [85, 30, 18]]
+  ],
+  "tolerance": { "totalUm": 0.1, "chordNm": 50, "sweepNm": 30 }
+}

@@ -10,5 +10,7 @@
     <InternalsVisibleTo Include="Stykker.NanoCut.Cutting" />
     <InternalsVisibleTo Include="Stykker.NanoCut.Tests" />
     <InternalsVisibleTo Include="Stykker.NanoCut.OracleTests" />
+    <!-- The bench reads the kernel's own counters (parallelism, filter hit rate); it ships nothing. -->
+    <InternalsVisibleTo Include="Stykker.NanoCut.Bench" />
   </ItemGroup>
 </Project>

@@ -5,14 +5,32 @@ public static class ConvexHull3
 {
     private const double Epsilon = 1.0 / (1L << 53);
 
-    /// <summary>Convex hull as a solid with triangular faces. Throws if the points do not span a volume.</summary>
+/// <summary>Convex hull as a solid with triangular faces. Throws if the points do not span a volume.</summary>
     public static Solid Compute(IEnumerable<Vec3> points)
     {
         var tris = Triangles(points, out var pts);
+        return new Solid(FacesFromTriangles(pts, tris));
+    }
+
+    /// <summary>
+    /// Turns a soup of outward-oriented triangles over shared vertices into faces, merging coplanar neighbours into one
+    /// convex polygon each. Two triangles are coplanar iff the far vertex of one lies on the other's plane (exact
+    /// orient3d); union-find joins them, and each group's boundary -- the directed edges whose twin is not in the group --
+    /// is walked into a polygon.
+    ///
+    /// This is the step that decides how many faces a result has. Without it a triangulated cap stays one face per
+    /// triangle: Solid.Extrude fed 107 328 profile vertices through here and got 428 800 faces.
+    /// </summary>
+    /// <param name="pts">Vertices, each present once.</param>
+    /// <param name="tris">Outward-oriented triangles as indices into <paramref name="pts"/>.</param>
+    /// <param name="strict">
+    /// A convex hull's surface is closed and convex, so a group whose boundary is not a single convex loop is a bug
+    /// there and is thrown. A general triangle soup (an extruded cap, a re-triangulated solid after a Boolean) can have
+    /// T-junctions or a boundary that folds back, and such a group keeps its triangles instead.
+    /// </param>
+    internal static List<Face3> FacesFromTriangles(Vec3[] pts, List<(int A, int B, int C)> tris, bool strict = true)
+    {
         long n = pts.Length;
-        // Coplanar hull triangles form one convex polygon. Neighbouring triangles are coplanar iff the far vertex of one
-        // lies on the other's plane (exact orient3d); union-find joins them, then each group's boundary (directed edges
-        // whose twin is not in the group) is walked into one polygon.
         var edgeTri = (_scratch ??= new Scratch()).EdgeTri;
         edgeTri.Clear();
         for (int i = 0; i < tris.Count; i++)
@@ -30,14 +48,20 @@ public static class ConvexHull3
         }
         void Join(int i, int u, int v, int own)
         {
-            int j = edgeTri[Key(u, v, n)];
+            // A convex hull is closed, so the twin edge always exists. A general triangle soup can have a boundary edge
+            // with no twin; there is then simply no neighbour to join with.
+            if (!edgeTri.TryGetValue(Key(u, v, n), out int j)) return;
             if (j < i) return; // each shared edge once
             var (x, y, z) = tris[j];
             int far = x != u && x != v ? x : y != u && y != v ? y : z;
+            // Two triangles agreeing on two vertices share more than one edge, so the third is not a far vertex.
+            if (far == u || far == v) return;
             var (a, b, c) = tris[i];
             if (Predicates.Orient3D(pts[a], pts[b], pts[c], pts[far]) == 0) parent[Find(i)] = Find(j);
         }
-        // Single triangles become faces directly; only real coplanar groups are collected.
+        // Single triangles become faces directly; only real coplanar groups are collected. For a ball hull almost every
+        // triangle is its own group (a sphere's quads and meridians are not coplanar), so the group lists must not be
+        // built for them: 2256 of 2304 groups for a 48-segment ball would be 2256 throwaway lists.
         var size = new int[tris.Count];
         for (int i = 0; i < tris.Count; i++) size[Find(i)]++;
         var groups = new Dictionary<int, List<(int A, int B, int C)>>();
@@ -60,31 +84,118 @@ public static class ConvexHull3
             for (int k = 0; k < built.Length; k++) built[k] = Triangle(pp, tris[single[k]]);
         var faces = new List<Face3>(built.Length + groups.Count);
         faces.AddRange(built);
-        var next = new Dictionary<int, int>();
         var inner = new HashSet<long>();
         var loop = new List<Vec3>();
         foreach (var g in groups.Values)
         {
             inner.Clear();
             foreach (var (a, b, c) in g) { inner.Add(Key(a, b, n)); inner.Add(Key(b, c, n)); inner.Add(Key(c, a, n)); }
-            next.Clear();
+            loop.Clear();
+            // A group can have more than one boundary loop. Loops that face the same way as the group are separate
+            // pieces that touch (islands meeting at a vertex), and each becomes its own face. A loop that faces the
+            // other way bounds a hole: Face3 has no notion of a hole, and a face from the outer loop would lie over the
+            // hole with a reversed face from the hole loop under it, two coincident sheets that are right in volume
+            // but wrong in every mesh and in later Booleans. Such a group keeps its triangles.
+            var boundary = new Dictionary<int, int>();
             foreach (var (a, b, c) in g)
             {
-                if (!inner.Contains(Key(b, a, n))) next[a] = b;
-                if (!inner.Contains(Key(c, b, n))) next[b] = c;
-                if (!inner.Contains(Key(a, c, n))) next[c] = a;
+                if (!inner.Contains(Key(b, a, n))) boundary[a] = b;
+                if (!inner.Contains(Key(c, b, n))) boundary[b] = c;
+                if (!inner.Contains(Key(a, c, n))) boundary[c] = a;
             }
-            loop.Clear();
-            int start = next.Keys.First(), v = start;
-            do
+            var orientation = GroupPlane(g, pts);
+            var loopFaces = new List<Face3>();
+            bool ok = !orientation.IsDegenerate;
+            foreach (int seed in boundary.Keys.ToArray())
             {
-                loop.Add(pts[v]);
-                v = next[v];
-            } while (v != start && loop.Count <= next.Count);
-            if (v != start || loop.Count != next.Count) throw new InvalidOperationException("Hull face boundary is not a single loop.");
-            faces.Add(Face3.FromGrid(WithoutCollinear(loop)));
+                if (!ok) break;
+                if (!boundary.ContainsKey(seed)) continue;   // consumed by an earlier loop
+                loop.Clear();
+                int v = seed;
+                do
+                {
+                    loop.Add(pts[v]);
+                    // Consume the directed edge v -> next. A closed walk ends when it arrives back at the seed.
+                    if (!boundary.Remove(v, out int next)) break;   // dangling: no edge leaves v any more
+                    v = next;
+                } while (v != seed);
+                if (v != seed) { ok = false; break; }
+                // The boundary can close without being convex (a folded or self-touching walk, or simply a concave cap such
+                // as an L or a gear outline). Face3.FromGrid checks convexity only against its first few vertices, so the
+                // full check is made here: a concave loop accepted as a face would break every later Boolean.
+                var clean = WithoutCollinear(loop);
+                if (!IsConvexLoop(clean, orientation)) { ok = false; break; }
+                Face3 face;
+                try { face = Face3.FromGrid(clean); }
+                catch (ArgumentException) { ok = false; break; }
+                if (!SameOrientation(face.Support, orientation)) { ok = false; break; }   // a hole
+                loopFaces.Add(face);
+            }
+            // All loops or none: a group whose later loop fails must not keep the faces of its earlier loops as well as
+            // its triangles.
+            if (ok)
+            {
+                faces.AddRange(loopFaces);
+                continue;
+            }
+            if (strict) throw new InvalidOperationException("Face boundary is not a single loop.");
+            foreach (var (a, b, c) in g) faces.Add(Face3.FromTriangle(pts[a], pts[b], pts[c]));
         }
-        return new Solid(faces);
+        return faces;
+    }
+
+    /// <summary>The plane of the first non-degenerate triangle of a coplanar group, oriented as the triangles are.</summary>
+    private static Plane3 GroupPlane(List<(int A, int B, int C)> group, Vec3[] pts)
+    {
+        foreach (var (a, b, c) in group)
+        {
+            var plane = Plane3.FromPoints(pts[a], pts[b], pts[c]);
+            if (!plane.IsDegenerate) return plane;
+        }
+        return default;
+    }
+
+    /// <summary>
+    /// Whether a boundary loop (collinear corners removed) is one convex polygon turning the way its group faces. Every
+    /// corner must turn the same way in the projection that drops the dominant axis of the normal, exactly in Int128 (the
+    /// coordinate differences fit 33 bits), and no vertex may repeat: a loop that touches itself at a vertex is not one
+    /// convex polygon. The boundary of a triangulated planar region does not cross itself, so turns of one sign at
+    /// distinct vertices mean the loop is convex. O(n), so it can check every vertex of a large cap.
+    /// </summary>
+    internal static bool IsConvexLoop(List<Vec3> loop, in Plane3 orientation)
+    {
+        int n = loop.Count;
+        if (n < 3) return false;
+        Int128 ax = Int128.Abs(orientation.Nx), ay = Int128.Abs(orientation.Ny), az = Int128.Abs(orientation.Nz);
+        int k = ax >= ay && ax >= az ? 0 : ay >= az ? 1 : 2;
+        // (u × v)_k for a convex loop around the normal has the sign of the normal's k-th component; the projection keeps
+        // the cyclic order (y, z), (z, x), (x, y), so the 2D cross product below is exactly that component.
+        int want = Int128.Sign(k == 0 ? orientation.Nx : k == 1 ? orientation.Ny : orientation.Nz);
+        var seen = new HashSet<Vec3>(n);
+        for (int i = 0; i < n; i++)
+        {
+            Vec3 a = loop[i], b = loop[(i + 1) % n], c = loop[(i + 2) % n];
+            if (!seen.Add(a)) return false;
+            var (ux, uy) = Project(b, k);
+            var (px, py) = Project(a, k);
+            var (vx, vy) = Project(c, k);
+            Int128 cross = (Int128)(ux - px) * (vy - uy) - (Int128)(uy - py) * (vx - ux);
+            if (Int128.Sign(cross) != want) return false;
+        }
+        return true;
+    }
+
+    private static (long U, long V) Project(Vec3 p, int k) => k switch { 0 => (p.Y, p.Z), 1 => (p.Z, p.X), _ => (p.X, p.Y) };
+
+    /// <summary>
+    /// Whether two planes of one coplanar group face the same way. Their normals are parallel, so the first component
+    /// that is not zero decides, exactly and without forming a product that could overflow Int128.
+    /// </summary>
+    private static bool SameOrientation(in Plane3 a, in Plane3 b)
+    {
+        if (a.Nx != 0 || b.Nx != 0) return Int128.Sign(a.Nx) == Int128.Sign(b.Nx);
+        if (a.Ny != 0 || b.Ny != 0) return Int128.Sign(a.Ny) == Int128.Sign(b.Ny);
+        return Int128.Sign(a.Nz) == Int128.Sign(b.Nz);
     }
 
     // Edge key a·n + b. (Not (a << 32) | b: Int64's hash folds the halves with XOR, which collides for a ^ b.)
@@ -94,7 +205,7 @@ public static class ConvexHull3
 
     private const double MaxHullCoordinate = 1L << 40;
 
-    private static Face3 Triangle(Vec3[] pts, (int A, int B, int C) t) => Face3.FromGrid([pts[t.A], pts[t.B], pts[t.C]]);
+    private static Face3 Triangle(Vec3[] pts, (int A, int B, int C) t) => Face3.FromTriangle(pts[t.A], pts[t.B], pts[t.C]);
 
     [ThreadStatic] private static Scratch? _scratch;
 
@@ -206,8 +317,16 @@ public static class ConvexHull3
             var pl = planesD[f];
             double v = pl.X * p[q].X + pl.Y * p[q].Y + pl.Z * p[q].Z + pl.D;
             double bound = (pl.Bound + Math.Abs(pl.D)) * 8 * Epsilon;
-            if (v > bound) return true;
-            if (v < -bound) return false;
+            bool certain = v > bound || v < -bound;
+            if (KernelStats.Counting)
+            {
+                var s = KernelStats.Mine;
+                s.AboveCalls++;
+                // The fallback recomputes the exact plane (three cross products plus canonical gcd), so its share
+                // is the cost of the filter bound, not just of Int128.
+                if (!certain) s.AboveExact++;
+            }
+            if (certain) return v > bound;
             var (a, b, c) = faces[f];
             return Predicates.Orient3D(p[a], p[b], p[c], p[q]) > 0; // same sign as the face plane (outward normal)
         }
