@@ -46,6 +46,10 @@ only displays, and the meshes travel to the viewer as bytes.
   with Ra/Rz; deviation from the nominal contour and CSV / SVG export.
 - **Free-form:** two cubes – drag or rotate the tool cube with a gizmo (or jog X/Y/Z/A/B/C); every motion,
   translation and rotation together, cuts the other solid.
+- **Preview:** one program cut three ways — the exact kernel, the height-field preview on the CPU, and the same preview
+  on the GPU — with the time each takes, the remaining volume and the deviation from the exact result; buttons lay the
+  preview's field over the exact solid in the viewer. The GPU arm needs `nanocut_gpu.dll`, so it appears in the server
+  host and reports why in the browser host.
 - **Self test:** runs the reference checks of the test suite inside the browser.
 
 ```bash
@@ -68,6 +72,13 @@ well under a second per 45° at the default path error (see the performance note
 | ![Mill](docs/images/demo-mill.png) | ![Gear generation](docs/images/demo-gear.png) |
 | ![Spinning disc](docs/images/demo-spinning.png) | ![Grinding grains](docs/images/demo-grinding.png) |
 | ![Profiles: axial section of a turned shaft](docs/images/demo-profiles.png) | ![Profiles: radial section of a gear](docs/images/demo-profiles-gear.png) |
+
+![Preview: exact kernel, CPU preview and GPU preview on one program](docs/images/demo-preview.png)
+
+*The preview page: the same 400-step finishing pass, cut three ways — exact kernel 3415 ms on the CPU, preview 37 ms on
+the CPU and 0.85 ms on the GPU, both within +0.001 % of the exact result. The CUDA context (88 ms here) is created
+once and reported apart, the way the bench does it. One run on an RTX 5070 Ti; numbers of this page vary with the
+machine.*
 
 ## Quick start (2D)
 
