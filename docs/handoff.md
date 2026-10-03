@@ -26,6 +26,7 @@ dotnet bench/Stykker.NanoCut.GpuBench/bin/Release/net10.0/Stykker.NanoCut.GpuBen
 dotnet build bench/Stykker.NanoCut.LongPrograms -c Release
 dotnet bench/Stykker.NanoCut.LongPrograms/bin/Release/net10.0/Stykker.NanoCut.LongPrograms.dll all --teeth 10,20,40 --grains 60,240,960,1920 --out bench/out/long-programs   # ~4 min, grinding first
 dotnet bench/Stykker.NanoCut.LongPrograms/bin/Release/net10.0/Stykker.NanoCut.LongPrograms.dll dexel --repeat 2 --out bench/out/long-programs-dexel   # step binning, binned against unbinned
+dotnet bench/Stykker.NanoCut.LongPrograms/bin/Release/net10.0/Stykker.NanoCut.LongPrograms.dll convex --steps 24800,99200,396800,793600 --cpu-max-steps 24800 --repeat 2 --out bench/out/long-programs-convex   # convex tool on a pose sequence (~5 min; --planes, --turn-deg)
 dotnet run -c Release --project samples/Stykker.NanoCut.Server  # server mode, http://localhost:5180
 ```
 
@@ -102,6 +103,16 @@ Steps (tick when done):
 
 ### 2026-10-04, Qwen
 
+- **The convex path is timed now, and the answer to "how fast is CUDA on a long run" has a number.** New bench mode
+  `convex` (`LongPrograms convex`), the step-2 finishing pass as a pose sequence of a convex tool, four arms per case
+  on the same path: binned and unbinned convex, the ball program of the identical path, and the CPU backend on the
+  same program. Measured: **3515×** the host (57 661.7 ms against 16.4 ms at 24 800 steps; 793 600 steps extrapolate
+  to ~31 minutes), the convex tool **~19×** the ball kernel at 12 half-spaces and stable across lengths (65.8 ms at
+  793 600 steps where the ball needs 3.4 ms), the binning unchanged at 161×…305×, and the host binning down to
+  **4.7 %** of the wall because the kernel hid it. The half-space sweep gives the kernel's growth as **m^1.57**
+  (704 / 1056 / 1935 / 3278 ms unbinned at 6 / 8 / 12 / 16 planes) instead of the m³ the code remarks argue for — the
+  bound is the worst case and a ball is not. A turning tool costs about +30 %. One page:
+  `bench/results-2026-10-04-long-programs-convex.html`.
 - **Step 3 verified independently, and the verification earned its keep.** A read-only verifier was pointed at the
   half of the commit nobody had read — the CUDA kernel and the new tests — and found a way to empty a map that no test
   could see: the kernel tells a sphere from a polytope by the plane pointer it is handed, `reserve_planes` keeps the

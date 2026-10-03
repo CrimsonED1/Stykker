@@ -489,8 +489,27 @@ directory (kept separate here so the step-1 rows stay where they are).
 
 One-page result: [`results-2026-10-04-long-programs-dexel.html`](results-2026-10-04-long-programs-dexel.html).
 
-Step 3 of the plan (any convex tool on a pose sequence) has no mode here yet: what it is measured on is the *result*,
-against the exact kernel on the same body, and that lives in the test suite (`ConvexDexelTests`, the table in
-[`../docs/long-programs.md`](../docs/long-programs.md)). A mode comes with step 4, where a grinding program that
-actually runs puts a number on the convex path.
+## Long programs: a convex tool on a pose sequence (step 3, 2026-10-04)
+
+```
+dotnet bench/Stykker.NanoCut.LongPrograms/bin/Release/net10.0/Stykker.NanoCut.LongPrograms.dll convex --steps 24800,99200,396800,793600 --cpu-max-steps 24800 --repeat 2 --out bench/out/long-programs-convex
+```
+
+The same finishing pass as the `dexel` mode, as a pose sequence: a tool of `--planes` half-spaces (4 to 16) inscribed
+in the `--radius-mm` ball, `--turn-deg` turning it about z over the whole program. Four arms per case on the same map
+and the same path — the binned and unbinned convex launch, the *ball* program of the identical path (what the
+half-space description costs, path held fixed), and the CPU backend on the same convex program where it is affordable
+(`--cpu-max-steps`, the caller's clock, because the CPU `WallMs` leaves the pack outside it).
+
+Measured: the device is 3515× the CPU backend on the same program (57 661.7 ms against 16.4 ms at 24 800 steps; the
+793 600 steps extrapolate to about 31 minutes on the host), the convex kernel costs ~19× the ball kernel at 12
+half-spaces and is stable across program lengths (65.8 ms at 793 600 steps, where the ball needs 3.4 ms), the binning
+still returns ~236×, and the host share of the wall drops to 4.7 % because the kernel is the expensive part now. The
+half-space sweep at a fixed 99 200 steps shows the growth to be **m<sup>1.57</sup>**, not the m³ the code comments
+argue for: 704 / 1056 / 1935 / 3278 ms unbinned for 6 / 8 / 12 / 16 planes.
+
+What is *not* measured here is correctness — that stays with `ConvexDexelTests` against the exact kernel, on the small
+cases where the exact kernel is affordable (a 793 600-step program against `Process3` would be hours).
+
+One-page result: [`results-2026-10-04-long-programs-convex.html`](results-2026-10-04-long-programs-convex.html).
 

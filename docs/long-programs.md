@@ -153,6 +153,23 @@ the tool cut by the exact kernel over its own poses and the preview cut column b
 | Octahedron r = 2.5 mm, swept (6, 8, 9) → (13, 11, 12) (250 / 500 / 1000) | 108.3404 / 108.3321 / 108.3320 mm³ | 108.3333 mm³ | +0.007 % / −0.001 % / −0.001 % | 12.8512 / 6.4128 / 3.2032 mm³ |
 | Box 2.4 × 0.6 × 0.6 mm, 1.2 rad turn about z and 3 mm of travel (500) | 4.0848 mm³ | 4.0701 mm³ | +0.362 % | 0.1253 mm³ |
 
+And the timing, on the same finishing pass step 2 measured (`LongPrograms convex`, best of 2, 400 × 400 columns at
+0.05 mm, a 12-half-space tool inscribed in the 0.2 mm ball; the ball row is the *same* path with the ball tool, so the
+difference between the two kernels is only how the tool is described):
+
+| Steps | Convex kernel | Bin (host) | Convex wall | Unbinned kernel | Ball kernel | Binning × | Convex/ball × | CPU wall |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 24 800 | 3.0 ms | 1.1 ms | 16.4 ms | 480.5 ms | 0.2 ms | 161.5× | 17.7× | 57 661.7 ms |
+| 99 200 | 7.3 ms | 1.9 ms | 47.1 ms | 1935.4 ms | 0.5 ms | 263.4× | 15.7× | – |
+| 396 800 | 32.9 ms | 8.7 ms | 187.6 ms | 7881.6 ms | 1.7 ms | 239.5× | 19.0× | – |
+| 793 600 | 65.8 ms | 17.7 ms | 372.6 ms | 15 546.9 ms | 3.4 ms | 236.2× | 19.2× | – |
+
+The device is 3515× the CPU backend on the identical program (the 793 600 steps extrapolate to about 31 minutes on the
+host — an extrapolation, not a measurement), the convex tool costs ~19× the ball kernel, and the binning is untouched
+by the representation. The half-space sweep at a fixed 99 200 steps gives the kernel's growth as **m^1.57** (704 /
+1056 / 1935 / 3278 ms unbinned for 6 / 8 / 12 / 16 half-spaces) rather than the m³ the code remarks argue for. One
+page: `bench/results-2026-10-04-long-programs-convex.html`.
+
 **What the table checks, and what it does not.** A column is cut when its centre lies in the sweep, so the preview
 samples the silhouette where the exact kernel integrates it: its volume can be off by the rim it samples, P·h/2 of
 area over a perimeter P (times the height the tool sweeps, which is exact — nothing is sampled in z). That is the
@@ -194,6 +211,28 @@ Newest first.
 
 ### 2026-10-04, Qwen
 
+- **Step 3 got its bench mode, and the timing answer is the number the plan had deferred.** `LongPrograms convex` runs
+  the step-2 finishing pass as a pose sequence of a convex tool, four arms per case on the same path: binned and
+  unbinned convex, the *ball* program of the identical path, and the CPU backend on the same convex program.
+  Measured: the device is **3515×** the host on that program (57 661.7 ms against 16.4 ms at 24 800 steps), the convex
+  tool costs **~19×** the ball kernel at 12 half-spaces and that ratio holds over all four lengths, and the binning is
+  untouched — 161× to 305×, the ball's own order. Two consequences to carry into step 4: the host arm could only be run
+  at 24 800 steps (793 600 extrapolate to ~31 minutes, which is the reason a preview exists at all), and the host-side
+  binning drops to **4.7 %** of the wall on this path because the kernel got expensive enough to hide it — the reverse
+  of the ball case, where it was 51 %.
+- **The half-space sweep contradicts the complexity the code argues from.** Unbinned kernel at a fixed 99 200 steps:
+  704.1 / 1055.6 / 1935.4 / 3278.2 ms for 6 / 8 / 12 / 16 half-spaces. That is a factor 4.65 where m³ would be 18.9,
+  i.e. an exponent of 1.57 in a log-log fit. The O(m³) bound is not wrong — it is the worst case, and a ball is not the
+  worst case, because only the few half-spaces whose normal faces the column bound it at all. The queued O(m) envelope
+  is therefore worth less than the exponent suggested, and `MaxPlanes = 16` has more headroom than it looks. Both
+  implementation remarks keep the bound; the follow-up in `docs/todo.md` now carries the measurement beside it.
+- A turning tool costs about a third more: 8.1 / 9.5 / 9.5 / 9.6 ms against 7.3 ms for translation only at 99 200 steps
+  (four independent runs, and the scatter at this size is itself ~15 %), because the kernel turns the half-spaces per
+  column rather than per step. That is what step 5 pays for a tooth rolling over a wheel.
+- One number that is *not* a defect: `ConvexTool.Ball` is inscribed in the sphere, so the polyhedron removes less
+  material than the ball it approximates — 18.227 / 17.131 / 11.511 / 8.789 % less at 6 / 8 / 12 / 16 half-spaces. The
+  share falls with the program length (20.5 % at 24 800 steps down to 8.7 % at 793 600) because a longer pass covers the
+  same layer again. The bench uses a polyhedral ball only so that its ball row and its convex row share one path.
 - Step 3 done: a tool is a list of half-spaces (`ConvexTool`, with the corners the binning rotates), a step is an
   orientation and two positions (`ConvexStep`), and where a column meets the sweep is a small linear program in (z, t)
   (`ConvexProfile.Span` on the CPU, `convex_span` in the kernel) reached through `nc_dexel_apply_convex_steps` and its
