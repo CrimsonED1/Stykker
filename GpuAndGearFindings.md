@@ -1,7 +1,7 @@
 # GPU round 2 and the gear case: what was measured, what it means
 
 Branch `feature/server-gpu`, 3 October 2026. This is the self-contained write-up of the work; the long versions live in
-`docs/gpu-findings.md` (round 2 section) and `docs/processes.md` ("The gear case: where the 32 s go"), the one-page
+`docs/gpu-findings.md` (round 2 section) and `docs/processes.md` ("The gear case: where the 41 s go"), the one-page
 result in `bench/results-2026-10-03-gpu-round2.html`.
 
 Two questions were on the table: finish everything still open on CUDA/GPU, and analyse the gear case, which is the
@@ -128,7 +128,7 @@ by query, which is what makes "max Δh 1.9e-6 mm" and "Δ = 0" claims checkable.
 `Process2.Cut` on the rack case (m = 2 mm, z = 20, `Tolerance.Default`) is the slowest planar process in the repo. It was
 measured phase by phase, then nine variants were built and timed.
 
-### 2.1 Where the 32 s go
+### 2.1 Where the 41 s go
 
 | Phase | Time | What it is |
 | --- | ---: | --- |
@@ -136,7 +136,10 @@ measured phase by phase, then nine variants were built and timed.
 | bounds filter | 0.01 s | `Overlaps` against the workpiece box |
 | 80 `UnionAll` calls over the pose parts | 17.7 s | 32 near-congruent 3687 mm² copies of the 8-part rack per batch, 0.76 ms per piece |
 | 621 subtracts of the growing result | 23 s | cost grows with the loop count of the result |
-| **total** | **32.1 s** | 1231.252941475 mm², 69 contours, flank deviation 5.4 nm (test asserts ≤ 5.6 nm) |
+| **total** | **41.0 s** | 1231.252941475 mm², 69 contours, flank deviation 5.4 nm (test asserts ≤ 5.6 nm) |
+
+The total is `Process2.Cut`'s own figure (40.98 s), and the phases add up to it: 0.4 + 0.01 + 17.7 + 23 = 41.1 s.
+Every row of the variant table below obeys that rule too, which is how the shipped row was checked.
 
 Two costs with opposite behaviour: `UnionAll` is superlinear in the number of *overlapping near-congruent* polygons
 (0.76 ms per piece for the rack copies against 0.011 ms for the band batches), while the subtract costs what the
@@ -146,7 +149,7 @@ result's loop count costs.
 
 | Variant | Union | Subtract | total | contours | flank |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| **shipped order, batches of 256** | 17.7 s | 23 s | **32.1 s** | **69** | 5.4 nm |
+| **shipped order, batches of 256** | 17.7 s | 23 s | **41.0 s** | **69** | 5.4 nm |
 | interval order, batches of 256 | 2.2–2.5 s | 47–52 s | 57.9 s | 1151–2013 | exact |
 | interval order, batches of 1024 | 11.6 s | 22.9 s | 34.5 s | 3946 | exact |
 | interval order, batches overlapping by 32 / 64 pieces | | | 44.2 / 32.7 s | 1554 / 3459 | exact |
@@ -159,7 +162,7 @@ result's loop count costs.
 
 - **The shipped order is a local optimum.** Reordering the pieces interval by interval makes the union 7× cheaper and
   the subtract 2× more expensive, because a batch that is no longer one contiguous ribbon subtracts as a set of slivers
-  and leaves degenerate loops in the result. The 20 % win at batch 1024 costs 57× more contours, permanently.
+  and leaves degenerate loops in the result. The 16 % win at batch 1024 costs 57× more contours, permanently.
 - **The pose parts are load-bearing, not redundancy.** The Minkowski identity (convex polygon + translation = union of
   edge trapezoids) holds for translations only; under a rotation the pose parts cover the concave side of the fold.
   Dropping them keeps the area right to nine decimals and costs 206 µm of flank error — 40 000× the tolerance. That is
@@ -171,7 +174,7 @@ result's loop count costs.
   `Process2.Cut` batches, not to the sweep, and it is the first entry under "Gear generation – follow-ups" in
   `docs/todo.md`.
 - **One change survived:** the bounds filter now makes one pass over the vertices instead of four LINQ passes. It runs
-  on every piece of every sweep; it costs 0.01 s of 32.1 s, so it is kept because it is strictly less work, not because
+  on every piece of every sweep; it costs 0.01 s of 41.0 s, so it is kept because it is strictly less work, not because
   it moved the needle. Everything else was reverted with `git checkout`.
 
 ---

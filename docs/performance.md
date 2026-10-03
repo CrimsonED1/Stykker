@@ -242,6 +242,6 @@ overwrite each other; and the CPU backend reported a loop it had already finishe
   download is 0,42 of the 0,51 ms the query costs, so a half-precision picture or a renderer that consumes the field
   on the device is the next thing to try — and a partial read-back for a caller that wants a picture of part of the
   stock while the cut runs. The exact kernel stays on the CPU either way.
-- The gear case is analysed but not fixed: `Process2.Cut` spends 17,7 s in the unions of the pose parts and 23 s in the
-  subtracts, and the win has to come from grouping the pieces by the region they remove, not from the piece order or the
-  batch size ([processes.md](processes.md)).
+- The gear case is analysed but not fixed: `Process2.Cut` takes 41.0 s on the rack, spending 17,7 s in the unions of
+  the pose parts and 23 s in the subtracts, and the win has to come from grouping the pieces by the region they remove,
+  not from the piece order or the batch size ([processes.md](processes.md)).

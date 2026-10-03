@@ -144,7 +144,7 @@ geometric (undeformed); h_cu is sampled along the tip path, not integrated over 
 
 | Process | Result | Time |
 | --- | --- | --- |
-| Gear generation with a rack, m = 2 mm, z = 20, sweep 30 nm | flank deviation from the ideal involute ≤ 5.6 nm (5.4 nm measured), 2560 roll steps, 209 089 swept pieces, 69 contours | 32 s |
+| Gear generation with a rack, m = 2 mm, z = 20, sweep 30 nm | flank deviation from the ideal involute ≤ 5.6 nm (5.4 nm measured), 2560 roll steps, 209 089 swept pieces, 69 contours | 41 s |
 | Same, sweep 300 nm | ≤ 20 nm (20.1 nm measured), 640 roll steps, 104 560 pieces | 9 s |
 | Turning a Ø20 × 40 mm bar, 8 moves | 89 profile vertices | 1 s |
 | Ball-nose pocket, 8 moves, chord 1 µm | 39 207 faces | 3 s |
@@ -170,7 +170,7 @@ three bugs, all fixed:
 
 ## Performance notes (measured)
 
-### The gear case: where the 32 s go
+### The gear case: where the 41 s go
 
 `Process2.Cut` on the rack case (m = 2 mm, z = 20, `Tolerance.Default`) is the slowest planar process, so it was
 measured phase by phase. 2560 roll steps, 209 089 swept pieces, result 1231.252941475 mm² in 69 contours, flank
@@ -182,7 +182,12 @@ deviation 5.4 nm from the ideal involute (the same metric the test asserts at �
 | bounds filter | 0.01 s | `Overlaps` against the workpiece box |
 | 80 `UnionAll` calls over the pose parts | 17.7 s | 32 near-congruent 3687 mm² copies of the 8-part rack per batch, 0.76 ms per piece |
 | 621 subtracts of the growing result | 23 s | growing with the loop count of the result |
-| **total** | **32.1 s** | 69 contours, 5.4 nm |
+| **total** | **41.0 s** | 69 contours, 5.4 nm |
+
+The total is `Process2.Cut`'s own figure, 40.98 s in the run the phases come from, and the phases add up to it
+(0.4 + 0.01 + 17.7 + 23 = 41.1 s). Every row of the variant table below obeys the same rule, union plus subtract
+equals total — that is how the shipped row was checked when an earlier draft of this section carried a total that
+its own phases contradicted.
 
 Two costs, with opposite behaviour. `UnionAll` is superlinear in the number of *overlapping near-congruent* polygons
 — the exact kernel is single-threaded and has to merge every one of those rack copies with the others — so a batch of
@@ -194,7 +199,7 @@ That is why the shipped piece order (all pose parts first, then the bands) is th
 
 | Variant | Union | Subtract | Total | Result contours | Flank |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| **shipped order, batches of 256** | 17.7 s | 23 s | **32.1 s** | **69** | 5.4 nm |
+| **shipped order, batches of 256** | 17.7 s | 23 s | **41.0 s** | **69** | 5.4 nm |
 | interval order, batches of 256 | 2.2–2.5 s | 47–52 s | 57.9 s | 1151–2013 | exact |
 | interval order, batches of 1024 | 11.6 s | 22.9 s | 34.5 s | 3946 | exact |
 | interval order, batches overlapping by 32 pieces | | | 44.2 s | 1554 | exact |
@@ -207,7 +212,7 @@ That is why the shipped piece order (all pose parts first, then the bands) is th
 Reading the table:
 
 - **Reordering makes the union 7× cheaper and the subtract 2× more expensive**, because a batch that is no longer one
-  contiguous ribbon subtracts as a set of slivers and leaves degenerate loops in the result. The 20 % win at batch 1024
+  contiguous ribbon subtracts as a set of slivers and leaves degenerate loops in the result. The 16 % win at batch 1024
   costs 57× more contours, and the result stays that way for every later batch.
 - **The pose parts are load-bearing, not redundancy.** The Minkowski identity (a convex polygon plus a translation is
   the union of the edge trapezoids) holds for translations only; under a rotation the pose parts are what covers the
@@ -222,7 +227,7 @@ batch is one contiguous ribbon and each subtract sees a result whose loop count 
 `Process2.Cut` batches, not to the sweep, and it is listed in `docs/todo.md`.
 
 The one change that survived from this investigation is the bounds filter: it runs on every piece of every sweep, and
-the four LINQ passes over the vertices became a single pass (0.01 s of 32.1 s — kept because it is strictly less work,
+the four LINQ passes over the vertices became a single pass (0.01 s of 41.0 s — kept because it is strictly less work,
 not because it moved the needle).
 
 ### Other processes
