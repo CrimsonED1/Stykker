@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using Microsoft.JSInterop;
 using Stykker.NanoCut.Geometry3D;
+using Stykker.NanoCut.Gpu;
 
 namespace Stykker.NanoCut.Demo.Services;
 
@@ -36,6 +37,18 @@ public sealed class Viewer(IJSRuntime js) : IAsyncDisposable
             MemoryMarshal.AsBytes(b.Positions.AsSpan()).ToArray(),
             MemoryMarshal.AsBytes(b.Normals.AsSpan()).ToArray(),
             MemoryMarshal.AsBytes(b.Indices.AsSpan()).ToArray(),
+            color, opacity);
+
+    /// <summary>
+    /// Adds the top surface of a preview height field. The buffers go straight through: a <see cref="ZMapMesh"/>
+    /// carries positions, normals and indices in the layout the viewer already reads, relative to
+    /// <c>OriginMm</c>, which the caller adds if the field does not start at zero.
+    /// </summary>
+    public async Task AddHeightField(string name, ZMapMesh mesh, string color, double opacity) =>
+        await Invoke("addMesh", name,
+            MemoryMarshal.AsBytes(mesh.Positions.AsSpan()).ToArray(),
+            MemoryMarshal.AsBytes(mesh.Normals.AsSpan()).ToArray(),
+            MemoryMarshal.AsBytes(mesh.Indices.AsSpan()).ToArray(),
             color, opacity);
 
     public async Task AddLines(string name, float[] xyz, string color) =>

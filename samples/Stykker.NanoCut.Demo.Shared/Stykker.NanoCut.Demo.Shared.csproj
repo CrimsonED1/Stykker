@@ -18,6 +18,10 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../../src/Stykker.NanoCut.Cutting/Stykker.NanoCut.Cutting.csproj" />
+    <!-- The preview (Z-map and dexel maps) for the CPU vs GPU page. The CUDA backend needs nanocut_gpu.dll from nvcc;
+         without it CudaBackend reports why and the page falls back to the CPU backend. In the WebAssembly host there
+         is no native interop at all, so the GPU arm is unavailable there by construction, not by accident. -->
+    <ProjectReference Include="../../src/Stykker.NanoCut.Gpu/Stykker.NanoCut.Gpu.csproj" />
     <Compile Include="../../tests/Shared/*.cs" Link="Shared/%(Filename)%(Extension)" />
     <!--
       wwwroot/js/nanocut-three and nanocut-babylon are copies of the npm adapters in the repository's js/ folder. They
