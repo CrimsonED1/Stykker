@@ -14,6 +14,12 @@ Open features and ideas, newest first. Each entry says what is wanted and which 
 - **Performance rounds 1–6** (round 3: separate agent): pocket-large 30.9 s → 4.9 s, faster than C++ Manifold on long
   tasks, exact, independently reviewed after every round; see [performance.md](performance.md).
 
+- **GPU prototype: Z-map preview, round 3** (branch `feature/server-gpu`): a point set the backend keeps
+  (`UploadPoints`, `PointSet`), so a caller that asks about the same points again does not send them again. A
+  million-point query costs 0.51 ms against 2.20 ms per call and 5.87 ms for the same call on the CPU, with identical
+  answers; what is left is the 4 MB answer coming back. The height query also takes the per-map lock now, which it
+  should have taken all along. See [gpu-findings.md](gpu-findings.md).
+
 - **GPU prototype: Z-map preview, round 2** (branch `feature/server-gpu`): the caller decides about the read-back
   (`ZMapReadBack`, `ReadHeights`, `BackendRemovedVolumeMm3`), batch queries (`SampleHeights`, `ProbeMaterial`) and the
   removed volume reduced on the device. Measured: pinning buys nothing on this machine (8.68 vs 8.70 GB/s), a
@@ -47,11 +53,19 @@ From [gpu-findings.md](gpu-findings.md); nothing here blocks a preview, all of i
 - ~~**Pinned host memory.**~~ Built and measured: 8.68 GB/s pinned against 8.70 GB/s pageable, measured back to back in
   one process, with the order flipping between processes. There is nothing to win, so it is off by default and the
   item is closed. (The transfer ceiling here is the driver's, not the bus'.)
-- **A query that lives on the device between calls.** The point query is now 95 % PCIe traffic, so the next win is to
-  upload the point set once and sample it repeatedly, instead of paying 16 MB per call.
-- **Warm up before measuring.** Every query number needed a warm-up to mean anything: the first table was off by a
-  factor of ten because the bench called each query once on freshly allocated arrays. The bench prints the cold call
-  beside the warm one now, and `docs/gpu-findings.md` reports only warm numbers.
+- ~~**A query that lives on the device between calls.**~~ Done: `UploadPoints` hands a point set to the backend once
+  (`nc_pointset_create`) and `nc_zmap_sample_set` samples it without a copy. A million points: 2.20 ms per call
+  against 0.51 ms from a set that is uploaded once in 2.35 ms, so it pays for itself at the second query. The upload is
+  gone; 0.42 of the remaining 0.51 ms is the 4 MB answer coming back.
+- **A cheaper answer.** The download is now the whole cost of a point query. The next thing to try is fewer bytes:
+  half precision for a picture that is only shaded, or a renderer that consumes the height field on the device instead
+  of asking for it point by point.
+- ~~**Warm up before measuring.**~~ Done: every query number needed a warm-up to mean anything — the first table was
+  off by a factor of ten because the bench called each query once on freshly allocated arrays. The bench prints the
+  cold call beside the warm one now, and `docs/gpu-findings.md` reports only warm numbers.
+- **Time the call as well as the work inside it.** The CPU backend reported 3.46 ms for a query the caller waited
+  5.87 ms for, because the span-to-array copy sat outside its stopwatch. The bench now prints the caller-side time next
+  to the backend's own figure; whether `CpuBackend` should report its staging in `WallMs` is undecided.
 - **A partial read-back** (a row band of the field) for a caller that wants a picture of a part of the stock while the
   cut runs. The whole-field copy is the only thing left that scales with the grid.
 - **Server mode** (`samples/Stykker.NanoCut.Server`): geometry on the server, progress over SignalR, cancellable, the WASM

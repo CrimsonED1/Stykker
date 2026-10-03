@@ -646,6 +646,94 @@ public class GpuZMapTests(ITestOutputHelper output)
     }
 
     /// <summary>
+    /// A point set answers exactly what the span it was made from answers, and releasing it is the caller's job.
+    /// Nothing about the answer may depend on where the backend keeps the points.
+    /// </summary>
+    [Fact]
+    public void APointSetAnswersWhatTheSpanAnswers()
+    {
+        var map = Stock(48, 32);
+        map.ApplySteps(
+        [
+            new BallStep((1, 1, 10), (9, 1, 10), 2),
+            BallStep.At((4, 5, 10), 1.5),
+        ]);
+
+        SamplePoint[] points = new SamplePoint[37 * 29];
+        int p = 0;
+        for (int j = 0; j <= 28; j++)
+            for (int i = 0; i <= 36; i++)
+                points[p++] = new SamplePoint(-1 + 12.0 * i / 36, -1 + 12.0 * j / 28);
+
+        var fromSpan = new float[points.Length];
+        var fromSet = new float[points.Length];
+        map.SampleHeights(points, fromSpan);
+
+        var set = map.UploadPoints(points);
+        Assert.Equal(points.Length, set.Count);
+        Assert.False(set.IsDisposed);
+        map.SampleHeights(set, fromSet);
+
+        // Bit for bit, not approximately: the same loop over the same numbers.
+        Assert.Equal(fromSpan, fromSet);
+
+        set.Dispose();
+        Assert.True(set.IsDisposed);
+        set.Dispose();    // releasing twice is not an error
+        Assert.Throws<ObjectDisposedException>(() => map.SampleHeights(set, fromSet));
+    }
+
+    /// <summary>
+    /// The query a viewer runs after every batch of steps: the same points, already on the device, so nothing is
+    /// uploaded and the answer is the one the span query gives to the bit. The span query costs 1.7 ms of upload for
+    /// a million points, this one costs nothing.
+    /// </summary>
+    [Fact]
+    public void CudaResidentPointsUploadOnceAndAnswerLikeTheSpan()
+    {
+        var cuda = new CudaBackend();
+        if (!cuda.IsAvailable)
+        {
+            output.WriteLine($"not run: {cuda.UnavailableReason}");
+            return;
+        }
+
+        var gpu = Stock(64, 64, backend: cuda);
+        gpu.ApplySteps(
+        [
+            new BallStep((1, 1, 10), (9, 1, 10), 2),
+            new BallStep((7, 3, 10), (7, 8, 9), 2),
+            BallStep.At((4, 5, 10), 1.5),
+        ], ZMapReadBack.Never);
+
+        SamplePoint[] points = new SamplePoint[41 * 41];
+        int p = 0;
+        for (int j = 0; j <= 40; j++)
+            for (int i = 0; i <= 40; i++)
+                points[p++] = new SamplePoint(-2 + 12.0 * i / 40, -2 + 12.0 * j / 40);
+
+        var fromSpan = new float[points.Length];
+        var fromSet = new float[points.Length];
+        var again = new float[points.Length];
+
+        ZMapTiming spanQuery = gpu.SampleHeights(points, fromSpan);
+        using PointSet set = gpu.UploadPoints(points);
+        ZMapTiming resident = gpu.SampleHeights(set, fromSet);
+        ZMapTiming second = gpu.SampleHeights(set, again);
+
+        Assert.Equal(fromSpan, fromSet);
+        Assert.Equal(fromSpan, again);
+        Assert.True(resident.UploadMs < 0.05,
+            $"the resident query reported {resident.UploadMs:F4} ms of upload, the span query {spanQuery.UploadMs:F3} ms");
+
+        output.WriteLine($"{points.Length} points: from a span kernel {spanQuery.KernelMs:F3} ms, " +
+                         $"up {spanQuery.UploadMs:F3} ms, down {spanQuery.DownloadMs:F3} ms, wall {spanQuery.WallMs:F3} ms");
+        output.WriteLine($"{points.Length} points: from a set  kernel {resident.KernelMs:F3} ms, " +
+                         $"up {resident.UploadMs:F4} ms, down {resident.DownloadMs:F3} ms, wall {resident.WallMs:F3} ms " +
+                         $"(second call {second.WallMs:F3} ms)");
+    }
+
+    /// <summary>
     /// A backend with a second copy of the field, standing in for the CUDA one where a GPU is not around: it records
     /// what it was asked and only fills <see cref="ZMap.Heights"/> when it was asked to.
     /// </summary>

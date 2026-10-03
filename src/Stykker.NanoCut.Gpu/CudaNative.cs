@@ -67,6 +67,25 @@ internal static partial class CudaNative
         double originY, Span<float> outHeights, out double kernelMs, out double uploadMs, out double downloadMs);
 
     /// <summary>
+    /// Copies <paramref name="count"/> points, two doubles each in absolute mm, into a point set that stays on the
+    /// device until <see cref="PointSetDestroy"/>, and reports the copy time. Returns the set, or zero on failure.
+    /// </summary>
+    [LibraryImport(LibraryName, EntryPoint = "nc_pointset_create")]
+    internal static partial nint PointSetCreate(ReadOnlySpan<SamplePoint> points, int count, out double uploadMs);
+
+    /// <summary>
+    /// Reads the height of the field at every point of a set that is already on the device, the same kernel as
+    /// <see cref="ZMapSample"/> with no upload. <paramref name="uploadMs"/> is the cost of the timing events.
+    /// </summary>
+    [LibraryImport(LibraryName, EntryPoint = "nc_zmap_sample_set")]
+    internal static partial int ZMapSampleSet(nint zmap, nint pointSet, double originX, double originY,
+        Span<float> outHeights, out double kernelMs, out double uploadMs, out double downloadMs);
+
+    /// <summary>Frees a point set. A zero handle is ignored.</summary>
+    [LibraryImport(LibraryName, EntryPoint = "nc_pointset_destroy")]
+    internal static partial void PointSetDestroy(nint pointSet);
+
+    /// <summary>
     /// Reads how far a ball reaches into the material at <paramref name="count"/> poses, four floats (x, y, z, r)
     /// each, and reports where the time went.
     /// </summary>
