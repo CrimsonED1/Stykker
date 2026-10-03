@@ -255,13 +255,14 @@ public sealed class Solid
 
     /// <summary>
     /// Builds a solid from outward-oriented triangles, merging coplanar neighbours into one convex polygon face each.
-    /// Without the merge every triangle of a triangulated cap stays a separate face: a gear profile with 107 328
-    /// vertices arrived here as 428 800 faces, where the caps collapse to a few dozen polygons and only the side walls
-    /// (whose faces follow the involute flank and are genuinely not coplanar) stay individual.
+    /// Without the merge every triangle stays a separate face: a generated gear profile with 107 328 vertices arrived
+    /// here as 428 800 faces. With it each rectangular side wall becomes one face instead of two triangles (321 382
+    /// faces); a cap only merges where it is convex, so the concave gear outline keeps its triangles.
     ///
-    /// The grouping is not strict here: a general soup can have T-junctions and folded boundaries, and those groups keep
-    /// their triangles rather than throwing. Face3.FromGrid checks convexity, so a group that closes into a
-    /// non-convex loop is caught rather than turned into a truncated face.
+    /// The grouping is not strict here: a general soup can have T-junctions, folded boundaries, concave outlines and
+    /// holes, and those groups keep their triangles rather than throwing. ConvexHull3.FacesFromTriangles proves every
+    /// merged loop convex and facing the group's way (a reversed loop is a hole), so a merged face is never concave and
+    /// never covers a hole.
     /// </summary>
     private static Solid FromTriangleList(List<Vec3[]> tris)
     {
