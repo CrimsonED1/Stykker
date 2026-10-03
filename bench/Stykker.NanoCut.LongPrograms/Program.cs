@@ -7,7 +7,7 @@
 //   --teeth 20,40        gear: teeth z to generate (module --module, rack --rack-teeth)
 //   --module 2           gear: module in mm
 //   --rack-teeth 7       gear: teeth of the rack cutter
-//   --sweep 30           gear: sweep error in nm (chord 50 nm, total 0.1 um)
+//   --sweep 30           gear: sweep error in nm (chord --chord 50, total 0.1 um)
 //   --grains 60,240      grinding: grain counts of a random wheel (--seed)
 //   --seed 1             grinding: seed of the wheel
 //   --length 0.8         grinding: feed length in mm (otherwise the demo default: 20 mm/s, 3000 rpm)
@@ -22,7 +22,7 @@
 // same process (see the note at the call site), so the order is part of the measurement.
 // A grinding run is warmed up first, on the smallest wheel, until three consecutive runs agree within 10 % and at
 // least five have run (bench/Stykker.NanoCut.Bench, --warm: round 6's lesson is that one pass still runs tier-0 code,
-// which is worth a factor of 3.6 on the 60-grain case); the gear case runs for minutes and needs no warm-up.
+// which is worth a factor of 4.7 on the 60-grain case); the gear case runs for minutes and needs no warm-up.
 using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.InteropServices;
@@ -253,7 +253,7 @@ static class GrindingCases
 
         // Warm up on the smallest wheel: the same code paths, a fraction of the time. The rule of bench/Stykker.NanoCut.Bench
         // (--warm, round 6): repeat until three consecutive runs agree within 10 % and at least five have run. One pass
-        // is not enough -- the 60-grain case then still runs tier-0 code and reads 938 ms against 257 ms warm.
+        // is not enough -- the 60-grain case then still runs tier-0 code and reads 938 ms against 200 ms warm.
         if (!opt.Cold)
         {
             int warm = opt.Grains.Min();
