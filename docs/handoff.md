@@ -8,16 +8,16 @@ Newest entries at the top of "Log". Code, comments and docs in English; the user
 | What | Where |
 | --- | --- |
 | Repository | `CrimsonED1/Stykker-NanoCut`, local checkouts under `C:\_AI\StykkerNanoCut\` |
-| `main` | contains the reviewed kernel round `perf-round-3` (PR #1, merge `968e1d6`) |
-| `feature/server-gpu` | GPU Z-map preview (CPU + CUDA backends), server mode of the demo, verification; `main` merged in (`cf6d09b`); not yet merged into `main` |
-| Checkouts | `StykkerNanoCut-GPU` (feature/server-gpu, used by Claude), `StykkerNanoCutRepo` (feature/server-gpu, used by Qwen), `StykkerNanoCut-OpenCode` (perf-round-3, merged, idle) |
-| Rules | never push to `main` directly (open a PR); never change `src/Stykker.NanoCut.Core`, `Geometry2D`, `Geometry3D` on the GPU branch; `dotnet test -c Release` green before every push |
+| `main` | everything below is merged: kernel round `perf-round-3` (PR #1, `968e1d6`) and `feature/server-gpu` (PR #2, `d111193`: Z-map and dexel preview on CPU and CUDA, server mode of the demo, verification); CI green |
+| `feature/server-gpu`, `perf-round-3` | merged, kept for reference; start new work on a new branch from `main` |
+| Checkouts | `StykkerNanoCut-GPU` (Claude), `StykkerNanoCutRepo` (Qwen), `StykkerNanoCut-OpenCode` (OpenCode); switch each to a fresh branch from `main` before new work |
+| Rules | never push to `main` directly (open a PR); kernel changes (`src/Stykker.NanoCut.Core`, `Geometry2D`, `Geometry3D`) only on a kernel branch and with a review; `dotnet test -c Release` green before every push |
 
 ## How to build and verify (Windows machine with the RTX 5070 Ti)
 
 ```powershell
 dotnet build -c Release
-dotnet test -c Release                                   # 209 + 4 on cf6d09b
+dotnet test -c Release                                   # 221 + 4 on d111193
 powershell -ExecutionPolicy Bypass -File src/Stykker.NanoCut.Gpu.Native/build.ps1   # nanocut_gpu.dll (nvcc 13.4 + VS 2022)
 dotnet build src/Stykker.NanoCut.Gpu -c Release          # copies the dll next to the managed assembly
 py -3 bench/run.py bench/scenes/pocket-large.json --engines nanocut --repeat 3   # exact kernel; writes bench/out/<scene>/expanded.json
@@ -39,7 +39,7 @@ not authorised: pull requests are opened by the user through the compare link
 
 ## Open items, in order
 
-1. **Pull request for `feature/server-gpu`** (dexel preview done, see below). The user opens it through the compare link.
+1. Nothing open from the GPU and server work; both are in `main`.
 2. Ideas for later, not started: a mesh of the dexel cavities for the viewer (today only the top surface); a dexel
    preview page in the demo/server (live preview of a G-code program with a CPU/CUDA switch); half-precision
    read-back for pictures (see docs/gpu-findings.md, "Not done").
@@ -80,6 +80,7 @@ Steps (tick when done):
 
 ### 2026-10-03, Claude
 
+- PR #2 merged `feature/server-gpu` into `main` (`d111193`), CI green. This file updated on its own branch.
 - Dexel preview done (CPU + CUDA + bench + docs), 221 + 4 tests green. The representation error of the Z-map is
   gone: −0.016 % against the exact kernel instead of −0.107 %, as predicted from the tool-model error alone.
 - Bench "discrepancy" settled: not a harness bug, not a kernel regression. pocket-large-g1 scatters 3-4x between single
