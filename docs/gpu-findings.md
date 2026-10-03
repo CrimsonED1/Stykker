@@ -330,7 +330,7 @@ triangles) land there.
   recomputed on every parameter change — tool radius, step length, depth — instead of once per save. At 4096 × 3072,
   where a CPU preview starts to feel like a pause (5.1 s), the GPU is at 36 ms.
   The factor against the exact kernel depends on how the path is cut up: for the same pocket as 13 long moves the
-  exact kernel needs only 72–113 ms, and the preview is 11–17× (CPU) and 90–140× (CUDA) faster, not 1860×; see
+  exact kernel needs only 42 ms, and the preview is about 10× (CPU) and 50× (CUDA) faster, not 1860×; see
   "The same pocket as a CAM program would send it".
 - **No for the exact result.** The exact kernel stays on the CPU and has no GPU dependency, which is deliberate: the
   deviation above is 0.1 %, dominated by a representation limit that no resolution fixes.
@@ -407,11 +407,11 @@ Same machine, warm, best of runs:
 | | pocket-large (876 steps) | pocket-large-g1 (13 moves) |
 | --- | ---: | ---: |
 | Exact kernel, remaining volume | 84 860.612636583 mm³ | 84 860.612636583 mm³ |
-| Exact kernel, time | 4162–4217 ms | 72–113 ms |
+| Exact kernel, time | 4162–4217 ms | 42 ms (median of 30, min 38) |
 | Z-map 1024 × 768, remaining, new form (CPU = CUDA) | 84 770.457226 mm³ | 84 770.457226 mm³ |
 | Z-map 1024 × 768, remaining, old form, CPU / CUDA | 84 770.457226 mm³ | 84 770.448744 / 84 770.450848 mm³ |
 | Z-map 1024 × 768, largest CUDA − CPU height, old form | 0 | 1.25·10⁻³ mm (3.8·10⁻³ mm at 4096 × 3072) |
-| Z-map 1024 × 768, CPU / CUDA wall, new form | 255–268 / 2.4 ms | 6.6 / 0.8 ms |
+| Z-map 1024 × 768, CPU / CUDA wall, new form | 255–268 / 2.4 ms | 4.4 / 0.8 ms |
 
 The exact kernel gives the same volume to the last digit, which is what an exact kernel should do with the same set
 cut in a different number of pieces. With the new form the preview does the same at every grid size from 128 × 96 to
@@ -419,10 +419,14 @@ cut in a different number of pieces. With the new form the preview does the same
 with r = 3 mm, the mildest case of the table above; a ramp or a small ball would have been off by far more.
 
 The timings change the picture of the comparison more than the accuracy does. The exact kernel costs per *cut*, not
-per millimetre: 13 long cuts take 72–113 ms, 876 short ones 4.2 s, for the same result. The Z-map costs per cell and
-step, so it gains only the 67-fold drop in steps. Against a toolpath of long moves the preview is therefore 11–17×
-(CPU) and 90–140× (CUDA, wall) faster than the exact result, not the 16× and 1860× of the finely stepped scene; the
-large factors measure how expensive many tiny exact cuts are, not how cheap the preview is.
+per millimetre: 13 long cuts take 42 ms, 876 short ones 4.2 s, for the same result. The Z-map costs per cell and
+step, so it gains only the 67-fold drop in steps. Against a toolpath of long moves the preview is therefore about 10×
+(CPU, 4.4 ms) and 50× (CUDA, 0.8 ms wall) faster than the exact result, not the 16× and 1860× of the finely stepped
+scene; the large factors measure how expensive many tiny exact cuts are, not how cheap the preview is.
+
+The 42 ms are a median of 30 runs. A scene this short scatters by a factor of three to four between single runs (38
+to 170 ms, with any parallelism, also with `--par 1`); an earlier version of this section gave 72–113 ms from too few
+runs. For any scene that runs well under a second, use `--repeat 30` and quote the median with the minimum.
 
 ### Not done
 

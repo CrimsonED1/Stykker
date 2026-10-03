@@ -319,13 +319,16 @@ it: 13 moves of 4 to 90 mm instead of 876 steps of 0.75 mm. The swept region is 
 
 | Engine | pocket-large (876 steps) | pocket-large-g1 (13 moves) | Volume, both |
 | --- | ---: | ---: | ---: |
-| `nanocut` (exact) | 4162–4217 ms | 72–113 ms | 84 860.612636583 mm³ |
-| `manifoldsharp` | | 43 ms | 84 860.612636583 mm³ |
-| Z-map CPU, 1024 × 768 | 255–268 ms | 6.6 ms | 84 770.457226 mm³ |
+| `nanocut` (exact) | 4162–4217 ms | 42 ms (min 38) | 84 860.612636583 mm³ |
+| `manifoldsharp` | | 46 ms (min 41) | 84 860.612636583 mm³ |
+| Z-map CPU, 1024 × 768 | 255–268 ms | 4.4 ms | 84 770.457226 mm³ |
 | Z-map CUDA, 1024 × 768, wall | 2.4 ms | 0.8 ms | 84 770.457226 mm³ |
 
-RTX 5070 Ti, 16 logical processors, Windows 11, warm. The exact kernel costs per cut, not per length, so long moves
-are what makes it fast; the Z-map numbers need the long-step fix of 2026-10-03 (`docs/gpu-findings.md`, "Independent
+RTX 5070 Ti, 16 logical processors, Windows 11, warm. The pocket-large-g1 times of the exact engines are the median
+of 30 runs (`--repeat 30`): a scene this short scatters by a factor of three to four between single runs (38 to 170 ms
+for NanoCut, with any parallelism, also with `--par 1`), so a median of three can land anywhere in that range; an
+earlier version of this table gave 72–113 ms from too few runs. The Z-map times are the best of 30. The exact kernel
+costs per cut, not per length, so long moves are what makes it fast; the Z-map numbers need the long-step fix of 2026-10-03 (`docs/gpu-findings.md`, "Independent
 verification") to give the same volume for both scenes.
 
 ## Server mode
