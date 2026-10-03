@@ -2,7 +2,7 @@
 
 Branch `feature/server-gpu`, 4 October 2026. This is the self-contained write-up of round 3; the long version lives in
 `docs/gpu-findings.md` ("The point set that lives where it is asked from"), the one-page result in
-`bench/results-2026-10-04-gpu-round3.html`, the rounds before it in `GpuAndGearFindings.md`.
+`bench/results-2026-10-03-gpu-round3.html`, the rounds before it in `GpuAndGearFindings.md`.
 
 Round 2 ended with a measurement and a consequence. The point query spent 2.086 of its 2.187 ms on the PCIe link, and
 the conclusion was blunt: *the next win is not a faster kernel, it is a point set that lives on the device between
@@ -163,7 +163,7 @@ errors). Two facts were added:
 | Topic | File |
 | --- | --- |
 | All GPU measurements, the accuracy decomposition, the reasoning | `docs/gpu-findings.md` |
-| One-page result, round 3 | `bench/results-2026-10-04-gpu-round3.html` |
+| One-page result, round 3 | `bench/results-2026-10-03-gpu-round3.html` |
 | Rounds 2 and the gear case | `GpuAndGearFindings.md` (`bench/results-2026-10-03-gpu-round2.html`) |
 | Round 1 | `bench/results-2026-10-03-gpu.html` |
 | Bench numbers in context | `bench/README.md` |

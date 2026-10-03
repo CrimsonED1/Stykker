@@ -270,7 +270,7 @@ the cold call beside the warm one.
 Details and the full reasoning: `docs/gpu-findings.md`. One-page result:
 [`results-2026-10-03-gpu-round2.html`](results-2026-10-03-gpu-round2.html).
 
-## GPU prototype, round 3: a query that lives on the device (2026-10-04)
+## GPU prototype, round 3: a query that lives on the device (2026-10-03)
 
 Round 2 ended with the point query spending 2.086 of its 2.187 ms on the wire and a clear instruction: a caller that
 asks about the same points again should not send them again. `IZMapQueryBackend.UploadPoints` hands a point set to the
@@ -310,5 +310,5 @@ dotnet bench/Stykker.NanoCut.GpuBench/bin/Release/net10.0/Stykker.NanoCut.GpuBen
 ```
 
 Details: `docs/gpu-findings.md`. One-page result:
-[`results-2026-10-04-gpu-round3.html`](results-2026-10-04-gpu-round3.html).
+[`results-2026-10-03-gpu-round3.html`](results-2026-10-03-gpu-round3.html).
 

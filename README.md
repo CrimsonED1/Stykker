@@ -160,7 +160,7 @@ calls, while a few hundred probed tool poses are faster on the CPU. Measurements
 [docs/gpu-findings.md](docs/gpu-findings.md). One page:
 [bench/results-2026-10-03-gpu.html](bench/results-2026-10-03-gpu.html), round 2:
 [bench/results-2026-10-03-gpu-round2.html](bench/results-2026-10-03-gpu-round2.html), round 3:
-[bench/results-2026-10-04-gpu-round3.html](bench/results-2026-10-04-gpu-round3.html).
+[bench/results-2026-10-03-gpu-round3.html](bench/results-2026-10-03-gpu-round3.html).
 
 ## Processes: acting shape + motion
 

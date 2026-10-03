@@ -175,7 +175,7 @@ figure.
 Two defects fell out of the same work: the height query shared the map's query buffers with the pose query but, unlike
 the pose query, did not take the per-map lock that the interface promises, so two concurrent queries on one map could
 overwrite each other; and the CPU backend reported a loop it had already finished copying for. One-page result:
-[results-2026-10-04-gpu-round3.html](../bench/results-2026-10-04-gpu-round3.html). Details: [gpu-findings.md](gpu-findings.md).
+[results-2026-10-03-gpu-round3.html](../bench/results-2026-10-03-gpu-round3.html). Details: [gpu-findings.md](gpu-findings.md).
 
 ## Lessons learned
 
