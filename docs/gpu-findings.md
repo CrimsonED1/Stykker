@@ -345,9 +345,55 @@ Writing the same minimum-over-the-segment twice, once in C# and once in CUDA C, 
 found a bug that the CPU-only tests had missed: for a horizontal step the discriminant of the stationary point is
 exactly zero in theory but is computed as the difference of two float32 products of size 4·d²·w2², so it came out
 slightly negative about half the time and the whole step was dropped for that cell. Both backends had it; the CUDA one
-just tripped over it first. Both discriminants are now clamped at zero, which is safe because every candidate
-parameter with S(t) ≥ 0 describes a real ball position and can only be too high.
+just tripped over it first. Both discriminants were then clamped at zero.
 `tests/Stykker.NanoCut.Tests/GpuZMapTests.cs::LongHorizontalStepIsNotDroppedByFloatCancellation` pins it.
+
+That clamp treated a symptom. The cancellation was in the formulation itself, and the next section is what an
+independent check found in it.
+
+### Independent verification: long steps (2026-10-03)
+
+A separate harness (not part of the repository) ran both backends against a double-precision reference that finds
+the minimum by a different method (golden-section search on the convex bottom curve, itself checked against dense
+sampling with 2 million positions per step): 300 random scenes with dwells, plunges, jumps below the stock bottom,
+moves of 10⁻⁴ mm and of 500 mm, balls from 0.001 to 15 mm, boxes up to 5 m from the origin and 1-cell strips, about a
+million cells in all; then single straight steps by length (1 to 1000 mm), radius (0.01 to 10 mm) and slope.
+
+It found that the bottom of a long step was wrong in both backends alike. The old form expanded
+S(t) = r² − p² + 2·d·t − w2·t² around the start of the step, so on a step of length L every term was of order L² while
+S is of order r², and float kept little of it. Counting only columns that are more than a few float units from the rim
+(closer than that the column may count as inside or outside, which is a lateral question, not an error of the
+formula):
+
+| Single step | Old form, worst error | New form, worst error |
+| --- | ---: | ---: |
+| L = 100 mm, r = 1 mm, horizontal | 0.018 mm | 4·10⁻⁷ mm |
+| L = 200 mm, r = 1 mm, horizontal | 0.070 mm | 4·10⁻⁷ mm |
+| L = 50 mm, r = 0.1 mm, slope 0.3 | 15 mm left standing | 8·10⁻⁷ mm |
+| L = 1000 mm, r = 1 mm, slope 0.05 | 52 mm left standing, 0.31 mm cut below the ball | < 10⁻⁶ mm |
+| any of L ≤ 1000 mm, r = 0.01…10 mm, slope 0…0.3 | up to 300 mm | ≤ 1.2·10⁻⁵ mm |
+
+The cut below the ball came from the tangent candidates, which were taken without checking that the ball reaches the
+column at that parameter; the old comment that an extra candidate "can only be too high" did not hold for them.
+
+The bench scenes did not show it because their steps are 0.75 mm long; a toolpath straight from a CAM program, with
+one G1 move per line, would have. The new form (`ToolProfile.Bottom`, `ball_bottom` in `zmap.cu`) measures from the
+point of the step line closest to the column: with a² = r² − e² the bottom curve is
+g(t) = z0 + wz·t − √(a² − w2·(t − t*)²), convex, and its minimum is the stationary point t* − c·a clamped to the
+valid interval. No intermediate is a difference of terms of order L². It is shorter than the old one, the packed
+layout keeps its 12 floats, and `pocket-large` gives the same volumes to the last digit at every grid size and the
+same times (2.4 ms wall, 1.5 ms kernel at 1024 × 768).
+
+What else the harness checked, and found in order: CUDA and CPU agree within the rim-dependent bound of the fma
+contraction; the same steps applied in one call or in random chunks with the field left on the device give the same
+bits, and so do two runs; a missing device and a grid too large to allocate end in an exception, not a crash; 300
+maps of 16 MB created and dropped leave the device memory where it was. One host inconsistency was fixed with it: the
+host volume sum used the top in double while the field starts at the top in float, so an untouched stock reported
+the rounding of the top times its area as removed (−0.003 mm³ on an awkward box); it now uses the float top, as the
+device does.
+
+`LongStepsMatchTheExactBottom` (eight cases, CPU) and `CudaLongStepsAgreeWithTheCpuReference` pin the long steps,
+`UntouchedStockRemovesNothingOnAnAwkwardBox` the volume.
 
 ### Not done
 
