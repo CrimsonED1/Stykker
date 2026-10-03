@@ -185,6 +185,36 @@ Involutenflanke folgen und also tatsächlich nicht koplanar sind; nur die 214 14
 
 `pocket-profile` unverändert (2282 → 2275 ms, Boolean 975 → 973 ms).
 
+**Nachtrag aus dem Review (2026-10-03).** Zwei Aussagen dieses Abschnitts hielten nicht, beide sind behoben:
+
+- *Löcher.* Eine Deckfläche mit Loch wurde zu einer Außenfläche, die **über** dem Loch liegt, plus einer umgekehrt
+  orientierten Lochfläche darunter. Das Volumen stimmt (die beiden Schichten heben sich auf), deshalb sah ΔV = 0 nichts;
+  aber das Netz eines extrudierten 10 × 10-mm-Quadrats mit 2 × 2-mm-Loch hatte oben 100 mm² nach oben und 4 mm² nach
+  unten statt 96 mm², das Loch war im Viewer und im STL zu, und ein Quader, der nur im Loch steckt, verdoppelte beim
+  Abziehen die Faces (12 → 24). Jetzt behält eine Gruppe mit einer entgegengesetzt orientierten Schleife ihre Dreiecke
+  (dieses Beispiel: 24 Faces, `main` vorher 32). Die Zeilen „Rechteck mit Loch“ und „Kreis mit Quadrat-Loch“ der
+  Tabelle oben gelten damit nicht mehr; Formen ohne Loch verschmelzen wie dort angegeben.
+- *Konvexität.* Die Prüfung in `FromGrid` vergleicht jede Kante nur mit den ersten 12 Ecken; ein konkaves Polygon,
+  dessen erste Ecken im Kern liegen, kommt durch (gebaut und belegt: 20 Ecken, Kerbe hinten). Die Gruppierung prüft
+  deshalb jetzt jede Schleife selbst vollständig und exakt in O(n) (`ConvexHull3.IsConvexLoop`).
+- *Woher der Gewinn beim Zahnrad kommt.* Die 69 Konturen des erzeugten Profils sind Inseln, keine Löcher (alle gegen den
+  Uhrzeigersinn), und die Deckfläche ist konkav, bleibt also trianguliert. Verschmolzen werden die Seitenwände: je zwei
+  Dreiecke zu einem Viereck (428 800 → 321 382 Faces).
+
+Gemessen nach dem Merge mit `main` (Ryzen 7 5800X3D, 16 logische Kerne, gleiches Messprogramm gegen beide Stände,
+Median aus 3 bzw. 30 Läufen):
+
+| Arbeit | `main` | dieser Branch | |
+| --- | ---: | ---: | ---: |
+| Extrusion des erzeugten Zahnrads (107 k Profilpunkte) | 47 791 ms | 803 ms | 60× |
+| Zahnrad erzeugen (Zahnstange, `Process2.Cut`) | 36 648 ms | 37 231 ms | gleich |
+| `pocket-large`, 876 Schritte | 3 852 ms | 3 774 ms | 1,02× |
+| Extrusion Evolventenrad (Profilseite der Demo) | 17 ms | 15 ms | gleich |
+| Zahnrad − Bohrung − Scheibe | 64–69 ms | 60–65 ms | gleich |
+
+Alle Volumina gleich (die Extrusion bis auf die letzte Stelle der double-Summe, weil die Faces anders aufgeteilt sind).
+Die 60× kommen fast ganz aus dem Rasterindex im Ohrentest (Abschnitt 2D-Kern), nicht aus dem Verschmelzen.
+
 **Was davon bleibt:** Die Extrusion ist nur die eine Hälfte. `Triangulator2.ConvexParts` ist O(n²) im Ear-Clipping über
 107 k Punkte, und die Seitenwände bleiben bei ~215 k Faces. Beides ist der nächste Schritt, nicht dieser.
 
