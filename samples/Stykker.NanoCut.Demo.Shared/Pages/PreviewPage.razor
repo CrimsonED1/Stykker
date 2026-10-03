@@ -1,0 +1,360 @@
+@page "/preview"
+@using System.Diagnostics
+@using System.Globalization
+@using Stykker.NanoCut.Cutting
+@using Stykker.NanoCut.Geometry3D
+@using Stykker.NanoCut.Gpu
+@inject Viewer Viewer
+@inject IComputeRunner Runner
+@implements IAsyncDisposable
+
+<div class="scene">
+    <section class="stage">
+        <header class="stage-head">
+            <div>
+                <h1>Preview before you commit</h1>
+                <p class="desc">One program, cut two ways. The <b>exact kernel</b> subtracts what the ball sweeps from
+                    a solid, step by step: it is exact, it stays on the CPU, and on a long program it is far too slow
+                    to sit and wait for. The <b>preview</b> subtracts the same sweep from a height field, column by
+                    column: milliseconds instead of seconds, which is what makes it the thing worth putting on a GPU.
+                    The panel times both previews on the same field and shows the exact cut as the reference they stand
+                    in for.</p>
+            </div>
+            <div class="engine">
+                <button class="@(_show == "" ? "on" : "")" @onclick='() => Show("")'>Exact only</button>
+                <button class="@(_show == "cpu" ? "on" : "")" disabled="@(_cpuField is null)" @onclick='() => Show("cpu")'>+ CPU field</button>
+                <button class="@(_show == "gpu" ? "on" : "")" disabled="@(_gpuField is null)" @onclick='() => Show("gpu")'>+ GPU field</button>
+            </div>
+        </header>
+        <div id="viewport" class="viewport">
+            @if (_busy)
+            {
+                <div class="busy"><div class="spinner"></div>@_phase</div>
+            }
+        </div>
+    </section>
+
+    <aside class="panel">
+        <h2>Program</h2>
+        <label class="param"><span>Finishing pass</span>
+            <select @bind="_program" disabled="@_busy">
+                @foreach (var p in Programs)
+                {
+                    <option value="@p.Id">@p.Title</option>
+                }
+            </select>
+        </label>
+        <label class="param"><span>Preview grid</span>
+            <select @bind="_grid" disabled="@_busy">
+                @foreach (var g in Grids)
+                {
+                    <option value="@g.Id">@g.Title</option>
+                }
+            </select>
+        </label>
+        <p class="desc">@Programs.First(p => p.Id == _program).Subtitle<br />
+            @Grids.First(g => g.Id == _grid).Subtitle</p>
+
+        <label class="param check">
+            <input type="checkbox" @bind="_exactToo" disabled="@_busy" />
+            <span>Also run the exact kernel</span>
+        </label>
+        <p class="desc">@(_exactToo
+            ? "It is the reference the preview is measured against — seconds on the CPU, so switch it off for the long program."
+            : "Off: the preview alone. At this length the exact cut is not something to sit and wait for, which is the point of the preview.")</p>
+
+        <div class="actions">
+            <button disabled="@_busy" @onclick="Compute">Compute</button>
+            <button class="ghost" disabled="@(!_busy)" @onclick="Stop">Stop</button>
+        </div>
+
+        @if (_gpuWhy is { } why)
+        {
+            <p class="desc"><b>No GPU in this host:</b> @why</p>
+        }
+        @if (_error is { } error)
+        {
+            <p class="desc"><b>Failed:</b> @error</p>
+        }
+
+        @if (_arms.Count > 0)
+        {
+            <h2>Preview — the answer you wait for</h2>
+            @foreach (var a in _arms.Where(a => !a.Exact))
+            {
+                <h3 class="arm">@a.Name</h3>
+                <table class="metrics">
+                    <tr><td>where</td><td>@a.Where</td></tr>
+                    <tr><td>time</td><td>@Ms(a.Ms)</td></tr>
+                    <tr><td>remaining</td><td>@N(a.RemainingMm3, "0.000") mm³</td></tr>
+                    @if (a.DeviationPct is { } d)
+                    {
+                        <tr><td>Δ exact</td><td>@N(d, "+0.000;-0.000") %</td></tr>
+                    }
+                </table>
+            }
+            <p class="desc">@_note</p>
+
+            @if (_arms.FirstOrDefault(a => a.Exact) is { } x)
+            {
+                <h2>Reference — the exact cut</h2>
+                <table class="metrics">
+                    <tr><td>where</td><td>@x.Where</td></tr>
+                    <tr><td>time</td><td>@Ms(x.Ms)</td></tr>
+                    <tr><td>remaining</td><td>@N(x.RemainingMm3, "0.000") mm³</td></tr>
+                </table>
+                <p class="desc">This is what the preview stands in for: exact, and far too slow to sit and wait for at
+                    this length. That is why the preview time above, not the total, is the number that matters.</p>
+            }
+        }
+
+        <h2>Log</h2>
+        <ul>
+            @foreach (var line in _log)
+            {
+                <li>@line</li>
+            }
+        </ul>
+    </aside>
+</div>
+
+@code {
+    // The same finishing pass the long-programs bench measures: a ball just under the top of a 20 x 20 x 2 mm block,
+    // rows along x, every row one step length further along. One "step" is one short move of 0.05 mm.
+    private const double StockMm = 20, StockZMm = 2, BallMm = 0.2, StepMm = 0.05, DepthMm = 0.05;
+    private const int PerRow = (int)(StockMm / StepMm);
+    private const double ChordNm = 1000, SweepNm = 300;
+    private static Tolerance Tol =>
+        Tolerance.Budget(totalUm: (ChordNm + SweepNm + 51) / 1000, chordNm: ChordNm, sweepNm: SweepNm);
+
+    private sealed record Choice(string Id, string Title, string Subtitle, int Rows);
+    private sealed record GridChoice(string Id, string Title, string Subtitle, int CellsX, int CellsY);
+    private sealed record Arm(string Name, string Where, double Ms, double RemainingMm3, double? DeviationPct,
+        bool Exact = false);
+    private readonly record struct PreviewRun(double Ms, double DownloadMs, double RemainingMm3, ZMapMesh Field);
+
+    private static readonly Choice[] Programs =
+    [
+        new("klein", "Small — 400 steps", "1 row over 20 mm · steps 0.05 mm apart · ball r 0.2 mm", 1),
+        new("mittel", "Medium — 1200 steps", "3 rows over 20 mm · steps 0.05 mm apart · ball r 0.2 mm", 3),
+        new("gross", "Large — 2400 steps", "6 rows over 20 mm · steps 0.05 mm apart · ball r 0.2 mm", 6),
+        new("lang", "Long — 16 000 steps", "40 rows · the length where the preview, not the exact cut, is the cost", 40),
+    ];
+
+    private static readonly GridChoice[] Grids =
+    [
+        new("klein", "256 × 192", "78 µm cells — the quick one", 256, 192),
+        new("mittel", "512 × 384", "39 µm cells", 512, 384),
+        new("gross", "1024 × 768", "20 µm cells — the sharp one", 1024, 768),
+    ];
+
+    private string _program = "klein", _grid = "mittel", _show = "", _phase = "", _note = "";
+    private bool _exactToo = true;
+    private string? _error, _gpuWhy;
+    private readonly List<Arm> _arms = [];
+    private readonly List<string> _log = [];
+    private bool _busy, _attached;
+    private Solid? _exact;
+    private ZMapMesh? _cpuField, _gpuField;
+    private CancellationTokenSource? _stop;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_attached) return;
+        _attached = true;
+        await Viewer.Attach("viewport", "three");
+    }
+
+    private async Task Compute()
+    {
+        if (_busy) return;
+        _busy = true;
+        _error = null;
+        _arms.Clear();
+        _log.Clear();
+        _exact = null;
+        _cpuField = _gpuField = null;
+        _stop = new CancellationTokenSource();
+        await Viewer.SetLocked(true);
+        StateHasChanged();
+        try
+        {
+            var grid = Grids.First(g => g.Id == _grid);
+            int rows = Programs.First(p => p.Id == _program).Rows;
+            BallStep[] steps = Pass(rows);
+            _log.Add($"{steps.Length} steps · preview grid {grid.CellsX} x {grid.CellsY} " +
+                     $"({grid.CellsX * grid.CellsY:N0} columns)");
+
+            // The two previews first: they are milliseconds, so the page has something to show while the exact kernel
+            // is still cutting seconds. The preview is not waiting for the exact result, it is a different computation.
+            _phase = "preview on the CPU…";
+            StateHasChanged();
+            var cpu = await Runner.Run(() => Preview(steps, new CpuBackend(), grid), _stop.Token);
+            _cpuField = cpu.Field;
+            _log.Add($"preview CPU {Ms(cpu.Ms)} · field download {Ms(cpu.DownloadMs)}");
+
+            var cuda = new CudaBackend();
+            _gpuWhy = cuda.IsAvailable ? null : cuda.UnavailableReason;
+            PreviewRun? gpu = null;
+            if (_gpuWhy is null)
+            {
+                _phase = "preview on the GPU…";
+                StateHasChanged();
+                PreviewRun run = await Runner.Run(() => Preview(steps, cuda, grid), _stop.Token);
+                gpu = run;
+                _gpuField = run.Field;
+                _log.Add($"preview GPU {Ms(run.Ms)} on {cuda.Name} · field download {Ms(run.DownloadMs)}");
+            }
+            else
+            {
+                _log.Add($"preview GPU not run: {_gpuWhy}");
+            }
+
+            _phase = $"exact kernel, {rows} rows…";
+            StateHasChanged();
+            if (_exactToo)
+            {
+                await Exact(steps, rows, cpu, gpu);
+            }
+            else
+            {
+                // No exact run: at this length it is not something to wait for, which is the whole reason the preview
+                // exists. Saying so is better than quoting a time nobody measured.
+                _note = gpu is { } device
+                    ? $"No exact run — at {steps.Length:N0} steps the exact cut is not a wait worth sitting out. The " +
+                      $"preview says in {Ms(device.Ms)} what it would take, on the device; the same preview on the CPU " +
+                      $"takes {Ms(cpu.Ms)}."
+                    : $"No exact run, and no GPU in this host: {Ms(cpu.Ms)} of preview on the CPU is all there is at " +
+                      $"{steps.Length:N0} steps.";
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            _log.Add("stopped by the user");
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+            _log.Add($"failed: {ex.Message}");
+        }
+        finally
+        {
+            _busy = false;
+            _phase = "";
+            await Viewer.SetLocked(false);
+            await Show(_show);
+            StateHasChanged();
+        }
+    }
+
+    /// <summary>The pass: rows along x, serpentine, every step a move of <see cref="StepMm"/> at one height.</summary>
+    private BallStep[] Pass(int rows)
+    {
+        double z = StockZMm - DepthMm + BallMm;
+        var steps = new BallStep[rows * PerRow];
+        for (int j = 0; j < rows; j++)
+        {
+            double y = StockMm * (j + 0.5) / rows;
+            bool forward = (j & 1) == 0;
+            for (int i = 0; i < PerRow; i++)
+            {
+                double x = StepMm * (0.5 + (forward ? i : PerRow - 1 - i));
+                steps[j * PerRow + i] = new BallStep((x, y, z), (x + StepMm, y, z), BallMm);
+            }
+        }
+        return steps;
+    }
+
+    /// <summary>
+    /// The preview on one backend. The field is left where it was computed (<see cref="ZMapReadBack.Never"/>), the
+    /// volume comes from the backend itself — a reduction on the device for CUDA — and the picture costs one download,
+    /// which is timed apart instead of disappearing into the call.
+    /// </summary>
+    private static PreviewRun Preview(BallStep[] steps, IZMapBackend backend, GridChoice grid)
+    {
+        var map = new ZMap(0, 0, 0, StockMm, StockMm, StockZMm, grid.CellsX, grid.CellsY, backend);
+        var sw = Stopwatch.StartNew();
+        map.ApplySteps(steps, ZMapReadBack.Never);
+        double remaining = map.BoxVolumeMm3 - map.BackendRemovedVolumeMm3;
+        sw.Stop();
+        double download = map.ReadHeights();
+        return new PreviewRun(sw.Elapsed.TotalMilliseconds, download, remaining, map.ToMesh());
+    }
+
+    /// <summary>
+    /// The exact kernel on the same program, one row per call so the page keeps painting and the Stop button stays
+    /// live: in the browser a row is a pause between renders, on the server it is one job in the queue.
+    /// </summary>
+    private async Task Exact(BallStep[] steps, int rows, PreviewRun cpu, PreviewRun? gpu)
+    {
+        var tool = ToolShape.Ball(BallMm, Tol);
+        Solid work = Solid.Box(Vec3.Mm(0, 0, 0), Vec3.Mm(StockMm, StockMm, StockZMm), Tol);
+        var sw = Stopwatch.StartNew();
+        for (int j = 0; j < rows; j++)
+        {
+            _stop!.Token.ThrowIfCancellationRequested();
+            int row = j;
+            work = await Runner.Run(() =>
+            {
+                Solid w = work;
+                foreach (var step in steps.AsSpan(row * PerRow, PerRow))
+                    w = Process3.Cut([w], tool, Motion3.Linear(
+                        Vec3.Mm(step.From.X, step.From.Y, step.From.Z),
+                        Vec3.Mm(step.To.X, step.To.Y, step.To.Z)), Tol, out _)[0];
+                return w;
+            }, _stop.Token);
+            _phase = $"exact kernel — row {row + 1} of {rows}…";
+            StateHasChanged();
+            await Task.Delay(1);
+        }
+        sw.Stop();
+        _exact = work;
+        double exactRemaining = work.VolumeMm3;
+        _log.Add($"exact kernel {Ms(sw.Elapsed.TotalMilliseconds)} for {steps.Length} steps");
+
+        _arms.Add(new Arm("exact kernel", "CPU", sw.Elapsed.TotalMilliseconds, exactRemaining, 0, Exact: true));
+        _arms.Insert(0, new Arm("preview, CPU", $"{Environment.ProcessorCount} threads", cpu.Ms, cpu.RemainingMm3,
+            (cpu.RemainingMm3 - exactRemaining) / exactRemaining * 100));
+        if (gpu is { } g)
+            _arms.Insert(1, new Arm("preview, GPU", "device", g.Ms, g.RemainingMm3,
+                (g.RemainingMm3 - exactRemaining) / exactRemaining * 100));
+
+        double exactMs = sw.Elapsed.TotalMilliseconds;
+        double vsCpu = exactMs / Math.Max(cpu.Ms, 1e-9);
+        _note = gpu is { } device
+            ? $"The preview is the answer, and on the device it is {N(cpu.Ms / Math.Max(device.Ms, 1e-9), "0")}× the CPU " +
+              $"one: {Ms(device.Ms)} against {Ms(cpu.Ms)} for the same field, off from the exact result by " +
+              $"{Dev(exactRemaining, device.RemainingMm3)} against {Dev(exactRemaining, cpu.RemainingMm3)}. The exact " +
+              $"cut below takes {Ms(exactMs)} — and it is what decides whether the program is worth cutting at all."
+            : $"The preview is {N(vsCpu, "0")}× faster than the exact kernel and off by " +
+              $"{Dev(exactRemaining, cpu.RemainingMm3)}. No GPU in this host, so there is nothing to move it to.";
+    }
+
+    private static string Dev(double exact, double preview) =>
+        $"{N((preview - exact) / exact * 100, "0.000")} %";
+
+    private async Task Show(string which)
+    {
+        _show = which;
+        await Viewer.Clear();
+        if (_exact is { } work)
+            await Viewer.AddMesh("Exact result", work.ToMeshBuffers(OriginMode.Absolute), "#9fb4c8", 1);
+        if (which == "cpu" && _cpuField is { } cpu) await Viewer.AddHeightField("Preview (CPU)", cpu, "#7fc4a0", 0.85);
+        if (which == "gpu" && _gpuField is { } gpu) await Viewer.AddHeightField("Preview (GPU)", gpu, "#f0a35e", 0.85);
+        if (_exact is not null) await Viewer.Fit("iso");
+        StateHasChanged();
+    }
+
+    private void Stop() => _stop?.Cancel();
+
+    private static string N(double v, string format) => v.ToString(format, CultureInfo.InvariantCulture);
+
+    private static string Ms(double v) => v < 1 ? N(v, "0.00") + " ms" : N(v, "0") + " ms";
+
+    public ValueTask DisposeAsync()
+    {
+        _stop?.Cancel();
+        _stop?.Dispose();
+        return ValueTask.CompletedTask;
+    }
+}
