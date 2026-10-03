@@ -2,6 +2,7 @@
 @using Stykker.NanoCut.Cutting
 @using Stykker.NanoCut.Geometry3D
 @inject Viewer Viewer
+@inject IComputeRunner Runner
 @implements IAsyncDisposable
 
 <div class="scene">
@@ -118,6 +119,7 @@
     private double _sweepNm = 200000, _chordNm = 2000;
     private int _exactVertices;
     private bool _busy, _attached;
+    private readonly CancellationTokenSource _stop = new();
     private string? _error;
     private DotNetObjectReference<CubesPage>? _self;
 
@@ -210,11 +212,17 @@
         {
             var sw = System.Diagnostics.Stopwatch.StartNew();
             double before = _work.VolumeMm3;
-            _history.Push((_work, _pose));
-            _work = Process3.Cut([_work], _tool, Motion3.Between(_pose, target), Tol, out var stats)[0];
+            var (from, pose) = (_work, _pose);
+            var (cut, intervals, exact) = await Runner.Run(() =>
+            {
+                var w = Process3.Cut([from], _tool, Motion3.Between(pose, target), Tol, out var stats)[0];
+                return (w, stats.Intervals, w.Vertices.Count(v => !v.IsGrid));
+            }, _stop.Token);
+            _history.Push((from, pose));
+            _work = cut;
             _pose = target;
-            _exactVertices = _work.Vertices.Count(v => !v.IsGrid);
-            _log.Add($"{label}: removed {(before - _work.VolumeMm3).ToString("0.######", CultureInfo.InvariantCulture)} mm³ · {stats.Intervals} steps · {sw.ElapsedMilliseconds} ms");
+            _exactVertices = exact;
+            _log.Add($"{label}: removed {(before - _work.VolumeMm3).ToString("0.######", CultureInfo.InvariantCulture)} mm³ · {intervals} steps · {sw.ElapsedMilliseconds} ms");
             await ShowAll(fit: false);
         }
         catch (Exception ex) { _error = ex.Message; }
@@ -269,6 +277,7 @@
 
     public async ValueTask DisposeAsync()
     {
+        _stop.Cancel();
         if (_attached)
         {
             await Viewer.SetGizmo<CubesPage>("off", null);

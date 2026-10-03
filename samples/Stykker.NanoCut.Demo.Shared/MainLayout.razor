@@ -1,8 +1,9 @@
 @inherits LayoutComponentBase
+@inject IComputeRunner Runner
 <div class="shell">
     <nav class="sidebar">
         <div class="brand">Stykker<span>.NanoCut</span></div>
-        <div class="tagline">exact cutting · 1 nm grid · runs in your browser</div>
+        <div class="tagline">exact cutting · 1 nm grid · @(Runner is InlineComputeRunner ? "runs in your browser" : "computed on the server")</div>
         @foreach (var group in SceneCatalog.All.GroupBy(s => s.Category))
         {
             <div class="group">@group.Key</div>
@@ -21,7 +22,7 @@
         <NavLink class="item" href="profiles">Profiles (sections of 3D parts)</NavLink>
         <div class="group">Verification</div>
         <NavLink class="item" href="selftest">Self test</NavLink>
-        <div class="foot">C# on WebAssembly · three.js / Babylon.js</div>
+        <div class="foot">@Runner.Where · three.js / Babylon.js</div>
     </nav>
     <main class="content">@Body</main>
 </div>
