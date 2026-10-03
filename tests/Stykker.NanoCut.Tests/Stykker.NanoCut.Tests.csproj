@@ -17,6 +17,8 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="../Shared/*.cs" Link="Shared/%(Filename)%(Extension)" />
+    <!-- The demo's compute queue has no dependency beyond the BCL; linked so it is tested without the Razor library. -->
+    <Compile Include="../../samples/Stykker.NanoCut.Demo.Shared/Services/ComputeRunner.cs" Link="Demo/ComputeRunner.cs" />
     <Using Include="Xunit" />
   </ItemGroup>
 </Project>

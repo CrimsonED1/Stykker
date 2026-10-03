@@ -1,6 +1,8 @@
 <Solution>
   <Folder Name="/samples/">
     <Project Path="samples/Stykker.NanoCut.Demo/Stykker.NanoCut.Demo.csproj" />
+    <Project Path="samples/Stykker.NanoCut.Demo.Shared/Stykker.NanoCut.Demo.Shared.csproj" />
+    <Project Path="samples/Stykker.NanoCut.Server/Stykker.NanoCut.Server.csproj" />
     <Project Path="samples/Stykker.NanoCut.Snapshot/Stykker.NanoCut.Snapshot.csproj" />
   </Folder>
   <Folder Name="/src/">
