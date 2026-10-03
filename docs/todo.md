@@ -4,6 +4,14 @@ Open features and ideas, newest first. Each entry says what is wanted and which 
 
 ## Done
 
+- **Long programs, step 1: the baseline** (`bench/Stykker.NanoCut.LongPrograms`, plan in [long-programs.md](long-programs.md)):
+  the two long programs on the exact kernel with time **and** result, so a preview has something to be checked against.
+  Gear: 34.7 s at z = 20 with 1231.252941 mm², 209 089 swept pieces and 5.4 nm flank — the reference of
+  [processes.md](processes.md) reproduced to the digit — and 147.6 s at z = 40. Grinding: 0.200 s for the demo's 60
+  grains up to 5.820 s for 1920, with the removed volume converging and Ra going back up after 960 grains. Two findings
+  for the plan and one for the measurement, see the log in [long-programs.md](long-programs.md); one page:
+  [results-2026-10-03-long-programs.html](../bench/results-2026-10-03-long-programs.html).
+
 - **Profile extraction from 3D solids** (`Section3`, `SectionPlane`, `Profile2`; demo page "Profiles"):
   - plane sections with a u/v window;
   - axial r–z profiles with z and r ranges, and envelopes over several angles;
@@ -36,6 +44,24 @@ Open features and ideas, newest first. Each entry says what is wanted and which 
 - Renumber the optimisation rounds once round 3 (other agent) is merged; branches `perf-round-*`.
 - Merge `feature/server-gpu` after review – never directly to main. The GPU half is done; the server mode (part 1 of
   [server-gpu-plan.md](server-gpu-plan.md)) is not built.
+
+## Long programs – follow-ups
+
+Plan and log: [long-programs.md](long-programs.md). Step 1 (the baseline) is done; steps 2 to 6 are the preview itself.
+
+- **Why the 2D kernel slows the 3D kernel in the same process.** Measured, not explained: the 60-grain grinding case
+  reads 200 ms in a fresh process, 352 ms after one 30 s gear case, 885 ms after the three gear cases of the full run.
+  Ruled out: server GC (355 ms), `DOTNET_TieredCompilation=0` (411 ms), the machine (fresh process right after the same
+  load: 198 ms), the length of the process (5.8 s of 3D work first: 185 ms). The results (volume, Ra/Rz, pass and hull
+  counts) are identical either way — only the time moves. Next candidates: the address space the 2D cut leaves behind
+  (225 000 swept pieces), `Solid`'s per-thread scratch and `ArrayPool` buckets, and the `OrientedCache` in `Process3`.
+  It matters for the server, where a preview is timed in a process that has already cut something.
+- ~~**The warm-up rule in `bench/README.md`.~~ Fixed: the README described it as "until 1.5 s have passed" while the
+  code uses "three runs within 10 %, at least five". A cold pass of the 60-grain case takes 1.8 s, so the documented
+  wording ended the loop after one pass and reported 938 ms instead of 200 ms. README corrected, `LongPrograms` uses the
+  code's rule.
+- Steps 2 to 6 (binning by tile, convex tool + pose sequence in the dexel kernel, grinding preview, 2D gear preview,
+  into the server) are listed in [long-programs.md](long-programs.md).
 
 ## GPU preview – follow-ups
 

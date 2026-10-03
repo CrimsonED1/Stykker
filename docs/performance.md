@@ -177,6 +177,42 @@ the pose query, did not take the per-map lock that the interface promises, so tw
 overwrite each other; and the CPU backend reported a loop it had already finished copying for. One-page result:
 [results-2026-10-03-gpu-round3.html](../bench/results-2026-10-03-gpu-round3.html). Details: [gpu-findings.md](gpu-findings.md).
 
+## Long programs: the baseline a preview is checked against
+
+The preview rounds above measure one toolpath of 876 ball steps. A long program is a different animal — the whole
+generated gear, a grinding wheel that is completely covered — and it is what the next GPU work is about
+([long-programs.md](long-programs.md)). Step 1 of that plan is its baseline:
+`bench/Stykker.NanoCut.LongPrograms` runs both programs on the exact kernel and writes the **result** next to the time,
+because a preview is only as good as the number it is compared with.
+
+**Gear generation**, `Process2.Cut`, a 7-tooth rack rolling on the blank, m = 2 mm, `Tolerance.Default`:
+
+| z | Cut | Extrude | Area | Ideal involute | Δ | Roll steps | Swept pieces | Flank |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 10 † | 28.8 s | 0.9 s | 296.905130 mm² | 297.949 mm² | −0.35 % | 2560 | 224 988 | – † |
+| 20 | 34.7 s | 0.8 s | **1231.252941 mm²** | 1226.103 mm² | +0.42 % | 2560 | 209 089 | **5.4 nm** |
+| 40 | 147.6 s | 2.1 s | 4985.752597 mm² | 4982.782 mm² | +0.06 % | 5120 | 398 178 | 2.2 nm |
+
+z = 20 reproduces the reference of [processes.md](processes.md) to the digit, which is what makes it usable as the yardstick
+for a preview. † below z = 2/sin²α = 17.1 a generated gear is undercut, so its flank is not the involute: the metric
+reports 1357 µm there and means nothing by it, while the area still matches the ideal gear to −0.35 %. The ideal
+involute area is what identifies the profile as right, and it is now printed next to the generated one.
+
+**Grinding**, `GrindingSimulation` with the demo's parameters, warm, single run:
+
+| Grains | Wall | Removed | of stock | Cutting passes | Passes | Hulls | Ra | Rz |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 60 | 0.200 s | 0.018713 mm³ | 5.2 % | 80 | 118 | 707 | 9.69 µm | 55.5 µm |
+| 240 | 0.924 s | 0.029406 mm³ | 8.2 % | 204 | 476 | 2 589 | 6.96 µm | 43.1 µm |
+| 960 | 2.979 s | 0.040148 mm³ | 11.2 % | 337 | 1 897 | 8 033 | **4.72 µm** | 29.2 µm |
+| 1920 | 5.820 s | 0.044690 mm³ | 12.4 % | 413 | 3 793 | 13 841 | 5.06 µm | 25.2 µm |
+
+The covered wheel is the interesting row: 29× the time and 19.6× the hulls against 2.4× the removed volume, and a
+roughness that stops improving after 960 grains — Ra goes back up. At 1920 grains only 413 of 3793 passes still remove
+anything. The exact kernel pays per swept convex piece (398 178 pieces at z = 40, 13 841 hulls here), while a preview pays
+one interval subtraction per column, so the target of the preview is set by poses and columns that meet, not by pieces.
+One-page result: [results-2026-10-03-long-programs.html](../bench/results-2026-10-03-long-programs.html).
+
 ## Lessons learned
 
 - **Measure with a real CPU profiler.** The .NET EventPipe thread-time sampler only samples at safe points, so it showed
@@ -195,7 +231,15 @@ overwrite each other; and the CPU backend reported a loop it had already finishe
   not at all.
 - **Short benchmarks measure the JIT.** One pass of a 100 ms scene still runs tier-0 code: 105 ms against 32 ms fully
   optimised. Disabling tiering costs PGO on long runs (+20 %). Bench in steady state, and for short-lived processes
-  consider ReadyToRun.
+  consider ReadyToRun. Steady state means "three consecutive runs within 10 %, at least five runs" and *not* a time
+  budget: a cold pass that is itself slower than the budget ends the loop after one run and leaves the tier-0 code the
+  warm-up exists to remove (the 60-grain grinding case reads 938 ms that way and 200 ms correctly).
+- **A program that ran before can change what the next one costs.** After the 2D gear kernel has run in the same process,
+  the same 3D grinding case reads 885 ms against 200 ms in a fresh one — 352 ms after a single 30 s gear case. Not the GC
+  mode (server GC: 355 ms), not tiered compilation (`DOTNET_TieredCompilation=0`: 411 ms), not the machine (a fresh
+  process right after the same load: 198 ms) and not the length of the process (5.8 s of 3D work first: 185 ms). No
+  cause yet ([todo.md](todo.md)); until there is one, measure each program in its own process and say in the bench which
+  order was used, because the numbers a server quotes in a running process are not the numbers a fresh process gives.
 - **Fair comparison:** C++ Manifold uses TBB (about 2.9 cores), so a single-threaded NanoCut against it compares
   different things.
 - **A second implementation is a test.** Writing the same minimum over a segment in C# and in CUDA C and comparing cell
@@ -234,6 +278,10 @@ overwrite each other; and the CPU backend reported a loop it had already finishe
 
 ## Open
 
+- Long programs: the baseline is measured ([long-programs.md](long-programs.md), step 1), the preview is not. Step 2 bins
+  the steps of the existing ball dexel/Z-map by tile (CSR), step 3 gives the kernel any convex tool on a pose sequence,
+  steps 4 and 5 the grinding and gear previews against the numbers above. One thing the baseline opened: why the 2D
+  kernel slows the 3D kernel in the same process ([todo.md](todo.md)).
 - Fixed costs per cut for short tasks: C++ is still 1.3–2.3× faster there.
 - Exact face sweep for 3D rotations, which today use hulls of poses and small steps (see [processes.md](processes.md)).
 - Server mode: the second half of the plan behind [server-gpu-plan.md](server-gpu-plan.md), still unbuilt. The GPU half is

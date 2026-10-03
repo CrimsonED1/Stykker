@@ -189,12 +189,18 @@ What did not help:
 | --- | --- |
 | Skip a split when the single face spanning the plane cannot meet the fragment (exact separation test per fragment) | Small scene Boolean 5.2 → 4.4 ms per cut. Geometry unchanged: all 396 differential workload results have identical exact volumes. |
 | BVH build partitions around the median (quickselect) instead of sorting every range | pocket-profile Boolean 5.0 → 4.3–4.5 ms per cut |
-| **Bench warm-up repeats the scene until 1.5 s have passed** (was: once) | Short scenes were measuring JIT warm-up |
+| **Bench warm-up repeats the scene until it is steady** (was: once) | Short scenes were measuring JIT warm-up |
 
 The warm-up finding: a single pass of ball-small (about 100 ms) leaves hot methods in unoptimised tier-0 code. With
 `DOTNET_TieredCompilation=0` the same run takes 32 ms instead of 105 ms. Full optimisation from the start costs PGO on long
 runs, though (pocket-profile 2.05 → 2.51 s). The bench now measures steady state, as in a long-running service. For
 short-lived processes, ReadyToRun or `TieredCompilation=false` are the levers.
+
+What "steady" means in the code (`Stykker.NanoCut.Bench`, `--warm`): repeat the scene until **three consecutive runs
+agree within 10 % and at least five have run**, and give up when a single run costs more than 3 s. Not a fixed time
+budget: a cold pass of a case that is itself slower than the budget would end the loop after one run and leave exactly
+the tier-0 code the warm-up exists to remove — measured on the grinding baseline, where a single pass reads 938 ms and
+the warm case 202 ms.
 
 Results, steady state, best of 3 (4 cores):
 
@@ -387,4 +393,64 @@ against a true sphere (−0.016 %).
 ```bash
 dotnet bench/Stykker.NanoCut.GpuBench/bin/Release/net10.0/Stykker.NanoCut.GpuBench.dll bench/out/pocket-large/expanded.json --dexel 4 --grids 1024,4096 --backends cpu,cuda --reference 84860.612636583
 ```
+
+## Long programs: baselines on the exact kernel (2026-10-03)
+
+`bench/Stykker.NanoCut.LongPrograms` is the reference the long-program preview is measured against (plan and log:
+`docs/long-programs.md`). It runs the two long programs as a **program**, not as a step loop, and writes the result next
+to the time: a preview is only as good as the number it is compared with.
+
+AMD Ryzen 7 5800X3D (8 cores, 16 threads), 32 GB, Windows 11, .NET 10, single run. The grinding cases are warmed up
+until three consecutive runs agree within 10 % (the rule of `Stykker.NanoCut.Bench --warm`; one pass is not enough —
+the 60-grain case reads 938 ms after one pass and 200 ms after five) and are measured **before** the gear cases, see
+the note under the tables.
+
+**Gear generation**, `Process2.Cut` with a 7-tooth rack rolling on the blank, m = 2 mm, `Tolerance.Default`:
+
+| z | Cut | Extrude | Area | Ideal involute | Δ | Contours | Vertices | Roll steps | Pieces | Flank |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 10 | 28.8 s | 0.9 s | 296.905130 mm² | 297.949 mm² | −0.35 % | 76 | 81 653 | 2560 | 224 988 | – † |
+| 20 | 34.7 s | 0.8 s | 1231.252941 mm² | 1226.103 mm² | +0.42 % | 69 | 107 328 | 2560 | 209 089 | 5.4 nm |
+| 40 | 147.6 s | 2.1 s | 4985.752597 mm² | 4982.782 mm² | +0.06 % | 53 | 243 515 | 5120 | 398 178 | 2.2 nm |
+
+z = 20 is the case of `docs/processes.md` (same area, same 209 089 pieces, same 5.4 nm), so the two documents agree.
+† below z = 2/sin²α = 17.1 a generated gear is undercut, so its flank is not the involute and the column says nothing;
+the area still matches the ideal gear, so the profile itself is right.
+
+**Grinding**, `GrindingSimulation` with the demo's parameters: workpiece 1.5 × 0.8 × 0.3 mm, Ø20 × 1 mm wheel,
+150 µm grains, protrusion 40 ± 15 µm, 3000 rpm, 20 mm/s over 0.8 mm, 20 µm depth of cut, seed 1, 2 revolutions:
+
+| Grains | Wall | Removed | of stock | Active grains | Cutting passes | Passes | Hulls | Chip | Ra | Rz |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 60 | 0.200 s | 0.018713 mm³ | 5.2 % | 42/60 | 80 | 118 | 707 | 46.2 µm | 9.69 µm | 55.5 µm |
+| 240 | 0.924 s | 0.029406 mm³ | 8.2 % | 113/240 | 204 | 476 | 2589 | 43.0 µm | 6.96 µm | 43.1 µm |
+| 960 | 2.979 s | 0.040148 mm³ | 11.2 % | 186/960 | 337 | 1897 | 8033 | 42.3 µm | 4.72 µm | 29.2 µm |
+| 1920 | 5.820 s | 0.044690 mm³ | 12.4 % | 240/1920 | 413 | 3793 | 13 841 | 54.1 µm | 5.06 µm | 25.2 µm |
+
+The 60-grain row is the same scene as the "Grinding, demo default" page above, which measures 0.38 s there (server,
+compute only) against 0.200 s here: same work, no frames, no logging, no page around it.
+
+**The order of the two programs is part of the measurement.** After the 2D gear kernel has run, the same 3D grinding
+case is slower in that process: 200 ms in a fresh one, 352 ms after a single 30 s gear case, 885 ms after the three gear
+cases above. Not the GC mode (server GC: 355 ms), not tiered compilation (`DOTNET_TieredCompilation=0`: 411 ms), not the
+machine (a fresh process right after the same load: 198 ms) and not how long the process has been running (5.8 s of 3D
+work beforehand: 185 ms). The cause is open (`docs/todo.md`); the bench therefore measures grinding first, and the gear
+numbers are the same either way (28.8 s against 28.8 … 30.5 s across the runs).
+
+What the two tables say for the preview that comes next: the exact kernel pays a boolean per swept convex piece
+(398 178 pieces at z = 40, 13 841 hulls on a covered wheel), and it keeps paying as the grains pile up even though the
+result converges — 29× more time and 19.6× more hulls from 60 to 1920 grains, against 2.4× more removed volume and a
+roughness that stops improving after 960 grains (Ra 4.72 → 5.06 µm). At 1920 grains only 413 of 3793 passes still remove
+anything.
+
+```bash
+dotnet build bench/Stykker.NanoCut.LongPrograms -c Release
+dotnet bench/Stykker.NanoCut.LongPrograms/bin/Release/net10.0/Stykker.NanoCut.LongPrograms.dll all --teeth 10,20,40 --grains 60,240,960,1920 --out bench/out/long-programs
+```
+
+`--out` writes `long-programs-results.json`, `long-programs-results.md` and the references as CSV: the gear profile
+per case (contour, index, x, y) and the ground surface across the width per grain count (y, z at x = 0.40 mm). Those
+files are what a preview of the same program is compared against.
+
+One-page result: [`results-2026-10-03-long-programs.html`](results-2026-10-03-long-programs.html).
 

@@ -23,6 +23,8 @@ dotnet build src/Stykker.NanoCut.Gpu -c Release          # copies the dll next t
 py -3 bench/run.py bench/scenes/pocket-large.json --engines nanocut --repeat 3   # exact kernel; writes bench/out/<scene>/expanded.json
 dotnet build bench/Stykker.NanoCut.GpuBench -c Release
 dotnet bench/Stykker.NanoCut.GpuBench/bin/Release/net10.0/Stykker.NanoCut.GpuBench.dll bench/out/pocket-large/expanded.json --grids 512,1024,4096 --backends cpu,cuda --repeat 5 --reference 84860.612636583 --diff
+dotnet build bench/Stykker.NanoCut.LongPrograms -c Release
+dotnet bench/Stykker.NanoCut.LongPrograms/bin/Release/net10.0/Stykker.NanoCut.LongPrograms.dll all --teeth 10,20,40 --grains 60,240,960,1920 --out bench/out/long-programs   # ~4 min, grinding first
 dotnet run -c Release --project samples/Stykker.NanoCut.Server  # server mode, http://localhost:5180
 ```
 
@@ -40,7 +42,12 @@ not authorised: pull requests are opened by the user through the compare link
 ## Open items, in order
 
 1. **Long programs on the GPU** (main topic now): plan, steps and log in `docs/long-programs.md`. Work happens directly
-   on `main` (user's decision, 2026-10-03).
+   on `main` (user's decision, 2026-10-03). **Step 1 is done**: `bench/Stykker.NanoCut.LongPrograms` measures both
+   programs on the exact kernel with time and result (gear 34.7 s at z = 20 with 1231.252941 mm² and 5.4 nm flank, 147.6 s
+   at z = 40; grinding 0.200 s at 60 grains up to 5.820 s at 1920), one page
+   `bench/results-2026-10-03-long-programs.html`. Next is step 2, binning the steps of the existing ball dexel/Z-map by
+   tile. One open question the baseline opened: after the 2D gear kernel the same 3D grinding case is up to 4.4× slower in
+   the same process (docs/todo.md, "Long programs – follow-ups") — the bench therefore measures grinding before gear.
 2. Ideas for later, not started: a mesh of the dexel cavities for the viewer (today only the top surface); a dexel
    preview page in the demo/server (live preview of a G-code program with a CPU/CUDA switch); half-precision
    read-back for pictures (see docs/gpu-findings.md, "Not done").
@@ -78,6 +85,16 @@ Steps (tick when done):
 - [x] Docs: docs/gpu-findings.md "Dexel preview", bench/README.md "Dexel preview", this file.
 
 ## Log
+
+### 2026-10-03, Qwen
+
+- Step 1 of [long-programs.md](long-programs.md) done and committed on `main` (not pushed): the new bench
+  `bench/Stykker.NanoCut.LongPrograms`, one page `bench/results-2026-10-03-long-programs.html`, overview docs updated.
+  The baseline reproduces the reference of `docs/processes.md` exactly (1231.252941 mm², 209 089 pieces, 5.4 nm at
+  z = 20), so it can serve as the yardstick for the gear preview in step 5.
+- Two measurement findings, both documented: the warm-up rule in `bench/README.md` did not match the code and made the
+  grinding numbers 4.7× too slow (938 ms instead of 200 ms), and the 2D gear kernel leaves the 3D grinding kernel up to
+  4.4× slower in the same process, cause still open. Both are written up in the log of `long-programs.md`.
 
 ### 2026-10-03, Claude
 

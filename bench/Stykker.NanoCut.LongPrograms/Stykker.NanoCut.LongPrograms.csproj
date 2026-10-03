@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Long-program bench CLI: baselines of the two long programs on the exact kernel (docs/long-programs.md, step 1).
+       Nothing here ships; it measures what a GPU preview of the same program has to reproduce. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>Stykker.NanoCut.LongPrograms</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <ServerGarbageCollection>false</ServerGarbageCollection>
+    <TieredPGO>true</TieredPGO>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Cutting and both geometry libraries: the production entry points (Process2.Cut, GrindingSimulation), not the
+         step loop the other benches time, because a long program is measured as a program. -->
+    <ProjectReference Include="../../src/Stykker.NanoCut.Geometry2D/Stykker.NanoCut.Geometry2D.csproj" />
+    <ProjectReference Include="../../src/Stykker.NanoCut.Geometry3D/Stykker.NanoCut.Geometry3D.csproj" />
+    <ProjectReference Include="../../src/Stykker.NanoCut.Cutting/Stykker.NanoCut.Cutting.csproj" />
+  </ItemGroup>
+</Project>
