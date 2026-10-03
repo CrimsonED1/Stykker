@@ -146,64 +146,54 @@ Strahl jetzt aus der Box ab und prüft zusätzlich, dass ein Strahl knapp neben 
 | **Native Port** | C# → C++ würde den Faktor bringen | Weiterhin nein: nach zwei Runden Parität mit C++ Manifold (`native-speed-plan.md:145`). |
 | **GC-Tuning** | Server-GC / gen0-Budget | `bench/README.md:112` vermerkt erfolglos, ohne dokumentierten A/B-Lauf. Unverändert offen. |
 
-## 8. `Solid.Extrude`: der Hebel ist real, aber nicht durch die naheliegende Änderung zu erreichen
+## 8. `Solid.Extrude`: umgesetzt, 1,18× auf dem teuersten Posten
 
 Das ist der teuerste gemessene Posten (`gear-m2-z20`: **101 555 ms**, 428 800 Faces, 39,5 GB Allokation), und die
-Ursache ist eindeutig: `Solid.cs:192` ruft `FromTriangleList`, und das macht **kein Merging** — jedes Dreieck wird
-allein zu einem Face3:
+Ursache war eindeutig: `Solid.cs:192` rief `FromTriangleList`, und das machte **kein Merging** — jedes Dreieck wurde
+allein zu einem Face3, also blieb eine triangulierte Deckfläche ein Face pro Dreieck.
 
-```csharp
-foreach (var t in tris)
-    if (!Plane3.FromPoints(t[0], t[1], t[2]).IsDegenerate) faces.Add(Face3.FromGrid(t));
-```
+**Der erste Versuch schlug fehl und war lehrreich.** Drei Dinge passierten in falscher Reihenfolge:
 
-Eine triangulierte Deckfläche bleibt also ein Face pro Dreieck. `ConvexHull3.Compute` hat die passende Logik bereits
-(Union-Find über koplanare Nachbarn, Orient3D, Boundary-Walk) und wurde als `FacesFromTriangles` extrahiert.
+1. Der erste Versuch baute die Gruppierung ein, und der Saw-Blade-Test entfernte **negatives Volumen** (−7,76 mm³
+   statt +2,33) mit 22 Faces nach 3 840 Cuts. Zurückgenommen.
+2. Die eigentliche Ursache war woanders: `Face3.FromGrid` **setzt Konvexität voraus**, statt sie zu prüfen. Die
+   Seitensuche stoppte beim ersten Vertex neben der Ebene, also bekam ein danach konkaves Polygon ein Face, dessen Ebene
+   nur die Ecken davor enthielt — stillschweigend. Das ist jetzt behoben (`Face3Tests` sichert es ab), kostet messbar
+   nichts (2257 → 2263 ms) und ist auf 12 Vertices pro Kante begrenzt, weil vollständig O(n²) wäre.
+3. Mit der Härtung zuerst wurde die Gruppierung sicher: eine Gruppe, die zu einem nicht-konvexen Loop schließt, wirft
+   jetzt einen Fehler statt ein verstümmeltes Face zu erzeugen.
 
-**An einfachen Formen funktioniert das und halbiert die Face-Anzahl bei exaktem Volumen:**
+**Der zweite Teil der Ursache: die Boundary-Walk konnte nur einen Loop.** Eine triangulierte Deckfläche **mit Löchern**
+ist koplanar, ihre Dreiecke gruppieren also zu *einer* Gruppe — deren Boundary aber aus der Außenkontur **plus einer
+Kontur pro Loch** besteht. Deshalb blieb das Zahnrad bei exakt 428 800 Faces: sein 20-Zahn-Profil hat 68 Löcher. Jetzt
+läuft die Boundary als mehrere Loops, jeder wird ein eigenes Face (`Face3` kann keine Löcher, mehrere koplanare Faces
+aber sehr wohl).
 
-| Form | Faces vorher | Faces nachher | ΔV |
-| --- | ---: | ---: | ---: |
-| Rechteck | 12 | **6** | 0,000000 |
-| L-Form | 14 | **8** | 0,000000 |
-| Kreis | ~1 300 | **634** | 0,000000 |
-| Rechteck mit Loch | ~2 700 | **1 356** | 0,000000 |
-| Kreis mit Quadrat-Loch | ~3 800 | **1 908** | 0,000000 |
-| Zwei getrennte Rechtecke | 24 | **12** | 0,000000 |
+Ergebnis (alle Volumina bit-identisch, ΔV = 0,000000):
 
-**An rotierten Prismen funktioniert es nicht.** `Process3.CutPlanar` erzeugt die Prisma über
-`Solid.Extrude(region, z0, z1, placement)`, also mit gerundeten, rotierten Eckpunkten. Dort liefert der Planar-Spinning-Pfad
-ein falsches Ergebnis: im Testfall `ToothedDiscApproachesPlainDiscAtSlowFeed` entfernt das Sägeblatt **negative** Volumen
-(−7,76 mm³, also Material hinzugefügt) statt 2,33 mm³, und der Restkörper hat 22 Faces nach 3 840 Cuts statt
-akkurat zu arbeiten.
+| Form | vorher | jetzt |
+| --- | ---: | ---: |
+| Rechteck | 12 | **6** |
+| L-Form | 20 | **14** |
+| Kreis | 2 524 | **634** |
+| Rechteck mit Loch | 1 808 | **456** |
+| Kreis mit Quadrat-Loch | 2 544 | **640** |
+| Zwei getrennte Rechtecke | 24 | **12** |
 
-Drei Befunde daraus, alle offen:
+`gear-m2-z20`: **105 325 → 89 443 ms, Faktor 1,18.** Die verbleibenden 214 656 Faces sind die Seitenwände, die der
+Involutenflanke folgen und also tatsächlich nicht koplanar sind; nur die 214 144 Deckflächen-Dreiecke können kollabieren.
 
-1. **`Join` braucht eine Randkante.** Eine konvexe Hülle ist geschlossen, die Zwillernkante existiert also immer.
-   Eine Dreieckssuppe aus einem Extrusat kann eine Randkante ohne Nachbar haben; `edgeTri[Key(u,v,n)]` wirft dann
-   `KeyNotFoundException` (beobachtet bei `CutSpinning`, Zahnrad-Auflösung 27 003 Punkte).
-2. **Zwei Dreiecke können mehr als eine Kante teilen.** Der bestehende `far`-Ausdruck nimmt dann den falschen Vertex;
-   ein `far == u || far == v`-Test muss das abfangen.
-3. **Der eigentliche Grund ist nicht gefunden.** Der `far`-Test und der `TryGetValue`-Test beheben die Exception,
-   aber nicht das falsche Volumen. Die naheliegendste Vermutung ist, dass das Runden bei der Rotation zusätzliche
-   Koplanarität erzeugt: Deckflächen- und Seitenwand-Dreiecke eines Prismas können in dieselbe Ebene fallen, und die
-   Boundary-Walk liefert dann ein Polygon, für das `Face3.FromGrid` (das Konvexität voraussetzt und stillschweigend den
-   Rest verwirft) kein gültiges Face liefert.
+`pocket-profile` unverändert (2282 → 2275 ms, Boolean 975 → 973 ms).
 
-**Empfehlung:** Die Änderung ist der richtige Hebel und für achsenparallele Extrusionen nachweislich korrekt, sie ist
-aber ohne Ursachenklärung nicht einspielbar. Vor dem nächsten Versuch: `FromGrid` muss die Konvexität der gelaufenen
-Boundary *prüfen* statt sie vorauszusetzen — dann wird ein ungültiges Polygon zu einem Fehler statt zu stillem Unsinn.
-Das ist unabhängig vom Performance-Thema die richtige Härtung.
-
-Die Extrusion ist auch nur eine Seite: `Triangulator2.ConvexParts` ist O(n²) im Ear-Clipping über 107 k Punkte, und die
-428 800 Faces sind nur die Hälfte des Problems — die andere Hälfte ist die Zeit in der Zerlegung selbst.
+**Was davon bleibt:** Die Extrusion ist nur die eine Hälfte. `Triangulator2.ConvexParts` ist O(n²) im Ear-Clipping über
+107 k Punkte, und die Seitenwände bleiben bei ~215 k Faces. Beides ist der nächste Schritt, nicht dieser.
 
 ## 9. Was jetzt ansteht, nach Messung geordnet
 
 | # | Punkt | Erwartung | Warum jetzt |
 | --- | --- | --- | --- |
-| 1 | **`Face3.FromGrid` muss Konvexität prüfen.** Es nimmt sie an und verwirft den Rest der Schleife stillschweigend, wenn ein Randdreieck auf die Kante fällt. Genau das macht die coplanare Zusammenlegung (Abschnitt 8) unbrauchbar. | Härtung | Kleine, lokale Änderung, macht den Extrude-Hebel überhaupt erst spielbar. |
-| 2 | **`Triangulator2.ConvexParts`** — Ear-Clipping O(n²) über 107 k Punkte. | hoch | Die andere Hälfte der Extrusions-Zeit, unabhängig vom Merging. |
+| 1 | **`Triangulator2.ConvexParts`** — Ear-Clipping O(n²) über 107 k Punkte. | hoch | Die andere Hälfte der Extrusions-Zeit; die Face-Gruppierung aus Abschnitt 8 hat sie nicht berührt. |
+| 2 | **Die 214 656 Seitenwand-Faces.** Sie folgen der Involute und sind nicht koplanar — echte Geometrie. Verkürzen ließe sie sich nur mit mehr Segmenten, das ist eine Toleranz-Entscheidung, keine Performance. | — | Als Profil-Auflösung zu behandeln, nicht als Kernel-Problem. |
 | 3 | **B1: Bandindex für `FindSplitPoints`** (`BooleanKernel.cs:227-239`). Die Doppelschleife filtert nur über x und y, also Faktor ~√n; ein 1-D-Bandindex über `y0` bringt Faktor 10–500. | sehr hoch im 2D-Kern | Treibt die 39 GB Allokation im Gear-Szenario. Größter verbleibender Einzelposten. |
 | 4 | **B3: `FaceMerge` inkrementell** (`FaceMerge.cs:29-79`). `touched[i]` erzwingt *k*−1 Pässe für einen Streifen aus *k* Stücken, jeder Pass baut das 48-Byte-Key-Dict neu. Vertex-IDs statt Geometrie-Keys machen den Schlüssel 8 Byte. | hoch | 53 Pässe pro Boolean gemessen. |
 | 5 | **C1: exakte Ganzzahl-Translation.** `Process3.cs:135` → `Solid.Transform` rechnet pro Dreieck `Plane3.FromPoints` + binären GCD; `v' = v + t`, `d' = d − n·t` wäre exakt und O(Vertices). | mittel-hoch | Betrifft den Translations-Fastpath, also den G-Code-Pfad der Demo. |
