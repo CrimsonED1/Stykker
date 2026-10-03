@@ -253,12 +253,45 @@ public sealed class Solid
         return Vec3.Nm((long)Math.Round(px, MidpointRounding.AwayFromZero), (long)Math.Round(py, MidpointRounding.AwayFromZero), (long)Math.Round(pz, MidpointRounding.AwayFromZero));
     }
 
+    /// <summary>
+    /// Builds a solid from outward-oriented triangles, merging coplanar neighbours into one convex polygon face each.
+    /// Without the merge every triangle of a triangulated cap stays a separate face: a gear profile with 107 328
+    /// vertices arrived here as 428 800 faces, where the caps collapse to a few dozen polygons and only the side walls
+    /// (whose faces follow the involute flank and are genuinely not coplanar) stay individual.
+    ///
+    /// The grouping is not strict here: a general soup can have T-junctions and folded boundaries, and those groups keep
+    /// their triangles rather than throwing. Face3.FromGrid checks convexity, so a group that closes into a
+    /// non-convex loop is caught rather than turned into a truncated face.
+    /// </summary>
     private static Solid FromTriangleList(List<Vec3[]> tris)
     {
-        var faces = new List<Face3>(tris.Count);
+        if (tris.Count == 0) return Empty;
+        if (KernelStats.Counting) KernelStats.Mine.HullTris += tris.Count;
+
+        // Intern the coordinate triples: coplanar grouping detects neighbours by vertex identity, and every triangle of
+        // the soup carries its own Vec3 values.
+        var index = new Dictionary<Vec3, int>(tris.Count * 3);
+        var pts = new List<Vec3>(tris.Count * 3);
+        var triIdx = new List<(int A, int B, int C)>(tris.Count);
         foreach (var t in tris)
-            if (!Plane3.FromPoints(t[0], t[1], t[2]).IsDegenerate) faces.Add(Face3.FromGrid(t));
-        return new Solid(faces);
+        {
+            var p = Plane3.FromPoints(t[0], t[1], t[2]);
+            if (p.IsDegenerate) continue;   // no face at all
+            triIdx.Add((Intern(t[0]), Intern(t[1]), Intern(t[2])));
+        }
+        if (triIdx.Count == 0) return Empty;
+        return new Solid(ConvexHull3.FacesFromTriangles([.. pts], triIdx, strict: false));
+
+        int Intern(Vec3 v)
+        {
+            if (!index.TryGetValue(v, out int id))
+            {
+                id = pts.Count;
+                index[v] = id;
+                pts.Add(v);
+            }
+            return id;
+        }
     }
 
     private static Vec3 Midpoint(Vec3 a, Vec3 b) => new((a.X + b.X) / 2, (a.Y + b.Y) / 2, (a.Z + b.Z) / 2);

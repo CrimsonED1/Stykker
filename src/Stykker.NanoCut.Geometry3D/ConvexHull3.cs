@@ -5,20 +5,32 @@ public static class ConvexHull3
 {
     private const double Epsilon = 1.0 / (1L << 53);
 
-    /// <summary>Convex hull as a solid with triangular faces. Throws if the points do not span a volume.</summary>
+/// <summary>Convex hull as a solid with triangular faces. Throws if the points do not span a volume.</summary>
     public static Solid Compute(IEnumerable<Vec3> points)
     {
         var tris = Triangles(points, out var pts);
+        return new Solid(FacesFromTriangles(pts, tris));
+    }
+
+    /// <summary>
+    /// Turns a soup of outward-oriented triangles over shared vertices into faces, merging coplanar neighbours into one
+    /// convex polygon each. Two triangles are coplanar iff the far vertex of one lies on the other's plane (exact
+    /// orient3d); union-find joins them, and each group's boundary -- the directed edges whose twin is not in the group --
+    /// is walked into a polygon.
+    ///
+    /// This is the step that decides how many faces a result has. Without it a triangulated cap stays one face per
+    /// triangle: Solid.Extrude fed 107 328 profile vertices through here and got 428 800 faces.
+    /// </summary>
+    /// <param name="pts">Vertices, each present once.</param>
+    /// <param name="tris">Outward-oriented triangles as indices into <paramref name="pts"/>.</param>
+    /// <param name="strict">
+    /// A convex hull's surface is closed and convex, so a group whose boundary is not a single convex loop is a bug
+    /// there and is thrown. A general triangle soup (an extruded cap, a re-triangulated solid after a Boolean) can have
+    /// T-junctions or a boundary that folds back, and such a group keeps its triangles instead.
+    /// </param>
+    internal static List<Face3> FacesFromTriangles(Vec3[] pts, List<(int A, int B, int C)> tris, bool strict = true)
+    {
         long n = pts.Length;
-        if (KernelStats.Counting)
-        {
-            var s = KernelStats.Mine;
-            s.HullPoints += n;
-            s.HullTris += tris.Count;
-        }
-        // Coplanar hull triangles form one convex polygon. Neighbouring triangles are coplanar iff the far vertex of one
-        // lies on the other's plane (exact orient3d); union-find joins them, then each group's boundary (directed edges
-        // whose twin is not in the group) is walked into one polygon.
         var edgeTri = (_scratch ??= new Scratch()).EdgeTri;
         edgeTri.Clear();
         for (int i = 0; i < tris.Count; i++)
@@ -36,10 +48,14 @@ public static class ConvexHull3
         }
         void Join(int i, int u, int v, int own)
         {
-            int j = edgeTri[Key(u, v, n)];
+            // A convex hull is closed, so the twin edge always exists. A general triangle soup can have a boundary edge
+            // with no twin; there is then simply no neighbour to join with.
+            if (!edgeTri.TryGetValue(Key(u, v, n), out int j)) return;
             if (j < i) return; // each shared edge once
             var (x, y, z) = tris[j];
             int far = x != u && x != v ? x : y != u && y != v ? y : z;
+            // Two triangles agreeing on two vertices share more than one edge, so the third is not a far vertex.
+            if (far == u || far == v) return;
             var (a, b, c) = tris[i];
             if (Predicates.Orient3D(pts[a], pts[b], pts[c], pts[far]) == 0) parent[Find(i)] = Find(j);
         }
@@ -62,31 +78,59 @@ public static class ConvexHull3
             if (!groups.TryGetValue(r, out var g)) groups[r] = g = [];
             g.Add(tris[i]);
         }
-        var next = new Dictionary<int, int>();
         var inner = new HashSet<long>();
         var loop = new List<Vec3>();
         foreach (var g in groups.Values)
         {
             inner.Clear();
             foreach (var (a, b, c) in g) { inner.Add(Key(a, b, n)); inner.Add(Key(b, c, n)); inner.Add(Key(c, a, n)); }
-            next.Clear();
+            loop.Clear();
+            // A group can have more than one boundary loop: a triangulated cap with holes (a gear profile has one per
+            // gap) is coplanar, so its triangles join into one group whose boundary is an outer contour plus one
+            // contour per hole. Walking the boundary as a single loop only ever recovers the first one, so walk it as
+            // several: every loop becomes its own face, which Face3 can represent (it has no notion of a hole).
+            var boundary = new Dictionary<int, int>();
             foreach (var (a, b, c) in g)
             {
-                if (!inner.Contains(Key(b, a, n))) next[a] = b;
-                if (!inner.Contains(Key(c, b, n))) next[b] = c;
-                if (!inner.Contains(Key(a, c, n))) next[c] = a;
+                if (!inner.Contains(Key(b, a, n))) boundary[a] = b;
+                if (!inner.Contains(Key(c, b, n))) boundary[b] = c;
+                if (!inner.Contains(Key(a, c, n))) boundary[c] = a;
             }
-            loop.Clear();
-            int start = next.Keys.First(), v = start;
-            do
+            int failed = 0;
+            foreach (int seed in boundary.Keys.ToArray())
             {
-                loop.Add(pts[v]);
-                v = next[v];
-            } while (v != start && loop.Count <= next.Count);
-            if (v != start || loop.Count != next.Count) throw new InvalidOperationException("Hull face boundary is not a single loop.");
-            faces.Add(Face3.FromGrid(WithoutCollinear(loop)));
+                if (!boundary.ContainsKey(seed)) continue;   // consumed by an earlier loop
+                loop.Clear();
+                int v = seed;
+                do
+                {
+                    loop.Add(pts[v]);
+                    // Consume the directed edge v -> next. A closed walk ends when it arrives back at the seed.
+                    if (!boundary.Remove(v, out int next)) break;   // dangling: no edge leaves v any more
+                    v = next;
+                } while (v != seed);
+                if (v != seed)
+                {
+                    foreach (var (a, b, c) in g) faces.Add(Face3.FromTriangle(pts[a], pts[b], pts[c]));
+                    failed++;
+                    break;
+                }
+                // The boundary can close without being convex (a folded or self-touching walk). Face3.FromGrid now checks
+                // convexity, so this is a caught error rather than a silently truncated face.
+                try
+                {
+                    faces.Add(Face3.FromGrid(WithoutCollinear(loop)));
+                }
+                catch (ArgumentException)
+                {
+                    foreach (var (a, b, c) in g) faces.Add(Face3.FromTriangle(pts[a], pts[b], pts[c]));
+                    failed++;
+                    break;
+                }
+            }
+            if (failed > 0 && strict) throw new InvalidOperationException("Face boundary is not a single loop.");
         }
-        return new Solid(faces);
+        return faces;
     }
 
     // Edge key a·n + b. (Not (a << 32) | b: Int64's hash folds the halves with XOR, which collides for a ^ b.)
