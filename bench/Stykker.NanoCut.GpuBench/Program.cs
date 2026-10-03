@@ -3,6 +3,7 @@
 //
 //   --grids 128,256,1024     cells in x; cells in y follow the aspect ratio of the box
 //   --backends cpu,cuda      which backends to run
+//   --dexel K                measure the dexel preview (K intervals per column) instead of the Z-map
 //   --repeat 3               runs per cell (and per query call), the best wall time is reported
 //   --steps N                only the first N steps (0 = all)
 //   --chunk N                apply the steps in calls of N steps instead of one call (N = 1 means one launch per step)
@@ -63,6 +64,47 @@ Console.WriteLine();
 
 var rows = new List<Row>();
 var cpuHeights = new Dictionary<int, float[]>();
+
+if (opt.Dexel > 0)
+{
+    // Dexel preview instead of the Z-map: up to K material intervals per column. The steps are applied in one call
+    // with the intervals left on the device, and the volume is reduced there, so no read-back of the (large) interval
+    // array enters the time.
+    foreach (int cellsX in opt.Grids)
+    {
+        int cellsY = CellsY(cellsX);
+        foreach (string name in opt.Backends)
+        {
+            if (Make(name, opt) is not IDexelBackend backend) { Console.Error.WriteLine($"unknown backend {name}"); return 1; }
+            if (!backend.IsAvailable) { Console.WriteLine($"{name,-5} {cellsX,5} x {cellsY,-5} skipped: {backend.UnavailableReason}"); continue; }
+            double bestWall = double.MaxValue, bestKernel = 0, remaining = 0;
+            long overflows = 0;
+            for (int run = 0; run < opt.Repeat; run++)
+            {
+                if (!opt.Cold) DexelMap.FromScene(scene, cellsX, cellsY, opt.Dexel, backend).ApplySteps(steps, ZMapReadBack.Never);
+                var map = DexelMap.FromScene(scene, cellsX, cellsY, opt.Dexel, backend);
+                var sw = Stopwatch.StartNew();
+                map.ApplySteps(steps, ZMapReadBack.Never);
+                double removed = map.BackendRemovedVolumeMm3;
+                sw.Stop();
+                if (sw.Elapsed.TotalMilliseconds < bestWall)
+                {
+                    bestWall = sw.Elapsed.TotalMilliseconds;
+                    bestKernel = map.TotalTiming.KernelMs;
+                    remaining = map.BoxVolumeMm3 - removed;
+                    overflows = map.Overflows;
+                }
+            }
+            Console.WriteLine($"dexel {name,-5} k={opt.Dexel} {cellsX,5} x {cellsY,-5} wall {bestWall,9:F1} ms  kernel {bestKernel,9:F1} ms  " +
+                              $"remaining {remaining,14:F6} mm3" +
+                              (opt.Reference is { } re ? $"  ({(remaining - re) / re * 100,+7:F3} %)" : "") +
+                              $"  overflows {overflows}");
+        }
+    }
+    if (opt.Reference is { } exactRef)
+        Console.WriteLine($"\nreference remaining volume {exactRef.ToString("F9", inv)} mm3");
+    return 0;
+}
 
 foreach (int cellsX in opt.Grids)
 {
@@ -461,6 +503,7 @@ sealed class Options
     public required int Points { get; init; }
     public bool? PinnedReadBack { get; init; }
     public double? Reference { get; init; }
+    public int Dexel { get; init; }
     public string? Stl { get; init; }
     public string? Out { get; init; }
 
@@ -469,7 +512,7 @@ sealed class Options
         if (args.Length == 0 || args[0].StartsWith('-'))
             throw new ArgumentException("usage: <expanded.json> [--grids 128,256,1024] [--backends cpu,cuda] " +
                                         "[--repeat 3] [--steps N] [--chunk N] [--reference mm3] [--diff] " +
-                                        "[--stl path] [--out dir] [--cold] [--queries] [--points N] [--no-pin]");
+                                        "[--stl path] [--out dir] [--cold] [--queries] [--points N] [--no-pin] [--dexel K]");
 
         string? Value(string name)
         {
@@ -492,6 +535,7 @@ sealed class Options
             Points = int.Parse(Value("--points") ?? "1000000"),
             PinnedReadBack = args.Contains("--no-pin") ? false : null,
             Reference = Value("--reference") is { } r ? double.Parse(r, CultureInfo.InvariantCulture) : null,
+            Dexel = int.Parse(Value("--dexel") ?? "0"),
             Stl = Value("--stl"),
             Out = Value("--out"),
         };

@@ -39,10 +39,12 @@ not authorised: pull requests are opened by the user through the compare link
 
 ## Open items, in order
 
-1. **Dexel preview (in progress).** Plan and status in the section "Dexel preview" below.
-2. Pull request for `feature/server-gpu` once 1 is done (or leave 1 for a later branch and open the PR now).
+1. **Pull request for `feature/server-gpu`** (dexel preview done, see below). The user opens it through the compare link.
+2. Ideas for later, not started: a mesh of the dexel cavities for the viewer (today only the top surface); a dexel
+   preview page in the demo/server (live preview of a G-code program with a CPU/CUDA switch); half-precision
+   read-back for pictures (see docs/gpu-findings.md, "Not done").
 
-## Dexel preview: plan and status
+## Dexel preview: plan and status (done)
 
 Why: the Z-map keeps one height per column, so it loses the roof of material above the tool where the ball's crown
 stays below the stock top (−76.7 mm³ = −0.09 % on pocket-large, the largest part of its deviation) and cannot model a
@@ -70,13 +72,16 @@ Steps (tick when done):
       implements `IDexelBackend`. Tests `DexelMapTests.Cuda*`: CUDA vs CPU (worst 6e-5 mm, no column with a different
       interval count, same overflows), chunks vs one batch bit for bit on the intervals in use. Note: slots behind a
       column's last interval hold stale values; never compare them.
-- [ ] GpuBench `--dexel K`, measure pocket-large and pocket-large-g1 at 512 … 4096, compare with 84 846.749 mm³.
-- [ ] Docs: section in docs/gpu-findings.md, bench/README.md, this file.
+- [x] GpuBench `--dexel K`. Result on pocket-large: 84 846.915579 mm³ at 4096 × 3072 (−0.016 %), prediction
+      84 846.749 mm³; CPU = CUDA; K = 2 suffices (K = 1 = Z-map); CUDA 2.9 ms at 1024 × 768, 36 ms at 4096 × 3072.
+- [x] Docs: docs/gpu-findings.md "Dexel preview", bench/README.md "Dexel preview", this file.
 
 ## Log
 
 ### 2026-10-03, Claude
 
+- Dexel preview done (CPU + CUDA + bench + docs), 221 + 4 tests green. The representation error of the Z-map is
+  gone: −0.016 % against the exact kernel instead of −0.107 %, as predicted from the tool-model error alone.
 - Bench "discrepancy" settled: not a harness bug, not a kernel regression. pocket-large-g1 scatters 3-4x between single
   runs (38-170 ms, with any parallelism); the median of 30 runs is 42 ms for the exact kernel (ManifoldSharp 46 ms).
   The earlier 72-113 ms and 256 ms came from too few runs. Docs corrected (bench/README.md, gpu-findings.md): on long

@@ -297,7 +297,8 @@ against 76.713 mm³ measured, 0.15 % apart. Two consequences:
 - The error does **not** shrink with a finer grid. It is a property of the height-field representation, and at
   0.09 % of the volume it is the floor for this kind of preview. Anyone who needs better has to model the tool
   reaching the column from above (compare the crown height with the current height before lowering), which costs a
-  second extremum per step, or use the exact kernel.
+  second extremum per step, or use the exact kernel. The dexel map (section "Dexel preview" below) does exactly that and removes this
+  error: −0.016 % instead of −0.107 % at 4096 × 3072, the tool-model error alone.
 - For this scene the sign is known: the preview always shows slightly **more** material removed than the exact result.
   A stock-remainder check must not be decided on a preview.
 
@@ -332,8 +333,10 @@ triangles) land there.
   The factor against the exact kernel depends on how the path is cut up: for the same pocket as 13 long moves the
   exact kernel needs only 42 ms, and the preview is about 10× (CPU) and 50× (CUDA) faster, not 1860×; see
   "The same pocket as a CAM program would send it".
-- **No for the exact result.** The exact kernel stays on the CPU and has no GPU dependency, which is deliberate: the
-  deviation above is 0.1 %, dominated by a representation limit that no resolution fixes.
+- **No for the exact result.** The exact kernel stays on the CPU and has no GPU dependency, which is deliberate. The
+  Z-map's 0.1 % deviation is a representation limit; the dexel map removes it at the same speed (−0.016 %, which is
+  the 48-segment ball against a true sphere), so for a preview that is compared with the exact volume, use the dexel
+  map with K = 2 to 4.
 - **The CPU backend is not a fallback, it is a good answer.** 286 ms for the whole pocket at 1024 × 768 on 16 threads
   is already interactive, and it runs in CI, in the browser and on a machine without a GPU. The CUDA backend buys
   190×, which matters for high resolutions, for many parts or poses at once, and for recomputing on every keystroke —
@@ -428,6 +431,41 @@ The 42 ms are a median of 30 runs. A scene this short scatters by a factor of th
 to 170 ms, with any parallelism, also with `--par 1`); an earlier version of this section gave 72–113 ms from too few
 runs. For any scene that runs well under a second, use `--repeat 30` and quote the median with the minimum.
 
+### Dexel preview: the representation error removed (2026-10-03)
+
+The Z-map keeps one height per column; `DexelMap` keeps up to K material intervals [z0, z1]. A swept ball is convex,
+so it meets a column in one interval [low, high]: low is the bottom the Z-map already computes, high its mirror image
+(the maximum of the concave top curve, at t* + c·a clamped to the valid interval, `ToolProfile.Span`). Each step
+subtracts that interval, so the roof above a shallow tool stays and a ball buried in the stock removes its own volume.
+A split that does not fit into a full column cuts through to the top of that interval instead and is counted, so K = 1
+is the Z-map, bit for bit. CPU backend in C#, CUDA kernel in `zmap.cu` (one thread per column, intervals in local
+memory, overflow count as an atomic counter), same packed steps as the Z-map.
+
+`pocket-large`, K = 4, same machine, best of 3, intervals left on the device and the volume reduced there:
+
+| Grid | Dexel remaining (CPU = CUDA) | against exact | CUDA wall | CPU wall | Z-map remaining |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 512 × 384 | 84 845.016289 mm³ | −0.018 % | 1.2 ms | 67 ms | 84 768.999004 mm³ |
+| 1024 × 768 | 84 847.733837 mm³ | −0.015 % | 2.9 ms | 261 ms | 84 770.457226 mm³ |
+| 2048 × 1536 | 84 846.576208 mm³ | −0.017 % | 9.8 ms | 1 079 ms | |
+| 4096 × 3072 | 84 846.915579 mm³ | −0.016 % | 36.3 ms | 4 371 ms | 84 770.036271 mm³ |
+
+The prediction from the accuracy section was that only the tool-model error should remain: a true sphere gives
+84 846.749 mm³ (Richardson extrapolation from the 48 and 96 segment runs). The dexel map at 4096 × 3072 is 0.17 mm³
+above that, grid noise of the size the Z-map shows between its grids. CPU and CUDA give the same volume to the last
+printed digit at every grid size, with no overflow.
+
+K matters less than expected: K = 2 already gives the K = 4 result on this pocket with no overflow (a column there
+holds at most a floor and a roof), and K = 1 gives the Z-map's 84 770.457226 mm³ with 393 216 counted overflows. The
+long-move scene `pocket-large-g1` gives the same volumes as the 876 short steps, CUDA 1.0 ms wall at 1024 × 768 and
+7.6 ms at 4096 × 3072. The cost over the Z-map is small: 2.9 against 2.4 ms at 1024 × 768, 36 against 35 ms at
+4096 × 3072; the memory is 2·K floats per column instead of one (K = 4 at 4096 × 3072 is 400 MB on the device).
+
+Tests: `DexelMapTests` (a buried ball and a buried capsule against their analytic volumes, the roof of a shallow
+groove against the analytic crown, K = 1 equals the Z-map, thread count, `Span` against the double reference on long
+ramps, CUDA against CPU, chunks against one batch). The top surface for a viewer is `DexelMap.ToMesh`; roofs and the
+cavities under them are in the intervals but not in that mesh.
+
 ### Not done
 
 - **A batch query is transfer-bound, and the fix was to stop preparing it on the host — and then to stop sending it.**
@@ -446,7 +484,8 @@ runs. For any scene that runs well under a second, use `--repeat 30` and quote t
   prototype needs.
 - **The Z-map cannot represent overhangs or a tool buried in the stock**, and does not try. That is the standard
   height-field convention, it is documented on `ZMap` and
-  `GpuZMapTests.AToolBuriedInTheStockIsTheKnownZMapLimit` asserts the behaviour instead of hiding it.
+  `GpuZMapTests.AToolBuriedInTheStockIsTheKnownZMapLimit` asserts the behaviour instead of hiding it. The dexel map
+  can (see above); what it does not have yet is a mesh of the cavities for a viewer, only the top surface.
 - **The read-back still copies the whole field.** A caller that only needs the volume after every batch never pays it
   (`ZMapReadBack.Never` plus `BackendRemovedVolumeMm3`), but a caller that wants a *picture* of the field while it is
   being cut still has to take the whole copy, and a partial copy (a row band, say) is not built.
