@@ -138,8 +138,12 @@ measured phase by phase, then nine variants were built and timed.
 | 621 subtracts of the growing result | 23 s | cost grows with the loop count of the result |
 | **total** | **41.0 s** | 1231.252941475 mm², 69 contours, flank deviation 5.4 nm (test asserts ≤ 5.6 nm) |
 
-The total is `Process2.Cut`'s own figure (40.98 s), and the phases add up to it: 0.4 + 0.01 + 17.7 + 23 = 41.1 s.
-Every row of the variant table below obeys that rule too, which is how the shipped row was checked.
+The total is `Process2.Cut`'s own figure (40.98 s), and the phases close on it: that run reports no separate
+subtract figure, so the subtract is the remainder after the measured sweep, bounds filter and unions, and
+0.4 + 0.01 + 17.7 + 23 = 41.1 s is the call's own 40.98 s to the rounding of the parts. That is how the shipped row
+is checked, and how an earlier draft was found to be wrong at 32.1 s. The interval-order row is built the other way
+round — there union and subtract are timed separately (2.20 + 51.40 s) and leave about 4 s of a 57.87 s call
+uncovered. Compare totals across rows, not parts within a row.
 
 Two costs with opposite behaviour: `UnionAll` is superlinear in the number of *overlapping near-congruent* polygons
 (0.76 ms per piece for the rack copies against 0.011 ms for the band batches), while the subtract costs what the

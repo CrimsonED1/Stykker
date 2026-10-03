@@ -184,10 +184,13 @@ deviation 5.4 nm from the ideal involute (the same metric the test asserts at �
 | 621 subtracts of the growing result | 23 s | growing with the loop count of the result |
 | **total** | **41.0 s** | 69 contours, 5.4 nm |
 
-The total is `Process2.Cut`'s own figure, 40.98 s in the run the phases come from, and the phases add up to it
-(0.4 + 0.01 + 17.7 + 23 = 41.1 s). Every row of the variant table below obeys the same rule, union plus subtract
-equals total — that is how the shipped row was checked when an earlier draft of this section carried a total that
-its own phases contradicted.
+The total is `Process2.Cut`'s own figure, 40.98 s in the run the phases come from. That run reports no separate
+subtract figure, so the subtract in the table is the remainder after the measured sweep, bounds filter and unions:
+0.4 + 0.01 + 17.7 + 23 = 41.1 s is the call's own 40.98 s to the rounding of the parts. That is how the shipped row
+is checked, and how an earlier draft of this section was found to be wrong, having carried a total of 32.1 s that its
+own phases contradicted by nine seconds. The interval-order row below is built the other way round: there union and
+subtract are timed separately (2.20 + 51.40 s) and leave about 4 s of the 57.87 s call uncovered. Compare totals
+across rows, not parts within a row.
 
 Two costs, with opposite behaviour. `UnionAll` is superlinear in the number of *overlapping near-congruent* polygons
 — the exact kernel is single-threaded and has to merge every one of those rack copies with the others — so a batch of
