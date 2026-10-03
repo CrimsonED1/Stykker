@@ -85,10 +85,11 @@ public static class ConvexHull3
             inner.Clear();
             foreach (var (a, b, c) in g) { inner.Add(Key(a, b, n)); inner.Add(Key(b, c, n)); inner.Add(Key(c, a, n)); }
             loop.Clear();
-            // A group can have more than one boundary loop: a triangulated cap with holes (a gear profile has one per
-            // gap) is coplanar, so its triangles join into one group whose boundary is an outer contour plus one
-            // contour per hole. Walking the boundary as a single loop only ever recovers the first one, so walk it as
-            // several: every loop becomes its own face, which Face3 can represent (it has no notion of a hole).
+            // A group can have more than one boundary loop. Loops that face the same way as the group are separate
+            // pieces that touch (islands meeting at a vertex), and each becomes its own face. A loop that faces the
+            // other way bounds a hole: Face3 has no notion of a hole, and a face from the outer loop would lie over the
+            // hole with a reversed face from the hole loop under it, two coincident sheets that are right in volume
+            // but wrong in every mesh and in later Booleans. Such a group keeps its triangles.
             var boundary = new Dictionary<int, int>();
             foreach (var (a, b, c) in g)
             {
@@ -96,9 +97,12 @@ public static class ConvexHull3
                 if (!inner.Contains(Key(c, b, n))) boundary[b] = c;
                 if (!inner.Contains(Key(a, c, n))) boundary[c] = a;
             }
-            int failed = 0;
+            var orientation = GroupPlane(g, pts);
+            var loopFaces = new List<Face3>();
+            bool ok = !orientation.IsDegenerate;
             foreach (int seed in boundary.Keys.ToArray())
             {
+                if (!ok) break;
                 if (!boundary.ContainsKey(seed)) continue;   // consumed by an earlier loop
                 loop.Clear();
                 int v = seed;
@@ -109,28 +113,48 @@ public static class ConvexHull3
                     if (!boundary.Remove(v, out int next)) break;   // dangling: no edge leaves v any more
                     v = next;
                 } while (v != seed);
-                if (v != seed)
-                {
-                    foreach (var (a, b, c) in g) faces.Add(Face3.FromTriangle(pts[a], pts[b], pts[c]));
-                    failed++;
-                    break;
-                }
+                if (v != seed) { ok = false; break; }
                 // The boundary can close without being convex (a folded or self-touching walk). Face3.FromGrid now checks
                 // convexity, so this is a caught error rather than a silently truncated face.
-                try
-                {
-                    faces.Add(Face3.FromGrid(WithoutCollinear(loop)));
-                }
-                catch (ArgumentException)
-                {
-                    foreach (var (a, b, c) in g) faces.Add(Face3.FromTriangle(pts[a], pts[b], pts[c]));
-                    failed++;
-                    break;
-                }
+                Face3 face;
+                try { face = Face3.FromGrid(WithoutCollinear(loop)); }
+                catch (ArgumentException) { ok = false; break; }
+                if (!SameOrientation(face.Support, orientation)) { ok = false; break; }   // a hole
+                loopFaces.Add(face);
             }
-            if (failed > 0 && strict) throw new InvalidOperationException("Face boundary is not a single loop.");
+            // All loops or none: a group whose later loop fails must not keep the faces of its earlier loops as well as
+            // its triangles.
+            if (ok)
+            {
+                faces.AddRange(loopFaces);
+                continue;
+            }
+            if (strict) throw new InvalidOperationException("Face boundary is not a single loop.");
+            foreach (var (a, b, c) in g) faces.Add(Face3.FromTriangle(pts[a], pts[b], pts[c]));
         }
         return faces;
+    }
+
+    /// <summary>The plane of the first non-degenerate triangle of a coplanar group, oriented as the triangles are.</summary>
+    private static Plane3 GroupPlane(List<(int A, int B, int C)> group, Vec3[] pts)
+    {
+        foreach (var (a, b, c) in group)
+        {
+            var plane = Plane3.FromPoints(pts[a], pts[b], pts[c]);
+            if (!plane.IsDegenerate) return plane;
+        }
+        return default;
+    }
+
+    /// <summary>
+    /// Whether two planes of one coplanar group face the same way. Their normals are parallel, so the first component
+    /// that is not zero decides, exactly and without forming a product that could overflow Int128.
+    /// </summary>
+    private static bool SameOrientation(in Plane3 a, in Plane3 b)
+    {
+        if (a.Nx != 0 || b.Nx != 0) return Int128.Sign(a.Nx) == Int128.Sign(b.Nx);
+        if (a.Ny != 0 || b.Ny != 0) return Int128.Sign(a.Ny) == Int128.Sign(b.Ny);
+        return Int128.Sign(a.Nz) == Int128.Sign(b.Nz);
     }
 
     // Edge key a·n + b. (Not (a << 32) | b: Int64's hash folds the halves with XOR, which collides for a ^ b.)
