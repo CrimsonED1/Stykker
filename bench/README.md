@@ -371,3 +371,20 @@ dotnet run -c Release --project samples/Stykker.NanoCut.Server        # http://l
 dotnet publish samples/Stykker.NanoCut.Demo -c Release -p:Aot=true -o out   # the browser build, serve out/wwwroot
 ```
 
+## Dexel preview (2026-10-03)
+
+`DexelMap` keeps up to K material intervals per column instead of one height, so the roof of material above a shallow
+tool stays (details in `docs/gpu-findings.md`, "Dexel preview"). `pocket-large`, K = 4, RTX 5070 Ti, best of 3:
+
+| Grid | Remaining (CPU = CUDA) | against exact | CUDA wall | CPU wall |
+| --- | ---: | ---: | ---: | ---: |
+| 1024 × 768 | 84 847.733837 mm³ | −0.015 % | 2.9 ms | 261 ms |
+| 4096 × 3072 | 84 846.915579 mm³ | −0.016 % | 36.3 ms | 4 371 ms |
+
+The Z-map leaves 84 770.457226 mm³ (−0.106 %) at 1024 × 768; what is left for the dexel map is the 48-segment ball
+against a true sphere (−0.016 %).
+
+```bash
+dotnet bench/Stykker.NanoCut.GpuBench/bin/Release/net10.0/Stykker.NanoCut.GpuBench.dll bench/out/pocket-large/expanded.json --dexel 4 --grids 1024,4096 --backends cpu,cuda --reference 84860.612636583
+```
+
