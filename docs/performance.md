@@ -249,9 +249,7 @@ model: the tool has to be any convex polytope and the motion has to rotate. `Con
 — `ConvexProfile.Span` on the CPU, `convex_span` in the kernel, reached through `nc_dexel_apply_convex_steps` and its
 binned twin, so a convex program is binned exactly like a ball one. Up to 16 half-spaces per tool (`MaxPlanes`).
 
-**What is measured here is correctness, not time.** The plan puts the timing with the programs that use it (step 4,
-the grinding preview, and step 5), and until then a number for the convex kernel would be a number for a program
-nobody runs. What the tests pin down is the result against the exact kernel, on the same body:
+**Correctness first.** What the tests pin down is the result against the exact kernel, on the same body:
 
 | Case (grid) | Preview | Exact (`Process3`) | Difference | Sampling bound |
 | --- | ---: | ---: | ---: | ---: |
@@ -264,17 +262,54 @@ silhouette's perimeter times the swept height. It is the check that replaces "th
 which a column model does not do (see the lessons below). Details and the numbers of the interval itself are in
 [long-programs.md](long-programs.md).
 
+**And then the time, which is what a long program actually lives on.** The plan used to leave this to step 4, on the
+ground that a number for the convex kernel would be a number for a program nobody runs. That is wrong as soon as the
+bench mode exists: the same finishing pass as step 2, as a pose sequence of a 12-half-space tool inscribed in the
+0.2 mm ball, over the same 400 × 400 map at 0.05 mm cells and 4 intervals per column. Four arms per case, all on the
+same path — the ball row is the *same* path with the ball tool, so the difference is only how the tool is described
+(mode `convex`, best of 2, 16 logical processors, RTX 5070 Ti):
+
+| Steps | Convex kernel | Bin (host) | Convex wall | Unbinned kernel | Ball kernel | Ball wall | Binning × | Convex/ball × | CPU wall |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 24 800 | 3.0 ms | 1.1 ms | 16.4 ms | 480.5 ms | 0.2 ms | 1.9 ms | 161.5× | 17.7× | 57 661.7 ms |
+| 99 200 | 7.3 ms | 1.9 ms | 47.1 ms | 1935.4 ms | 0.5 ms | 5.7 ms | 263.4× | 15.7× | – |
+| 396 800 | 32.9 ms | 8.7 ms | 187.6 ms | 7881.6 ms | 1.7 ms | 19.7 ms | 239.5× | 19.0× | – |
+| 793 600 | 65.8 ms | 17.7 ms | 372.6 ms | 15 546.9 ms | 3.4 ms | 38.2 ms | 236.2× | 19.2× | – |
+
+Three things fall out of it, and the first is the answer to "how much faster is the device on a long run":
+
+- **The device is 3515× the CPU backend on the identical program** (57 661.7 ms against 16.4 ms at 24 800 steps).
+  The host arm was only run at that length; the 793 600 steps extrapolate to about 31 minutes at the same rate, which
+  is an extrapolation and not a measurement, and is the honest reason the mode exists.
+- **The convex tool costs ~19× the ball kernel at 12 half-spaces**, and that ratio is stable over all four lengths
+  (15.7× to 19.2×). In absolute terms it is still cheap: 65.8 ms for 793 600 steps where the ball needs 3.4 ms.
+- **The binning is unaffected by the tool representation** — 161× to 305×, the same order as the ball's 240×. Step 3
+  changed nothing about it, which is what the shared CSR was for.
+
+The half-space count, at a fixed 99 200 steps (unbinned kernel): 704.1 / 1055.6 / 1935.4 / 3278.2 ms for 6 / 8 / 12 /
+16 half-spaces. The tool is `ConvexTool.Ball`, so it is inscribed in the sphere and removes less material as it gets
+finer — 18.227 / 17.131 / 11.511 / 8.789 % less than the ball at this program length. One-page result:
+[results-2026-10-04-long-programs-convex.html](../bench/results-2026-10-04-long-programs-convex.html).
+
 Three costs that step 4 inherits, all visible without a benchmark:
 
-- **O(m³) in the half-spaces per column and step.** The search walks every crossing of two of the m lines and evaluates
-  the envelope there over all m of them. Building the envelope once (sort the slopes, stack, m operations) is O(m) and
+- **O(m³) in the half-spaces per column and step — the bound holds, the measured growth does not follow it.** The
+  search walks every crossing of two of the m lines and evaluates the envelope there over all m of them. Building the
+  envelope once (sort the slopes, stack, m operations) is O(m) and
   is what both implementations' remarks point at; it needs a sort in local memory and a tie-break on parallel lines.
-  A tool with more than 16 half-spaces has to be split by the caller until then.
-- **The host-side binning is unchanged.** A convex program goes through the same `StepBins.Build`, so it pays the same
+  A tool with more than 16 half-spaces has to be split by the caller until then. Measured on the ball tool the growth
+  is **m^1.57**, not m³: 704.1 → 3278.2 ms unbinned between 6 and 16 half-spaces, which is a factor 4.65 where m³ would
+  be 18.9. The bound is not wrong — it is the worst case, and a ball is not the worst case: only the few half-spaces
+  whose normal faces the column bound it at all. So the follow-up is worth less than the exponent suggests, and
+  `MaxPlanes = 16` has more room than it looks.
+- **The host-side binning is unchanged in absolute terms and irrelevant in relative ones.** A convex program goes
+  through the same `StepBins.Build`, so it pays the same
   O(steps) on the host: 18.9 ms at 793 600 steps, about 24 ns per step. That is a different regime from step 2's
   finishing pass — the baseline's covered wheel is 3793 passes over 1920 grains, 13 841 hulls, so a preview program is
-  of the order of 10⁴ steps and the binning is a fraction of a millisecond rather than seven times the kernel. Step 4
-  measures it properly instead of trusting this arithmetic.
+  of the order of 10⁴ steps and the binning is a fraction of a millisecond rather than seven times the kernel. Measured
+  on the convex path it is 17.7 ms of a 372.6 ms wall at 793 600 steps, **4.7 %**, where the same binning was 51 % of
+  the ball's wall: the kernel got expensive enough to hide it. Step 4 measures it again on a real grinding program
+  instead of trusting this arithmetic.
 - **On the exact side, a rotation is sampled linearly in the angle.** `Process3.Sample` holds
   `diameter · dθ / 2` under its sweep tolerance on top of the chord, so the default 30 nm asks for ~50 000 poses for
   the 1.2 rad turn of a 2.4 mm tooth (the subdivision is binary, so it would be 65 536) — one exact hull and one Boolean
@@ -359,11 +394,13 @@ Three costs that step 4 inherits, all visible without a benchmark:
 
 ## Open
 
-- Long programs: the baseline is measured ([long-programs.md](long-programs.md), step 1), the preview is not. Step 2 bins
+- Long programs: the baseline is measured ([long-programs.md](long-programs.md), step 1), the preview now is too. Step 2 bins
   the steps of the existing ball dexel/Z-map by tile (CSR) and step 3 gives the kernel any convex tool on a pose
-  sequence (correctness pinned against the exact kernel above, no timing yet — the interval search is O(m³) in the
-  half-spaces and the envelope would make it O(m)); steps 4 and 5 the grinding and gear previews against the numbers
-  in the baseline, which is where the convex path first gets timed on a program anyone runs. One thing the baseline
+  sequence — correctness pinned against the exact kernel above, and timed above on a long pose sequence: 3515× the
+  CPU backend, ~19× the ball kernel at 12 half-spaces, binning unchanged at ~236×. Steps 4 and 5 the grinding and gear
+  previews against the numbers in the baseline, which is where a *toolpath* gets timed rather than a finishing pass.
+  What is still open on the convex path is the interval search: the O(m³) bound holds but the measured growth on a
+  ball is m^1.57, so the O(m) envelope is worth less than the exponent suggests. One thing the baseline
   opened: why the 2D kernel slows the 3D kernel in the same process ([todo.md](todo.md)).
 - Fixed costs per cut for short tasks: C++ is still 1.3–2.3× faster there.
 - Exact face sweep for 3D rotations, which today use hulls of poses and small steps (see [processes.md](processes.md)).

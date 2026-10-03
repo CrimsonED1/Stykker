@@ -1,4 +1,4 @@
-// Usage: dotnet LongPrograms.dll [gear|grinding|dexel|all] [options]
+// Usage: dotnet LongPrograms.dll [gear|grinding|dexel|convex|all] [options]
 //
 // Step 1 of docs/long-programs.md: the baselines of the two long programs on the exact kernel. Every later GPU preview
 // is checked against what this bench writes, so a row carries the *result* (area, flank deviation, removed volume,
@@ -11,12 +11,15 @@
 //   --grains 60,240      grinding: grain counts of a random wheel (--seed)
 //   --seed 1             grinding: seed of the wheel
 //   --length 0.8         grinding: feed length in mm (otherwise the demo default: 20 mm/s, 3000 rpm)
-//   --steps 25000,...    dexel: step counts of the finishing pass (--map-mm, --cell-mm, --step-mm, --radius-mm)
-//   --map-mm 20          dexel: edge of the square map in mm
-//   --cell-mm 0.05       dexel: cell size in mm; the map has (map / cell)² columns
-//   --step-mm 0.05       dexel: distance between two steps in mm
-//   --radius-mm 0.2      dexel: ball radius in mm
-//   --intervals 4        dexel: intervals per column (1 to 16)
+//   --steps 25000,...    dexel, convex: step counts of the finishing pass (--map-mm, --cell-mm, --step-mm, --radius-mm)
+//   --map-mm 20          dexel, convex: edge of the square map in mm
+//   --cell-mm 0.05       dexel, convex: cell size in mm; the map has (map / cell)² columns
+//   --step-mm 0.05       dexel, convex: distance between two steps in mm
+//   --radius-mm 0.2      dexel, convex: ball radius in mm
+//   --intervals 4        dexel, convex: intervals per column (1 to 16)
+//   --planes 12          convex: half-spaces of the tool (4 to 16), the polyhedral version of that same ball
+//   --turn-deg 0         convex: turn the tool about z over the whole program; 0 is translation only
+//   --cpu-max-steps N    convex: largest step count the CPU reference is run on (0: not at all)
 //   --repeat 1           runs per case, the best wall time is reported (a gear case is already minutes)
 //   --cold                do not warm up (a grinding case is short enough to measure the JIT otherwise)
 //   --out <dir>          write long-programs-results.json, -results.md and the reference profiles into <dir>
@@ -30,7 +33,10 @@
 // least five have run (bench/Stykker.NanoCut.Bench, --warm: round 6's lesson is that one pass still runs tier-0 code,
 // which is worth a factor of 4.7 on the 60-grain case); the gear case runs for minutes and needs no warm-up.
 // The dexel mode runs on the CUDA device and needs none of that: the same kernel serves every case, and the first
-// call's context creation is reported apart (FirstCallMs).
+// call's context creation is reported apart (FirstCallMs). The convex mode is on the device too, and it adds the two
+// questions a long convex program raises: what the half-space count costs per column-step, and what the polyhedral
+// tool costs against the ball it approximates. Correctness of that path is not measured here -- it is pinned against
+// the exact kernel by ConvexDexelTests, on small cases where the exact kernel is affordable; this mode is about time.
 using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.InteropServices;
@@ -55,11 +61,11 @@ Console.WriteLine();
 // is not the GC mode (server GC: 355 ms), not tiered compilation (TieredCompilation=0: 411 ms), not the machine (a
 // fresh process right after the same load reads 198 ms) and not the process running long (5.8 s of 3D work first:
 // 185 ms). Gear after grinding is unaffected, so the order below measures both in their own steady state.
-var grindRows = opt.Mode is "gear" or "dexel" ? new List<GrindingRow>() : GrindingCases.Run(opt);
-var gearRows = opt.Mode is "grinding" or "dexel" ? new List<GearRow>() : GearCases.Run(opt);
-// The dexel mode last: it is the only one on the device, and a CUDA context built after minutes of CPU work would
-// make its first call read worse than it is.
-var dexelRows = opt.Mode is "gear" or "grinding" ? new List<DexelRow>() : DexelCases.Run(opt);
+var grindRows = opt.Mode is "gear" or "dexel" or "convex" ? new List<GrindingRow>() : GrindingCases.Run(opt);
+var gearRows = opt.Mode is "grinding" or "dexel" or "convex" ? new List<GearRow>() : GearCases.Run(opt);
+var dexelRows = opt.Mode is "gear" or "grinding" or "convex" ? new List<DexelRow>() : DexelCases.Run(opt);
+// The convex mode last as well: same reason, and its CPU arm is the slowest thing here.
+var convexRows = opt.Mode is "gear" or "grinding" or "dexel" ? new List<ConvexRow>() : ConvexCases.Run(opt);
 
 if (opt.Out is { } outDir)
 {
@@ -131,11 +137,39 @@ if (opt.Out is { } outDir)
             ["volumeAgreement"] = r.VolumeAgreement,
             ["overflows"] = r.Overflows,
         })]),
+        ["convex"] = new JsonArray([.. convexRows.Select(r => (JsonNode)new JsonObject
+        {
+            ["steps"] = r.Steps,
+            ["rows"] = r.Rows,
+            ["planes"] = r.Planes,
+            ["turnDeg"] = r.TurnDeg,
+            ["mapMm"] = r.MapMm,
+            ["cellMm"] = r.CellMm,
+            ["stepMm"] = r.StepMm,
+            ["radiusMm"] = r.RadiusMm,
+            ["columns"] = r.Columns,
+            ["maxIntervals"] = r.MaxIntervals,
+            ["firstCallMs"] = r.FirstCallMs,
+            ["binnedKernelMs"] = r.BinnedKernelMs,
+            ["binnedBinMs"] = r.BinnedBinMs,
+            ["binnedUploadMs"] = r.BinnedUploadMs,
+            ["binnedWallMs"] = r.BinnedWallMs,
+            ["unbinnedKernelMs"] = r.UnbinnedKernelMs,
+            ["unbinnedUploadMs"] = r.UnbinnedUploadMs,
+            ["unbinnedWallMs"] = r.UnbinnedWallMs,
+            ["ballKernelMs"] = r.BallKernelMs,
+            ["ballUploadMs"] = r.BallUploadMs,
+            ["ballWallMs"] = r.BallWallMs,
+            ["cpuWallMs"] = r.CpuWallMs,
+            ["convexRemovedMm3"] = r.ConvexRemovedMm3,
+            ["ballRemovedMm3"] = r.BallRemovedMm3,
+            ["overflows"] = r.Overflows,
+        })]),
     };
     File.WriteAllText(Path.Combine(outDir, "long-programs-results.json"),
         json.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
     File.WriteAllText(Path.Combine(outDir, "long-programs-results.md"),
-        Report.Markdown(opt, gearRows, grindRows, dexelRows), Encoding.UTF8);
+        Report.Markdown(opt, gearRows, grindRows, dexelRows, convexRows), Encoding.UTF8);
     foreach (var r in gearRows) GearCases.WriteProfile(outDir, r);
     foreach (var r in grindRows) GrindingCases.WriteProfile(outDir, r);
     Console.WriteLine($"\nwrote {Path.Combine(outDir, "long-programs-results.json")}, -results.md and the reference profiles");
@@ -180,6 +214,35 @@ sealed record DexelRow(int Steps, int Rows, double MapMm, double CellMm, double 
 
     /// <summary>What it saves on the whole call, the host-side binning included.</summary>
     public double WallSpeedUp => UnbinnedWallMs / BinnedWallMs;
+}
+
+/// <summary>
+/// One length of the finishing pass as a pose sequence on a convex tool, on the CUDA device, with the ball program of
+/// the same path beside it and -- where it is affordable -- the CPU backend on the same program.
+/// </summary>
+/// <remarks>
+/// The three columns that answer different questions: <see cref="BinnedKernelMs"/> against <see cref="BallKernelMs"/>
+/// is what the polyhedral tool costs against the ball it approximates (the same path, the same volume of material,
+/// half the answer per column-step); <see cref="CpuWallMs"/> against <see cref="BinnedWallMs"/> is the device against
+/// the host on the identical program; the unbinned pair repeats what step 2 measured for the ball. The removed volume
+/// is lower than the ball's by construction: <c>ConvexTool.Ball</c> inscribes its polyhedron in the sphere, so it
+/// cuts less -- that difference is the representation, not a defect.
+/// </remarks>
+sealed record ConvexRow(int Steps, int Rows, int Planes, double TurnDeg, double MapMm, double CellMm, double StepMm,
+    double RadiusMm, int Columns, int MaxIntervals, double FirstCallMs,
+    double BinnedKernelMs, double BinnedBinMs, double BinnedUploadMs, double BinnedWallMs,
+    double UnbinnedKernelMs, double UnbinnedUploadMs, double UnbinnedWallMs,
+    double BallKernelMs, double BallUploadMs, double BallWallMs, double? CpuWallMs,
+    double ConvexRemovedMm3, double BallRemovedMm3, long Overflows)
+{
+    /// <summary>What the step binning saves on the convex layout.</summary>
+    public double BinningSpeedUp => UnbinnedKernelMs / BinnedKernelMs;
+
+    /// <summary>What the convex tool costs against the ball on the kernel, the path held fixed.</summary>
+    public double ToolCost => BinnedKernelMs / BallKernelMs;
+
+    /// <summary>What the host needs for the same program, where it was run.</summary>
+    public double? DeviceSpeedUp => CpuWallMs / BinnedWallMs;
 }
 
 static class GearCases
@@ -395,7 +458,7 @@ static class DexelCases
     /// <paramref name="stepMm"/> each. The rows are spread over the map, so a longer program is a finer y pitch
     /// rather than a longer trail -- the shape a finishing pass has.
     /// </summary>
-    private static BallStep[] Pass(int rows, int perRow, double mapMm, double stepMm, double radiusMm, double z)
+    internal static BallStep[] Pass(int rows, int perRow, double mapMm, double stepMm, double radiusMm, double z)
     {
         var steps = new BallStep[rows * perRow];
         for (int j = 0; j < rows; j++)
@@ -485,9 +548,160 @@ static class DexelCases
     }
 }
 
+/// <summary>
+/// Step 3 of the plan on the device: the same finishing pass as the ball, as a pose sequence of a convex tool. Four
+/// arms per case, all on the same map and the same path -- the binned and the unbinned convex launch (what the step
+/// binning is worth for this layout), the ball program of the identical path (what the polyhedral tool costs against
+/// the ball it approximates), and the CPU backend on the same convex program where it is affordable (what the device
+/// is worth on a long run).
+/// </summary>
+static class ConvexCases
+{
+    private readonly record struct Launch(double KernelMs, double UploadMs, double BinMs, double WallMs,
+        double VolumeMm3, long Overflows);
+
+    /// <summary>
+    /// The pass of <see cref="DexelCases.Pass"/> as poses. With <paramref name="turnDeg"/> the tool also turns about z
+    /// across the whole program, so every step carries its own orientation and the kernel has to turn the half-spaces
+    /// per column instead of once per step -- the shape a gear tooth has over a wheel.
+    /// </summary>
+    private static ConvexStep[] ConvexPass(BallStep[] path, double turnDeg)
+    {
+        var steps = new ConvexStep[path.Length];
+        double last = Math.Max(1, path.Length - 1);
+        for (int s = 0; s < path.Length; s++)
+            steps[s] = new ConvexStep(Orientation3.AboutZ(turnDeg * s / last * (Math.PI / 180.0)),
+                path[s].From, path[s].To);
+        return steps;
+    }
+
+    private static Launch MeasureConvex(ConvexTool tool, CudaBackend backend, ConvexStep[] steps, Options opt, int cells)
+    {
+        var map = new DexelMap(0, 0, 0, opt.MapMm, opt.MapMm, DexelCases.StockMm, cells, cells, opt.Intervals, backend);
+        map.ApplyConvexSteps(tool, steps, ZMapReadBack.Never);
+        return new Launch(map.LastTiming.KernelMs, map.LastTiming.UploadMs, map.LastTiming.BinMs,
+            map.LastTiming.WallMs, map.BackendRemovedVolumeMm3, map.Overflows);
+    }
+
+    /// <summary>The same path as a ball program, so the two rows differ only in how the tool is described.</summary>
+    private static Launch MeasureBall(CudaBackend backend, BallStep[] path, Options opt, int cells)
+    {
+        var map = new DexelMap(0, 0, 0, opt.MapMm, opt.MapMm, DexelCases.StockMm, cells, cells, opt.Intervals, backend);
+        map.ApplySteps(path, ZMapReadBack.Never);
+        return new Launch(map.LastTiming.KernelMs, map.LastTiming.UploadMs, map.LastTiming.BinMs,
+            map.LastTiming.WallMs, map.BackendRemovedVolumeMm3, map.Overflows);
+    }
+
+    /// <summary>The host on the same program, on the caller's clock.</summary>
+    private static (double WallMs, double VolumeMm3) MeasureCpu(ConvexTool tool, ConvexStep[] steps, Options opt,
+        int cells)
+    {
+        var map = new DexelMap(0, 0, 0, opt.MapMm, opt.MapMm, DexelCases.StockMm, cells, cells, opt.Intervals,
+            new CpuBackend());
+        // The caller's own stopwatch, not the backend's WallMs: the CPU one covers the parallel loop and leaves the
+        // pack outside it, and what a caller waits for is the whole call (docs/gpu-findings.md, "time the call as
+        // well as the work inside it"). The volume comes after the clock is stopped, for the same reason.
+        var sw = Stopwatch.StartNew();
+        map.ApplyConvexSteps(tool, steps);
+        sw.Stop();
+        return (sw.Elapsed.TotalMilliseconds, map.RemovedVolumeMm3);
+    }
+
+    internal static List<ConvexRow> Run(Options opt)
+    {
+        var rows = new List<ConvexRow>();
+        var binned = new CudaBackend { BinSteps = true };
+        var plain = new CudaBackend { BinSteps = false };
+        if (!binned.IsAvailable)
+        {
+            Console.WriteLine($"convex not run: {binned.UnavailableReason}");
+            return rows;
+        }
+
+        int cells = (int)Math.Round(opt.MapMm / opt.CellMm);
+        int perRow = (int)Math.Round(opt.MapMm / opt.StepMm);
+        // The tool's centre just under the top, as in the ball mode, so both rows cut the same layer.
+        double z = DexelCases.StockMm - 0.25 * opt.RadiusMm;
+        ConvexTool tool = ConvexTool.Ball(opt.RadiusMm, opt.Planes);
+        Console.WriteLine($"pose sequence on the convex dexel kernel: {cells}x{cells} columns over {opt.MapMm:F1} mm " +
+                          $"({opt.CellMm:F3} mm cells, {opt.Intervals} intervals per column), tool {opt.Planes} " +
+                          $"half-spaces in a ball of r {opt.RadiusMm:F2} mm, steps {opt.StepMm:F3} mm apart, " +
+                          $"turn {opt.TurnDeg:F0} deg over the program, device {binned.Name}");
+
+        // The context and the module are created before the first measured case, so its FirstCallMs belongs to no case.
+        var warm = new DexelMap(0, 0, 0, opt.MapMm, opt.MapMm, DexelCases.StockMm, 16, 16, opt.Intervals, binned);
+        warm.ApplyConvexSteps(tool,
+            ConvexPass(DexelCases.Pass(2, 4, opt.MapMm, opt.StepMm, opt.RadiusMm, z), opt.TurnDeg), ZMapReadBack.Never);
+        Console.WriteLine($"context and module ready in {warm.LastTiming.FirstCallMs:F0} ms, not measured");
+        Console.WriteLine();
+
+        foreach (int want in opt.Steps)
+        {
+            int caseRows = Math.Max(1, want / perRow), count = caseRows * perRow;
+            BallStep[] path = DexelCases.Pass(caseRows, perRow, opt.MapMm, opt.StepMm, opt.RadiusMm, z);
+            ConvexStep[] steps = ConvexPass(path, opt.TurnDeg);
+            bool withCpu = count <= opt.CpuMaxSteps;
+            Console.WriteLine($"{count,7} steps over {caseRows,4} rows ({count * cells,10:N0} column steps unbinned)" +
+                              (withCpu ? "" : ", cpu arm not run") + " ...");
+
+            Launch bestBinned = default, bestPlain = default, bestBall = default;
+            double? bestCpuWall = null;
+            double cpuVolume = 0;
+            bool haveBinned = false, havePlain = false, haveBall = false;
+            for (int run = 0; run < opt.Repeat; run++)
+            {
+                Launch b = MeasureConvex(tool, binned, steps, opt, cells);
+                if (!haveBinned || b.WallMs < bestBinned.WallMs) { bestBinned = b; haveBinned = true; }
+                Launch p = MeasureConvex(tool, plain, steps, opt, cells);
+                if (!havePlain || p.WallMs < bestPlain.WallMs) { bestPlain = p; havePlain = true; }
+                Launch s = MeasureBall(binned, path, opt, cells);
+                if (!haveBall || s.WallMs < bestBall.WallMs) { bestBall = s; haveBall = true; }
+                if (withCpu)
+                {
+                    var (wall, volume) = MeasureCpu(tool, steps, opt, cells);
+                    if (bestCpuWall is null || wall < bestCpuWall) bestCpuWall = wall;
+                    cpuVolume = volume;
+                }
+            }
+
+            var row = new ConvexRow(count, caseRows, opt.Planes, opt.TurnDeg, opt.MapMm, opt.CellMm, opt.StepMm,
+                opt.RadiusMm, cells * cells, opt.Intervals, warm.LastTiming.FirstCallMs,
+                bestBinned.KernelMs, bestBinned.BinMs, bestBinned.UploadMs, bestBinned.WallMs,
+                bestPlain.KernelMs, bestPlain.UploadMs, bestPlain.WallMs,
+                bestBall.KernelMs, bestBall.UploadMs, bestBall.WallMs, bestCpuWall,
+                bestBinned.VolumeMm3, bestBall.VolumeMm3, bestBinned.Overflows);
+            Console.WriteLine($"  convex    kernel {row.BinnedKernelMs,9:F1} ms   bin {row.BinnedBinMs,8:F1} ms   " +
+                              $"upload {row.BinnedUploadMs,6:F1} ms   wall {row.BinnedWallMs,9:F1} ms   " +
+                              $"removed {row.ConvexRemovedMm3:F6} mm3");
+            Console.WriteLine($"  unbinned  kernel {row.UnbinnedKernelMs,9:F1} ms   {new string(' ', 11)}   " +
+                              $"upload {row.UnbinnedUploadMs,6:F1} ms   wall {row.UnbinnedWallMs,9:F1} ms");
+            Console.WriteLine($"  ball      kernel {row.BallKernelMs,9:F1} ms   {new string(' ', 11)}   " +
+                              $"upload {row.BallUploadMs,6:F1} ms   wall {row.BallWallMs,9:F1} ms   " +
+                              $"removed {row.BallRemovedMm3:F6} mm3   overflows {row.Overflows}");
+            if (bestCpuWall is { } cpu)
+            {
+                // The two arms do the same arithmetic in different places -- the kernel contracts fma where the
+                // managed code does not -- so the volumes are compared with a tolerance and the difference is
+                // printed, not judged by equality to the last digit.
+                double rel = (cpuVolume - bestBinned.VolumeMm3) / bestBinned.VolumeMm3;
+                Console.WriteLine($"  cpu       wall {cpu,14:F1} ms   removed {cpuVolume:F6} mm3   " +
+                                  $"{(cpuVolume - bestBinned.VolumeMm3):+0.000000;-0.000000} mm3 against the device " +
+                                  $"({(Math.Abs(rel) < 1e-4 ? "rounding" : "DIFFERENT")})");
+            }
+            Console.WriteLine($"  binning {row.BinningSpeedUp,6:F1}x   convex/ball {row.ToolCost,5:F1}x" +
+                              (row.DeviceSpeedUp is { } d ? $"   cpu/device {d,7:F1}x" : "") +
+                              $"   polyhedron removes {100 * (row.BallRemovedMm3 - row.ConvexRemovedMm3) / row.BallRemovedMm3:F3} % less");
+            Console.WriteLine();
+            rows.Add(row);
+        }
+        return rows;
+    }
+}
+
 static class Report
 {
-    internal static string Markdown(Options opt, List<GearRow> gear, List<GrindingRow> grind, List<DexelRow> dexel)
+    internal static string Markdown(Options opt, List<GearRow> gear, List<GrindingRow> grind, List<DexelRow> dexel,
+        List<ConvexRow> convex)
     {
         var inv = CultureInfo.InvariantCulture;
         string N(double v, string format) => v.ToString(format, inv);
@@ -551,6 +765,33 @@ static class Report
                           $"{N(r.WallSpeedUp, "F2")} | {N(r.RemovedMm3, "F6")} |");
             lines.Add("");
         }
+        if (convex.Count > 0)
+        {
+            lines.Add("## A convex tool on a pose sequence (CUDA dexel kernel)");
+            lines.Add("");
+            lines.Add($"The same finishing pass as the table above, as a pose sequence: a tool of {convex[0].Planes} " +
+                      $"half-spaces inscribed in a {convex[0].RadiusMm:0.##} mm ball" +
+                      (convex[0].TurnDeg == 0 ? ", translation only" : $", turned {convex[0].TurnDeg:0.#} deg about z " +
+                                               "over the whole program") + $", over a {convex[0].MapMm:0.##} mm square " +
+                      $"map of {convex[0].Columns:N0} columns at {convex[0].StepMm:0.###} mm steps. The ball row is the " +
+                      "same path with the ball tool, so *convex/ball* is what the half-space description costs with " +
+                      "the path held fixed; *cpu/device* is the host on the identical program. The removed volume of " +
+                      "the polyhedron is lower than the ball's by construction — it is inscribed in the sphere.");
+            lines.Add("");
+            lines.Add("| Steps | Rows | Convex kernel (ms) | Bin (ms) | Upload (ms) | Convex wall (ms) | " +
+                      "Unbinned kernel (ms) | Ball kernel (ms) | Ball wall (ms) | CPU wall (ms) | Binning × | " +
+                      "Convex/ball × | CPU/device × | Removed (mm³) | Ball (mm³) |");
+            lines.Add("| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |");
+            foreach (var r in convex)
+                lines.Add($"| {r.Steps} | {r.Rows} | {N(r.BinnedKernelMs, "F1")} | {N(r.BinnedBinMs, "F1")} | " +
+                          $"{N(r.BinnedUploadMs, "F1")} | {N(r.BinnedWallMs, "F1")} | {N(r.UnbinnedKernelMs, "F1")} | " +
+                          $"{N(r.BallKernelMs, "F1")} | {N(r.BallWallMs, "F1")} | " +
+                          $"{(r.CpuWallMs is { } c ? N(c, "F1") : "–")} | {N(r.BinningSpeedUp, "F1")} | " +
+                          $"{N(r.ToolCost, "F1")} | " +
+                          $"{(r.DeviceSpeedUp is { } d ? N(d, "F1") : "–")} | {N(r.ConvexRemovedMm3, "F6")} | " +
+                          $"{N(r.BallRemovedMm3, "F6")} |");
+            lines.Add("");
+        }
         return string.Join('\n', lines) + "\n";
     }
 }
@@ -572,6 +813,9 @@ sealed class Options
     public required double StepMm { get; init; }
     public required double RadiusMm { get; init; }
     public required int Intervals { get; init; }
+    public required int Planes { get; init; }
+    public required double TurnDeg { get; init; }
+    public required int CpuMaxSteps { get; init; }
     public required int Repeat { get; init; }
     public required bool Cold { get; init; }
     public string? Out { get; init; }
@@ -588,12 +832,13 @@ sealed class Options
         if (args.Length > 0 && !args[0].StartsWith('-'))
         {
             mode = args[0];
-            if (mode is not ("gear" or "grinding" or "dexel" or "all"))
-                throw new ArgumentException($"unknown mode {mode}: use gear, grinding, dexel or all. Options: " +
+            if (mode is not ("gear" or "grinding" or "dexel" or "convex" or "all"))
+                throw new ArgumentException($"unknown mode {mode}: use gear, grinding, dexel, convex or all. Options: " +
                                             "[--teeth 20,40] [--module 2] [--rack-teeth 7] [--sweep 30] " +
                                             "[--grains 60,240] [--seed 1] [--length 0.8] [--steps 25000] " +
                                             "[--map-mm 20] [--cell-mm 0.05] [--step-mm 0.05] [--radius-mm 0.2] " +
-                                            "[--intervals 4] [--repeat 1] [--cold] [--out dir]");
+                                            "[--intervals 4] [--planes 12] [--turn-deg 0] [--cpu-max-steps 24800] " +
+                                            "[--repeat 1] [--cold] [--out dir]");
         }
         return new Options
         {
@@ -612,6 +857,9 @@ sealed class Options
             StepMm = double.Parse(Value("--step-mm") ?? "0.05", CultureInfo.InvariantCulture),
             RadiusMm = double.Parse(Value("--radius-mm") ?? "0.2", CultureInfo.InvariantCulture),
             Intervals = int.Parse(Value("--intervals") ?? "4", CultureInfo.InvariantCulture),
+            Planes = int.Parse(Value("--planes") ?? "12", CultureInfo.InvariantCulture),
+            TurnDeg = double.Parse(Value("--turn-deg") ?? "0", CultureInfo.InvariantCulture),
+            CpuMaxSteps = int.Parse(Value("--cpu-max-steps") ?? "24800", CultureInfo.InvariantCulture),
             Repeat = int.Parse(Value("--repeat") ?? "1", CultureInfo.InvariantCulture),
             Cold = args.Contains("--cold"),
             Out = Value("--out"),

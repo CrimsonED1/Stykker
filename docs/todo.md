@@ -87,12 +87,17 @@ on a pose sequence) are done; steps 4 to 6 are the preview itself.
   prose says; the union geometry gives about 0.19 mm³. No verdict changes — a smaller bound is the stricter test, and
   the rotating case sits at 0.0147 mm³ inside either — but the bound is not yet the quantity the text claims, and
   that matters as soon as step 4 asks whether a ground surface is inside the rim it samples.
-- **The interval search is O(m³) in the half-spaces, and that is the next thing to make cheaper.** Where a column
-  meets a sweep, `ConvexProfile.Span` (and `convex_span`) walks every crossing of two of the m lines and evaluates the
-  envelope there over all m of them. Building the envelope once instead — sort the slopes, stack, m operations — is
-  O(m) and is what the remarks on both point at; it needs a sort in local memory and a stable tie-break on parallel
-  lines, which is why the walk is what it is today. It matters at 16 planes and above, i.e. for the ball (12) and
-  anything bigger: a tool with more than `MaxPlanes` (16) half-spaces has to be split by the caller today.
+- **The interval search is O(m³) in the half-spaces, and the measurement says the bound is much worse than the common
+  case.** Where a column meets a sweep, `ConvexProfile.Span` (and `convex_span`) walks every crossing of two of the m
+  lines and evaluates the envelope there over all m of them. Building the envelope once instead — sort the slopes,
+  stack, m operations — is O(m) and is what the remarks on both point at; it needs a sort in local memory and a stable
+  tie-break on parallel lines, which is why the walk is what it is today. **Measured** (`LongPrograms convex`, unbinned
+  kernel at a fixed 99 200 steps): 704.1 / 1055.6 / 1935.4 / 3278.2 ms at 6 / 8 / 12 / 16 half-spaces — a factor 4.65
+  where m³ would give 18.9, an exponent of about 1.57 in a log-log fit. The bound is the worst case and a ball is not
+  the worst case: only the few half-spaces whose normal faces the column bound it at all. So the follow-up is worth less
+  than the exponent suggested, and `MaxPlanes` (16) has more headroom than it looks — a tool with more half-spaces has
+  to be split by the caller today, and whether it has to be at all is now a question with numbers behind it. The reason
+  to do the work anyway: the O(m³) case is a tool with flat normals, and a gear flank or a wheel rim is exactly that.
 - **A column model cannot shrink its error with the grid, and the tests now say so instead.** A centre that sits
   exactly on the tool's edge counts as inside (closed rule), so a face on the centre line of a grid takes a whole
   extra row of columns there and no refinement takes that away — the box case at 1000 cells is off by exactly the rim
@@ -113,6 +118,9 @@ on a pose sequence) are done; steps 4 to 6 are the preview itself.
   above a million, and step 3 did not change it: the convex launch goes through the same CSR, so a program of
   rotating poses pays it too. The ways out are coarser tiles (fewer, larger CSR entries per step), binning on the
   device, or binning once per program instead of per call. Measuring it is `LongPrograms dexel`.
+  **Measured on the convex path it stops being the limit** (`LongPrograms convex`): the same 17.7 ms of host work is
+  4.7 % of a 372.6 ms wall at 793 600 steps, because the convex kernel is ~19× the ball kernel and hides it. So this
+  is a ball-path item, and whether it ever bites depends on which tool the program uses.
 - ~~**The binned launch gave a different result than the unbinned one.**~~ Fixed, and the fault was not where it looked:
   the CSR was complete (no step that reaches a column missing) while 83 336 of 90 601 columns at 301 cells differed, because
   `dexel_apply_column` read the CSR range as step indices where it is positions in `tileSteps`. It takes an optional
