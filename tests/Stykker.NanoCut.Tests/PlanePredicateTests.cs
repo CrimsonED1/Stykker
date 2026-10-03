@@ -142,6 +142,33 @@ public class PlanePredicateTests
         _ = Predicates.Side(s, h.Value); // must not throw
         Assert.True(h.Value.W.BitLength <= WBits);
     }
+
+    [Fact]
+    public void EdgePlaneEqualsGeneralCrossProductPlusCanonical()
+    {
+        // Plane3.EdgePlane is the hot specialisation of FromPoints(a, b, a + e_k).Canonical() used for every face edge;
+        // it replaces three 128-bit gcds by one 64-bit gcd. It must be bit-identical, including the edge cases where a
+        // difference component is zero (gcd of zero and something must not spin) and where a == b.
+        var rng = new Random(9137);
+        long equal = 0;
+        for (int iter = 0; iter < 300_000; iter++)
+        {
+            // Four magnitude regimes: grid-adjacent points, and differences spanning the supported coordinate range.
+            long span = iter % 4 switch { 0 => 1, 1 => 1_000, 2 => 100_000, _ => 2_000_000_000 };
+            long R() => (long)Math.Round((rng.NextDouble() * 2 - 1) * span);
+            var a = new Vec3(R(), R(), R());
+            // Zero differences in some components exercise the single-zero-component path.
+            var b = new Vec3(a.X + (iter % 7 == 0 ? 0 : R()), a.Y + (iter % 5 == 0 ? 0 : R()), a.Z + (iter % 3 == 0 ? 0 : R()));
+            int k = iter % 3;
+            Vec3 off = k switch { 0 => new(a.X + 1, a.Y, a.Z), 1 => new(a.X, a.Y + 1, a.Z), _ => new(a.X, a.Y, a.Z + 1) };
+            var want = Plane3.FromPoints(a, b, off).Canonical();
+            var got = Plane3.EdgePlane(a, b, k);
+            Assert.True(want == got, $"k={k} a=({a.X},{a.Y},{a.Z}) b=({b.X},{b.Y},{b.Z}): " +
+                                      $"({got.Nx},{got.Ny},{got.Nz},{got.D}) != ({want.Nx},{want.Ny},{want.Nz},{want.D})");
+            equal++;
+        }
+        Assert.True(equal == 300_000);
+    }
 }
 
 public class FilterTests

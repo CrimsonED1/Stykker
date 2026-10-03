@@ -34,6 +34,37 @@ public readonly record struct Plane3(Int128 Nx, Int128 Ny, Int128 Nz, Int128 D)
         return new Plane3(Nx / gi, Ny / gi, Nz / gi, D / gi);
     }
 
+    /// <summary>
+    /// Canonical plane through a and b whose normal is (b - a) × e_k, i.e. the edge plane of a face for the axis k most
+    /// aligned with its normal. Same result as <see cref="FromPoints">(...).Canonical()</see>, but without the general
+    /// cross product and with a single gcd: the normal has exactly one zero component, the differences fit into 64 bits,
+    /// and the gcd of the two remaining components already divides d = -(n·a), so the third gcd is not needed.
+    /// This is the single hottest exact-arithmetic site of a Boolean (every face edge of every new fragment).
+    /// </summary>
+    public static Plane3 EdgePlane(Vec3 a, Vec3 b, int k)
+    {
+        long bx = b.X - a.X, by = b.Y - a.Y, bz = b.Z - a.Z;
+        Int128 nx, ny, nz;
+        // |differences| ≤ 2^32 for grid points within the supported range, so the gcd fits into 64 bits.
+        ulong u, v;
+        switch (k)
+        {
+            case 0: nx = 0; ny = bz; nz = -by; u = Abs64(bz); v = Abs64(by); break;
+            case 1: nx = -bz; ny = 0; nz = bx; u = Abs64(bz); v = Abs64(bx); break;
+            default: nx = by; ny = -bx; nz = 0; u = Abs64(by); v = Abs64(bx); break;
+        }
+        Int128 d = -(nx * a.X + ny * a.Y + nz * a.Z);
+        // Gcd64 only handles b == 0 (it is reached from Gcd, which has already dealt with a == 0). An edge parallel to an
+        // axis has one difference component equal to zero, so both cases are possible here.
+        ulong g = u == 0 ? v : v == 0 ? u : Gcd64(u, v);
+        // g = 0 would need u = v = 0, i.e. a == b; FromGrid rejects duplicate vertices before calling.
+        if (g <= 1) return new Plane3(nx, ny, nz, d);
+        Int128 gi = (Int128)(long)g;
+        return new Plane3(nx / gi, ny / gi, nz / gi, d / gi);
+    }
+
+    private static ulong Abs64(long v) => v < 0 ? (ulong)-(v + 1) + 1 : (ulong)v;
+
     /// <summary>The same plane with opposite orientation.</summary>
     public Plane3 Flipped() => new(-Nx, -Ny, -Nz, -D);
 
