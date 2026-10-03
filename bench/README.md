@@ -327,3 +327,44 @@ it: 13 moves of 4 to 90 mm instead of 876 steps of 0.75 mm. The swept region is 
 RTX 5070 Ti, 16 logical processors, Windows 11, warm. The exact kernel costs per cut, not per length, so long moves
 are what makes it fast; the Z-map numbers need the long-step fix of 2026-10-03 (`docs/gpu-findings.md`, "Independent
 verification") to give the same volume for both scenes.
+
+## Server mode
+
+The same demo pages in two hosts: `samples/Stykker.NanoCut.Demo` (Blazor WebAssembly, published with AOT as for
+GitHub Pages, geometry computed in the browser) and `samples/Stykker.NanoCut.Server` (Blazor Server, `-c Release`,
+geometry computed natively on the server with all cores, the browser only displays). Same machine for both: AMD Ryzen 7
+5800X3D (8 cores, 16 logical processors), 32 GB, Windows 11; browser: the Chromium-based browser pane of the Claude
+desktop app, on the same machine as the server, so the network is loopback.
+
+Wall time is measured in the page from the click to the last change of the page (the DOM quiet for 0.8 s), so it
+includes the transfer of the meshes to the viewer; "compute" is the page's own figure where it shows one. Second run of
+each (the first differs by JIT on the server and by little in the browser), default parameters unless noted.
+
+| Page | Browser (WASM, AOT) wall | Server wall | Faster | Browser compute | Server compute |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Spinning disc, saw blade, feed length 30 mm (40 frames) | 20 449 ms | 2 546 ms | 8.0× | 20 354 ms | 2 497 ms |
+| Grinding grains | 1 719 ms | 423 ms | 4.1× | 1 670 ms | 379 ms |
+| Profiles, spur gear, axial section (part built on every click) | 242 ms | 47 ms | 5.1× | 42 ms¹ | 9 ms¹ |
+| 3-axis mill, example G-code program (11 moves, fresh workpiece) | 1 674 ms | 288 ms | 5.8× | | |
+| Milling (ball-nose pocket) scene | 1 306 ms | 199 ms | 6.6× | 1 205 ms | 135 ms |
+
+¹ The section alone; the wall time also contains building the gear.
+
+The server is 4 to 8 times faster on every page (up to 9× on the computation alone). Two things add up: native code
+against WebAssembly, and the cores, since the browser build runs on one thread while the kernel's parallel parts use
+all 16 on the server; which share is which was not separated. Wall minus compute is 40 to 65 ms per click on the server
+(circuit round trip, meshes over the socket, drawing) against 50 to 100 ms in the browser (drawing alone), so the
+transfer costs nothing that matters at these mesh sizes, but on a page that computes for only a few milliseconds there
+is little to gain. The first run on the server is slower by the JIT (the milling scene 1165 ms cold against 135 ms
+warm); the browser build is compiled ahead of time and does not have that.
+
+Several users share one queue (`Compute:MaxConcurrentJobs`, default 2): every job already uses all cores, so more jobs
+at once only make each slower. A page that is left cancels its waiting jobs, and Stop ends a running computation after
+the current step (measured: 103 ms after the click on the long spinning cut). `/api/compute` reports the jobs, the
+queue and the time spent waiting.
+
+```bash
+dotnet run -c Release --project samples/Stykker.NanoCut.Server        # http://localhost:5180
+dotnet publish samples/Stykker.NanoCut.Demo -c Release -p:Aot=true -o out   # the browser build, serve out/wwwroot
+```
+
