@@ -1,4 +1,5 @@
 // Usage: dotnet run -c Release -- <scene.json> <out-dir> <nanocut|manifoldsharp|process> [--warm] [--repeat N] [--par N]
+//        [--batch k] [--pipeline] [--stats]
 //
 // Two kinds of scene, because they measure different things (docs/performance-audit.md, section 2):
 //
@@ -28,7 +29,7 @@ using MS = ManifoldSharp;
 
 if (args.Length < 3)
 {
-    Console.Error.WriteLine("usage: <scene.json> <out-dir> <nanocut|manifoldsharp|process> [--warm] [--repeat N] [--par N]");
+    Console.Error.WriteLine("usage: <scene.json> <out-dir> <nanocut|manifoldsharp|process> [--warm] [--repeat N] [--par N] [--batch k] [--pipeline] [--stats]");
     return 2;
 }
 var scene = JsonNode.Parse(File.ReadAllText(args[0]))!;
@@ -37,6 +38,10 @@ bool warm = args.Contains("--warm");
 bool counters = args.Contains("--stats");
 int repeat = ArgInt("--repeat", 3);
 int par = ArgInt("--par", 0);
+// --batch k: cut k consecutive steps at once (hulls of the group computed in parallel, united, then subtracted once).
+int batch = Array.IndexOf(args, "--batch") is int bi and >= 0 ? int.Parse(args[bi + 1]) : 1;
+// --pipeline (nanocut): the hull of the next step is computed on other cores while the current step is subtracted.
+bool pipeline = args.Contains("--pipeline");
 Directory.CreateDirectory(outDir);
 
 int ArgInt(string name, int fallback)
@@ -109,6 +114,23 @@ IEngine NewEngine() => engine switch
     _ => throw new ArgumentException($"unknown engine {engine}"),
 };
 
+// The measured work: every step cut on its own, k steps at a time (--batch: hulls in parallel, united, subtracted once),
+// or the library's cut chain (--pipeline: the next hull is built on other cores while the current one is subtracted).
+void RunSteps(IEngine e)
+{
+    if (pipeline && e is NanoCutEngine n)
+    {
+        n.SubtractInOrder(steps.Select(st => (Func<Solid>)(() => ConvexHull3.Compute(st))));
+        return;
+    }
+    for (int i = 0; i < steps.Length; i += batch)
+    {
+        int k = Math.Min(batch, steps.Length - i);
+        if (k == 1) e.Cut(steps[i]);
+        else e.CutBatch(steps[i..(i + k)]);
+    }
+}
+
 // One timed run: fresh engine, workpiece built outside the clock, only the cuts measured.
 (double Ms, double HullMs, double BooleanMs, double AllocMb, int[] Gc, double GcPauseMs) Measure()
 {
@@ -118,7 +140,7 @@ IEngine NewEngine() => engine switch
     int g0 = GC.CollectionCount(0), g1 = GC.CollectionCount(1), g2 = GC.CollectionCount(2);
     double pause0 = GC.GetTotalPauseDuration().TotalMilliseconds;
     var total = Stopwatch.StartNew();
-    foreach (var step in steps) e.Cut(step);
+    RunSteps(e);
     double ms = total.Elapsed.TotalMilliseconds;
     double alloc = (GC.GetTotalAllocatedBytes(true) - alloc0) / 1e6;
     int[] gc = [GC.CollectionCount(0) - g0, GC.CollectionCount(1) - g1, GC.CollectionCount(2) - g2];
@@ -192,6 +214,8 @@ var stats = new JsonObject
     ["warmRuns"] = warmRuns,
     ["repeat"] = repeat,
     ["maxParallelism"] = par > 0 ? par : SolidBoolean.MaxParallelism,
+    ["batch"] = batch,
+    ["pipeline"] = pipeline,
     ["steps"] = steps.Length,
     ["totalMs"] = median,
     ["totalMsMin"] = times[0],
@@ -395,6 +419,7 @@ interface IEngine
     void Cut(Vec3[] points);
     double HullMs { get; }
     double BooleanMs { get; }
+    void CutBatch(Vec3[][] group);
     double VolumeMm3();
     long Triangles();
     byte[] Stl();
@@ -421,6 +446,19 @@ sealed class NanoCutEngine : IEngine
         BooleanMs += Stopwatch.GetElapsedTime(t1).TotalMilliseconds;
     }
 
+    public void SubtractInOrder(IEnumerable<Func<Solid>> tools) => _work = Solid.SubtractInOrder(_work, tools);
+
+    public void CutBatch(Vec3[][] group)
+    {
+        var t = Stopwatch.GetTimestamp();
+        var hulls = new Solid[group.Length];
+        Parallel.For(0, group.Length, k => hulls[k] = ConvexHull3.Compute(group[k]));
+        var t1 = Stopwatch.GetTimestamp();
+        _work -= Solid.UnionAll(hulls);
+        HullMs += Stopwatch.GetElapsedTime(t, t1).TotalMilliseconds;
+        BooleanMs += Stopwatch.GetElapsedTime(t1).TotalMilliseconds;
+    }
+
     public double VolumeMm3() => _work.VolumeMm3;
 
     public long Triangles() => _work.ToMeshBuffers(OriginMode.Absolute).Indices.Length / 3;
@@ -442,6 +480,13 @@ sealed class ManifoldSharpEngine : IEngine
 
     public void Cut(Vec3[] points) =>
         _work = _work.Difference(MS.Manifold.Hull(points.Select(p => new MS.Linalg.Vec3(p.X, p.Y, p.Z)).ToList()));
+
+    public void CutBatch(Vec3[][] group)
+    {
+        var hulls = new MS.Manifold[group.Length];
+        Parallel.For(0, group.Length, k => hulls[k] = MS.Manifold.Hull(group[k].Select(p => new MS.Linalg.Vec3(p.X, p.Y, p.Z)).ToList()));
+        _work = _work.Difference(MS.Manifold.BatchBoolean(hulls, MS.OpType.Add));
+    }
 
     public double VolumeMm3() => _work.Volume() * 1e-18;
 

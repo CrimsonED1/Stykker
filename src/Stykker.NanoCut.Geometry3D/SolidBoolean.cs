@@ -44,8 +44,8 @@ internal static class SolidBoolean
 
     public static Classified Classify(IReadOnlyList<Face3> a, IReadOnlyList<Face3> b)
     {
-        var bvhA = new Bvh3(a);
-        var bvhB = new Bvh3(b);
+        using var bvhA = new Bvh3(a);
+        using var bvhB = new Bvh3(b);
         return new Classified(Process(a, bvhB), Process(b, bvhA));
     }
 
@@ -98,7 +98,11 @@ internal static class SolidBoolean
         public readonly List<Plane3> Planes = [];
         public readonly Dictionary<Plane3, int> Seen = [];
         public readonly List<Box3> Reach = [];
+        public readonly List<Face3?> Owners = [];
         public readonly List<Face3> Coplanar = [];
+        public readonly Probe Probe = new();
+        public readonly List<Node> FragmentsA = [];
+        public readonly List<Node> FragmentsB = [];
     }
 
     /// <summary>
@@ -145,42 +149,54 @@ internal static class SolidBoolean
         b.Planes.Clear();
         b.Seen.Clear();
         b.Reach.Clear();
+        b.Owners.Clear();
         b.Coplanar.Clear();
         if (KernelStats.Counting) KernelStats.Mine.FaceCandidates += b.Candidates.Count;
         foreach (var q in b.Candidates)
         {
-            int ps = SideSummary(q.Support, p.Vertices);
+            int ps = SideSummary(q, p.Vertices);
             // Faces that cannot meet need no cut: one lies strictly outside an edge plane of the other.
             if (ps != 2 && (Separated(q, p.Vertices) || Separated(p, q.Vertices))) continue;
             if (KernelStats.Counting) KernelStats.Mine.PairsTested++;
             if (ps == 2)
             {
                 b.Coplanar.Add(q);
-                foreach (var e in q.Edges) AddPlane(e, q.Box, b.Planes, b.Seen, b.Reach);
+                foreach (var e in q.Edges) AddPlane(e, q, b);
             }
-            else if (ps == 0 && TouchesOrCrosses(p.Support, q.Vertices))
+            else if (ps == 0 && TouchesOrCrosses(p, q.Vertices))
             {
                 // q's plane crosses p. q must at least touch p's plane: a face touching it only along an
                 // edge can still be where the other surface passes through p (two touching faces from
                 // opposite sides), so only faces strictly on one side are skipped.
-                AddPlane(q.Support, q.Box, b.Planes, b.Seen, b.Reach);
+                AddPlane(q.Support, q, b);
             }
         }
 
         if (b.Planes.Count == 0)
         {
-            root.Loc = Locate(p, other, b.Coplanar, b.RayScratch);
+            root.Loc = Locate(p, other, b.Coplanar, b.RayScratch, b.Probe);
             return root;
         }
-        var fragments = new List<Node> { root };
+        // Two lists from the thread's buffers, alternating between the current and the next set of fragments.
+        var fragments = b.FragmentsA;
+        var next = b.FragmentsB;
+        fragments.Clear();
+        fragments.Add(root);
         for (int pi = 0; pi < b.Planes.Count; pi++)
         {
             var plane = b.Planes[pi];
-            var next = new List<Node>(fragments.Count + 4);
+            next.Clear();
             foreach (var n in fragments)
             {
                 // Only fragments that can touch one of the faces spanning this plane need the cut.
                 if (!n.Face.Box.Overlaps(b.Reach[pi])) { next.Add(n); continue; }
+                // A fragment the (single) face of this plane cannot meet needs no cut: its surface does not pass through
+                // the fragment (the same exact separation test as for whole faces).
+                if (b.Owners[pi] is { } owner && (Separated(owner, n.Face.Vertices) || Separated(n.Face, owner.Vertices)))
+                {
+                    next.Add(n);
+                    continue;
+                }
                 if (n.Face.Split(plane, out var front, out var back, out _))
                 {
                     n.Front = new Node(front!);
@@ -190,26 +206,29 @@ internal static class SolidBoolean
                 }
                 else next.Add(n);
             }
-            fragments = next;
+            (fragments, next) = (next, fragments);
         }
         foreach (var n in fragments)
-            n.Loc = Locate(n.Face, other, b.Coplanar, b.RayScratch);
+            n.Loc = Locate(n.Face, other, b.Coplanar, b.RayScratch, b.Probe);
         return root;
     }
 
-    private static void AddPlane(in Plane3 plane, in Box3 box, List<Plane3> planes, Dictionary<Plane3, int> seen, List<Box3> reach)
+    private static void AddPlane(in Plane3 plane, Face3 owner, Buffers b)
     {
-        // Treat a plane and its flip as the same splitter; remember the region of the faces spanning it.
+        // Treat a plane and its flip as the same splitter; remember the region of the faces spanning it, and the face
+        // itself while only one face spans the plane (shared planes keep null: always split).
         bool positive = plane.Nx > 0 || (plane.Nx == 0 && (plane.Ny > 0 || (plane.Ny == 0 && plane.Nz > 0)));
         var key = positive ? plane : plane.Flipped();
-        if (seen.TryGetValue(key, out int i))
+        if (b.Seen.TryGetValue(key, out int i))
         {
-            reach[i] = reach[i].Union(box);
+            b.Reach[i] = b.Reach[i].Union(owner.Box);
+            if (!ReferenceEquals(b.Owners[i], owner)) b.Owners[i] = null;
             return;
         }
-        seen[key] = planes.Count;
-        planes.Add(key);
-        reach.Add(box);
+        b.Seen[key] = b.Planes.Count;
+        b.Planes.Add(key);
+        b.Reach.Add(owner.Box);
+        b.Owners.Add(owner);
     }
 
     /// <summary>
@@ -219,24 +238,29 @@ internal static class SolidBoolean
     private static bool Separated(Face3 f, Point3[] pts)
     {
         if (KernelStats.Counting) KernelStats.CountVertices(pts);
-        foreach (var e in f.Edges)
+        var k = f.PlanesD;
+        for (int i = 0; i < f.Edges.Length; i++)
         {
+            // PlanesD layout: support at 0, Edges[i] at 4·(i + 1). Tests barely catch a wrong offset here (any edge plane
+            // that separates still proves separation), so keep this in step with Face3.PlanesD.
+            int o = 4 * (i + 1);
             bool all = true;
             foreach (var v in pts)
-                if (v.SideOf(e) <= 0) { all = false; break; }
+                if (v.SideOf(f.Edges[i], k[o], k[o + 1], k[o + 2], k[o + 3]) <= 0) { all = false; break; }
             if (all) return true;
         }
         return false;
     }
 
     /// <summary>False if all points lie strictly on one side of the plane.</summary>
-    private static bool TouchesOrCrosses(in Plane3 plane, Point3[] pts)
+    private static bool TouchesOrCrosses(Face3 f, Point3[] pts)
     {
         if (KernelStats.Counting) KernelStats.CountVertices(pts);
+        var k = f.PlanesD;
         bool pos = false, neg = false;
         foreach (var v in pts)
         {
-            int s = v.SideOf(plane);
+            int s = v.SideOf(f.Support, k[0], k[1], k[2], k[3]);
             if (s == 0) return true;
             pos |= s > 0;
             neg |= s < 0;
@@ -245,13 +269,14 @@ internal static class SolidBoolean
     }
 
     /// <summary>+1 all on the positive side or on, -1 all negative or on, 0 crossing, 2 all on the plane.</summary>
-    private static int SideSummary(in Plane3 plane, Point3[] pts)
+    private static int SideSummary(Face3 f, Point3[] pts)
     {
         if (KernelStats.Counting) KernelStats.CountVertices(pts);
+        var k = f.PlanesD;
         bool pos = false, neg = false;
         foreach (var v in pts)
         {
-            int s = v.SideOf(plane);
+            int s = v.SideOf(f.Support, k[0], k[1], k[2], k[3]);
             pos |= s > 0;
             neg |= s < 0;
             if (pos && neg) return 0;
@@ -259,11 +284,11 @@ internal static class SolidBoolean
         return pos ? 1 : neg ? -1 : 2;
     }
 
-    private static Location Locate(Face3 f, Bvh3 other, List<Face3> coplanar, List<Face3> scratch)
+    private static Location Locate(Face3 f, Bvh3 other, List<Face3> coplanar, List<Face3> scratch, Probe probe)
     {
         for (int attempt = 0; attempt < Weights.Length; attempt++)
         {
-            var c = new Probe(f, attempt);
+            var c = probe.Init(f, attempt);
             foreach (var q in coplanar)
             {
                 if (StrictlyInsideCoplanar(q, c))
@@ -280,14 +305,16 @@ internal static class SolidBoolean
     /// </summary>
     private sealed class Probe
     {
-        private readonly Face3 _f;
-        private readonly int _k;
-        private readonly int[] _w;
+        private Face3 _f = null!;
+        private int _k;
+        private int[] _w = null!;
         private BigPoint? _big;
 
-        public Probe(Face3 f, int attempt)
+        /// <summary>Re-initialises the probe for face <paramref name="f"/> (one instance is reused per thread).</summary>
+        public Probe Init(Face3 f, int attempt)
         {
             _f = f;
+            _big = null;
             var v = f.Vertices;
             // First non-degenerate fan triangle (v0, v_k, v_k+1); the attempts (< Weights.Length) vary the weights.
             _k = -1;
@@ -303,16 +330,17 @@ internal static class SolidBoolean
             // Averaging cancels: the error is relative to the vertices, not to the (possibly small) result.
             double max = Math.Max(1, Math.Max(MaxAbs(a), Math.Max(MaxAbs(b), MaxAbs(c))));
             Err = 16 * Math.ScaleB(1, -53) * max;
+            return this;
         }
 
         private static double MaxAbs(in Point3 p) => Math.Max(Math.Abs(p.X), Math.Max(Math.Abs(p.Y), Math.Abs(p.Z)));
 
         /// <summary>Bound on the absolute error of <see cref="X"/>, <see cref="Y"/>, <see cref="Z"/>.</summary>
-        public double Err { get; }
+        public double Err { get; private set; }
 
-        public double X { get; }
-        public double Y { get; }
-        public double Z { get; }
+        public double X { get; private set; }
+        public double Y { get; private set; }
+        public double Z { get; private set; }
 
         public BigPoint Big => _big ??= Exact();
 

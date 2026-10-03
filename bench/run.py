@@ -21,6 +21,7 @@ import time
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 WARM = True
+BATCH = 1
 PSUTIL = None
 
 # The report uses real minus and delta signs; a cp1252 console cannot print them.
@@ -77,14 +78,24 @@ def expand(scene):
     }
 
 
+def nanocut_cmd(dll, expanded, out, engine, repeat, par, extra=()):
+    cmd = ["dotnet", dll, expanded, out, engine]
+    if WARM:
+        cmd.append("--warm")
+    cmd += ["--repeat", str(repeat), "--batch", str(BATCH), *extra]
+    if par:
+        cmd += ["--par", str(par)]
+    return cmd
+
+
 def command(engine, scene_path, scene, expanded, out, repeat, par):
+    dll = os.path.join(ROOT, "Stykker.NanoCut.Bench/bin/Release/net10.0/Stykker.NanoCut.Bench.dll")
     # A scene with a "kind" is a process scene: geometry in millimetres, run through Process3.Cut / Process2.Cut.
     # It is not expanded into grid steps.
     kind = scene.get("kind")
     if kind:
         if engine != "process":
             return None
-        dll = os.path.join(ROOT, "Stykker.NanoCut.Bench/bin/Release/net10.0/Stykker.NanoCut.Bench.dll")
         cmd = ["dotnet", dll, scene_path, out, "process"]
         if WARM:
             cmd.append("--warm")
@@ -92,19 +103,23 @@ def command(engine, scene_path, scene, expanded, out, repeat, par):
         if par:
             cmd += ["--par", str(par)]
         return cmd
+    if engine == "nanocut-ref":
+        # NanoCut from another checkout (e.g. an older commit) for before/after comparisons: NANOCUT_REF=<repo dir>.
+        ref = os.path.join(os.environ["NANOCUT_REF"], "bench/Stykker.NanoCut.Bench/bin/Release/net10.0/Stykker.NanoCut.Bench.dll")
+        return nanocut_cmd(ref, expanded, out, "nanocut", repeat, par)
+    if engine == "nanocut-pipeline":
+        # The library's cut chain: the next hull is built on other cores while the current one is subtracted.
+        return nanocut_cmd(dll, expanded, out, "nanocut", repeat, par, ["--pipeline"])
     if engine in ("nanocut", "manifoldsharp"):
-        dll = os.path.join(ROOT, "Stykker.NanoCut.Bench/bin/Release/net10.0/Stykker.NanoCut.Bench.dll")
-        cmd = ["dotnet", dll, expanded, out, engine]
-        if WARM:
-            cmd.append("--warm")
-        cmd += ["--repeat", str(repeat)]
-        if par:
-            cmd += ["--par", str(par)]
-        return cmd
+        return nanocut_cmd(dll, expanded, out, engine, repeat, par)
     if engine == "cgal":
+        if BATCH != 1:
+            raise SystemExit("cgal: --batch is not supported")
         return [os.path.join(ROOT, "cgal/build/bench_cgal"), expanded, out]
+    if engine == "manifold-pipeline":
+        return [sys.executable, os.path.join(ROOT, "manifold/run.py"), expanded, out, "--pipeline"]
     if engine == "manifold":
-        return [sys.executable, os.path.join(ROOT, "manifold/run.py"), expanded, out]
+        return [sys.executable, os.path.join(ROOT, "manifold/run.py"), expanded, out, "--batch", str(BATCH)]
     raise SystemExit(f"unknown engine {engine}")
 
 
@@ -133,13 +148,15 @@ def main():
     ap.add_argument("--timeout", type=float, default=3600, help="seconds per engine run")
     ap.add_argument("--out", default=os.path.join(ROOT, "out"))
     ap.add_argument("--cold", action="store_true", help="C#: include JIT compilation (no in-process warm-up run)")
+    ap.add_argument("--batch", type=int, default=1, help="cut k consecutive steps at once (united first)")
     a = ap.parse_args()
-    global WARM
+    global WARM, BATCH
     WARM = not a.cold
+    BATCH = a.batch
 
     scene_path = os.path.abspath(a.scene)
     scene = json.load(open(scene_path, encoding="utf-8"))
-    base = os.path.join(a.out, scene["name"])
+    base = os.path.join(a.out, scene["name"] + (f"-batch{a.batch}" if a.batch != 1 else ""))
     os.makedirs(base, exist_ok=True)
     # A scene with "kind" describes geometry in millimetres and runs through the production entry points; it has no
     # expansion step. Everything else is expanded once, so all engines see the identical input on the 1 nm grid.
@@ -177,8 +194,9 @@ def main():
               f"spread {row['spreadPct']:.1f}%)")
 
     ref = next((r for r in rows if r["engine"] == "nanocut"), rows[0] if rows else None)
+    json.dump(rows, open(os.path.join(base, "results.json"), "w"), indent=1)
     lines = [f"Scene `{scene['name']}`: {scene.get('description', '')} "
-             f"{nsteps} steps, C# {'cold (JIT included)' if a.cold else 'warm'}, "
+             f"{nsteps} steps, batch {a.batch}, C# {'cold (JIT included)' if a.cold else 'warm'}, "
              f"{a.repeat} timed run(s) x {max(1, a.outer)} process(es).", "",
              "| Engine | Language | Exact | Median (ms) | Min | Max | Spread | per step (ms) | CPU (s) | "
              "Alloc (MB) | Volume (mm³) | ΔV vs NanoCut (mm³) | Triangles |",

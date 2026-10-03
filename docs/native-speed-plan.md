@@ -145,3 +145,11 @@ the C# port of Manifold (30.8 s) and 2.0× behind C++ Manifold (9.4 s). The gap 
 **After the second round:** NanoCut needs 10.4 s, C++ Manifold 10.1 s (2.9 cores). The engines are on par in wall time,
 and NanoCut uses fewer CPU-seconds per run. A native port is not needed for speed on this workload.
 
+**After the fourth round** (round 3 is a separate effort)**:** NanoCut needs 8.2 s, C++ Manifold 9.3 s. NanoCut is faster in wall time while exact.
+
+**Round 5:** cut chains overlap tool construction with cutting (`Solid.SubtractInOrder`). pocket-large: NanoCut 5.2 s,
+C++ Manifold 8.4 s.
+
+**Round 6:** fewer splits and a cheaper BVH build. Most of the short-task gap was JIT warm-up, not the kernel: measured in
+steady state, ball-small takes 52 ms against 23 ms for C++ Manifold. pocket-large: NanoCut 4.9 s, C++ Manifold 8.2 s.
+
