@@ -172,10 +172,12 @@ public class GpuZMapTests(ITestOutputHelper output)
     }
 
     /// <summary>
-    /// Regression: for a horizontal step the discriminant of the stationary point is zero in exact arithmetic, but
-    /// it is computed as the difference of two products of size 4·d²·w2², so in float32 it comes out slightly
-    /// negative about half the time and the whole step used to be dropped for that cell. The longer the step (that
-    /// is the larger w2 and d), the larger those products and the more certain the cancellation.
+    /// Regression from the earlier form of the bottom (expanded around the step start, see
+    /// <see cref="LongStepsMatchTheExactBottom"/>): for a horizontal step the discriminant of the stationary point is
+    /// zero in exact arithmetic, but it was computed as the difference of two products of size 4·d²·w2², so in
+    /// float32 it came out slightly negative about half the time and the whole step was dropped for that cell. The
+    /// longer the step (that is the larger w2 and d), the larger those products and the more certain the
+    /// cancellation.
     /// </summary>
     [Fact]
     public void LongHorizontalStepIsNotDroppedByFloatCancellation()
@@ -792,6 +794,177 @@ public class GpuZMapTests(ITestOutputHelper output)
 
         /// <summary>The field as the backend holds it, which is not <see cref="ZMap.Heights"/> until a read-back.</summary>
         public float[] Field { get; private set; } = [];
+    }
+
+    /// <summary>
+    /// Regression: the bottom of a long step. An earlier form expanded the reach of the ball around the start of the
+    /// step, so on a long step the float terms were of order L² while the result is of order r²: a 100 mm step with
+    /// r = 1 mm was off by 0.02 mm, a 50 mm ramp with r = 0.1 mm missed the cut by millimetres, and a long thin ramp
+    /// could cut below the ball. Columns across the whole swept band are compared with a double-precision reference
+    /// that finds the minimum by a different method (golden-section search on the convex bottom curve).
+    /// </summary>
+    [Theory]
+    [InlineData(100, 1, 0)]
+    [InlineData(1000, 1, 0)]
+    [InlineData(50, 0.1, 0.3)]
+    [InlineData(100, 0.1, 0.05)]
+    [InlineData(200, 0.01, 0.3)]
+    [InlineData(1000, 3, 0.05)]
+    [InlineData(1000, 10, 0.3)]
+    [InlineData(1000, 3, -0.3)]
+    public void LongStepsMatchTheExactBottom(double length, double radius, double slope)
+    {
+        var (step, origin) = LongRamp(length, radius, slope);
+        float[] packed = ToolProfile.Pack([step], origin);
+        var (ux, uy) = (Math.Cos(0.37), Math.Sin(0.37));
+
+        int compared = 0;
+        double worst = 0;
+        for (int k = 0; k <= 400; k++)
+        {
+            // Along the step, from before its start to past its end, and across it from well outside to well outside.
+            double along = -1.5 * radius + (length + 3 * radius) * k / 400.0;
+            for (int m = -24; m <= 24; m++)
+            {
+                double across = radius * m / 20.0;
+                double x = step.From.X + along * ux - across * uy, y = step.From.Y + along * uy + across * ux;
+                float fx = (float)(x - origin.X), fy = (float)(y - origin.Y);
+                double cx = origin.X + fx, cy = origin.Y + fy;   // the column the float coordinates name
+                double expected = ExactBottom(cx, cy, step) - origin.Z;
+                float actual = ToolProfile.Bottom(fx, fy, packed, 0);
+
+                // Within rounding of the rim the column may count as inside or outside; that is a lateral question
+                // of a few float units, not an error of the formula. Everywhere else the bottom must match.
+                double gap = radius - HorizontalDistance(cx, cy, step);
+                double delta = 4 * 6e-8 * (length + Math.Abs(fx) + Math.Abs(fy) + 1);
+                if (Math.Abs(gap) < 4 * delta) continue;
+                if (double.IsPositiveInfinity(expected))
+                {
+                    Assert.True(float.IsPositiveInfinity(actual),
+                        $"({cx}, {cy}) is {-gap:E2} mm outside the step but the bottom was {actual}");
+                    continue;
+                }
+                Assert.False(float.IsPositiveInfinity(actual), $"({cx}, {cy}) is {gap:E2} mm inside the step");
+                double tolerance = 2e-6 + delta * (1 + Math.Sqrt(radius / (2 * gap)));
+                double error = Math.Abs(actual - expected);
+                worst = Math.Max(worst, error);
+                Assert.True(error <= tolerance,
+                    $"({cx}, {cy}): bottom {actual}, expected {expected}, off by {error:E2} mm (tolerance {tolerance:E2})");
+                compared++;
+            }
+        }
+        output.WriteLine($"{compared} columns, worst {worst:E2} mm");
+        Assert.True(compared > 5000, $"only {compared} columns were compared");
+    }
+
+    /// <summary>The CUDA kernel on the long steps of <see cref="LongStepsMatchTheExactBottom"/>, against the CPU.</summary>
+    [Fact]
+    public void CudaLongStepsAgreeWithTheCpuReference()
+    {
+        var cuda = new CudaBackend();
+        if (!cuda.IsAvailable)
+        {
+            output.WriteLine($"not run: {cuda.UnavailableReason}");
+            return;
+        }
+
+        foreach (var (length, radius, slope) in new[] { (1000.0, 1.0, 0.0), (50, 0.1, 0.3), (1000, 3, 0.05), (20, 0.01, 0.3) })
+        {
+            var (step, origin) = LongRamp(length, radius, slope);
+            var end = (X: Math.Max(step.From.X, step.To.X) + 2 * radius, Y: Math.Max(step.From.Y, step.To.Y) + 2 * radius);
+            int cellsX = 2000, cellsY = 1000;
+            var cpu = new ZMap(origin.X, origin.Y, origin.Z, end.X, end.Y, step.From.Z + 2 * radius, cellsX, cellsY);
+            var gpu = new ZMap(origin.X, origin.Y, origin.Z, end.X, end.Y, step.From.Z + 2 * radius, cellsX, cellsY, cuda);
+            cpu.ApplySteps([step]);
+            gpu.ApplySteps([step]);
+
+            // fma contraction moves a column by a few float units, and near the rim the height is steep in the
+            // column position, so the tolerance grows there as in LongStepsMatchTheExactBottom; columns within
+            // rounding of the rim may differ by the whole depth and are skipped.
+            int compared = 0;
+            double worst = 0;
+            for (int j = 0; j < cellsY; j++)
+            {
+                for (int i = 0; i < cellsX; i++)
+                {
+                    int k = j * cellsX + i;
+                    double cx = origin.X + (i + 0.5) * cpu.CellSizeXMm, cy = origin.Y + (j + 0.5) * cpu.CellSizeYMm;
+                    double gap = radius - HorizontalDistance(cx, cy, step);
+                    double delta = 4 * 6e-8 * (length + Math.Abs(cx) + Math.Abs(cy) + 1);
+                    if (gap < 4 * delta) continue;
+                    double tolerance = 2 * (2e-6 + delta * (1 + Math.Sqrt(radius / (2 * gap))));
+                    double d = Math.Abs(cpu.Heights[k] - gpu.Heights[k]);
+                    worst = Math.Max(worst, d / tolerance);
+                    Assert.True(d <= tolerance,
+                        $"L {length}, r {radius}: cell ({i}, {j}) CPU {cpu.Heights[k]} CUDA {gpu.Heights[k]}, tolerance {tolerance:E2}");
+                    compared++;
+                }
+            }
+            output.WriteLine($"L {length}, r {radius}, slope {slope}: {compared} cells, worst {worst:F3} of the tolerance");
+            Assert.True(compared > 0);
+            // Rim columns that flip between the two count here, so the volumes agree to the rim, not to float units.
+            Assert.Equal(cpu.RemovedVolumeMm3, gpu.BackendRemovedVolumeMm3, 1e-4 * Math.Max(1, cpu.RemovedVolumeMm3));
+        }
+    }
+
+    [Fact]
+    public void UntouchedStockRemovesNothingOnAnAwkwardBox()
+    {
+        // A top that float cannot represent, far from the origin: the host sum used to report the rounding of the
+        // top times the box area as removed material, while the device reported zero.
+        var map = new ZMap(3468.3, -12.7, 18.5, 3539.9, 9.4, 40.1, 37, 11);
+        Assert.Equal(0, map.RemovedVolumeMm3);
+        map.ApplySteps([BallStep.At((0, 0, 100), 1)]);
+        Assert.Equal(0, map.RemovedVolumeMm3);
+    }
+
+    /// <summary>
+    /// A straight step of <paramref name="length"/> mm in a direction that is not axis aligned, falling by
+    /// <paramref name="slope"/>·length (rising when negative), and the grid origin below and before it.
+    /// </summary>
+    private static (BallStep Step, (double X, double Y, double Z) Origin) LongRamp(double length, double radius, double slope)
+    {
+        var (ux, uy) = (Math.Cos(0.37), Math.Sin(0.37));
+        double startZ = 10 + Math.Max(slope, 0) * length;
+        var from = (X: 3.0 * radius, Y: 3.0 * radius, Z: startZ);
+        var to = (X: from.X + ux * length, Y: from.Y + uy * length, Z: startZ - slope * length);
+        return (new BallStep(from, to, radius), (0, 0, 0));
+    }
+
+    /// <summary>
+    /// The lowest z of the swept ball at a column in double precision, or +inf when it does not reach: the valid
+    /// interval of t from the distance to the step line, then a golden-section search for the minimum of the convex
+    /// bottom curve on it.
+    /// </summary>
+    private static double ExactBottom(double x, double y, BallStep s)
+    {
+        double px = x - s.From.X, py = y - s.From.Y;
+        double wx = s.To.X - s.From.X, wy = s.To.Y - s.From.Y, wz = s.To.Z - s.From.Z, r2 = s.RadiusMm * s.RadiusMm;
+        double w2 = wx * wx + wy * wy, d = px * wx + py * wy, p2 = px * px + py * py;
+        double lo = 0, hi = 1;
+        if (w2 == 0)
+        {
+            if (p2 > r2) return double.PositiveInfinity;
+        }
+        else
+        {
+            double disc = d * d - w2 * (p2 - r2);
+            if (disc < 0) return double.PositiveInfinity;
+            double sq = Math.Sqrt(disc);
+            lo = Math.Max(0, (d - sq) / w2);
+            hi = Math.Min(1, (d + sq) / w2);
+            if (lo > hi) return double.PositiveInfinity;
+        }
+
+        double G(double t) => s.From.Z + wz * t - Math.Sqrt(Math.Max(r2 - p2 + 2 * d * t - w2 * t * t, 0));
+        const double phi = 0.6180339887498949;
+        double a = lo, b = hi, c = b - phi * (b - a), e = a + phi * (b - a), gc = G(c), ge = G(e);
+        for (int k = 0; k < 200 && b - a > 1e-15; k++)
+        {
+            if (gc < ge) { b = e; e = c; ge = gc; c = b - phi * (b - a); gc = G(c); }
+            else { a = c; c = e; gc = ge; e = a + phi * (b - a); ge = G(e); }
+        }
+        return Math.Min(Math.Min(G(lo), G(hi)), Math.Min(gc, ge));
     }
 
     /// <summary>Horizontal distance from a column to the segment of a step, in mm.</summary>

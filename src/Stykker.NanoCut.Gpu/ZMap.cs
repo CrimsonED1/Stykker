@@ -183,7 +183,9 @@ public sealed class ZMap
         get
         {
             RequireCurrentHeights();
-            double top = TopMm - OriginMm.Z, sum = 0;
+            // The float top the field starts at, not TopMm − OriginMm.Z in double: an untouched cell then removes
+            // exactly nothing, as on the device, instead of the rounding of the top times the cell area.
+            double top = TopRelative, sum = 0;
             foreach (float h in Heights) sum += top - h;
             return sum * CellSizeXMm * CellSizeYMm;
         }

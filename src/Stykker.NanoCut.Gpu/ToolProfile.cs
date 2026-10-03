@@ -7,8 +7,16 @@ namespace Stykker.NanoCut.Gpu;
 /// </summary>
 internal static class ToolProfile
 {
-    /// <summary>Floats per packed step: (x0, y0, z0, r), (wx, wy, wz, r²), (w2, 1/w2, wz²+w2, wz²).</summary>
+    /// <summary>Floats per packed step: (x0, y0, z0, r), (wx, wy, wz, r²), (w2, 1/w2, c, zLow).</summary>
+    /// <remarks>
+    /// w2 = wx² + wy² is the squared horizontal length, c = wz / √(w2·(w2 + wz²)) fixes the stationary point of the
+    /// bottom curve (see <see cref="Bottom"/>), zLow = min(z0, z0 + wz) is the lower end of a vertical step. A step
+    /// whose horizontal motion is below 10⁻⁹ mm is packed as vertical (w2 = 0).
+    /// </remarks>
     internal const int StepFloats = 12;
+
+    /// <summary>Squared horizontal length below which a step counts as vertical: 10⁻⁹ mm of motion.</summary>
+    private const double MinHorizontalSquared = 1e-18;
 
     /// <summary>Packs the steps into the flat layout the CPU loop and the CUDA kernel both read.</summary>
     internal static float[] Pack(ReadOnlySpan<BallStep> steps, (double X, double Y, double Z) origin)
@@ -23,11 +31,18 @@ internal static class ToolProfile
             float wy = (float)(st.To.Y - origin.Y) - y0;
             float wz = (float)(st.To.Z - origin.Z) - z0;
             float r = (float)st.RadiusMm;
-            float w2 = wx * wx + wy * wy;
-            float wz2 = wz * wz;
+            double w2 = (double)wx * wx + (double)wy * wy;
+            if (w2 < MinHorizontalSquared)
+            {
+                wx = 0f;
+                wy = 0f;
+                w2 = 0;
+            }
+            double c = w2 > 0 ? wz / Math.Sqrt(w2 * (w2 + (double)wz * wz)) : 0;
             buf[o] = x0; buf[o + 1] = y0; buf[o + 2] = z0; buf[o + 3] = r;
             buf[o + 4] = wx; buf[o + 5] = wy; buf[o + 6] = wz; buf[o + 7] = r * r;
-            buf[o + 8] = w2; buf[o + 9] = w2 > 0f ? 1f / w2 : 0f; buf[o + 10] = wz2 + w2; buf[o + 11] = wz2;
+            buf[o + 8] = (float)w2; buf[o + 9] = w2 > 0 ? (float)(1 / w2) : 0f; buf[o + 10] = (float)c;
+            buf[o + 11] = MathF.Min(z0, z0 + wz);
         }
         return buf;
     }
@@ -38,73 +53,46 @@ internal static class ToolProfile
     /// when the column is farther than the radius from the whole segment, that is when the step cannot reach it.
     /// </summary>
     /// <remarks>
-    /// The bottom of the ball at parameter t along the segment is g(t) = z0 + wz·t − √S(t) with
-    /// S(t) = r² − p² + 2·d·t − w2·t², where p² is the squared distance from the column to the segment start and
-    /// d the dot product of that offset with the segment direction. g is continuous wherever S ≥ 0, so its minimum
-    /// over the valid part of [0, 1] sits at an endpoint of that interval or at a stationary point; all of those are
-    /// evaluated. Every candidate t with S(t) ≥ 0 describes a real ball position, so extra candidates can only be
-    /// too high, never too low.
+    /// Everything is measured from the point t* of the (infinite) step line that is horizontally closest to the
+    /// column, at horizontal distance e. With a² = r² − e² the ball at t reaches the column when
+    /// w2·(t − t*)² ≤ a², and its bottom there is g(t) = z0 + wz·t − √(a² − w2·(t − t*)²). g is convex and its
+    /// stationary point is t* − c·a with c from <see cref="Pack"/>, so the minimum over the valid interval
+    /// [max(0, t* − a/√w2), min(1, t* + a/√w2)] is that point clamped to the interval.
+    /// <para>
+    /// An earlier form expanded S(t) = r² − p² + 2·d·t − w2·t² around the start of the step and solved two
+    /// quadratics in t. On a long step p², d·t and w2·t² are all of order L² while S is of order r², so in float the
+    /// cancellation left little of S: a 100 mm step with r = 1 mm was off by 0.02 mm, a 50 mm ramp with r = 0.1 mm
+    /// missed the cut by millimetres, and the unchecked tangent candidates could cut below the ball. Here a² and
+    /// t − t* are formed directly and never as a difference of large terms.
+    /// </para>
     /// </remarks>
     internal static float Bottom(float x, float y, ReadOnlySpan<float> steps, int s)
     {
         int o = s * StepFloats;
         float x0 = steps[o], y0 = steps[o + 1], z0 = steps[o + 2], r2 = steps[o + 7];
         float wx = steps[o + 4], wy = steps[o + 5], wz = steps[o + 6];
-        float w2 = steps[o + 8], invW2 = steps[o + 9], k = steps[o + 10], wz2 = steps[o + 11];
+        float w2 = steps[o + 8], invW2 = steps[o + 9], c = steps[o + 10], zLow = steps[o + 11];
 
         float px = x - x0, py = y - y0;
-        float p2 = px * px + py * py;
-        float d = px * wx + py * wy;
-
-        // Cheap reject: the horizontal distance from the column to the segment is the smallest one over all t,
-        // so when it exceeds the radius no ball position of this step touches the column.
-        float tc = w2 > 0f ? Math.Clamp(d * invW2, 0f, 1f) : 0f;
-        float ex = px - tc * wx, ey = py - tc * wy;
-        if (ex * ex + ey * ey > r2) return float.PositiveInfinity;
-
-        float best = float.PositiveInfinity;
-
-        // A ball position at parameter t, when the column is inside it.
-        void Consider(float t)
+        if (w2 == 0f)
         {
-            if (t < 0f || t > 1f) return;
-            float sv = r2 - p2 + t * (2f * d - w2 * t);
-            if (sv < 0f) return;
-            float g = z0 + wz * t - MathF.Sqrt(sv);
-            if (g < best) best = g;
+            // Vertical step (or none): every ball position has the column at the same distance.
+            float p2 = px * px + py * py;
+            return p2 > r2 ? float.PositiveInfinity : zLow - MathF.Sqrt(r2 - p2);
         }
 
-        // An endpoint of the valid interval, where the column is exactly on the ball equator (S = 0).
-        void ConsiderTangent(float t)
-        {
-            if (t < 0f || t > 1f) return;
-            float g = z0 + wz * t;
-            if (g < best) best = g;
-        }
+        float ts = (px * wx + py * wy) * invW2;
+        float ex = px - ts * wx, ey = py - ts * wy;
+        float a2 = r2 - (ex * ex + ey * ey);
+        if (a2 < 0f) return float.PositiveInfinity;
 
-        Consider(0f);
-        Consider(1f);
+        float a = MathF.Sqrt(a2);
+        float h = a * MathF.Sqrt(invW2);
+        float lo = MathF.Max(0f, ts - h), hi = MathF.Min(1f, ts + h);
+        if (lo > hi) return float.PositiveInfinity;
 
-        if (w2 > 0f)
-        {
-            // The reject above guarantees that S(t) >= 0 for some t in [0, 1], so both discriminants are >= 0 in
-            // exact arithmetic. In float they can come out slightly negative through cancellation -- above all the
-            // stationary one for a horizontal step, where it is exactly zero in theory but is computed as the
-            // difference of two equal products of size 4·d²·w2². Clamping is safe: every candidate t with S(t) >= 0
-            // is a real ball position, so an extra one can only be too high, never too low.
-            float sq = MathF.Sqrt(MathF.Max(d * d - w2 * (p2 - r2), 0f));
-            ConsiderTangent((d - sq) * invW2);
-            ConsiderTangent((d + sq) * invW2);
-
-            // Stationary points of g: wz·√S = d − w2·t, squared into a quadratic.
-            float alpha = w2 * k;
-            float beta = -2f * d * k;
-            float sq2 = MathF.Sqrt(MathF.Max(beta * beta - 4f * alpha * (d * d - wz2 * (r2 - p2)), 0f));
-            float inv = 0.5f / alpha;
-            Consider((-beta - sq2) * inv);
-            Consider((-beta + sq2) * inv);
-        }
-
-        return best;
+        float t = Math.Clamp(ts - c * a, lo, hi);
+        float du = t - ts;
+        return z0 + wz * t - MathF.Sqrt(MathF.Max(a2 - w2 * du * du, 0f));
     }
 }

@@ -52,7 +52,8 @@ Plain C types only, no exceptions across the boundary. Every function returns an
 | `nc_last_error()` | Text of the last error on this thread. |
 
 A step is 12 `float`s in millimetres relative to the grid origin, the layout of `ToolProfile.Pack` in
-`src/Stykker.NanoCut.Gpu`: `(x0, y0, z0, r), (wx, wy, wz, r²), (w2, 1/w2, wz² + w2, wz²)`.
+`src/Stykker.NanoCut.Gpu`: `(x0, y0, z0, r), (wx, wy, wz, r²), (w2, 1/w2, c, zLow)` with
+`c = wz / √(w2·(w2 + wz²))` and `zLow = min(z0, z0 + wz)`.
 
 The kernel runs one thread per cell and loops over the whole batch, which is what the plan asks for: one launch for
 many steps beats one launch per step, because the height field never has to leave the device in between.
@@ -60,7 +61,13 @@ many steps beats one launch per step, because the height field never has to leav
 ## Keeping it in step with the managed side
 
 `ball_bottom` in `zmap.cu` and `ToolProfile.Bottom` in `src/Stykker.NanoCut.Gpu/ToolProfile.cs` are the same
-algorithm written twice, and both read the same packed layout. They agree to about a float unit, not bit for bit,
-because `nvcc` contracts `a*b+c` into `fma`. `tests/Stykker.NanoCut.Tests/GpuZMapTests.cs` compares them cell by cell
-and runs on the CPU backend alone when no GPU is present, so a change to one of the two that is not mirrored shows up
-in CI on a GPU machine and in the analytic tests everywhere.
+algorithm written twice, and both read the same packed layout. They are not bit for bit equal, because `nvcc`
+contracts `a*b+c` into `fma`: the column position moves by a few float units of the coordinates, which changes the
+height by about that much in the middle of a cut and by more near its rim, where the height is steep in the position
+(`CudaLongStepsAgreeWithTheCpuReference` states the bound). `tests/Stykker.NanoCut.Tests/GpuZMapTests.cs` compares
+them cell by cell and runs on the CPU backend alone when no GPU is present, so a change to one of the two that is not
+mirrored shows up in CI on a GPU machine and in the analytic tests everywhere.
+
+Both measure from the point of the step line closest to the column, so that no intermediate is a difference of terms
+of order L² for a step of length L. An earlier version expanded around the start of the step and was off by
+0.02 mm on a 100 mm step with r = 1 mm and by millimetres on a 50 mm ramp with r = 0.1 mm; see `ToolProfile.Bottom`.
