@@ -3,6 +3,7 @@
 @using Stykker.NanoCut.Cutting
 @using Stykker.NanoCut.Geometry3D
 @inject Viewer Viewer
+@inject IComputeRunner Runner
 @implements IAsyncDisposable
 
 <div class="scene">
@@ -136,6 +137,7 @@
     private long _computeMs;
     private int _steps;
     private bool _attached, _computing, _cancel, _playing;
+    private readonly CancellationTokenSource _stop = new();
     private string? _error;
 
     private static string F(double v, string format) => v.ToString(format, CultureInfo.InvariantCulture);
@@ -227,9 +229,16 @@
             {
                 double t0 = FrameEnd(i), t1 = FrameEnd(i + 1);
                 var feed = Motion3.Compose(Motion3.Linear(Vec3.Mm(FeedX(t0), 0, _zCenter), Vec3.Mm(FeedX(t1), 0, _zCenter)), Motion3.Fixed(AxisAlongY));
-                work = Process3.CutSpinning([work], _tool, feed, [t1 - t0], _tol, out var stats, startSeconds: t0)[0];
-                _steps += (stats.Body?.Intervals ?? 0) + (stats.Cutters?.Intervals ?? 0) + (stats.PlanarCutters?.Intervals ?? 0);
-                _frames.Add(new Frame(t1, work, work.ToMeshBuffers(OriginMode.Absolute)));
+                var before = work;
+                var (next, steps, mesh) = await Runner.Run(() =>
+                {
+                    var cut = Process3.CutSpinning([before], _tool, feed, [t1 - t0], _tol, out var stats, startSeconds: t0)[0];
+                    int n = (stats.Body?.Intervals ?? 0) + (stats.Cutters?.Intervals ?? 0) + (stats.PlanarCutters?.Intervals ?? 0);
+                    return (cut, n, cut.ToMeshBuffers(OriginMode.Absolute));
+                }, _stop.Token);
+                work = next;
+                _steps += steps;
+                _frames.Add(new Frame(t1, work, mesh));
                 _computeMs = total.ElapsedMilliseconds;
                 _simTime = t1;
                 await ShowAt(t1);
@@ -325,6 +334,7 @@
     {
         _playing = false;
         _cancel = true;
+        _stop.Cancel();
         if (_attached)
         {
             await Viewer.RemoveTool();
