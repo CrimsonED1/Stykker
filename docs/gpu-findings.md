@@ -450,6 +450,6 @@ runs. For any scene that runs well under a second, use `--repeat 30` and quote t
 - **The read-back still copies the whole field.** A caller that only needs the volume after every batch never pays it
   (`ZMapReadBack.Never` plus `BackendRemovedVolumeMm3`), but a caller that wants a *picture* of the field while it is
   being cut still has to take the whole copy, and a partial copy (a row band, say) is not built.
-- **Part 1 of the plan, the server mode** (`samples/Stykker.NanoCut.Server`, geometry on the server, progress over
-  SignalR, cancellable) is still not built; only the GPU half is done.
+- **Part 1 of the plan, the server mode**, has been built since this list was written: `samples/Stykker.NanoCut.Server`,
+  timings in `bench/README.md`, "Server mode".
 - **ILGPU was not used at all**, as decided in `docs/server-gpu-plan.md`. Nothing here depends on it.
