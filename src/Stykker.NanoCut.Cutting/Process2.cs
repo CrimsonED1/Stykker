@@ -53,7 +53,16 @@ public static class Process2
 
     private static bool Overlaps(Vec2[] p, (Vec2 Min, Vec2 Max) b)
     {
-        long x0 = p.Min(v => v.X), x1 = p.Max(v => v.X), y0 = p.Min(v => v.Y), y1 = p.Max(v => v.Y);
+        // One pass over the vertices instead of four LINQ passes: the filter runs on every piece of every sweep
+        // (209 000 pieces on the gear case of docs/processes.md), where the enumerator overhead dominates.
+        long x0 = long.MaxValue, x1 = long.MinValue, y0 = long.MaxValue, y1 = long.MinValue;
+        foreach (var v in p)
+        {
+            if (v.X < x0) x0 = v.X;
+            if (v.X > x1) x1 = v.X;
+            if (v.Y < y0) y0 = v.Y;
+            if (v.Y > y1) y1 = v.Y;
+        }
         return x0 <= b.Max.X && x1 >= b.Min.X && y0 <= b.Max.Y && y1 >= b.Min.Y;
     }
 

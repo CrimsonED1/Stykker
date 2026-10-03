@@ -164,17 +164,24 @@ public static class Triangulator2
 
     private static List<Vec2[]> EarClip(List<Vec2> polygon)
     {
-        var pts = polygon;
-        int n = pts.Count;
+        Vec2[] pts = [.. polygon];
+        int n = pts.Length;
         var next = new int[n];
         var prev = new int[n];
-        for (int i = 0; i < n; i++) { next[i] = (i + 1) % n; prev[i] = (i - 1 + n) % n; }
+        var alive = new bool[n];
+        for (int i = 0; i < n; i++) { next[i] = (i + 1) % n; prev[i] = (i - 1 + n) % n; alive[i] = true; }
         var result = new List<Vec2[]>(n);
         int remaining = n, cur = 0, sinceLastEar = 0;
+        // Testing a candidate ear against every remaining vertex is O(n^2) over the whole polygon. On a gear profile
+        // (107 085 vertices) that is 1.1e10 exact side tests, and it measured as 55 of the 89 seconds of the extrude
+        // scene. The grid restricts the test to the vertices that can lie inside the candidate's own bounding box.
+        var grid = new BandGrid(pts, n);
+        int[] seen = new int[n];
+        int stamp = 0;
         while (remaining > 3)
         {
             int a = prev[cur], c = next[cur];
-            if (IsEar(pts, a, cur, c, next, remaining))
+            if (IsEar(pts, a, cur, c, next, alive, grid, seen, ref stamp))
             {
                 result.Add([pts[a], pts[cur], pts[c]]);
                 Remove(cur);
@@ -212,23 +219,111 @@ public static class Triangulator2
         {
             next[prev[i]] = next[i];
             prev[next[i]] = prev[i];
+            alive[i] = false;
             remaining--;
         }
     }
 
-    private static bool IsEar(List<Vec2> pts, int a, int b, int c, int[] next, int remaining)
+    /// <summary>
+    /// Uniform grid over the polygon's bounding box, mapping a box to the vertices that can lie in it. The ear test asks
+    /// "is any other vertex inside this triangle", so a uniform grid answers that with the vertices of the overlapping
+    /// cells instead of all of them. Cells hold point indices; <c>seen</c> de-duplicates a vertex that falls into several
+    /// queried cells.
+    /// </summary>
+    private sealed class BandGrid
+    {
+        private readonly Vec2[] _pts;
+        private readonly double _x0, _y0, _inv;
+        private readonly int _side;
+        private readonly int[] _start;
+        private readonly int[] _items;
+
+        public BandGrid(Vec2[] pts, int n)
+        {
+            _pts = pts;
+            double minX = double.MaxValue, minY = double.MaxValue, maxX = double.MinValue, maxY = double.MinValue;
+            foreach (var p in pts)
+            {
+                if (p.X < minX) minX = p.X;
+                if (p.Y < minY) minY = p.Y;
+                if (p.X > maxX) maxX = p.X;
+                if (p.Y > maxY) maxY = p.Y;
+            }
+            // A cell holds about one vertex on average; the constant keeps the per-cell overhead low for tiny polygons.
+            _side = Math.Clamp((int)Math.Ceiling(Math.Sqrt(n)), 1, 1024);
+            _x0 = minX;
+            _y0 = minY;
+            double w = Math.Max(maxX - minX, 1), h = Math.Max(maxY - minY, 1);
+            _inv = _side / Math.Max(w, h);
+            _start = new int[_side * _side + 1];
+            for (int i = 0; i < n; i++)
+            {
+                CellOf(i, out int cx, out int cy);
+                _start[cy * _side + cx + 1]++;
+            }
+            for (int i = 0; i < _start.Length - 1; i++) _start[i + 1] += _start[i];
+            _items = new int[n];
+            var fill = new int[_side * _side];
+            for (int i = 0; i < n; i++)
+            {
+                CellOf(i, out int cx, out int cy);
+                _items[_start[cy * _side + cx] + fill[cy * _side + cx]++] = i;
+            }
+        }
+
+        private void CellOf(int i, out int cx, out int cy)
+        {
+            cx = Math.Clamp((int)((_pts[i].X - _x0) * _inv), 0, _side - 1);
+            cy = Math.Clamp((int)((_pts[i].Y - _y0) * _inv), 0, _side - 1);
+        }
+
+        /// <summary>Calls <paramref name="visit"/> for every vertex whose cell overlaps the box, possibly more than once.</summary>
+        public void Query(double minX, double minY, double maxX, double maxY, Action<int> visit)
+        {
+            int cx0 = Math.Clamp((int)((minX - _x0) * _inv), 0, _side - 1);
+            int cx1 = Math.Clamp((int)((maxX - _x0) * _inv), 0, _side - 1);
+            int cy0 = Math.Clamp((int)((minY - _y0) * _inv), 0, _side - 1);
+            int cy1 = Math.Clamp((int)((maxY - _y0) * _inv), 0, _side - 1);
+            for (int cy = cy0; cy <= cy1; cy++)
+            {
+                int row = cy * _side;
+                for (int cx = cx0; cx <= cx1; cx++)
+                {
+                    int cell = row + cx;
+                    for (int k = _start[cell]; k < _start[cell + 1]; k++) visit(_items[k]);
+                }
+            }
+        }
+    }
+
+    private static bool IsEar(Vec2[] pts, int a, int b, int c, int[] next, bool[] alive, BandGrid grid,
+        int[] seen, ref int stamp)
     {
         Vec2 pa = pts[a], pb = pts[b], pc = pts[c];
         if (Predicates.Orient2D(pa, pb, pc) <= 0) return false;
-        int k = next[c];
-        for (int steps = 0; steps < remaining - 3; steps++, k = next[k])
+        // A vertex can only be inside the triangle if it lies in the triangle's bounding box, so the grid query over that
+        // box is exact: nothing outside can block the ear.
+        double minX = Math.Min(pa.X, pc.X), maxX = Math.Max(pa.X, pc.X);
+        double minY = Math.Min(pa.Y, pc.Y), maxY = Math.Max(pa.Y, pc.Y);
+        if (pb.X < minX) minX = pb.X;
+        if (pb.X > maxX) maxX = pb.X;
+        if (pb.Y < minY) minY = pb.Y;
+        if (pb.Y > maxY) maxY = pb.Y;
+        ++stamp;
+        int mark = stamp;
+        bool blocked = false;
+        grid.Query(minX, minY, maxX, maxY, i =>
         {
-            Vec2 p = pts[k];
-            if (p == pa || p == pb || p == pc) continue;
+            if (blocked || !alive[i] || seen[i] == mark) return;
+            seen[i] = mark;
+            // Compared by value, not by index: JoinHoles bridges a hole by inserting both bridge endpoints twice, so the
+            // polygon legitimately contains duplicate points and a value copy of a, b or c must not block the ear.
+            Vec2 p = pts[i];
+            if (p == pa || p == pb || p == pc) return;
             if (Predicates.Orient2D(pa, pb, p) >= 0 && Predicates.Orient2D(pb, pc, p) >= 0 && Predicates.Orient2D(pc, pa, p) >= 0)
-                return false;
-        }
-        return true;
+                blocked = true;
+        });
+        return !blocked;
     }
 
     /// <summary>Hertel–Mehlhorn: removes diagonals while both merged corners stay convex.</summary>

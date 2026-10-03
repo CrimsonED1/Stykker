@@ -17,7 +17,14 @@ internal static class Filter
         double a = (double)plane.Nx * x, b = (double)plane.Ny * y, c = (double)plane.Nz * z, d = (double)plane.D;
         double v = a + b + c + d;
         double bound = Rel * (Math.Abs(a) + Math.Abs(b) + Math.Abs(c) + Math.Abs(d));
-        return v > bound ? 1 : v < -bound ? -1 : Uncertain;
+        int f = v > bound ? 1 : v < -bound ? -1 : Uncertain;
+        if (KernelStats.Counting)
+        {
+            var s = KernelStats.Mine;
+            s.FilterCalls++;
+            if (f == Uncertain) s.FilterUncertain++;
+        }
+        return f;
     }
 
     /// <summary>
@@ -30,7 +37,14 @@ internal static class Filter
         double v = a + b + c + d;
         double bound = Rel * (Math.Abs(a) + Math.Abs(b) + Math.Abs(c) + Math.Abs(d))
                        + 2 * pointErr * (Math.Abs(k[o]) + Math.Abs(k[o + 1]) + Math.Abs(k[o + 2]));
-        return v > bound ? 1 : v < -bound ? -1 : Uncertain;
+        int f = v > bound ? 1 : v < -bound ? -1 : Uncertain;
+        if (KernelStats.Counting)
+        {
+            var s = KernelStats.Mine;
+            s.FilterCalls++;
+            if (f == Uncertain) s.FilterUncertain++;
+        }
+        return f;
     }
 
     /// <summary>

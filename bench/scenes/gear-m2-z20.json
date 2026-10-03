@@ -1,0 +1,12 @@
+{
+  "name": "gear-m2-z20",
+  "kind": "process2-gear",
+  "description": "Spur gear m = 2 mm, z = 20, generated with a rack that rolls on the pitch line, then extruded to 10 mm. The demo's gear scene; Process2 plus Solid.Extrude is the most expensive thing the library does, and no scene measured it.",
+  "moduleMm": 2,
+  "teeth": 20,
+  "rackTeeth": 7,
+  "pressureAngleDeg": 20,
+  "rackBodyMm": 0.5,
+  "extrudeMm": 10,
+  "tolerance": { "totalUm": 0.1, "chordNm": 50, "sweepNm": 30 }
+}

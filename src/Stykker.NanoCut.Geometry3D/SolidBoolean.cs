@@ -151,11 +151,13 @@ internal static class SolidBoolean
         b.Reach.Clear();
         b.Owners.Clear();
         b.Coplanar.Clear();
+        if (KernelStats.Counting) KernelStats.Mine.FaceCandidates += b.Candidates.Count;
         foreach (var q in b.Candidates)
         {
             int ps = SideSummary(q, p.Vertices);
             // Faces that cannot meet need no cut: one lies strictly outside an edge plane of the other.
             if (ps != 2 && (Separated(q, p.Vertices) || Separated(p, q.Vertices))) continue;
+            if (KernelStats.Counting) KernelStats.Mine.PairsTested++;
             if (ps == 2)
             {
                 b.Coplanar.Add(q);
@@ -235,6 +237,7 @@ internal static class SolidBoolean
     /// </summary>
     private static bool Separated(Face3 f, Point3[] pts)
     {
+        if (KernelStats.Counting) KernelStats.CountVertices(pts);
         var k = f.PlanesD;
         for (int i = 0; i < f.Edges.Length; i++)
         {
@@ -252,6 +255,7 @@ internal static class SolidBoolean
     /// <summary>False if all points lie strictly on one side of the plane.</summary>
     private static bool TouchesOrCrosses(Face3 f, Point3[] pts)
     {
+        if (KernelStats.Counting) KernelStats.CountVertices(pts);
         var k = f.PlanesD;
         bool pos = false, neg = false;
         foreach (var v in pts)
@@ -267,6 +271,7 @@ internal static class SolidBoolean
     /// <summary>+1 all on the positive side or on, -1 all negative or on, 0 crossing, 2 all on the plane.</summary>
     private static int SideSummary(Face3 f, Point3[] pts)
     {
+        if (KernelStats.Counting) KernelStats.CountVertices(pts);
         var k = f.PlanesD;
         bool pos = false, neg = false;
         foreach (var v in pts)
