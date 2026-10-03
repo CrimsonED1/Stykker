@@ -807,3 +807,344 @@ NC_API void nc_zmap_destroy(void* zmap)
     if (z->volumeOut != nullptr) cudaFree(z->volumeOut);
     delete z;
 }
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Dexel map: up to k material intervals [z0, z1] per column instead of one height. Mirrors DexelMap.cs and
+// ToolProfile.Span in src/Stykker.NanoCut.Gpu: the same packed steps, the same interval of a column within a swept
+// ball, the same subtraction (a split in a full column cuts through to the interval top and is counted).
+
+namespace {
+
+/// <summary>Largest k the kernel supports; DexelMap allows 1 to 16.</summary>
+constexpr int kMaxDexelIntervals = 16;
+
+struct Dexel
+{
+    int nx = 0;
+    int ny = 0;
+    int k = 0;
+    float cellX = 0.f;
+    float cellY = 0.f;
+    float top = 0.f;
+    float* intervals = nullptr;          // nx * ny * k * 2
+    unsigned char* counts = nullptr;     // nx * ny
+    unsigned long long* overflows = nullptr;
+    float* steps = nullptr;
+    int stepsCapacity = 0;
+    double* volumePartials = nullptr;
+    double* volumeOut = nullptr;
+};
+
+/// <summary>The interval [low, high] where the column meets the swept ball, or false. Mirrors ToolProfile.Span.</summary>
+__device__ __forceinline__ bool swept_span(float x, float y, const float* __restrict__ p, float& low, float& high)
+{
+    const float x0 = p[0], y0 = p[1], z0 = p[2], r2 = p[7];
+    const float wx = p[4], wy = p[5], wz = p[6];
+    const float w2 = p[8], invW2 = p[9], c = p[10], zLow = p[11];
+
+    const float px = x - x0, py = y - y0;
+    if (w2 == 0.f)
+    {
+        const float p2 = px * px + py * py;
+        if (p2 > r2) return false;
+        const float half = sqrtf(r2 - p2);
+        low = zLow - half;
+        high = zLow + fabsf(wz) + half;
+        return true;
+    }
+
+    const float ts = (px * wx + py * wy) * invW2;
+    const float ex = px - ts * wx, ey = py - ts * wy;
+    const float a2 = r2 - (ex * ex + ey * ey);
+    if (a2 < 0.f) return false;
+
+    const float a = sqrtf(a2);
+    const float h = a * sqrtf(invW2);
+    const float lo = fmaxf(0.f, ts - h), hi = fminf(1.f, ts + h);
+    if (lo > hi) return false;
+
+    const float tb = fminf(fmaxf(ts - c * a, lo), hi), db = tb - ts;
+    low = z0 + wz * tb - sqrtf(fmaxf(a2 - w2 * db * db, 0.f));
+    const float tt = fminf(fmaxf(ts + c * a, lo), hi), dt = tt - ts;
+    high = z0 + wz * tt + sqrtf(fmaxf(a2 - w2 * dt * dt, 0.f));
+    return true;
+}
+
+/// <summary>Subtracts [lo, hi] from a column's sorted intervals. Mirrors DexelMap.Subtract.</summary>
+__device__ __forceinline__ bool dexel_subtract(float* iv, int& n, int capacity, float lo, float hi)
+{
+    if (!(hi > lo)) return false;
+    float out[2 * kMaxDexelIntervals + 2];
+    bool overflow = false;
+    int w = 0;
+    for (int i = 0; i < n; i++)
+    {
+        const float a = iv[2 * i], b = iv[2 * i + 1];
+        if (hi <= a || lo >= b)
+        {
+            out[2 * w] = a; out[2 * w + 1] = b; w++;
+            continue;
+        }
+        const bool left = lo > a;
+        bool right = hi < b;
+        if (left && right && n + 1 > capacity)
+        {
+            overflow = true;   // no room for a split: keep the part below the cut, lose the roof above it
+            right = false;
+        }
+        if (left) { out[2 * w] = a; out[2 * w + 1] = lo; w++; }
+        if (right) { out[2 * w] = hi; out[2 * w + 1] = b; w++; }
+    }
+    for (int q = 0; q < 2 * w; q++) iv[q] = out[q];
+    n = w;
+    return overflow;
+}
+
+__global__ void dexel_init_kernel(float* intervals, unsigned char* counts, size_t count, int k, float top)
+{
+    const size_t i = blockIdx.x * static_cast<size_t>(blockDim.x) + threadIdx.x;
+    if (i >= count) return;
+    intervals[i * k * 2] = 0.f;
+    intervals[i * k * 2 + 1] = top;
+    counts[i] = 1;
+}
+
+/// <summary>One thread per column, its intervals in local memory while it loops over every step of the batch.</summary>
+__global__ void dexel_apply_kernel(float* __restrict__ intervals, unsigned char* __restrict__ counts,
+                                   unsigned long long* __restrict__ overflows, int nx, int ny, int k, float cellX,
+                                   float cellY, const float* __restrict__ steps, int stepCount)
+{
+    const int i = blockIdx.x * blockDim.x + threadIdx.x;
+    const int j = blockIdx.y * blockDim.y + threadIdx.y;
+    if (i >= nx || j >= ny) return;
+
+    const float x = (i + 0.5f) * cellX;
+    const float y = (j + 0.5f) * cellY;
+    const size_t column = static_cast<size_t>(j) * nx + i;
+    float* global = intervals + column * k * 2;
+    float local[2 * kMaxDexelIntervals];
+    int n = counts[column];
+    for (int q = 0; q < 2 * n; q++) local[q] = global[q];
+
+    unsigned int over = 0;
+    for (int s = 0; s < stepCount && n > 0; ++s)
+    {
+        float lo, hi;
+        if (!swept_span(x, y, steps + static_cast<size_t>(s) * kStepFloats, lo, hi)) continue;
+        if (dexel_subtract(local, n, k, lo, hi)) over++;
+    }
+
+    for (int q = 0; q < 2 * n; q++) global[q] = local[q];
+    counts[column] = static_cast<unsigned char>(n);
+    if (over != 0) atomicAdd(overflows, static_cast<unsigned long long>(over));
+}
+
+/// <summary>Per block: the sum over its columns of (stock height - material left). Finished by volume_finalize_kernel.</summary>
+__global__ void dexel_volume_partial_kernel(const float* __restrict__ intervals, const unsigned char* __restrict__ counts,
+                                            size_t count, int k, float top, double* __restrict__ partials)
+{
+    __shared__ double parts[kVolumeThreads];
+    double sum = 0.0;
+    const size_t stride = static_cast<size_t>(gridDim.x) * blockDim.x;
+    for (size_t c = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x; c < count; c += stride)
+    {
+        double left = 0.0;
+        const float* iv = intervals + c * k * 2;
+        for (int q = 0; q < counts[c]; q++) left += static_cast<double>(iv[2 * q + 1] - iv[2 * q]);
+        sum += static_cast<double>(top) - left;
+    }
+    parts[threadIdx.x] = sum;
+    __syncthreads();
+    if (threadIdx.x == 0)
+    {
+        double total = 0.0;
+        for (int q = 0; q < blockDim.x; q++) total += parts[q];
+        partials[blockIdx.x] = total;
+    }
+}
+
+void free_dexel(Dexel* d)
+{
+    if (d == nullptr) return;
+    if (d->intervals != nullptr) cudaFree(d->intervals);
+    if (d->counts != nullptr) cudaFree(d->counts);
+    if (d->overflows != nullptr) cudaFree(d->overflows);
+    if (d->steps != nullptr) cudaFree(d->steps);
+    if (d->volumePartials != nullptr) cudaFree(d->volumePartials);
+    if (d->volumeOut != nullptr) cudaFree(d->volumeOut);
+    delete d;
+}
+
+} // namespace
+
+NC_API void* nc_dexel_create(int nx, int ny, float cellX, float cellY, float top, int k)
+{
+    if (nx <= 0 || ny <= 0 || !(cellX > 0.f) || !(cellY > 0.f) || k < 1 || k > kMaxDexelIntervals)
+    {
+        set_error("nc_dexel_create: invalid map %d x %d, cells %g x %g, k %d", nx, ny, cellX, cellY, k);
+        return nullptr;
+    }
+    auto* d = new (std::nothrow) Dexel();
+    if (d == nullptr)
+    {
+        set_error("nc_dexel_create: out of host memory");
+        return nullptr;
+    }
+    d->nx = nx;
+    d->ny = ny;
+    d->k = k;
+    d->cellX = cellX;
+    d->cellY = cellY;
+    d->top = top;
+
+    const size_t count = static_cast<size_t>(nx) * static_cast<size_t>(ny);
+    cudaError_t e = cudaMalloc(&d->intervals, count * k * 2 * sizeof(float));
+    if (e == cudaSuccess) e = cudaMalloc(&d->counts, count);
+    if (e == cudaSuccess) e = cudaMalloc(&d->overflows, sizeof(unsigned long long));
+    if (e == cudaSuccess) e = cudaMemset(d->overflows, 0, sizeof(unsigned long long));
+    if (e == cudaSuccess) e = cudaMalloc(&d->volumePartials, kVolumeBlocks * sizeof(double));
+    if (e == cudaSuccess) e = cudaMalloc(&d->volumeOut, sizeof(double));
+    if (e == cudaSuccess)
+    {
+        const int threads = 256;
+        const size_t blocks = (count + threads - 1) / threads;
+        dexel_init_kernel<<<static_cast<unsigned int>(blocks), threads>>>(d->intervals, d->counts, count, k, top);
+        e = cudaGetLastError();
+        if (e == cudaSuccess) e = cudaDeviceSynchronize();
+    }
+    if (e != cudaSuccess)
+    {
+        set_cuda_error("nc_dexel_create", e);
+        free_dexel(d);
+        return nullptr;
+    }
+    return d;
+}
+
+NC_API int nc_dexel_apply_steps(void* dexel, const float* steps, int stepCount, double* kernelMs, double* uploadMs)
+{
+    auto* d = static_cast<Dexel*>(dexel);
+    if (d == nullptr || steps == nullptr || stepCount <= 0)
+    {
+        set_error("nc_dexel_apply_steps: invalid argument");
+        return 1;
+    }
+    if (kernelMs != nullptr) *kernelMs = 0;
+    if (uploadMs != nullptr) *uploadMs = 0;
+
+    const size_t bytes = static_cast<size_t>(stepCount) * kStepFloats * sizeof(float);
+    if (d->stepsCapacity < stepCount)
+    {
+        if (d->steps != nullptr) cudaFree(d->steps);
+        d->steps = nullptr;
+        d->stepsCapacity = 0;
+        cudaError_t e = cudaMalloc(&d->steps, bytes);
+        if (e != cudaSuccess)
+        {
+            set_cuda_error("nc_dexel_apply_steps: cudaMalloc", e);
+            return static_cast<int>(e);
+        }
+        d->stepsCapacity = stepCount;
+    }
+
+    cudaEvent_t t0, t1, t2;
+    if (!make_events(t0, t1, t2)) return static_cast<int>(cudaErrorUnknown);
+    cudaEventRecord(t0);
+    cudaError_t e = cudaMemcpy(d->steps, steps, bytes, cudaMemcpyHostToDevice);
+    cudaEventRecord(t1);
+    if (e == cudaSuccess)
+    {
+        dim3 block(16, 16);
+        dim3 grid((static_cast<unsigned int>(d->nx) + block.x - 1) / block.x,
+                  (static_cast<unsigned int>(d->ny) + block.y - 1) / block.y);
+        dexel_apply_kernel<<<grid, block>>>(d->intervals, d->counts, d->overflows, d->nx, d->ny, d->k, d->cellX,
+                                            d->cellY, d->steps, stepCount);
+        e = cudaGetLastError();
+    }
+    cudaEventRecord(t2);
+    if (e == cudaSuccess) e = cudaDeviceSynchronize();
+    if (e != cudaSuccess)
+    {
+        set_cuda_error("nc_dexel_apply_steps", e);
+        destroy_events(t0, t1, t2);
+        return static_cast<int>(e);
+    }
+    float upload = 0.f, kernel = 0.f;
+    cudaEventElapsedTime(&upload, t0, t1);
+    cudaEventElapsedTime(&kernel, t1, t2);
+    destroy_events(t0, t1, t2);
+    if (uploadMs != nullptr) *uploadMs = upload;
+    if (kernelMs != nullptr) *kernelMs = kernel;
+    return 0;
+}
+
+NC_API int nc_dexel_read(void* dexel, float* intervals, unsigned char* counts, long long* overflows, double* downloadMs)
+{
+    auto* d = static_cast<Dexel*>(dexel);
+    if (d == nullptr || intervals == nullptr || counts == nullptr || overflows == nullptr)
+    {
+        set_error("nc_dexel_read: invalid argument");
+        return 1;
+    }
+    const size_t count = static_cast<size_t>(d->nx) * static_cast<size_t>(d->ny);
+    cudaError_t e = cudaSuccess;
+    double ms = copy_back(intervals, d->intervals, count * d->k * 2 * sizeof(float), e);
+    if (e == cudaSuccess) ms += copy_back(counts, d->counts, count, e);
+    unsigned long long over = 0;
+    if (e == cudaSuccess) ms += copy_back(&over, d->overflows, sizeof(over), e);
+    if (e != cudaSuccess)
+    {
+        set_cuda_error("nc_dexel_read", e);
+        return static_cast<int>(e);
+    }
+    *overflows = static_cast<long long>(over);
+    if (downloadMs != nullptr) *downloadMs = ms;
+    return 0;
+}
+
+NC_API int nc_dexel_volume(void* dexel, double* volumeMm3, long long* overflows, double* kernelMs)
+{
+    auto* d = static_cast<Dexel*>(dexel);
+    if (d == nullptr || volumeMm3 == nullptr || overflows == nullptr)
+    {
+        set_error("nc_dexel_volume: invalid argument");
+        return 1;
+    }
+    if (kernelMs != nullptr) *kernelMs = 0;
+    const size_t count = static_cast<size_t>(d->nx) * static_cast<size_t>(d->ny);
+    const int threads = kVolumeThreads;
+    const size_t needed = (count + threads - 1) / threads;
+    const int blocks = static_cast<int>(needed < static_cast<size_t>(kVolumeBlocks) ? needed
+                                                                                    : static_cast<size_t>(kVolumeBlocks));
+    QueryTiming timing;
+    if (!timing.ok) return static_cast<int>(cudaErrorUnknown);
+    cudaEventRecord(timing.start);
+    dexel_volume_partial_kernel<<<blocks, threads>>>(d->intervals, d->counts, count, d->k, d->top, d->volumePartials);
+    cudaError_t e = cudaGetLastError();
+    if (e == cudaSuccess)
+    {
+        const double cellArea = static_cast<double>(d->cellX) * d->cellY;
+        volume_finalize_kernel<<<1, 1>>>(d->volumePartials, blocks, cellArea, d->volumeOut);
+        e = cudaGetLastError();
+    }
+    cudaEventRecord(timing.computed);
+    if (e == cudaSuccess) e = cudaDeviceSynchronize();
+    if (e == cudaSuccess) copy_back(volumeMm3, d->volumeOut, sizeof(double), e);
+    unsigned long long over = 0;
+    if (e == cudaSuccess) copy_back(&over, d->overflows, sizeof(over), e);
+    if (e != cudaSuccess)
+    {
+        set_cuda_error("nc_dexel_volume", e);
+        return static_cast<int>(e);
+    }
+    *overflows = static_cast<long long>(over);
+    float kernel = 0.f;
+    cudaEventElapsedTime(&kernel, timing.start, timing.computed);
+    if (kernelMs != nullptr) *kernelMs = kernel;
+    return 0;
+}
+
+NC_API void nc_dexel_destroy(void* dexel)
+{
+    free_dexel(static_cast<Dexel*>(dexel));
+}

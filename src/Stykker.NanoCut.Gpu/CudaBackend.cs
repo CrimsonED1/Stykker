@@ -14,11 +14,12 @@ namespace Stykker.NanoCut.Gpu;
 /// costs only the step upload and the height read-back per call, not a new allocation. The first call also creates
 /// the CUDA context, which is reported separately as <see cref="ZMapTiming.FirstCallMs"/>. With
 /// <see cref="ZMapReadBack.Never"/> not even the read-back happens: the field stays on the device, where
-/// <see cref="RemovedVolumeMm3"/> reduces it and <see cref="IZMapQueryBackend"/> reads it.
+/// <see cref="RemovedVolumeMm3(ZMap)"/> reduces it and <see cref="IZMapQueryBackend"/> reads it.
 /// </remarks>
-public sealed class CudaBackend : IZMapBackend, IZMapQueryBackend
+public sealed class CudaBackend : IZMapBackend, IZMapQueryBackend, IDexelBackend
 {
     private readonly ConditionalWeakTable<ZMap, DeviceMap> _maps = new();
+    private readonly ConditionalWeakTable<DexelMap, DeviceDexel> _dexels = new();
     private readonly object _gate = new();
 
     /// <summary>Creates a backend on the given CUDA device.</summary>
@@ -278,6 +279,92 @@ public sealed class CudaBackend : IZMapBackend, IZMapQueryBackend
         {
             nint h = Handle;
             if (h != 0) CudaNative.ZMapDestroy(h);
+        }
+    }
+
+    /// <inheritdoc />
+    public bool KeepsDexelsOnHost => false;
+
+    /// <inheritdoc />
+    public ZMapTiming ApplyDexels(DexelMap map, ReadOnlySpan<BallStep> steps, ZMapReadBack readBack)
+    {
+        string? why = UnavailableReason;
+        if (why is not null) throw new GpuNativeException("nc_dexel_apply_steps", -1, why);
+
+        var wall = Stopwatch.StartNew();
+        float[] packed = ToolProfile.Pack(steps, map.OriginMm);
+        DeviceDexel device = DexelOf(map, out double firstCall);
+        CudaNative.Check(CudaNative.DexelApplySteps(device.Handle, packed, steps.Length,
+            out double kernelMs, out double uploadMs), "nc_dexel_apply_steps");
+        double downloadMs = readBack == ZMapReadBack.Always ? ReadDexelDevice(device, map) : 0;
+        wall.Stop();
+        return new ZMapTiming(kernelMs, uploadMs, downloadMs, firstCall, wall.Elapsed.TotalMilliseconds);
+    }
+
+    /// <inheritdoc />
+    public double ReadDexels(DexelMap map)
+    {
+        string? why = UnavailableReason;
+        if (why is not null) throw new GpuNativeException("nc_dexel_read", -1, why);
+        return ReadDexelDevice(DexelOf(map, out _), map);
+    }
+
+    /// <inheritdoc />
+    public double RemovedVolumeMm3(DexelMap map)
+    {
+        string? why = UnavailableReason;
+        if (why is not null) throw new GpuNativeException("nc_dexel_volume", -1, why);
+        DeviceDexel device = DexelOf(map, out _);
+        CudaNative.Check(CudaNative.DexelVolume(device.Handle, out double volume, out long overflows, out _),
+            "nc_dexel_volume");
+        map.Overflows = overflows;
+        return volume;
+    }
+
+    private DeviceDexel DexelOf(DexelMap map, out double firstCallMs)
+    {
+        firstCallMs = CudaRuntime.EnsureInitialised(DeviceIndex);
+        DeviceDexel device;
+        lock (_gate) device = _dexels.GetValue(map, m => DeviceDexel.Create(m));
+        firstCallMs += device.PendingCreateMs;
+        device.PendingCreateMs = 0;
+        return device;
+    }
+
+    private static double ReadDexelDevice(DeviceDexel device, DexelMap map)
+    {
+        CudaNative.Check(CudaNative.DexelRead(device.Handle, map.Intervals, map.Counts, out long overflows,
+            out double downloadMs), "nc_dexel_read");
+        map.Overflows = overflows;
+        return downloadMs;
+    }
+
+    /// <summary>A dexel map on the device, freed when its <see cref="DexelMap"/> is collected.</summary>
+    private sealed class DeviceDexel
+    {
+        internal nint Handle;
+        internal double PendingCreateMs;
+
+        private DeviceDexel(nint handle, double createMs)
+        {
+            Handle = handle;
+            PendingCreateMs = createMs;
+        }
+
+        internal static DeviceDexel Create(DexelMap map)
+        {
+            var sw = Stopwatch.StartNew();
+            nint handle = CudaNative.DexelCreate(map.CellsX, map.CellsY, (float)map.CellSizeXMm,
+                (float)map.CellSizeYMm, map.TopRelative, map.MaxIntervals);
+            sw.Stop();
+            if (handle == 0) throw new GpuNativeException("nc_dexel_create", -1, CudaNative.LastErrorMessage());
+            return new DeviceDexel(handle, sw.Elapsed.TotalMilliseconds);
+        }
+
+        ~DeviceDexel()
+        {
+            nint h = Handle;
+            if (h != 0) CudaNative.DexelDestroy(h);
         }
     }
 }
