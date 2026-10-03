@@ -95,4 +95,47 @@ internal static class ToolProfile
         float du = t - ts;
         return z0 + wz * t - MathF.Sqrt(MathF.Max(a2 - w2 * du * du, 0f));
     }
+
+    /// <summary>
+    /// The interval [<paramref name="low"/>, <paramref name="high"/>] in which the column (<paramref name="x"/>,
+    /// <paramref name="y"/>) meets the ball swept by step <paramref name="s"/>, or false when it does not. The swept ball
+    /// is convex, so a vertical line meets it in one interval: <paramref name="low"/> is <see cref="Bottom"/>, and
+    /// <paramref name="high"/> is its mirror image, the maximum of the concave top curve
+    /// z0 + wz·t + √(a² − w2·(t − t*)²), at the stationary point t* + c·a clamped to the same valid interval.
+    /// </summary>
+    internal static bool Span(float x, float y, ReadOnlySpan<float> steps, int s, out float low, out float high)
+    {
+        int o = s * StepFloats;
+        float x0 = steps[o], y0 = steps[o + 1], z0 = steps[o + 2], r2 = steps[o + 7];
+        float wx = steps[o + 4], wy = steps[o + 5], wz = steps[o + 6];
+        float w2 = steps[o + 8], invW2 = steps[o + 9], c = steps[o + 10], zLow = steps[o + 11];
+        low = high = 0f;
+
+        float px = x - x0, py = y - y0;
+        if (w2 == 0f)
+        {
+            float p2 = px * px + py * py;
+            if (p2 > r2) return false;
+            float half = MathF.Sqrt(r2 - p2);
+            low = zLow - half;
+            high = zLow + MathF.Abs(wz) + half;
+            return true;
+        }
+
+        float ts = (px * wx + py * wy) * invW2;
+        float ex = px - ts * wx, ey = py - ts * wy;
+        float a2 = r2 - (ex * ex + ey * ey);
+        if (a2 < 0f) return false;
+
+        float a = MathF.Sqrt(a2);
+        float h = a * MathF.Sqrt(invW2);
+        float lo = MathF.Max(0f, ts - h), hi = MathF.Min(1f, ts + h);
+        if (lo > hi) return false;
+
+        float tb = Math.Clamp(ts - c * a, lo, hi), db = tb - ts;
+        low = z0 + wz * tb - MathF.Sqrt(MathF.Max(a2 - w2 * db * db, 0f));
+        float tt = Math.Clamp(ts + c * a, lo, hi), dt = tt - ts;
+        high = z0 + wz * tt + MathF.Sqrt(MathF.Max(a2 - w2 * dt * dt, 0f));
+        return true;
+    }
 }

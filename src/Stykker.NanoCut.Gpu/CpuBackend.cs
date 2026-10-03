@@ -7,7 +7,7 @@ namespace Stykker.NanoCut.Gpu;
 /// the rows of the height field. It needs nothing but the runtime, so it is what CI and every machine without a GPU
 /// uses, and what the GPU results are checked against.
 /// </summary>
-public sealed class CpuBackend : IZMapBackend, IZMapQueryBackend
+public sealed class CpuBackend : IZMapBackend, IZMapQueryBackend, IDexelBackend
 {
     /// <summary>A shared backend on all logical processors.</summary>
     public static CpuBackend Instance { get; } = new();
@@ -174,4 +174,50 @@ public sealed class CpuBackend : IZMapBackend, IZMapQueryBackend
                 "the height field is on the backend, not in Heights; call ReadHeights() first");
         }
     }
+
+    /// <inheritdoc />
+    public bool KeepsDexelsOnHost => true;
+
+    /// <inheritdoc />
+    public ZMapTiming ApplyDexels(DexelMap map, ReadOnlySpan<BallStep> steps, ZMapReadBack readBack)
+    {
+        float[] packed = ToolProfile.Pack(steps, map.OriginMm);
+        int stepCount = steps.Length, nx = map.CellsX, ny = map.CellsY, k = map.MaxIntervals;
+        float cx = (float)map.CellSizeXMm, cy = (float)map.CellSizeYMm;
+        float[] iv = map.Intervals;
+        byte[] counts = map.Counts;
+        long overflows = 0;
+        var options = new ParallelOptions { MaxDegreeOfParallelism = Parallelism };
+
+        var sw = Stopwatch.StartNew();
+        Parallel.For(0, ny, options, () => 0L, (j, _, local) =>
+        {
+            float y = (j + 0.5f) * cy;
+            for (int i = 0; i < nx; i++)
+            {
+                float x = (i + 0.5f) * cx;
+                long column = (long)j * nx + i;
+                var span = iv.AsSpan((int)(column * k * 2), k * 2);
+                int n = counts[column];
+                for (int s = 0; s < stepCount && n > 0; s++)
+                {
+                    if (!ToolProfile.Span(x, y, packed, s, out float lo, out float hi)) continue;
+                    if (DexelMap.Subtract(span, ref n, k, lo, hi)) local++;
+                }
+                counts[column] = (byte)n;
+            }
+            return local;
+        }, local => Interlocked.Add(ref overflows, local));
+        sw.Stop();
+        map.Overflows += overflows;
+
+        double ms = sw.Elapsed.TotalMilliseconds;
+        return new ZMapTiming(ms, 0, 0, 0, ms);
+    }
+
+    /// <inheritdoc />
+    public double ReadDexels(DexelMap map) => 0;
+
+    /// <inheritdoc />
+    public double RemovedVolumeMm3(DexelMap map) => map.RemovedVolumeMm3;
 }
