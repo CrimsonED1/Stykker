@@ -198,6 +198,18 @@
             PreviewRun? gpu = null;
             if (_gpuWhy is null)
             {
+                // The CUDA context is created by the first device call and costs about 90 ms on this machine. Measured
+                // without a warm-up, the GPU arm would report that start-up instead of the work -- the same mistake as
+                // "a first call is not a measurement" in docs/gpu-findings.md. The bench reports it apart, so this does.
+                double firstMs = await Runner.Run(() =>
+                {
+                    var warm = new ZMap(0, 0, 0, StockMm, StockMm, StockZMm, 16, 16, cuda);
+                    double z = StockZMm - DepthMm + BallMm;
+                    warm.ApplySteps([new BallStep((1, 1, z), (2, 1, z), BallMm)], ZMapReadBack.Never);
+                    return warm.LastTiming.FirstCallMs;
+                }, _stop.Token);
+                _log.Add($"CUDA context ready in {Ms(firstMs)}, not measured");
+
                 _phase = "preview on the GPU…";
                 StateHasChanged();
                 PreviewRun run = await Runner.Run(() => Preview(steps, cuda, grid), _stop.Token);
