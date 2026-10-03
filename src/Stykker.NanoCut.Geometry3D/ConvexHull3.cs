@@ -114,10 +114,13 @@ public static class ConvexHull3
                     v = next;
                 } while (v != seed);
                 if (v != seed) { ok = false; break; }
-                // The boundary can close without being convex (a folded or self-touching walk). Face3.FromGrid now checks
-                // convexity, so this is a caught error rather than a silently truncated face.
+                // The boundary can close without being convex (a folded or self-touching walk, or simply a concave cap such
+                // as an L or a gear outline). Face3.FromGrid checks convexity only against its first few vertices, so the
+                // full check is made here: a concave loop accepted as a face would break every later Boolean.
+                var clean = WithoutCollinear(loop);
+                if (!IsConvexLoop(clean, orientation)) { ok = false; break; }
                 Face3 face;
-                try { face = Face3.FromGrid(WithoutCollinear(loop)); }
+                try { face = Face3.FromGrid(clean); }
                 catch (ArgumentException) { ok = false; break; }
                 if (!SameOrientation(face.Support, orientation)) { ok = false; break; }   // a hole
                 loopFaces.Add(face);
@@ -145,6 +148,38 @@ public static class ConvexHull3
         }
         return default;
     }
+
+    /// <summary>
+    /// Whether a boundary loop (collinear corners removed) is one convex polygon turning the way its group faces. Every
+    /// corner must turn the same way in the projection that drops the dominant axis of the normal, exactly in Int128 (the
+    /// coordinate differences fit 33 bits), and no vertex may repeat: a loop that touches itself at a vertex is not one
+    /// convex polygon. The boundary of a triangulated planar region does not cross itself, so turns of one sign at
+    /// distinct vertices mean the loop is convex. O(n), so it can check every vertex of a large cap.
+    /// </summary>
+    internal static bool IsConvexLoop(List<Vec3> loop, in Plane3 orientation)
+    {
+        int n = loop.Count;
+        if (n < 3) return false;
+        Int128 ax = Int128.Abs(orientation.Nx), ay = Int128.Abs(orientation.Ny), az = Int128.Abs(orientation.Nz);
+        int k = ax >= ay && ax >= az ? 0 : ay >= az ? 1 : 2;
+        // (u × v)_k for a convex loop around the normal has the sign of the normal's k-th component; the projection keeps
+        // the cyclic order (y, z), (z, x), (x, y), so the 2D cross product below is exactly that component.
+        int want = Int128.Sign(k == 0 ? orientation.Nx : k == 1 ? orientation.Ny : orientation.Nz);
+        var seen = new HashSet<Vec3>(n);
+        for (int i = 0; i < n; i++)
+        {
+            Vec3 a = loop[i], b = loop[(i + 1) % n], c = loop[(i + 2) % n];
+            if (!seen.Add(a)) return false;
+            var (ux, uy) = Project(b, k);
+            var (px, py) = Project(a, k);
+            var (vx, vy) = Project(c, k);
+            Int128 cross = (Int128)(ux - px) * (vy - uy) - (Int128)(uy - py) * (vx - ux);
+            if (Int128.Sign(cross) != want) return false;
+        }
+        return true;
+    }
+
+    private static (long U, long V) Project(Vec3 p, int k) => k switch { 0 => (p.Y, p.Z), 1 => (p.Z, p.X), _ => (p.X, p.Y) };
 
     /// <summary>
     /// Whether two planes of one coplanar group face the same way. Their normals are parallel, so the first component

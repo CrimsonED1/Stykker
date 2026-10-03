@@ -61,4 +61,47 @@ public class ExtrudeMergeTests
         Assert.Equal(6, s.FaceCount);
         Assert.Equal(500, s.VolumeMm3, 9);
     }
+
+    /// <summary>
+    /// A concave polygon whose first twelve vertices lie in its kernel (on a bulge of the bottom edge, below a notch at
+    /// the far right): they are on one side of every edge, so Face3.FromGrid's bounded check lets it through. The merge
+    /// must not rely on that check; IsConvexLoop looks at every corner.
+    /// </summary>
+    [Fact]
+    public void TheMergeCatchesAConcaveLoopThatFromGridLetsThrough()
+    {
+        var loop = new List<Vec3>();
+        for (int k = 0; k < 13; k++)
+        {
+            double t = k / 12.0;
+            loop.Add(Vec3.Mm(10 * t, -0.5 * Math.Sin(Math.PI * t), 0));
+        }
+        loop.AddRange([Vec3.Mm(40, 0, 0), Vec3.Mm(40, 10, 0), Vec3.Mm(39, 10, 0), Vec3.Mm(39, 5, 0), Vec3.Mm(38, 5, 0),
+            Vec3.Mm(38, 10, 0), Vec3.Mm(0, 10, 0)]);
+        var up = new Plane3(0, 0, 1, 0);
+
+        Assert.False(ConvexHull3.IsConvexLoop(loop, up));
+        _ = Face3.FromGrid([.. loop]);   // the documented gap of the bounded check: no exception
+
+        // A bulge along the whole bottom edge and no notch is convex, and reversed it faces the other way.
+        var convex = Enumerable.Range(0, 13).Select(k => Vec3.Mm(40 * k / 12.0, -0.5 * Math.Sin(Math.PI * k / 12.0), 0))
+            .Append(Vec3.Mm(40, 10, 0)).Append(Vec3.Mm(0, 10, 0)).ToList();
+        Assert.True(ConvexHull3.IsConvexLoop(convex, up));
+        Assert.False(ConvexHull3.IsConvexLoop([.. Enumerable.Reverse(convex)], up));
+
+        // A loop that touches itself at a vertex is not one convex polygon.
+        var pinched = new List<Vec3> { Vec3.Mm(0, 0, 0), Vec3.Mm(2, 0, 0), Vec3.Mm(1, 1, 0), Vec3.Mm(2, 2, 0), Vec3.Mm(0, 2, 0), Vec3.Mm(1, 1, 0) };
+        Assert.False(ConvexHull3.IsConvexLoop(pinched, up));
+    }
+
+    /// <summary>The side of an edge plane is still searched past the bounded convexity check.</summary>
+    [Fact]
+    public void AFaceWhoseFirstVerticesAreCollinearIsNotDegenerate()
+    {
+        // Fourteen vertices on the bottom edge, then the two top corners.
+        var pts = Enumerable.Range(0, 14).Select(i => Vec3.Mm(i, 0, 0)).Append(Vec3.Mm(13, 5, 0)).Append(Vec3.Mm(0, 5, 0)).ToArray();
+        var f = Face3.FromGrid(pts);
+        Assert.Equal(16, f.Vertices.Length);
+    }
 }
+

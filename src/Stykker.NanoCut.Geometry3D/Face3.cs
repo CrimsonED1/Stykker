@@ -108,21 +108,18 @@ internal sealed class Face3
             st.HullFaces++;
             st.HullFromGridEdges += n;
         }
-for (int i = 0; i < n; i++)
+        for (int i = 0; i < n; i++)
         {
             Vec3 a = pts[i], b = pts[(i + 1) % n];
             if (a == b) throw new ArgumentException("Duplicate consecutive vertices.");
-            // Convexity check. FromGrid is documented to take a convex polygon, and it has always taken that on trust:
-            // the side search stopped at the first vertex off the plane, so a polygon that was concave past that vertex
-            // produced a face whose plane held fewer corners than the polygon -- silently. With a cheap, bounded check
-            // that becomes an exception instead, which is what the coplanar merge in Solid.FromTriangleList needs.
-var e = Plane3.EdgePlane(a, b, k);
+            var e = Plane3.EdgePlane(a, b, k);
             int next = i + 1 == n ? 0 : i + 1, side = 0;
             // Bounded convexity check. FromGrid is documented to take a convex polygon and has always taken that on
             // trust: the side search stopped at the first vertex off the plane, so a polygon concave past that vertex
             // produced a face whose plane held fewer corners than the polygon, silently. Full checking is O(n^2) per
-            // face, which a large cap polygon cannot afford, so the first CheckVertices other vertices decide and the
-            // rest are trusted. Every face the kernel builds itself is convex, so the limit only ever hides a bug.
+            // face, so only the first ConvexCheckLimit vertices are compared; this catches a careless caller, it does not
+            // prove convexity (a concave polygon whose first vertices lie in its kernel passes). A caller that needs the
+            // proof, like the coplanar merge in ConvexHull3.FacesFromTriangles, checks the whole loop itself.
             int check = n <= ConvexCheckLimit ? n : ConvexCheckLimit;
             for (int j = 0; j < check; j++)
             {
@@ -132,6 +129,10 @@ var e = Plane3.EdgePlane(a, b, k);
                 if (side == 0) side = s;
                 else if (s != side) throw new ArgumentException("Face polygon is not convex.");
             }
+            // The side itself is still searched over every vertex, as before the bounded check: a polygon whose first
+            // vertices all lie on this edge's line is not degenerate.
+            for (int j = check; j < n && side == 0; j++)
+                if (j != i && j != next) side = Predicates.Side(e, pts[j]);
             if (side == 0) throw new ArgumentException("Degenerate face.");
             if (side > 0) e = e.Flipped();
             edges[i] = e;
@@ -175,20 +176,6 @@ var e = Plane3.EdgePlane(a, b, k);
     /// lie on the plane by construction, so the side search skips them: for a triangle that leaves one Int128 test
     /// instead of three, and it never has to scan the whole polygon.
     /// </summary>
-    private static Plane3 OrientedEdgePlane(Plane3 e, IReadOnlyList<Vec3> pts, int i, int n)
-    {
-        int next = i + 1 == n ? 0 : i + 1;
-        for (int j = 0; j < n; j++)
-        {
-            if (j == i || j == next) continue;   // on the edge plane by construction
-            int side = Predicates.Side(e, pts[j]);
-            if (side > 0) return e.Flipped();
-            // Collinear vertices are allowed, so one on the plane does not decide: keep looking.
-            if (side < 0) return e;
-        }
-        throw new ArgumentException("Degenerate face.");
-    }
-
     private static Plane3 OrientedEdgePlane(Plane3 e, ReadOnlySpan<Vec3> pts, int i)
     {
         int n = pts.Length, next = i + 1 == n ? 0 : i + 1;
