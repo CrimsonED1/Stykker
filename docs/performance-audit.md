@@ -19,12 +19,12 @@ Szenen aus `bench/scenes/`, Median über 3 Zeiten pro Prozess × 3 Prozesse:
 | `ball-medium` (96) | 632 ms | 578 ms | 1,09× | 485 → 424 MB |
 | `pocket-profile` (372) | 2 344 ms | 2 145 ms | 1,09× | 2 151 → 1 949 MB |
 | `pocket-large` (876) | 5 426 ms | 5 018 ms | 1,08× | 5 081 → 4 599 MB |
+| **`gear-m2-z20`** (Demo-Gear) | **101 555 ms** | **~41 000 ms** | **2,48×** | 39,5 → 39,5 GB |
 
-Die Volumina sind in allen Szenarien bit-identisch (`90947.264700`, `84860.612637`, `3603.390950`, `10188.091001`).
-Bei `ball-small` und `ball-medium` ist ein Teil des Gewinns Harness-Korrektur (Abschnitt 3), nicht Kernel-Arbeit.
-
-Der 2D-Pfad ist davon nicht betroffen: Das Gear-Szenario der Demo liegt unverändert bei ~87 s
-(`Process2.Cut` 34,8 s, `Solid.Extrude` 52,7 s).
+Die Volumina sind in allen Szenarien bit-identisch (`90947.264700`, `84860.612637`, `3603.390950`, `10188.091001`,
+`12312.529413`). Bei `ball-small` und `ball-medium` ist ein Teil des Gewinns Harness-Korrektur (Abschnitt 3), nicht
+Kernel-Arbeit. Das Gear-Szenario hat über die langen Läufe selbst ~7 % Streuung (40,8 / 43,8 / 40,8 s); die
+2,48× sind deutlich ausserhalb davon.
 
 ## 2. Was am meisten zählt: der Bench misst nicht den Produktionspfad
 
@@ -188,21 +188,60 @@ Involutenflanke folgen und also tatsächlich nicht koplanar sind; nur die 214 14
 **Was davon bleibt:** Die Extrusion ist nur die eine Hälfte. `Triangulator2.ConvexParts` ist O(n²) im Ear-Clipping über
 107 k Punkte, und die Seitenwände bleiben bei ~215 k Faces. Beides ist der nächste Schritt, nicht dieser.
 
-## 9. Was jetzt ansteht, nach Messung geordnet
+## 9. B1 (Bandindex für `FindSplitPoints`): widerlegt, nicht umgesetzt
+
+`BooleanKernel.cs:227-239` sah nach dem klassischen quadratischen Paar-Scan aus. Ein Bandindex über `y0` mit
+`G = clamp(⌈√n⌉, 8, 512)` Bändern wurde implementiert (Counting-Sort über die Bänder, Deduplizierung über Stempel,
+beide billigen Filter zusätzlich). **Das Ergebnis ist schlechter, nicht besser:**
+
+| Variante | `gear-m2-z20` |
+| --- | ---: |
+| Original (x-Scan mit `break`) | ~41 000 ms |
+| Bandindex, immer | 144 273 ms |
+| Bandindex nur ab 512 Kanten | 146 553 ms |
+
+Der Grund ist die Zeile, die ich beim Lesen als Filter übersehen hatte:
+
+```csharp
+if (q.A.X > p.B.X) break;
+```
+
+Die Kanten sind nach `A` sortiert, und `A.X` ist das Minimum der Kante. Sobald `q.A.X` das Ende von `p` passiert,
+**bricht die innere Schleife ab** — sie läuft nicht weiter bis `n`. Der Scan ist dadurch weit unter O(n²), und der
+Bandindex kann diesen Abbruch nicht nachbilden: seine Kandidaten sind nicht x-sortiert, also bleibt nur `continue`,
+und er besucht mehr Paare als der Scan, für den er gebaut wurde.
+
+Zwei Fehler in meiner Implementierung kamen obendrauf, beide von den Tests gefangen:
+
+* Der Counting-Sort war falsch. `binStart[lo+1]++; binStart[hi+1]++` mit anschliessender Präfix-Summe lässt die Bänder
+  **zwischen** `lo` und `hi` leer, eine breite Kante ist also nur in ihrem ersten und ihrem letzten Band auffindbar.
+  Korrekt ist `binStart[b+1] = binStart[b] + (Präfix von diff über 0..b)`.
+* `inBin` war auf `n` dimensioniert, obwohl eine bandübergreifende Kante mehrfach belegt.
+
+Die Lehre ist dieselbe wie bei A1 und beim Rotations-Sampling: „quadratische Doppelschleife" heisst nicht
+„langsam". Bevor eine asymptotische Verbesserung eingebaut wird, muss der bestehende Abbruch gelesen werden.
+
+**Konsequenz:** Punkt B1 ist gestrichen. Der verbleibende 2D-Kern-Posten ist nicht die Paarsuche, sondern die
+Allokation: `Graph.Outgoing` allokiert ein `int[]` pro Vertex und `faceEdges` eine `List<int>` pro Face (Punkt B4 im
+Abschnitt 10), und `RemoveCollinear` kopiert die Punktliste pro Sweep-Stück (Punkt B6).
+
+## 10. Was jetzt ansteht, nach Messung geordnet
 
 | # | Punkt | Erwartung | Warum jetzt |
 | --- | --- | --- | --- |
-| 1 | **`Triangulator2.ConvexParts`** — Ear-Clipping O(n²) über 107 k Punkte. | hoch | Die andere Hälfte der Extrusions-Zeit; die Face-Gruppierung aus Abschnitt 8 hat sie nicht berührt. |
-| 2 | **Die 214 656 Seitenwand-Faces.** Sie folgen der Involute und sind nicht koplanar — echte Geometrie. Verkürzen ließe sie sich nur mit mehr Segmenten, das ist eine Toleranz-Entscheidung, keine Performance. | — | Als Profil-Auflösung zu behandeln, nicht als Kernel-Problem. |
-| 3 | **B1: Bandindex für `FindSplitPoints`** (`BooleanKernel.cs:227-239`). Die Doppelschleife filtert nur über x und y, also Faktor ~√n; ein 1-D-Bandindex über `y0` bringt Faktor 10–500. | sehr hoch im 2D-Kern | Treibt die 39 GB Allokation im Gear-Szenario. Größter verbleibender Einzelposten. |
-| 4 | **B3: `FaceMerge` inkrementell** (`FaceMerge.cs:29-79`). `touched[i]` erzwingt *k*−1 Pässe für einen Streifen aus *k* Stücken, jeder Pass baut das 48-Byte-Key-Dict neu. Vertex-IDs statt Geometrie-Keys machen den Schlüssel 8 Byte. | hoch | 53 Pässe pro Boolean gemessen. |
-| 5 | **C1: exakte Ganzzahl-Translation.** `Process3.cs:135` → `Solid.Transform` rechnet pro Dreieck `Plane3.FromPoints` + binären GCD; `v' = v + t`, `d' = d − n·t` wäre exakt und O(Vertices). | mittel-hoch | Betrifft den Translations-Fastpath, also den G-Code-Pfad der Demo. |
-| 6 | **D1: exakter Face-Sweep für Rotation.** Zwei-Posen-Hull übercutet linear in Δθ; ein Face-Sweep analog zum 2D-Kanten-Sweep würde die Abtastdichte stark senken. | hoch, aber groß | `docs/processes.md:199` benennt es selbst. Eigene Aufgabe. |
-| 7 | **B2: `Int384`** ohne `stackalloc`/`Span`, mit `Int128`-Fast-Path. `Int256` zeigt im selben Repo das richtige Muster. | offen | Nur sinnvoll, wenn der exakte Pfad teuer bleibt. Die Zähler sagen: 18,5 % der Seiten-Tests sind exakt, der Filter fällt 10 % der Fälle durch. |
-| 8 | **B7: `[MethodImpl(AggressiveInlining)]`** auf den heißen Blättern — im ganzen `src/` gibt es kein einziges. | 5–15 % auf prädikatlastigen Schleifen | Mechanisch, kein Architekturentscheid. |
-| 9 | **C2/C3/C4:** `Overlaps(Solid, Solid)` ist O(F) statt O(1) (`bounds[w]` existiert bereits); `BoundsNm` baut ein `Vec3[]` pro Vertex; feste `Batch = 8` ist semantisch frei, weil `(A\B)\C = A\(B∪C)`. | mittel | |
-| 10 | **A3: `Bvh3.cs:72` `stackalloc int[256]`** = 1 024 Byte Null-Memset pro Query bei einer tatsächlichen Tiefe von ~11. `[SkipLocalsInit]`. | niedrig | |
-| 11 | **A4: BVH liefert `List<Face3>`** statt `int[]`-Indizes; der Konsument dereferenziert jedes Face erneut, obwohl `_boxes` flach vorliegen. | mittel | |
+| 1 | **B4: Allokation im 2D-Kern.** `Graph.Outgoing` allokiert ein `int[]` pro Vertex, `faceEdges` eine `List<int>` pro Face (`BooleanKernel.cs:348`, `:384`). `counts`/`fill` als CSR-Prepass sind bereits da. | hoch | Nach dem gescheiterten B1 ist die Allokation der verbleibende 2D-Posten: 39,5 GB im Gear-Szenario. |
+| 2 | **`MergeConvex`** (`Triangulator2.cs:235-265`): eine `List<Vec2>` pro Dreieck, `owner.Keys.Where(...)` mit LINQ, `(Vec2, Vec2)`-Tuple-Keys. 363 ms nach dem Ear-Clipping-Fix, war der zweitgrößte Posten in `ConvexParts`. | mittel-hoch | Direkt nach dem Ohr-Test, gleiche Datei, mechanisch. |
+| 3 | **`Bridge`** (`Triangulator2.cs:113-139`): sortiert pro Loch das **gesamte** Brückenpolygon per `OrderBy` mit Lambda, und `otherHoles.Any(h => Blocked(v, mp, h.Points.ToArray()))` kopiert pro Kandidat jedes verbleibende Loch-Array. Bei 68 Löchern und 107 k Punkten ist das der nächste Kandidat. | mittel | Jetzt sichtbar, weil `EarClip` von 55 s auf 0,18 s gefallen ist. |
+| 4 | **`Triangulator2.ConvexParts`** selbst ist jetzt 544 ms; davon 363 s `MergeConvex`. Weitere Zersetzung des Ear-Clippings bringt nichts mehr. | — | Abgeschlossen, siehe Abschnitt 8. |
+| 5 | **B3: `FaceMerge` inkrementell** (`FaceMerge.cs:29-79`). `touched[i]` erzwingt *k*−1 Pässe für einen Streifen aus *k* Stücken, jeder Pass baut das 48-Byte-Key-Dict neu. Vertex-IDs statt Geometrie-Keys machen den Schlüssel 8 Byte. | hoch | 53 Pässe pro Boolean gemessen. |
+| 6 | **C1: exakte Ganzzahl-Translation.** `Process3.cs:135` → `Solid.Transform` rechnet pro Dreieck `Plane3.FromPoints` + binären GCD; `v' = v + t`, `d' = d − n·t` wäre exakt und O(Vertices). | mittel-hoch | Betrifft den Translations-Fastpath, also den G-Code-Pfad der Demo. |
+| 7 | **D1: exakter Face-Sweep für Rotation.** Zwei-Posen-Hull übercutet linear in Δθ; ein Face-Sweep analog zum 2D-Kanten-Sweep würde die Abtastdichte stark senken. | hoch, aber groß | `docs/processes.md:199` benennt es selbst. Eigene Aufgabe. |
+| 8 | **B2: `Int384`** ohne `stackalloc`/`Span`, mit `Int128`-Fast-Path. `Int256` zeigt im selben Repo das richtige Muster. | offen | Nur sinnvoll, wenn der exakte Pfad teuer bleibt. Die Zähler sagen: 18,5 % der Seiten-Tests sind exakt, der Filter fällt 10 % der Fälle durch. |
+| 9 | **B7: `[MethodImpl(AggressiveInlining)]`** auf den heißen Blättern — im ganzen `src/` gibt es kein einziges. | 5–15 % auf prädikatlastigen Schleifen | Mechanisch, kein Architekturentscheid. |
+| 10 | **C2/C3/C4:** `Overlaps(Solid, Solid)` ist O(F) statt O(1) (`bounds[w]` existiert bereits); `BoundsNm` baut ein `Vec3[]` pro Vertex; feste `Batch = 8` ist semantisch frei, weil `(A\B)\C = A\(B∪C)`. | mittel | |
+| 11 | **A3: `Bvh3.cs:72` `stackalloc int[256]`** = 1 024 Byte Null-Memset pro Query bei einer tatsächlichen Tiefe von ~11. `[SkipLocalsInit]`. | niedrig | |
+| 12 | **A4: BVH liefert `List<Face3>`** statt `int[]`-Indizes; der Konsument dereferenziert jedes Face erneut, obwohl `_boxes` flach vorliegen. | mittel | |
+| 13 | **B6: `RemoveCollinear`** kopiert die Punktliste und benutzt `RemoveAt` (O(n)-Memmove); `Process2.AddCcw` ruft es pro Sweep-Stück. | niedrig | |
 
 ## 8. Reproduktion
 
