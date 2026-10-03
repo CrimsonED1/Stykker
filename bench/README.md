@@ -213,6 +213,18 @@ Results, steady state, best of 3 (4 cores):
 
 Short tasks: C++ ahead by 1.3–2.3× (was up to 5.5×). Long tasks: NanoCut ahead by 1.5–1.7×.
 
+## GPU preview: where it stands (2026-10-04)
+
+One page over all eight result pages, answering "is the GPU faster than at the beginning" with the numbers rather than
+an impression — and the answer has two halves. On the *same* task (the 876 steps of `pocket-large`, 1024 × 768) the
+device costs **2.9 ms** against 2.4 ms at the start, because it now computes something richer (up to K material
+intervals per column instead of one height); the result is **7× more accurate** for it (−0.015 % against the exact
+kernel, was −0.106 %). What did get faster is where there was no number at all: 793 600 steps were not computable
+before (every column tested every step) and cost **2.7 ms** with a ball tool today, **65.8 ms** with a convex one; a
+million-point query went from 5.87 ms cold to 0.51 ms.
+
+> One-page result: [`results-2026-10-04-gpu-stand.html`](results-2026-10-04-gpu-stand.html), with links to all eight.
+
 ## GPU prototype: Z-map preview (2026-10-03)
 
 A preview of the same scene, not an exact solid: a height field over the workpiece (one height per cell) that every

@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NanoCut, Stand der GPU-Vorschau: schneller, wo vorher nichts lief</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one narrow technical sheet — the honest answer first, then what did get faster, then where the eight result pages live */
+:root {
+  --bg: #f3f5f6;
+  --paper: #ffffff;
+  --fg: #1b2328;
+  --muted: #5c6a73;
+  --rule: #d5dde1;
+  --steel: #8a99a3;
+  --accent: #c25a00;
+  --accent-soft: #f6e3d2;
+  --good: #1f7a4d;
+  --font-display: "Barlow Condensed", "Arial Narrow", sans-serif;
+  --font-body: "IBM Plex Sans", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #12171a; --paper: #1a2126; --fg: #e4eaed; --muted: #94a3ac; --rule: #2d373e;
+    --steel: #5d6c75; --accent: #f08a2c; --accent-soft: #3a2614; --good: #4cc08a; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #12171a; --paper: #1a2126; --fg: #e4eaed; --muted: #94a3ac; --rule: #2d373e;
+  --steel: #5d6c75; --accent: #f08a2c; --accent-soft: #3a2614; --good: #4cc08a; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--fg); font: 15px/1.55 var(--font-body); padding-inline: 16px; padding-block: 32px 48px; }
+.sheet { max-width: 920px; margin: 0 auto; background: var(--paper); border: 1px solid var(--rule); padding: clamp(20px, 4vw, 44px); display: grid; gap: 32px; }
+header { display: grid; gap: 10px; }
+.eyebrow { font: 500 12px/1 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+h1 { font: 700 clamp(30px, 5.4vw, 48px)/1.02 var(--font-display); letter-spacing: -.01em; margin: 0; text-wrap: balance; }
+h1 em { font-style: normal; color: var(--accent); }
+.lede { margin: 0; max-width: 64ch; color: var(--fg); }
+h2 { font: 600 22px/1.1 var(--font-display); letter-spacing: .01em; margin: 0 0 4px; text-wrap: balance; }
+.sub { margin: 0 0 16px; color: var(--muted); font-size: 13.5px; }
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1px; background: var(--rule); border: 1px solid var(--rule); }
+.kpi { background: var(--paper); padding: 14px 16px; display: grid; gap: 2px; }
+.kpi b { font: 600 34px/1 var(--font-display); font-variant-numeric: tabular-nums; }
+.kpi span { font-size: 13px; color: var(--muted); }
+.kpi.hl b { color: var(--accent); }
+.kpi.ok b { color: var(--good); }
+
+.bars { display: grid; gap: 10px; }
+.bar { display: grid; grid-template-columns: minmax(120px, 190px) 1fr; gap: 12px; align-items: center; }
+.bar .lab { font-size: 13.5px; line-height: 1.25; min-width: 0; }
+.bar .lab small { display: block; color: var(--muted); font: 12px var(--font-mono); }
+.track { position: relative; height: 26px; }
+.fill { height: 100%; background: var(--steel); display: flex; align-items: center; justify-content: flex-end; padding-right: 8px; min-width: 52px; }
+.fill.nc { background: var(--accent); }
+.fill.ok { background: var(--good); }
+.fill span { font: 500 12.5px var(--font-mono); font-variant-numeric: tabular-nums; color: var(--paper); }
+.axis { display: grid; grid-template-columns: minmax(120px, 190px) 1fr; gap: 12px; }
+.axis .ticks { display: flex; justify-content: space-between; font: 11px var(--font-mono); color: var(--muted); border-top: 1px solid var(--rule); padding-top: 4px; }
+
+.tablewrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; min-width: 620px; font-size: 13.5px; }
+th, td { padding: 7px 10px; text-align: right; border-bottom: 1px solid var(--rule); font-variant-numeric: tabular-nums; white-space: nowrap; }
+th:first-child, td:first-child { text-align: left; }
+thead th { font: 500 11.5px var(--font-mono); letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+td.scene { font-weight: 600; }
+td.win { color: var(--accent); font-weight: 600; }
+td.f { font-family: var(--font-mono); font-size: 12.5px; }
+td.ok { color: var(--good); font-weight: 600; }
+td a { color: inherit; }
+
+.cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 28px; }
+.cols > section { min-width: 0; }
+ul { margin: 0; padding-left: 18px; display: grid; gap: 7px; }
+li::marker { color: var(--muted); }
+.hw { width: 100%; border-collapse: collapse; font-size: 12.5px; min-width: 0; }
+.hw td { padding: 4px 8px 4px 0; border-bottom: 1px solid var(--rule); text-align: left; }
+.hw td:last-child { color: var(--muted); text-align: right; font-family: var(--font-mono); white-space: normal; }
+footer { border-top: 1px solid var(--rule); padding-top: 14px; font: 12px/1.6 var(--font-mono); color: var(--muted); }
+code { font: 12.5px var(--font-mono); background: var(--accent-soft); padding: 1px 4px; }
+</style>
+</head>
+<body>
+<main class="sheet">
+<header>
+<div class="eyebrow">Stykker NanoCut · Stand der GPU-Vorschau · 4. Oktober 2026</div>
+<h1>Auf derselben Aufgabe ist die GPU nicht schneller geworden — <em>dort, wo vorher nichts lief, ist sie es</em></h1>
+<p class="lede">Die kurze Antwort auf „sind wir mit der GPU inzwischen schneller als ganz am Anfang?": <b>nein und
+ja</b>, und die beiden Hälften gehören auseinander gehalten. Auf <em>derselben</em> Aufgabe — die 876 Schritte von
+<code>pocket-large</code> — kostet der heutige Stand <b>2,9 ms</b> Wand gegenüber 2,4 ms damals. Die GPU ist dort
+0,5 ms langsamer geworden, weil sie inzwischen etwas anderes rechnet: statt einer Höhe je Spalte bis zu K
+Materialintervallen. Dafür ist das Ergebnis <b>7-mal genauer</b> (−0,015 % statt −0,106 % gegen den exakten Kernel).
+Schneller geworden ist die GPU dort, wo es am Anfang <em>keine</em> Zahl gab: lange Programme. 793 600 Schritte waren
+anfangs nicht rechenbar, heute braucht die Kugel 3,4 ms und ein konvexes Werkzeug 65,8 ms.</p>
+</header>
+
+<div class="kpis">
+<div class="kpi hl"><b>2,9 ms</b><span>gegen 2,4 ms am Anfang — dieselbe Aufgabe, 0,5 ms langsamer, 7-mal genauer</span></div>
+<div class="kpi ok"><b>3,4 ms</b><span>für 793 600 Schritte mit Kugelwerkzeug; am Anfang nicht rechenbar (Spalten × Schritte)</span></div>
+<div class="kpi"><b>3515×</b><span>das konvexe Werkzeug auf der GPU gegen dasselbe Programm auf dem CPU-Backend</span></div>
+<div class="kpi"><b>0,51 ms</b><span>eine Million Punkte abfragen, mit Punktensatz auf dem Gerät — Runde 3</span></div>
+</div>
+
+<section>
+<h2>Die eine Zahl, die man nicht schönreden kann</h2>
+<p class="sub">Dieselbe Szene, dasselbe Werkzeugprogramm, 1024 × 768 Felder, 4 Intervalle je Spalte, Wartezait
+einschließlich aller Kopien. Der Z-Map-Stand ist der GPU-Prototyp vom 3. Oktober, der Dexel-Stand vom selben Tag und
+heute; beide Zeilen stammen aus derselben Messreihe, deshalb sind sie direkt vergleichbar.</p>
+<div class="tablewrap">
+<table>
+<thead><tr><th>Stand</th><th>Was eine Spalte speichert</th><th>CUDA-Wand</th><th>Restvolumen</th><th>gegen exakt</th></tr></thead>
+<tbody>
+<tr><td class="scene">Z-Map, Runde 1</td><td>eine Höhe</td><td>2,4 ms</td><td class="f">84 770,457226 mm³</td><td>−0,106 %</td></tr>
+<tr><td class="scene">Dexel, K = 4 (heute)</td><td>bis K Intervalle</td><td class="win">2,9 ms</td><td class="f">84 847,733837 mm³</td><td class="ok">−0,015 %</td></tr>
+<tr><td class="scene">exakter Kernel (CPU)</td><td>ein exakter Körper</td><td>—</td><td class="f">84 860,612637 mm³</td><td>0 %</td></tr>
+</tbody>
+</table>
+</div>
+<p class="sub" style="margin-top:12px">Das CPU-Backend derselben Vorschau braucht 261 ms (Dexel) bzw. 286 ms Kernel
+(Z-Map) — auch der Host ist hier rund 100-mal langsamer als die GPU. Gegen den <em>exakten</em> Kernel ist die
+Vorschau rund <b>1600-mal</b> schneller (4655 ms gegen 2,9 ms) und liegt 0,015 % daneben, wo sie am Anfang 0,106 %
+daneben lag. Das war der eigentliche Gewinn der letzten Tage, und er steht in keiner Zeitmessung.</p>
+</section>
+
+<section>
+<h2>Was wirklich schneller geworden ist</h2>
+<p class="sub">Drei Dinge, die es am Anfang nicht gab — alle auf <code>pocket-large</code> gemessen, nicht auf
+Modellrechnung.</p>
+<div class="bars">
+<div class="bar"><div class="lab">Abfrage heute<small>Punktensatz einmal hochgeladen, Runde 3</small></div><div class="track"><div class="fill ok" style="width:2.9%"><span>0,51 ms</span></div></div></div>
+<div class="bar"><div class="lab">Abfrage, vor Runde 3<small>jedes Mal neu senden</small></div><div class="track"><div class="fill" style="width:12.6%"><span>2,20 ms</span></div></div></div>
+<div class="bar"><div class="lab">dieselbe Abfrage auf der CPU<small>Runde 2</small></div><div class="track"><div class="fill" style="width:19.9%"><span>3,47 ms</span></div></div></div>
+</div>
+<div class="axis" aria-hidden="true"><div></div><div class="ticks"><span>0 ms</span><span>1</span><span>2</span><span>3</span><span>3,5 ms</span></div></div>
+<div class="tablewrap" style="margin-top:22px">
+<table>
+<thead><tr><th>Was</th><th>Damals</th><th>Heute</th><th>Wer</th></tr></thead>
+<tbody>
+<tr><td class="scene">Volumen je Schritt</td><td>0,4 ms Kopie</td><td class="win">0,16 ms Reduktion auf dem Gerät</td><td>Runde 2</td></tr>
+<tr><td class="scene">Millionenpunkte</td><td>5,87 ms (kalt), 2,20 ms (warm)</td><td class="win">0,51 ms</td><td>Runde 3</td></tr>
+<tr><td class="scene">793 600 Schritte, Kugel</td><td>nicht rechenbar</td><td class="win">2,7 ms</td><td>Schritt 2</td></tr>
+<tr><td class="scene">793 600 Schritte, konvex</td><td>nicht rechenbar</td><td class="win">65,8 ms</td><td>Schritt 3</td></tr>
+</tbody>
+</table>
+</div>
+<p class="sub" style="margin-top:12px">„Nicht rechenbar" heißt: der Dexel-Kern hat damals <em>jede Spalte jeden
+Schritt</em> prüfen lassen. 793 600 Schritte über 160 000 Spalten wären 1,3 · 10¹¹ Schnitte gewesen. Heute sieht ein
+GPU-Block nur die Schritte, die seine Kachel erreichen — 2,7 ms statt 640,7 ms, ein Faktor 240, der über die
+Programmlänge stehen bleibt.</p>
+</section>
+
+<section>
+<h2>Und wo die GPU auch heute nicht schneller ist</h2>
+<p class="sub">Drei Einschränkungen, die in keiner Tabelle stehen, weil sie keine Zeitmessung sind.</p>
+<ul>
+<li><b>Die CPU ist für kleine Aufgaben schneller.</b> Eine Pose-Abfrage kostet 0,039 ms auf der CPU gegen 0,116 ms auf
+der GPU — alles Rundlaufzeit. Sie bleibt auf dem Host, bis ein Programm Millionen von Posen fragt.</li>
+<li><b>Die erste Vorschau eines Prozesses kostet 40–130 ms</b> CUDA-Start, bevor irgendetwas gerechnet wird. Für einen
+Server egal, für einen einmaligen Aufruf nicht.</li>
+<li><b>Die Antwort ist der Engpass, nicht die Rechnung.</b> Von den 0,51 ms der Millionenpunkte sind 0,42 ms der Rückweg
+der 4 MB Antwort. Wer die Höhe felder direkt rendern ließe, würde darunter kommen — das ist nicht gebaut.</li>
+</ul>
+</section>
+
+<section>
+<h2>Alle Ergebnisse an einem Ort</h2>
+<p class="sub">Acht Ergebnis-Seiten im <code>bench/</code>-Ordner, jede mit dem vollständigen Text; die Kurzfassung
+steht hier, die Langfassung in <code>docs/</code>.</p>
+<div class="tablewrap">
+<table class="hw">
+<tbody>
+<tr><td><a href="results-2026-10-02.html">results-2026-10-02.html</a> — Benchmark Oktober 2026, alle Szenen gegen Manifold C++</td><td>CPU</td></tr>
+<tr><td><a href="results-2026-10-02-round4.html">results-2026-10-02-round4.html</a> — Optimierungsrunde 4</td><td>CPU</td></tr>
+<tr><td><a href="results-2026-10-03-gpu.html">results-2026-10-03-gpu.html</a> — Z-Map-Vorschau auf der RTX 5070 Ti, Runde 1</td><td>GPU</td></tr>
+<tr><td><a href="results-2026-10-03-gpu-round2.html">results-2026-10-03-gpu-round2.html</a> — Read-back auf Zuruf, Batch-Abfragen, Volumen auf dem Gerät</td><td>GPU</td></tr>
+<tr><td><a href="results-2026-10-03-gpu-round3.html">results-2026-10-03-gpu-round3.html</a> — Ein Punktensatz, der bleibt</td><td>GPU</td></tr>
+<tr><td><a href="results-2026-10-03-long-programs.html">results-2026-10-03-long-programs.html</a> — Lange Programme: die Rechnung, die eine Vorschau ablösen soll</td><td>exakt</td></tr>
+<tr><td><a href="results-2026-10-04-long-programs-dexel.html">results-2026-10-04-long-programs-dexel.html</a> — Schritt 2: das Binning, das Spalten × Schritte ersetzt</td><td>GPU</td></tr>
+<tr><td><a href="results-2026-10-04-long-programs-convex.html">results-2026-10-04-long-programs-convex.html</a> — Schritt 3: was ein konvexes Werkzeug auf der GPU kostet</td><td>GPU</td></tr>
+</tbody>
+</table>
+</div>
+</section>
+
+<div class="cols">
+<section>
+<h2>Was die GPU heute kann</h2>
+<ul>
+<li>Die ganze 876-Schritte-Toolpath als Vorschau in <b>2,9 ms</b>, 0,015 % neben dem exakten Ergebnis.</li>
+<li>Ein <b>793 600-Schritte-Programm</b> in 3,4 ms (Kugel) bis 65,8 ms (konvexes Werkzeug) — vorher nicht rechenbar.</li>
+<li><b>Beliebige konvexe Werkzeuge</b> auf einer Posenfolge, auch drehend, 16 Halbräume je Werkzeug.</li>
+<li>Ein <b>Millionenpunkte-Satz</b>, der einmal hochgeladen und dann beliebig oft abgefragt wird.</li>
+<li>Das abgetragene Volumen, <b>auf dem Gerät reduziert</b>, ohne Rückweg zum Host.</li>
+</ul>
+</section>
+<section>
+<h2>Was noch fehlt</h2>
+<ul>
+<li>Eine <b>Schleifvorschau</b> (Schritt 4) und die <b>Zahnradvorschau</b> (Schritt 5) — die Werkzeuge sind da, die
+Programme fehlen noch.</li>
+<li>Die <b>Anbindung an den Servermodus</b> (Schritt 6), damit die Vorschau in der Demo läuft.</li>
+<li>Eine <b>günstigere Antwort</b>: der Rückweg ist 0,42 von 0,51 ms. Halbe Präzision oder ein Renderer auf dem Gerät.</li>
+<li><b>CI baut den CUDA-Kernel nicht</b> — die <code>zmap.cu</code> wird nur lokal von nvcc übersetzt.</li>
+</ul>
+</section>
+</div>
+
+<footer>
+Alle Zahlen von diesem Rechner (AMD Ryzen 7 5800X3D, RTX 5070 Ti 16 275 MiB, sm_120, CUDA 13.4, .NET 10), nicht aus
+den Cloud-Tabellen in <code>bench/README.md</code> — die beiden sind nicht vergleichbar. Quellen: Runde 1 bis 3 in
+<code>docs/gpu-findings.md</code>, die drei Langprogramm-Schritte in <code>docs/long-programs.md</code>, die Zeiten in
+<code>docs/performance.md</code>. Als Hochrechnung und als solche gekennzeichnet: die 793 600 Schritte auf dem
+CPU-Backend (~31 Minuten). Wo dieselbe Sache zweimal gemessen wurde, steht die neuere Messung; die CPU-Zeile der ersten
+Tabelle mischt deshalb zwei Quellen (261 ms Wand aus dem Dexel-Lauf, 286 ms Kernel aus Runde 1) und ist so beschriftet.
+</footer>
+</main>
+</body>
+</html>
