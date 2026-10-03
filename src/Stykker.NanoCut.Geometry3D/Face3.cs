@@ -34,7 +34,16 @@ internal sealed class Face3
             x0 = Math.Min(x0, v.X); y0 = Math.Min(y0, v.Y); z0 = Math.Min(z0, v.Z);
             x1 = Math.Max(x1, v.X); y1 = Math.Max(y1, v.Y); z1 = Math.Max(z1, v.Z);
         }
-        const double pad = 1.0; // nm; approximations of exact vertices are far more accurate
+        // The box must enclose the exact face, but a homogeneous vertex is only known through its double approximation
+        // X/W, which carries about four ulps of relative error. With the documented coordinate bound |c| <= 2^31 that is
+        // 2^31 * 4 * 2^-52 nm <= 1.9e-6 nm, so a pad of 1e-5 nm is a safe bound with a factor of five in hand.
+        //
+        // It used to be 1.0 nm -- five decades more than needed. Because neighbouring faces' boxes then overlapped by
+        // 2 nm, the BVH handed the candidate loop faces that Separated immediately discarded: the counters showed that
+        // only 55.5 % of the fetched candidates survived to a real test, so nearly half of the candidate work was
+        // induced by this constant alone. The pad is load-bearing in three places (the BVH query, the outside decision
+        // in SolidBoolean.ProcessFace and the split decision in Face3.Split), so it is derived, not guessed.
+        const double pad = 1e-5;
         Box = new Box3(x0 - pad, y0 - pad, z0 - pad, x1 + pad, y1 + pad, z1 + pad);
     }
 
@@ -93,21 +102,91 @@ internal sealed class Face3
               : Abs(support.Ny) >= Abs(support.Nz) ? 1 : 2;
         var edges = new Plane3[n];
         var verts = new Point3[n];
+        if (KernelStats.Counting)
+        {
+            var st = KernelStats.Mine;
+            st.HullFaces++;
+            st.HullFromGridEdges += n;
+        }
         for (int i = 0; i < n; i++)
         {
             Vec3 a = pts[i], b = pts[(i + 1) % n];
             if (a == b) throw new ArgumentException("Duplicate consecutive vertices.");
-            Vec3 off = k switch { 0 => new Vec3(a.X + 1, a.Y, a.Z), 1 => new Vec3(a.X, a.Y + 1, a.Z), _ => new Vec3(a.X, a.Y, a.Z + 1) };
-            var e = Plane3.FromPoints(a, b, off).Canonical();
-            // Interior on the negative side: test with a vertex not on this edge's line.
-            int side = 0;
-            for (int j = 0; j < n && side == 0; j++) side = Predicates.Side(e, pts[j]);
-            if (side > 0) e = e.Flipped();
+            var e = Plane3.EdgePlane(a, b, k);
+            int next = i + 1 == n ? 0 : i + 1, side = 0;
+            // Bounded convexity check. FromGrid is documented to take a convex polygon and has always taken that on
+            // trust: the side search stopped at the first vertex off the plane, so a polygon concave past that vertex
+            // produced a face whose plane held fewer corners than the polygon, silently. Full checking is O(n^2) per
+            // face, so only the first ConvexCheckLimit vertices are compared; this catches a careless caller, it does not
+            // prove convexity (a concave polygon whose first vertices lie in its kernel passes). A caller that needs the
+            // proof, like the coplanar merge in ConvexHull3.FacesFromTriangles, checks the whole loop itself.
+            int check = n <= ConvexCheckLimit ? n : ConvexCheckLimit;
+            for (int j = 0; j < check; j++)
+            {
+                if (j == i || j == next) continue;   // on the edge plane by construction
+                int s = Predicates.Side(e, pts[j]);
+                if (s == 0) continue;                // collinear vertices are allowed
+                if (side == 0) side = s;
+                else if (s != side) throw new ArgumentException("Face polygon is not convex.");
+            }
+            // The side itself is still searched over every vertex, as before the bounded check: a polygon whose first
+            // vertices all lie on this edge's line is not degenerate.
+            for (int j = check; j < n && side == 0; j++)
+                if (j != i && j != next) side = Predicates.Side(e, pts[j]);
             if (side == 0) throw new ArgumentException("Degenerate face.");
+            if (side > 0) e = e.Flipped();
             edges[i] = e;
             verts[i] = new Point3(a);
         }
         return new Face3(support, edges, verts);
+    }
+
+    /// <summary>How many vertices of a face polygon are tested for convexity (see the call site for why it is bounded).</summary>
+    private const int ConvexCheckLimit = 12;
+
+    /// <summary>
+    /// The single-triangle case. Identical to <see cref="FromGrid"/> on three points, but without allocating the
+    /// three-element array and without the interface-dispatched access -- this is one call per hull triangle, so it
+    /// dominates the hull's face-building phase when the hull is finely tessellated.
+    /// </summary>
+    public static Face3 FromTriangle(Vec3 a, Vec3 b, Vec3 c)
+    {
+        if (a == b || b == c || c == a) throw new ArgumentException("Duplicate consecutive vertices.");
+        var support = Plane3.FromPoints(a, b, c).Canonical();
+        int k = Abs(support.Nx) >= Abs(support.Ny) && Abs(support.Nx) >= Abs(support.Nz) ? 0
+              : Abs(support.Ny) >= Abs(support.Nz) ? 1 : 2;
+        Span<Vec3> v = [a, b, c];
+        var edges = new Plane3[3]
+        {
+            OrientedEdgePlane(Plane3.EdgePlane(a, b, k), v, 0),
+            OrientedEdgePlane(Plane3.EdgePlane(b, c, k), v, 1),
+            OrientedEdgePlane(Plane3.EdgePlane(c, a, k), v, 2),
+        };
+        if (KernelStats.Counting)
+        {
+            var st = KernelStats.Mine;
+            st.HullFaces++;
+            st.HullFromGridEdges += 3;
+        }
+        return new Face3(support, edges, [new Point3(a), new Point3(b), new Point3(c)]);
+    }
+
+    /// <summary>
+    /// Orients an edge plane so that the polygon interior is on its negative side. Vertices <c>i</c> and <c>i+1</c>
+    /// lie on the plane by construction, so the side search skips them: for a triangle that leaves one Int128 test
+    /// instead of three, and it never has to scan the whole polygon.
+    /// </summary>
+    private static Plane3 OrientedEdgePlane(Plane3 e, ReadOnlySpan<Vec3> pts, int i)
+    {
+        int n = pts.Length, next = i + 1 == n ? 0 : i + 1;
+        for (int j = 0; j < n; j++)
+        {
+            if (j == i || j == next) continue;
+            int side = Predicates.Side(e, pts[j]);
+            if (side > 0) return e.Flipped();
+            if (side < 0) return e;
+        }
+        throw new ArgumentException("Degenerate face.");
     }
 
     private static Int128 Abs(Int128 v) => v < 0 ? -v : v;
