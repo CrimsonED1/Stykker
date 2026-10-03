@@ -4,6 +4,14 @@ Open features and ideas, newest first. Each entry says what is wanted and which 
 
 ## Done
 
+- **Long programs, step 2: step binning for the ball dexel kernel** (`StepBins.cs`, `nc_dexel_apply_steps_binned`,
+  plan in [long-programs.md](long-programs.md)): the steps are binned on the host into tiles of 16 × 16 columns and a
+  block only sees the steps that reach its tile, so the dexel kernel no longer costs columns × steps. Measured on a
+  finishing pass of 793 600 steps over 160 000 columns: 2.7 ms kernel against 640.7 ms unbinned, a factor of ~240 that
+  holds across the program length. The binning is the host's O(steps) work and is itself the next limit above ~10⁶ steps
+  per call (18.9 ms of a 36.8 ms wall). Both launches return the same removed volume to the last digit; one page:
+  [results-2026-10-04-long-programs-dexel.html](../bench/results-2026-10-04-long-programs-dexel.html).
+
 - **Long programs, step 1: the baseline** (`bench/Stykker.NanoCut.LongPrograms`, plan in [long-programs.md](long-programs.md)):
   the two long programs on the exact kernel with time **and** result, so a preview has something to be checked against.
   Gear: 34.7 s at z = 20 with 1231.252941 mm², 209 089 swept pieces and 5.4 nm flank — the reference of
@@ -47,8 +55,19 @@ Open features and ideas, newest first. Each entry says what is wanted and which 
 
 ## Long programs – follow-ups
 
-Plan and log: [long-programs.md](long-programs.md). Step 1 (the baseline) is done; steps 2 to 6 are the preview itself.
+Plan and log: [long-programs.md](long-programs.md). Steps 1 (the baseline) and 2 (the step binning) are done; steps 3 to 6
+are the preview itself.
 
+- **The host-side binning is now the limit above ~10⁶ steps per call.** `StepBins.Build` is O(steps) and costs 18.9 ms
+  of a 36.8 ms wall at 793 600 steps — seven times the kernel it feeds. It is invisible at 25 000 steps and dominant
+  above a million, so step 3 has to decide how it goes away: coarser tiles (fewer, larger CSR entries per step), binning
+  on the device, or binning once per program instead of per call. Measuring it is `LongPrograms dexel`.
+- ~~**The binned launch gave a different result than the unbinned one.**~~ Fixed, and the fault was not where it looked:
+  the CSR was complete (no step that reaches a column missing) while 83 336 of 90 601 columns at 301 cells differed, because
+  `dexel_apply_column` read the CSR range as step indices where it is positions in `tileSteps`. It takes an optional
+  index list now. `StepBinsTests` (20 348 (step, column) pairs) and
+  `DexelMapTests.BinnedLaunchGivesTheSameBitsAsTheUnbinnedOne` (four map sizes, every column and interval compared bit
+  for bit) keep it that way.
 - **Why the 2D kernel slows the 3D kernel in the same process.** Measured, not explained: the 60-grain grinding case
   reads 200 ms in a fresh process, 352 ms after one 30 s gear case, 885 ms after the three gear cases of the full run.
   Ruled out: server GC (355 ms), `DOTNET_TieredCompilation=0` (411 ms), the machine (fresh process right after the same
@@ -60,8 +79,8 @@ Plan and log: [long-programs.md](long-programs.md). Step 1 (the baseline) is don
   code uses "three runs within 10 %, at least five". A cold pass of the 60-grain case takes 1.8 s, so the documented
   wording ended the loop after one pass and reported 938 ms instead of 200 ms. README corrected, `LongPrograms` uses the
   code's rule.
-- Steps 2 to 6 (binning by tile, convex tool + pose sequence in the dexel kernel, grinding preview, 2D gear preview,
-  into the server) are listed in [long-programs.md](long-programs.md).
+- Steps 3 to 6 (convex tool + pose sequence in the dexel kernel, grinding preview, 2D gear preview, into the server)
+  are listed in [long-programs.md](long-programs.md).
 
 ## GPU preview – follow-ups
 

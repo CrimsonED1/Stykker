@@ -106,6 +106,15 @@ internal static partial class CudaNative
     internal static partial int DexelApplySteps(nint dexel, ReadOnlySpan<float> steps, int stepCount,
         out double kernelMs, out double uploadMs);
 
+    /// <summary>
+    /// The same, but a tile of columns only sees the steps its part of the CSR assigns to it. <paramref name="tileStart"/>
+    /// holds tileCount + 1 offsets into <paramref name="tileSteps"/>, which carries the step indices of each tile.
+    /// </summary>
+    [LibraryImport(LibraryName, EntryPoint = "nc_dexel_apply_steps_binned")]
+    internal static partial int DexelApplyStepsBinned(nint dexel, ReadOnlySpan<float> steps, int stepCount,
+        ReadOnlySpan<int> tileStart, int tileCount, ReadOnlySpan<int> tileSteps, int tileStepCount,
+        out double kernelMs, out double uploadMs);
+
     /// <summary>Copies intervals, counts and the overflow count to the host.</summary>
     [LibraryImport(LibraryName, EntryPoint = "nc_dexel_read")]
     internal static partial int DexelRead(nint dexel, Span<float> intervals, Span<byte> counts, out long overflows,

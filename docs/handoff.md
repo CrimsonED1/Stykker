@@ -17,7 +17,7 @@ Newest entries at the top of "Log". Code, comments and docs in English; the user
 
 ```powershell
 dotnet build -c Release
-dotnet test -c Release                                   # 221 + 4 on d111193
+dotnet test -c Release                                   # 225 + 4 with step 2 of the long-program plan (221 + 4 on d111193)
 powershell -ExecutionPolicy Bypass -File src/Stykker.NanoCut.Gpu.Native/build.ps1   # nanocut_gpu.dll (nvcc 13.4 + VS 2022)
 dotnet build src/Stykker.NanoCut.Gpu -c Release          # copies the dll next to the managed assembly
 py -3 bench/run.py bench/scenes/pocket-large.json --engines nanocut --repeat 3   # exact kernel; writes bench/out/<scene>/expanded.json
@@ -25,6 +25,7 @@ dotnet build bench/Stykker.NanoCut.GpuBench -c Release
 dotnet bench/Stykker.NanoCut.GpuBench/bin/Release/net10.0/Stykker.NanoCut.GpuBench.dll bench/out/pocket-large/expanded.json --grids 512,1024,4096 --backends cpu,cuda --repeat 5 --reference 84860.612636583 --diff
 dotnet build bench/Stykker.NanoCut.LongPrograms -c Release
 dotnet bench/Stykker.NanoCut.LongPrograms/bin/Release/net10.0/Stykker.NanoCut.LongPrograms.dll all --teeth 10,20,40 --grains 60,240,960,1920 --out bench/out/long-programs   # ~4 min, grinding first
+dotnet bench/Stykker.NanoCut.LongPrograms/bin/Release/net10.0/Stykker.NanoCut.LongPrograms.dll dexel --repeat 2 --out bench/out/long-programs-dexel   # step binning, binned against unbinned
 dotnet run -c Release --project samples/Stykker.NanoCut.Server  # server mode, http://localhost:5180
 ```
 
@@ -41,13 +42,18 @@ not authorised: pull requests are opened by the user through the compare link
 
 ## Open items, in order
 
-1. **Long programs on the GPU** (main topic now): plan, steps and log in `docs/long-programs.md`. Work happens directly
-   on `main` (user's decision, 2026-10-03). **Step 1 is done**: `bench/Stykker.NanoCut.LongPrograms` measures both
-   programs on the exact kernel with time and result (gear 34.7 s at z = 20 with 1231.252941 mm² and 5.4 nm flank, 147.6 s
-   at z = 40; grinding 0.200 s at 60 grains up to 5.820 s at 1920), one page
-   `bench/results-2026-10-03-long-programs.html`. Next is step 2, binning the steps of the existing ball dexel/Z-map by
-   tile. One open question the baseline opened: after the 2D gear kernel the same 3D grinding case is up to 4.4× slower in
-   the same process (docs/todo.md, "Long programs – follow-ups") — the bench therefore measures grinding before gear.
+1. **Long programs on the GPU** (main topic now): plan, steps and log in `docs/long-programs.md`. The work is on the
+   branch `long-programs-step-1` (pushed), not on `main`. **Steps 1 and 2 are done.** Step 1,
+   `bench/Stykker.NanoCut.LongPrograms`, measures both programs on the exact kernel with time and result (gear 34.7 s at
+   z = 20 with 1231.252941 mm² and 5.4 nm flank, 147.6 s at z = 40; grinding 0.200 s at 60 grains up to 5.820 s at 1920),
+   one page `bench/results-2026-10-03-long-programs.html`. Step 2 bins the steps of the ball dexel kernel into tiles of
+   16 × 16 columns on the host and launches one block per tile: on a finishing pass of 793 600 steps over 160 000
+   columns the kernel costs 2.7 ms against 640.7 ms unbinned (~240×, and the same removed volume in both), one page
+   `bench/results-2026-10-04-long-programs-dexel.html`. Next is step 3, convex tool + pose sequence in the dexel kernel;
+   it has to decide what to do about the host-side binning, which is O(steps) and by then the larger half of the wall
+   (18.9 ms of 36.8 ms at 793 600 steps, docs/todo.md). One open question the baseline opened: after the 2D gear kernel
+   the same 3D grinding case is up to 4.4× slower in the same process (docs/todo.md, "Long programs – follow-ups") —
+   the bench therefore measures grinding before gear.
 2. Ideas for later, not started: a mesh of the dexel cavities for the viewer (today only the top surface); a dexel
    preview page in the demo/server (live preview of a G-code program with a CPU/CUDA switch); half-precision
    read-back for pictures (see docs/gpu-findings.md, "Not done").
@@ -85,6 +91,18 @@ Steps (tick when done):
 - [x] Docs: docs/gpu-findings.md "Dexel preview", bench/README.md "Dexel preview", this file.
 
 ## Log
+
+### 2026-10-04, Qwen
+
+- Step 2 of [long-programs.md](long-programs.md) done on `long-programs-step-1`: `StepBins.cs` (host CSR of the steps
+  per tile of 16 × 16 columns), `nc_dexel_apply_steps_binned` in `zmap.cu` (one block per tile), `CudaBackend.BinSteps`
+  and a `BinMs` on `ZMapTiming` so the host cost is reported apart from the kernel. New bench mode `dexel` measures the
+  binned against the unbinned launch on a finishing pass; 225 + 4 tests green.
+- The first binned kernel gave a wrong result although the CSR was complete: `dexel_apply_column` used the CSR range as
+  step indices where it indexes `tileSteps`. It takes an optional index list now (null for the unbinned launch), and
+  `StepBinsTests` + `DexelMapTests.BinnedLaunchGivesTheSameBitsAsTheUnbinnedOne` hold the line.
+- Measured: 793 600 steps over 160 000 columns cost 2.7 ms binned against 640.7 ms unbinned (~240×), same removed volume
+  to the last digit. The host-side binning (18.9 ms) is now the larger half of the binned wall and belongs to step 3.
 
 ### 2026-10-03, Qwen
 
