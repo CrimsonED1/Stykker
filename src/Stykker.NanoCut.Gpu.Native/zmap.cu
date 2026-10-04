@@ -837,10 +837,12 @@ constexpr int kConvexMove = 7;
 constexpr int kConvexRot = 11;
 
 /// <summary>Grown onto the swept box before a column is compared against it, so a column exactly on the boundary
-/// cannot be lost to the rounding of the box into a float. The host's StepBins tiles with the same margin, and it has
-/// to: the early-out that reads this box must never be stricter than the binning that put this thread here, or a
-/// column the binning counted would go uncut.</summary>
-constexpr float kConvexBoxMarginMm = 1e-6f;
+/// cannot be lost to the rounding of the box into a float. It is the same number as StepBins.MarginMm on the host and
+/// has to be: the early-out that reads this box must never be stricter than the binning that put this thread here, or a
+/// column the binning counted would go uncut. It is a separate literal because C++ and C# share no header here, so the
+/// two can drift and nothing here would notice; the test TheGrownPackedBoxAlwaysContainsTheExactOne is what pins the
+/// consequence, and ConvexKernelFindings' margin note says what the number has to outlast.</summary>
+constexpr float kConvexBoxMarginMm = 1e-4f;
 
 struct Dexel
 {
@@ -923,8 +925,10 @@ __device__ __forceinline__ bool convex_where(const float* __restrict__ below, in
             const float k = ai - above[2 * j], s = bi - above[2 * j + 1];
             // Whether the bound moves at all can be asked without dividing: for s > 0, -k/s lies under tHi exactly when
             // k + s·tHi >= 0, and for s < 0 it lies over tLo under the same form. So the division is only paid where t
-            // actually moves, and where it does the range still moves a ulop at a time. The test is >= and not >, so a
-            // pair whose crossing sits exactly on the end is narrowed as it was before rather than left alone.
+            // actually moves, and where it does the range still moves a ulop at a time. The test is >= and not >: at an
+            // exact tie the clamp is a no-op either way, so the two differ only where the computed sum lands on zero
+            // while the exact sum has not, and there >= keeps the clamp. Measured: no column of the octahedron-on-
+            // 0.1 mm-geometry differs between them over 1.3 million columns.
             if (s > 0.f) { if (k + s * tHi >= 0.f) tHi = fminf(tHi, -k / s); }
             else if (s < 0.f) { if (k + s * tLo >= 0.f) tLo = fmaxf(tLo, -k / s); }
             else if (k > 0.f) return false;   // parallel, and the lower one sits above the upper one
