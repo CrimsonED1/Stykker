@@ -283,7 +283,8 @@ int ProcessBench()
             var solid = Solid.Extrude(g2, 0, scene["extrudeMm"]?.GetValue<double>() ?? 10);
             return (solid.VolumeMm3, solid.ToMeshBuffers(OriginMode.Absolute).Indices.Length / 3, st.Intervals,
                     $"{st.Intervals} roll steps, profile vertices {g2.Contours.Sum(c => c.Count)}, " +
-                    $"contours {g2.Contours.Count}, extrude to {solid.FaceCount} faces");
+                    $"contours {g2.Contours.Count}, extrude to {solid.FaceCount} faces, " +
+                    $"pipeline {(Process2.Pipeline ? "on" : "off")}");
         }
 
         // process3

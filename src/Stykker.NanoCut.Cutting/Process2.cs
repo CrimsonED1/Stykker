@@ -19,6 +19,25 @@ public static class Process2
     /// <summary>Statistics of a process run.</summary>
     public sealed record Stats(int Intervals, int Pieces);
 
+    /// <summary>
+    /// Pieces per batch in <c>Cut</c>. A batch is united once and subtracted once, so its size trades the union's
+    /// superlinear cost in overlapping pieces against the subtract's cost in the result's loop count. Measured on
+    /// the gear case of docs/processes.md, 256 is the optimum from both sides: 128 costs 1.47x, 512 costs 1.27x
+    /// and 1024 costs 2.95x. Bigger batches do reach fewer result contours, but they lose more in the union than
+    /// they gain in the subtract.
+    /// </summary>
+    internal const int BatchPieces = 256;
+
+    /// <summary>
+    /// Whether <c>Cut</c> unites the next batch while it subtracts the current one. The two are independent — the
+    /// union reads only the swept pieces, the subtract only the result — so overlapping them costs the longer of
+    /// the two chains instead of their sum. Safe because the planar boolean kernel keeps no state outside its
+    /// arguments, and it costs no extra memory: one batch of lookahead is held either way. On the gear case it
+    /// turns 7.5 s of union and 23.1 s of subtract into 31.6 s against 26.7 s, short of the 23.2 s a free overlap
+    /// would give because both strands allocate heavily and contend for memory bandwidth.
+    /// </summary>
+    internal static bool Pipeline = true;
+
     /// <summary>Area swept by <paramref name="tool"/> under <paramref name="motion"/> (in the motion's frame).</summary>
     public static Region2 Sweep(Region2 tool, Motion2 motion, Tolerance? tol = null) =>
         Region2.UnionAll(SweepPieces(tool, motion, tol ?? Tolerance.Default, out _).Select(p => Region2.FromContours([new Contour2(p)])));
@@ -37,14 +56,38 @@ public static class Process2
         {
             if (result[w].Bounds is not { } b) continue;
             var relevant = pieces.Where(p => Overlaps(p, b)).ToList();
-            const int batch = 256;
-            for (int i = 0; i < relevant.Count; i += batch)
+            var batches = Chunks(relevant);
+            if (!Pipeline)
             {
-                var swept = Region2.UnionAll(relevant.Skip(i).Take(batch).Select(p => Region2.FromContours([new Contour2(p)])));
-                result[w] = result[w] - swept;
+                foreach (var batch in batches) result[w] = result[w] - Union(batch);
+                continue;
+            }
+            // One batch of lookahead: the union of batch i+1 runs while batch i is subtracted, so the wall time is
+            // the first union plus the longer of the two chains rather than their sum.
+            Task<Region2>? ahead = batches.Count > 0 ? Task.Run(() => Union(batches[0])) : null;
+            for (int i = 0; i < batches.Count; i++)
+            {
+                var pending = ahead!;
+                ahead = i + 1 < batches.Count ? Task.Run(() => Union(batches[i + 1])) : null;
+                result[w] = result[w] - pending.GetAwaiter().GetResult();
             }
         }
         return result;
+    }
+
+    private static Region2 Union(Vec2[][] batch) =>
+        Region2.UnionAll(batch.Select(p => Region2.FromContours([new Contour2(p)])));
+
+    /// <summary>
+    /// The pieces of <c>Cut</c> in batches of <see cref="BatchPieces"/>, in sweep order. Materialised up front
+    /// because the pipelined path hands a batch to a worker thread one step ahead of the subtract.
+    /// </summary>
+    private static List<Vec2[][]> Chunks(List<Vec2[]> pieces)
+    {
+        var batches = new List<Vec2[][]>(pieces.Count / BatchPieces + 1);
+        for (int i = 0; i < pieces.Count; i += BatchPieces)
+            batches.Add(pieces.GetRange(i, Math.Min(BatchPieces, pieces.Count - i)).ToArray());
+        return batches;
     }
 
     /// <summary>Single-workpiece convenience overload.</summary>
