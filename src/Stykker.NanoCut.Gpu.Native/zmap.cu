@@ -830,11 +830,17 @@ constexpr int kPlaneFloats = 4;
 /// <summary>Floats per packed convex step. Mirrors ConvexProfile.StepFloats.</summary>
 constexpr int kConvexStepFloats = 32;
 
-/// <summary>Offsets into a packed convex step: T_A, the move w, and then the rotation. The half-space count and the
-/// swept box that precede them are read by the host, not here.</summary>
+/// <summary>Offsets into a packed convex step: T_A, the move w, and then the rotation. The half-space count before
+/// them is read by the host; the swept box in the first four floats is read here, for the early-out.</summary>
 constexpr int kConvexFrom = 4;
 constexpr int kConvexMove = 7;
 constexpr int kConvexRot = 11;
+
+/// <summary>Grown onto the swept box before a column is compared against it, so a column exactly on the boundary
+/// cannot be lost to the rounding of the box into a float. The host's StepBins tiles with the same margin, and it has
+/// to: the early-out that reads this box must never be stricter than the binning that put this thread here, or a
+/// column the binning counted would go uncut.</summary>
+constexpr float kConvexBoxMarginMm = 1e-6f;
 
 struct Dexel
 {
@@ -988,6 +994,15 @@ __device__ __forceinline__ float convex_extremum(const float* __restrict__ g, in
 __device__ __forceinline__ bool convex_span(float x, float y, const float* __restrict__ p,
                                             const float* __restrict__ planes, int planeCount, float& low, float& high)
 {
+    // The swept body's own box, in the first four floats: the corner (x, y) and the size, both relative to the grid
+    // origin, which is the space x and y above are in. The binning hands a step to every tile of kDexelTile columns it
+    // touches, so a column in an assigned tile but outside the box runs the whole linear program below to be told
+    // "no" -- and for a tool smaller than a tile that is most of them. Four comparisons settle it, on the window the
+    // binning tiled with so that this cannot be stricter than the binning.
+    const float bx = p[0] - kConvexBoxMarginMm, by = p[1] - kConvexBoxMarginMm;
+    if (x < bx || y < by ||
+        x > bx + p[2] + 2 * kConvexBoxMarginMm || y > by + p[3] + 2 * kConvexBoxMarginMm) return false;
+
     const float ax = p[kConvexFrom], ay = p[kConvexFrom + 1], az = p[kConvexFrom + 2];
     const float wx = p[kConvexMove], wy = p[kConvexMove + 1], wz = p[kConvexMove + 2];
     const float r00 = p[kConvexRot], r01 = p[kConvexRot + 1], r02 = p[kConvexRot + 2];
