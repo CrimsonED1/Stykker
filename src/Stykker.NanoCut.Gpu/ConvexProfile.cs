@@ -178,6 +178,16 @@ internal static class ConvexProfile
     {
         int o = s * StepFloats;
         int m = (int)steps[o + CountOffset];
+
+        // The swept body's own box, the first four floats of the step, on the window StepBins tiles with. The binning
+        // hands a step to every tile of 16 columns it touches, so a column in an assigned tile but outside the box runs
+        // the whole linear program below to be told "no" -- and for a tool smaller than a tile that is most of them.
+        // Four comparisons settle it. Mirrors convex_span, and it cannot be stricter than the binning.
+        float bx = steps[o] - StepBins.MarginMm, by = steps[o + 1] - StepBins.MarginMm;
+        if (x < bx || y < by ||
+            x > bx + steps[o + 2] + 2 * StepBins.MarginMm || y > by + steps[o + 3] + 2 * StepBins.MarginMm)
+        { low = high = 0f; return false; }
+
         float ax = steps[o + FromOffset], ay = steps[o + FromOffset + 1], az = steps[o + FromOffset + 2];
         float wx = steps[o + MoveOffset], wy = steps[o + MoveOffset + 1], wz = steps[o + MoveOffset + 2];
         float r00 = steps[o + RotationOffset], r01 = steps[o + RotationOffset + 1], r02 = steps[o + RotationOffset + 2];
@@ -248,8 +258,13 @@ internal static class ConvexProfile
             {
                 // The pair reads ai + bi·t ≤ aj + bj·t, that is (ai − aj) + (bi − bj)·t ≤ 0.
                 float k = ai - above[2 * j], s = bi - above[2 * j + 1];
-                if (s > 0f) tHi = MathF.Min(tHi, -k / s);
-                else if (s < 0f) tLo = MathF.Max(tLo, -k / s);
+                // Whether the bound moves at all can be asked without dividing: for s > 0, -k/s lies under tHi exactly
+                // when k + s·tHi >= 0, and for s < 0 it lies over tLo under the same form. Mirrors convex_where, and
+                // keeps the narrowing a chain of min and max, so an ulop moves an end of the range by an ulop. >= and
+                // not >: at an exact tie the clamp is a no-op either way, and where the computed sum lands on zero
+                // while the exact one has not, >= keeps it.
+                if (s > 0f) { if (k + s * tHi >= 0f) tHi = MathF.Min(tHi, -k / s); }
+                else if (s < 0f) { if (k + s * tLo >= 0f) tLo = MathF.Max(tLo, -k / s); }
                 else if (k > 0f) return false;   // parallel, and the lower one sits above the upper one
             }
         }

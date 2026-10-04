@@ -23,8 +23,16 @@ internal static class StepBins
     /// <summary>Columns and rows per tile. One tile is one thread block, so this has to match the kernel's launch.</summary>
     internal const int Tile = 16;
 
-    /// <summary>Grown onto the box so a column exactly on the boundary cannot be lost to the rounding of a float.</summary>
-    private const float MarginMm = 1e-6f;
+    /// <summary>Grown onto the box so a column exactly on the boundary cannot be lost to the rounding of a float. The
+    /// margin has to outlast the coordinate's own float resolution, because that is what eats it: fl(c - margin) == c
+    /// as soon as ulp(c) exceeds twice the margin, which for 1e-6 mm is already the case at 32 mm, and - because the
+    /// rounding accumulates over the corner, the width and the two ends - the far edge falls inside the body already
+    /// at 17 mm. 1e-4 mm survives to about a metre and is a fifth of a 0.05 mm cell.
+    /// <para>
+    /// The convex early-out in <see cref="ConvexProfile.Span"/> compares a column against the same window, so it can
+    /// never be stricter than the binning that assigned the step to this column's tile.
+    /// </para></summary>
+    internal const float MarginMm = 1e-4f;
 
     /// <summary>Where the steps of a batch live, per tile.</summary>
     /// <param name="TileStart">Offsets into <paramref name="TileSteps"/>, tileCount + 1 of them.</param>
