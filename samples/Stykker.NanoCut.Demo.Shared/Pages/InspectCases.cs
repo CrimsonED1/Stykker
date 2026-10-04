@@ -90,7 +90,7 @@ public static class InspectCases
         [
             new("radius", "Rim radius", 5, 1, 200, 0.5, "µm"),
             new("chord", "Finest chord error", 1, 0.2, 100, 0.1, "nm"),
-            new("facets", "Facets around the rim", 64, 12, 64, 4),
+            new("facets", "Facets around the rim", 64, 12, 128, 4),
             new("z", "Thickness", 0.2, 0.05, 20, 0.05, "µm"),
         ],
         "flank" =>
@@ -201,8 +201,8 @@ public static class InspectCases
     /// a 1 nm grid can ask a circular surface to be, and invisible as a shape at any zoom you would want to look at.
     /// The coarsest is wide enough to see. Both are correct, and both are inside the budget.
     /// <para>
-    /// Verified for 32 and 64 facets; above that the widest facet stops matching its own sagitta, so the parameter is
-    /// capped at 64 until that is understood. See WideRimsDoNotYetHoldTheirChordError in the tests.
+    /// Verified for 32 to 128 facets, and deterministic across repeated runs in one process. More facets is not better
+    /// here: the count fixes how far the range reaches, because the widening factor is what has to close the turn.
     /// <para>
     /// The colour cannot be the radial distance of a vertex: the vertices of an inscribed polygon lie <em>on</em> the
     /// circle, up to half a nanometre of lattice rounding, so that would paint noise. The sagitta lives on the chord,
@@ -216,9 +216,18 @@ public static class InspectCases
         double rNm = rUm * 1000;
         if (sMinNm <= 0 || sMinNm >= rNm) throw new ArgumentOutOfRangeException(nameof(p), "chord");
 
-        // The facets must close the turn exactly: Σ δᵢ = 2π with δᵢ = δ₀·gⁱ. Solve for g by bisection; it is the one
+                // The facets must close the turn exactly: Σ δᵢ = 2π with δᵢ = δ₀·gⁱ. Solve for g by bisection; it is the one
         // number that decides how coarse the rim gets at the far end from the finest chord error and the facet count.
-        double dMin = 2 * Math.Acos(1 - sMinNm / rNm), target = 2 * Math.PI / dMin;
+        double dMin = 2 * Math.Acos(1 - sMinNm / rNm);
+
+        // Too many facets is a failure before the solving starts: n facets at the finest chord error already need
+        // more than a full turn, and widening only makes it longer, so no g closes it.
+        if (n * dMin > 2 * Math.PI)
+            throw new ArgumentOutOfRangeException(nameof(p), "facets",
+                $"{n} facets at a {sMinNm:0.###} nm chord error already span {n * dMin:0.###} rad of a rim that has "
+                + $"{2 * Math.PI:0.###}; no widening factor closes the turn. Use fewer facets or a larger chord error.");
+
+        double target = 2 * Math.PI / dMin;
         double glo = 1 + 1e-9, ghi = 8;
         for (int it = 0; it < 200; it++)
         {
@@ -226,6 +235,17 @@ public static class InspectCases
             if (sum < target) glo = g; else ghi = g;
         }
         double growth = (glo + ghi) / 2;
+
+        // A rim only reads as a rim while its widest facet stays shorter than the radius. Past a quarter turn the
+        // coarsest "facet" is a chord longer than the radius, and the picture stops being a rim that gets rougher and
+        // becomes a polygon that is missing sides. The widening factor is what has to close the turn, so this is the
+        // count that decides where the range ends — say so rather than draw something that is not the case.
+        double widest = dMin * Math.Pow(growth, n - 1);
+        if (widest > Math.PI / 2)
+            throw new ArgumentOutOfRangeException(nameof(p), "facets",
+                $"{n} facets on a rim of radius {rUm:0.##} µm would need a widest facet of {widest:0.###} rad; "
+                + "a rim stays a rim only while its widest facet is shorter than the radius, so use fewer facets "
+                + "or a smaller finest chord error.");
 
         var pts = new List<Vec2>();
         var widths = new List<(double DeltaRad, double SagittaNm, double FacetNm)>();

@@ -143,6 +143,13 @@ unabhängige Implementierung. <code>|Δ|</code> ist der gemessene Fehler, <code>
 <p class="note">Der Faktor 0,71 nm bei den Sehnenfacetten ist kein Haken, sondern die Herkunft: die beiden Endpunkte
 einer Sehne werden je auf halbe Nanometer gerundet, und das kann die Sehnengerade um bis zu √2/2 nm verschieben. Der
 Faktor bei der Zahnflanke ist der Bahnschritt — die Abweichung folgt ihm und ist kein Modellfehler.</p>
+<p class="note"><b>Eine Einschränkung, die es nicht gibt.</b> Der Rand ist deterministisch — dieselbe Konfiguration
+sechsmal in einem Prozess ergibt sechsmal dieselben Zahlen, bei 64 wie bei 128 Facetten. Das ist als Test festgeschrieben,
+weil ein Betrachter, der ohne Hinweis eine von mehreren möglichen Antworten zeigt, keiner ist. Die Grenze, die es
+gibt, ist eine andere und ist Absicht: die Facettenzahl legt fest, wie weit der Sehnenfehlerbereich reicht, weil der
+Verbreiterungsfaktor den Umlauf schließen muss. Zu viele Facetten sprengen den Umlauf schon bei der feinsten Sehne,
+und eine Zahl, die schließt, lässt die breiteste Facette länger als den Radius werden — das ist kein Rand, der
+rauher wird, sondern ein Vieleck, dem Seiten fehlen. Die Seite bietet deshalb bis 128 Facetten.</p>
 <p class="note"><b>Und diese eine Zeile ist keine Konstante.</b> Der 2D-Boolesche-Kern ist nachweislich keine reine
 Funktion: gleiche Eingabe, je nach Maschinenlast andere Ausgabe (<code>GearFlankFlakeFindings.md</code>, 4. Oktober
 2026). Für Zahnfiguren heißt das: die Flankenabweichung ist eine Stichprobe aus einer Verteilung, keine Eigenschaft.

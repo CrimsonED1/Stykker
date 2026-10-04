@@ -85,8 +85,7 @@ public class InspectCasesTests
     /// that distance is measured on the geometry, not read back from the request. The only slack is the lattice: the
     /// two endpoints of a chord are each rounded by half a nanometre, which can move the chord line by √2/2 nm.
     /// <para>
-    /// Verified for 32 and 64 facets, which is where the page's default sits. See
-    /// <see cref="ThePageOnlyOffersRimWidthsThatHoldTheirChordError"/> for why the page stops there.
+    /// Verified for 32 to 128 facets, which is the range the page offers.
     /// </para>
     /// </summary>
     [Theory]
@@ -94,6 +93,8 @@ public class InspectCasesTests
     [InlineData(0.5, 32)]
     [InlineData(1, 64)]
     [InlineData(0.2, 64)]
+    [InlineData(2, 64)]
+    [InlineData(1, 128)]
     public void EveryRimFacetLandsOnItsChordError(double chord, double facets)
     {
         var inspection = Build("facets", ("radius", 5), ("chord", chord), ("facets", facets), ("z", 0.2));
@@ -102,17 +103,46 @@ public class InspectCasesTests
     }
 
     /// <summary>
-    /// Known limitation, written down so it cannot be forgotten: above roughly a hundred facets the widest facet has
-    /// been observed to miss its own sagitta by an amount of the order of that sagitta, and the effect has not been
-    /// pinned down — 128 facets failed on one run and passed on the next, which is itself the reason to distrust the
-    /// range. The page's default (64) is inside the verified range, and the parameter is capped there so the page
-    /// cannot offer a number that is not known to hold.
+    /// A rim has to close, and it has to still look like a rim. Both ends are refused with a reason: too many facets
+    /// at the finest chord error need more than a full turn before any widening, and a count that does close leaves a
+    /// widest facet longer than the radius, which is a polygon missing sides rather than a rim that gets rougher.
     /// </summary>
     [Fact]
-    public void ThePageOnlyOffersRimWidthsThatHoldTheirChordError()
+    public void ARimThatCannotCloseOrNoLongerLooksLikeOneIsRefusedWithAReason()
     {
-        var param = InspectCases.ParamsFor("facets").Single(p => p.Key == "facets");
-        Assert.Equal(64, param.Max);
+        var tooMany = Assert.Throws<ArgumentOutOfRangeException>(
+            () => Build("facets", ("radius", 5), ("chord", 1), ("facets", 2000), ("z", 0.2)));
+        Assert.Contains("no widening factor closes the turn", tooMany.Message, StringComparison.Ordinal);
+
+        var tooFew = Assert.Throws<ArgumentOutOfRangeException>(
+            () => Build("facets", ("radius", 5), ("chord", 50), ("facets", 8), ("z", 0.2)));
+        Assert.Contains("shorter than the radius", tooFew.Message, StringComparison.Ordinal);
+
+        Assert.Equal(128, InspectCases.ParamsFor("facets").Single(p => p.Key == "facets").Max);
+    }
+
+    /// <summary>
+    /// The rim case must be a function of its arguments, like everything else in this library: the same case run six
+    /// times in one process has to give the same numbers, or the colour on the screen is showing one of several
+    /// answers without saying which. If this ever fails at a facet count, the fault is in the construction and the
+    /// chord check above is only telling the truth about one of the outcomes.
+    /// </summary>
+    [Theory]
+    [InlineData(64)]
+    [InlineData(128)]
+    public void TheRimGivesTheSameAnswerEveryTimeInOneProcess(double facets)
+    {
+        string first = Fingerprint(facets);
+        for (int i = 0; i < 5; i++) Assert.Equal(first, Fingerprint(facets));
+    }
+
+    /// <summary>Every number the case puts on screen, as one comparable string.</summary>
+    private static string Fingerprint(double facets)
+    {
+        var inspection = Build("facets", ("radius", 5), ("chord", 1), ("facets", facets), ("z", 0.2));
+        return string.Join(" | ",
+            inspection.Metrics.Select(m => $"{m.Label}={m.Value}"),
+            inspection.Checks.Select(c => $"{c.Name}:{c.Actual:R}:{c.Passed}"));
     }
 
     /// <summary>
