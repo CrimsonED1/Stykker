@@ -4,6 +4,29 @@ Open features and ideas, newest first. Each entry says what is wanted and which 
 
 ## Done
 
+- **Inspection: colour as the reading** (demo page *Inspection*, route `/inspect`, cases in `Pages/InspectCases.cs`,
+  tests in `tests/Stykker.NanoCut.Tests/InspectCasesTests.cs`): a measuring microscope for ground and formed models.
+  Every vertex is coloured by a measured quantity and drawn unlit, because a highlight would falsify a number; the
+  scale is fitted to what the run found, so a 1 nm case and a 100 nm case are both readable. Three cases: the 1 nm
+  staircase (axis-parallel, so the Boolean rounds nothing — measured 1,000000 … 100,000000 nm, deviation 0, 148
+  vertices on the grid), a rim whose facets widen by a constant factor from a 1 nm chord error up to the coarse end
+  (colour = the distance from the centre to the facet's chord, measured on the geometry — a per-vertex radial distance
+  cannot show it, because the vertices of an inscribed polygon lie *on* the circle), and the gear flank against the
+  involute. The viewer grows a scale bar in nm/µm/mm, the 1 nm lattice at a pitch that follows the zoom, the nominal
+  form as a curve on the top face, a data bar on the picture, and a click that reports the exact integer nanometre
+  from the server. Two bugs came out of driving the page on both engines: the Babylon scale bar was out by a factor of
+  ~60 (three.js states the field of view in degrees, Babylon in radians) and Babylon's pick never hit anything
+  (`scene.pick` returned a line mesh). A third came out of the gear case: **the exact 2D Boolean is not a pure
+  function** — see `GearFlankFlakeFindings.md` — so the flank deviation is a sample, and the page says so instead of
+  printing a constant. The case also refuses z < 18, because below z = 2/sin²α the flank is undercut and is not the
+  involute at all. German one-pager with the same numbers: `docs/overview.html`.
+
+- **Demo overview** (`Pages/Home.razor`, `Pages/PageIndex.cs`): "/" was a redirect into the first scene, so a newcomer
+  arrived mid-groove with no way to see what else existed. It is now an index — what this is, where to click, and what
+  it cannot do yet. The scene pages come from `SceneCatalog` and cannot go missing; the hand-written pages became
+  `PageIndex.All`, which the sidebar and the overview both read, so adding a page is one line in one file. Routes that
+  take minutes in WebAssembly rather than seconds are marked as such.
+
 - **Preview page: the exact kernel, a CPU preview and a GPU preview side by side** (`PreviewPage.razor`, the demo page
   *Preview: exact vs CPU vs GPU*, commits e2f4138 and 861c6eb): one program, cut two ways. The panel times both
   previews on the same height field and shows the exact cut once, as the reference they stand in for, with each
