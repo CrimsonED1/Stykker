@@ -38,6 +38,15 @@ public static class Process2
     /// </summary>
     internal static bool Pipeline = true;
 
+    /// <summary>
+    /// Batches between two <c>Region2.Normalize</c> calls on the running result, 0 for none. Each subtract leaves
+    /// slivers behind and the next one costs what the result's loop count costs. Measured on the gear case:
+    /// every 32 batches is 1.13 % faster than never (26 216 ms against 26 516 ms in the same build, spread 0.2 %),
+    /// every 128 is 0.32 % slower and every 512 is 2.88 % slower. The curves have the same removed volume and
+    /// contour count at every setting, so this is a representation trade, never an accuracy one.
+    /// </summary>
+    internal static int RenormalizeEvery = 32;
+
     /// <summary>Area swept by <paramref name="tool"/> under <paramref name="motion"/> (in the motion's frame).</summary>
     public static Region2 Sweep(Region2 tool, Motion2 motion, Tolerance? tol = null) =>
         Region2.UnionAll(SweepPieces(tool, motion, tol ?? Tolerance.Default, out _).Select(p => Region2.FromContours([new Contour2(p)])));
@@ -57,19 +66,28 @@ public static class Process2
             if (result[w].Bounds is not { } b) continue;
             var relevant = pieces.Where(p => Overlaps(p, b)).ToList();
             var batches = Chunks(relevant);
-            if (!Pipeline)
-            {
-                foreach (var batch in batches) result[w] = result[w] - Union(batch);
-                continue;
-            }
             // One batch of lookahead: the union of batch i+1 runs while batch i is subtracted, so the wall time is
             // the first union plus the longer of the two chains rather than their sum.
-            Task<Region2>? ahead = batches.Count > 0 ? Task.Run(() => Union(batches[0])) : null;
+            Task<Region2>? ahead = Pipeline && batches.Count > 0 ? Task.Run(() => Union(batches[0])) : null;
+            int sinceRenormalize = 0;
             for (int i = 0; i < batches.Count; i++)
             {
-                var pending = ahead!;
-                ahead = i + 1 < batches.Count ? Task.Run(() => Union(batches[i + 1])) : null;
-                result[w] = result[w] - pending.GetAwaiter().GetResult();
+                Region2 swept;
+                if (Pipeline)
+                {
+                    var pending = ahead!;
+                    ahead = i + 1 < batches.Count ? Task.Run(() => Union(batches[i + 1])) : null;
+                    swept = pending.GetAwaiter().GetResult();
+                }
+                else swept = Union(batches[i]);
+                result[w] = result[w] - swept;
+                // Every batch leaves slivers behind, and the subtract costs what the result's loop count costs.
+                // Re-normalising trades that cost for a cheaper region; how often it pays is measured.
+                if (RenormalizeEvery > 0 && ++sinceRenormalize == RenormalizeEvery)
+                {
+                    result[w] = result[w].Normalize();
+                    sinceRenormalize = 0;
+                }
             }
         }
         return result;

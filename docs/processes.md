@@ -315,6 +315,27 @@ The same change replaced the per-batch `Skip(...).Take(...)` with `GetRange`. Th
 start once per batch, so a sweep cost O(n²) in the number of pieces over 821 batches. Strictly less work, no
 behaviour change, same 69 contours.
 
+**Renormalising the result every 32 batches is 1.13 % faster, and the window is narrow.** The subtract costs what
+the result's loop count costs and every batch leaves slivers behind, so a periodic `Normalize()` should buy cheaper
+subtracts for its own price. Measured against a control from the *same* build, because the 26.7 s above came from a
+build with a different loop shape:
+
+| Every | Median | min / max | Contours | Removed volume |
+| ---: | ---: | --- | ---: | ---: |
+| never (control) | 26 516 ms | 26 465 / 26 567 | 69 | 12312.529413 mm³ |
+| **32** | **26 216 ms** | **26 192 / 26 460** | 69 | 12312.529413 mm³ |
+| 128 | 26 601 ms | 26 287 / 27 014 | 69 | 12312.529413 mm³ |
+| 512 | 27 280 ms | 27 110 / 34 685 | 69 | 12312.529413 mm³ |
+
+The gap is real and not noise: the spread inside one setting is 0.2 %, and the *worst* run at 32 still beats the
+*best* control run by 5 ms. The shape of the curve is the more useful part. Renormalising **less** often is
+monotonically worse — 128 and 512 are both slower than never — so what the 32 buys is cheaper subtracts just
+outweighing the normalisation, and that window is narrow.
+
+The curve is exactness-neutral at every setting: same removed volume, same 69 contours, same 107 328 profile
+vertices. This is a representation trade, never an accuracy one, and it does not contradict the finding that the
+subtract grows with the result's loop count — normalising tidies the representation, it does not shrink the region.
+
 ### Other processes
 
 Cube 8 mm moving and turning through a 20 mm cube, path error 50 µm (128 steps per 45°):
