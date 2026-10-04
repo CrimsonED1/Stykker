@@ -482,13 +482,93 @@ public class ConvexDexelTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public void TheGrownPackedBoxAlwaysContainsTheExactOne()
+    {
+        // The early-out and the binning both trust the packed box, and Pack rounds a box computed in double down into
+        // a float. The margin is what has to absorb that rounding, and it only absorbs it while the coordinate's own
+        // float resolution is finer than the margin: fl(c - margin) == c exactly once ulp(c) exceeds twice it, and
+        // past that the subtraction vanishes and the box can sit inside the body it is meant to contain. That is a
+        // property of the coordinate, not of the tool, so it is walked out to the far corner of maps of several sizes.
+        ConvexTool grain = ConvexTool.Octahedron(0.65);
+        double worstShort = 0, worstLong = 0;
+
+        foreach (double size in new[] { 20.0, 50.0, 100.0, 200.0, 1000.0 })
+        {
+            var origin = (X: 0.0, Y: 0.0, Z: 0.0);
+            var steps = new[]
+            {
+                new ConvexStep(Orientation3.AboutZ(0.3), (size - 3, size - 3, 10), (size - 1, size - 1, 11)),
+                new ConvexStep(Orientation3.AboutAxis(0.4, 1, 0, 0), (size - 2, size - 2, 9), (size - 2, size - 2, 9)),
+            };
+            float[] packed = ConvexProfile.Pack(steps, grain, origin);
+
+            for (int s = 0; s < steps.Length; s++)
+            {
+                var (loX, loY, hiX, hiY) = ExactBox(steps[s], grain.CornersMm, origin);
+                int o = s * ConvexProfile.StepFloats;
+                float grownLoX = packed[o] - StepBins.MarginMm, grownLoY = packed[o + 1] - StepBins.MarginMm;
+                float grownHiX = grownLoX + packed[o + 2] + 2 * StepBins.MarginMm;
+                float grownHiY = grownLoY + packed[o + 3] + 2 * StepBins.MarginMm;
+
+                worstShort = Math.Max(worstShort, grownLoX - loX);
+                worstShort = Math.Max(worstShort, grownLoY - loY);
+                worstLong = Math.Max(worstLong, hiX - grownHiX);
+                worstLong = Math.Max(worstLong, hiY - grownHiY);
+
+                Assert.True(grownLoX <= loX && grownLoY <= loY && grownHiX >= hiX && grownHiY >= hiY,
+                    $"a {size:F0} mm map, step {s}: the grown float box [{grownLoX:F9}, {grownHiX:F9}] x " +
+                    $"[{grownLoY:F9}, {grownHiY:F9}] does not contain the exact box [{loX:F9}, {hiX:F9}] x " +
+                    $"[{loY:F9}, {hiY:F9}]; the margin has been rounded away");
+            }
+        }
+
+        output.WriteLine($"margin {StepBins.MarginMm:E1} mm, maps to 1000 mm: the box overhangs its exact self by " +
+                         $"{worstShort:E1} mm at the near corner and is short by {worstLong:E1} mm at the far one");
+        Assert.True(worstLong <= 0 && worstShort <= 0, "a grown box that ends inside the body loses material");
+    }
+
+    /// <summary>
+    /// The box of the body one step sweeps, in double and without the packing: the tool's corners put through the
+    /// rotation, then through the position and both ends of the move. Deliberately a second implementation of what
+    /// <see cref="ConvexProfile.Pack"/> computes, because a test that recomputes it the same way can only confirm the
+    /// packing agrees with itself.
+    /// </summary>
+    private static (double LoX, double LoY, double HiX, double HiY) ExactBox(
+        ConvexStep step, IReadOnlyList<(double X, double Y, double Z)> corners, (double X, double Y, double Z) origin)
+    {
+        double loX = double.MaxValue, loY = double.MaxValue, hiX = double.MinValue, hiY = double.MinValue;
+        double wx = step.ToMm.X - step.FromMm.X, wy = step.ToMm.Y - step.FromMm.Y;
+        foreach (var (cx, cy, _) in corners)
+        {
+            var (rx, ry, _) = step.Orientation.Apply(cx, cy, 0);
+            for (int t = 0; t < 2; t++)
+            {
+                double f = t;
+                double x = step.FromMm.X + rx + f * wx - origin.X;
+                double y = step.FromMm.Y + ry + f * wy - origin.Y;
+                loX = Math.Min(loX, x); hiX = Math.Max(hiX, x);
+                loY = Math.Min(loY, y); hiY = Math.Max(hiY, y);
+            }
+        }
+        return (loX, loY, hiX, hiY);
+    }
+
+    [Fact]
     public void ATiltedToolThatTravelsAgreesWithTheExactCut()
     {
         // Where asks now whether the bound moves before it divides, and the pair loop only has a slope to ask about
-        // when the tool travels. This case is here for the combination the other ones do not have: a tilt about x by
-        // 0.3 rad and 4 mm of travel along y, which gives nLo = nHi = 2 and four pairs whose s is non-zero on both
-        // sides. Travelling along x instead would leave every dot at zero - w is parallel to the tilt's own axis -
-        // and the new branch would go unreached, so the direction of the travel is the point of the case.
+        // when the tool travels. This case gives it that: a tilt about x by 0.3 rad with 4 mm of travel along y, which
+        // is nLo = nHi = 2 and four pairs whose s is non-zero on both sides. Travelling along x instead would leave
+        // every dot at zero - w is parallel to the tilt's own axis - and the new branch would go unreached. Checked
+        // against the exact kernel on three grids.
+        // <para>
+        // What it does not do is pin the fire condition. Both ends of the interval come out at t = tLo = 0 in this
+        // geometry, so narrowing tHi changes nothing that is read: measured over all three grids, four wrong
+        // implementations of the rewrite - > for >=, the condition inverted, the two probes swapped, the sign of the
+        // term flipped - produce zero differing columns, and so do the two Process3 cases that turn a tool while it
+        // travels. The only test in the suite that separates them is CudaAgreesWithTheCpuReference, which needs a
+        // device, so on the CPU alone the rewrite is unverified.
+        // </para>
         ConvexTool tool = BoxTool(1, 2, 0.5);
         var from = (X: 10.0, Y: 6.0, Z: 10.0);
         var to = (X: 10.0, Y: 10.0, Z: 10.0);

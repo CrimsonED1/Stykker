@@ -43,10 +43,15 @@ the **premise** the early-out rests on, and it is a property of the geometry rat
 asserts the box rejects something, so it cannot pass vacuously: an octahedron grain on 0.1 mm cells gives 6400 binned
 pairs of which 768 reach the tool, **88.0 % rejected**. That share belongs to that tool on that grid.
 
-`ATiltedToolThatTravelsAgreesWithTheExactCut` covers the geometry the pair loop needs. `Where` only has a slope to ask
-about when the tool travels, and a tilt about x with travel along x leaves every dot at zero and the new branch
+`ATiltedToolThatTravelsAgreesWithTheExactCut` gives the pair loop the geometry it needs. `Where` only has a slope to
+ask about when the tool travels, and a tilt about x with travel along x leaves every dot at zero and the new branch
 unreached, so this case tilts 0.3 rad about x and travels 4 mm along y: `nLo = nHi = 2`, four pairs with `s` non-zero
 on both sides. Against the exact kernel on three grids: 26.0999 / 25.0970 / 25.0994 against 25.0993 mm³.
+
+**It does not, however, pin the fire condition, and this document said it did.** §7 records the correction: both ends of
+the interval come out at `t = tLo = 0` in that geometry, so narrowing `tHi` changes nothing that is read, and four
+wrong implementations of the rewrite produce zero differing columns. The only test that separates them is
+`CudaAgreesWithTheCpuReference`, which needs a device.
 
 The suite does check the sign rewrite rather than merely accompany it: inverting the comparison in
 `ConvexProfile.Where` alone, with the CUDA side untouched, makes `CudaAgreesWithTheCpuReference` fail at 8 planes with
@@ -153,8 +158,12 @@ What is left there is reading the step payload and comparing. So:
    difference between 8.3 and 4.4 ms not being the 88 % the geometry allows.
 3. **Lever D, the per-step preparation in shared memory.** Bounded by the 0.45 ms constant above. 256 bytes at m = 16,
    and the block already has 1.02 KB, so shared memory is not the constraint; the `__syncthreads()` per step is.
-4. **`CpuBackend`'s convex path is still columns × steps** and got no early-out worth naming — it now has the box test,
-   which is the same win the kernel got, but there is no bench for it. `LongPrograms convex` measures the device.
+4. **`CpuBackend`'s convex path is still columns × steps.** The early-out gives it the same shape of win the kernel got —
+  a miss costs four comparisons and a branch instead of the whole O(m³) program — but its asymptotics are unchanged and
+  **no measurement of the CPU-side win exists**. `LongPrograms convex` measures the device. Before anyone writes one:
+  `CpuBackend.ApplyConvexDexels` (`CpuBackend.cs:227-259`) has no pack stopwatch and returns a `ZMapTiming` whose
+  `PackMs` is 0, while `ApplyDexels` times its pack — so on the convex path the two `WallMs` columns would still cover
+  different spans, which is the whole reason `PackMs` exists.
 
 ## 6. Not done, and one thing that is not settled
 
@@ -168,12 +177,75 @@ What is left there is reading the step payload and comparing. So:
   19× cheaper than the convex path and was not worth the change.
 - No `ncu` section other than the metrics above, no roofline, no occupancy work. The launch configuration is 56
   registers and a 16 × 16 block, which is fixed by the tile.
-- The verifier agent for both commits is listed in the commit message of `f950cee` as outstanding; its findings are
-  appended below when it lands.
 
 ---
 
-## 7. Reproducing
+## 7. What the verifier found, and the one defect it was right about
+
+A read-only verifier agent went over `cc1fbc6` and `f950cee` afterwards. Most of it confirmed what §2 and §3 say, and
+three things in it were wrong on my side. They are recorded here rather than folded away.
+
+### 7.1 The margin was too small, and that is a defect `cc1fbc6` introduced
+
+`StepBins.MarginMm` was 1e-6 mm, and that number has to outlast the coordinate's own float resolution, because that is
+what eats it: `fl(c - margin) == c` as soon as `ulp(c)` exceeds twice the margin. For 1e-6 mm that is already the case
+at **32 mm** from the grid origin — and because the rounding accumulates over the corner, the width and the two ends,
+the far edge of the grown box falls *inside* the body already at 17 mm.
+
+`TheGrownPackedBoxAlwaysContainsTheExactOne` walks it out and fails on a **20 mm map**, the size this document's own
+bench runs at:
+
+```
+grown float box [17.349998474, 18.649999619] x [17.401308060, 18.598690033]
+exact       box [17.350000000, 18.650000000] x [17.401310354, 18.598689646]
+```
+
+The far x edge is 3.81e-7 mm short of the body. A column centre landing in that sliver would have been cut before
+`cc1fbc6` and is not cut with it, so the early-out could lose material. Fixed by raising the margin to **1e-4 mm** on
+both sides, which holds to about a metre and is a fifth of a 0.05 mm cell; the bench is unchanged at 4.2 ms and
+88.006673 mm³. The test recomputes the box in double independently, on purpose: a test that repeated `Pack`'s own
+arithmetic could only confirm that the packing agrees with itself.
+
+Note what was already exposed before `cc1fbc6`: `StepBins` had tiled with the same too-small margin since it was
+written, so a step whose box rounded inward could already have been left out of a tile. The early-out only made the
+box authoritative for correctness as well as for routing.
+
+### 7.2 Three claims of mine that do not hold
+
+- **The `>=` justification was a non-reason.** "A pair whose crossing sits exactly on the end is narrowed as it was
+  before" — at exact equality `min(tHi, tHi) = tHi`, so `>` and `>=` cannot differ there. They differ only where the
+  *computed* sum lands on exactly `0.0f` while the exact sum has not, and `>=` is then marginally the more faithful
+  choice. Measured: **0 of 1 312 500 columns** differ between the two. The choice is right, the reason was not, and
+  both comments now say the right reason.
+- **The tilted test does not pin the `Where` rewrite**, and §1.3 said it did. Four wrong implementations produce zero
+  differing columns on it and on both other `Process3` cases, for the reason in §1.3. The suite's actual witness is
+  `CudaAgreesWithTheCpuReference`, which is a CUDA-versus-CPU comparison and cannot run without a device — so on the
+  CPU alone the rewrite is unverified, and this document should not have implied otherwise.
+- **"Both sides read the margin, so the two windows cannot drift" is only true of the two C# sites.** The CUDA side has
+  its own literal, `kConvexBoxMarginMm`, because C++ and C# share no header here. The comment now says so plainly
+  instead of claiming a guarantee the build does not provide.
+
+### 7.3 What the verifier confirmed
+
+The binning window and the early-out window are **bit-identical** float expressions — same tree, same left
+association, and `2 * margin` is exact on both compilers — so they cannot round apart. The algebra of both `Where`
+branches is right, and it fires on a superset of the exact firing set, differing only at exact zero. The two backends
+still mirror each other statement for statement, including the early return; the two cosmetic asymmetries (the C# zeroes
+`low`/`high` where the kernel leaves them uninitialised) are harmless because the caller branches on the bool.
+
+### 7.4 One new exposure the verifier named
+
+`f950cee` makes `k + s·tHi` a **branch predicate**, and that is the first place in `Where` where nvcc's `-fmad=true`
+contraction can change an *outcome* rather than a last bit: `fma(s, tHi, k)` rounds once, RyuJIT's `k + s*tHi` twice,
+and when the exact sum sits within about half an ulop of zero they can take opposite branches — and the branch
+decides whether the range narrows. Before this commit the only float operation in `Where` was the division, which is
+correctly rounded and therefore identical on both sides. Measured rate: **0 of 107 252** pair evaluations differ on
+the new geometry; the general order is ~1e-9 per pair. Rare, new, and covered by nothing — it is the one CPU/CUDA
+disagreement class in the convex path that has no test behind it.
+
+---
+
+## 8. Reproducing
 
 ```
 powershell -ExecutionPolicy Bypass -File src\Stykker.NanoCut.Gpu.Native\build.ps1
