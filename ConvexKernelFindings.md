@@ -441,11 +441,28 @@ Ladungen pro Thread am Einstieg und `2·n` am Ausstieg, amortisiert über ~377 S
 
 **Die Messung, die alles entscheidet.**
 **[Agent]** `ncu --kernel-name regex:dexel_apply_binned_kernel` mit
-`smsp__throughput.avg.pct_of_peak_sustained_elapsed`, `smsp__inst_executed_pipe_alu.sum`,
+`sm__throughput.avg.pct_of_peak_sustained_elapsed`, `smsp__inst_executed_pipe_alu.sum`,
 `smsp__inst_executed_op_local_ld.sum`, `launch__registers_per_thread`, `launch__shared_mem_per_block`, dazu
 `cuobjdump -res-usage`. **Vier Zahlen entscheiden:** (1) Ist der Kernel issue-bound (> 50 %)? Dann zahlen §A–§D wie
 geschätzt. (2) Wie groß ist der Anteil der Lokalspeicher-Befehle? (3) Wie viele Register? (4) Wie viele Register hat
 der **Ball**-Kernel gegen den konvexen?
+
+**[geprüft, Nachtrag 2026-10-04]** Die sechs Namen oben sind an der Quelle geprüft, gegen
+`ncu --query-metrics --query-metrics-mode all` aus Nsight Compute 2026.3.0 auf einer GeForce RTX 5070 Ti
+(GB203), ergänzt um `--query-metrics-collection launch` für die beiden `launch__`-Namen. Gültig sind
+`smsp__inst_executed_pipe_alu.sum` und `smsp__inst_executed_op_local_ld.sum` (je 44 Suffixe, `.sum` ist
+enthalten) sowie `launch__registers_per_thread` und `launch__shared_mem_per_block` (nur in der
+Launch-Sammlung, ohne Suffix). **Falsch war nur `smsp__throughput.avg.pct_of_peak_sustained_elapsed`**:
+eine Familie `smsp__throughput` gibt es nicht, `sm__throughput` hat dagegen acht Suffixe, weshalb das Präfix
+oben korrigiert wurde. Für Frage (1) ist zusätzlich
+`sm__instruction_throughput.avg.pct_of_peak_sustained_elapsed` vorhanden und die treffendere Größe, weil
+„issue-bound" genau das beschreibt.
+
+**[zu messen, Nachtrag]** Die Messung selbst ist **nicht ausgeführt**, sie ist aber jetzt ausführbar: der
+Zugriff auf die GPU-Performance-Counter ist seit dem 2026-10-04 freigegeben (NVIDIA Control Panel,
+*Performance Counter Permissions*), vorher brach `ncu` mit `ERR_NVGPUCTRPERM` ab. Die Tabellen für
+Compute Capability 12.x bleiben leer, also wäre für Frage (3) und (4) `cuobjdump -res-usage` oder `ncu`
+der einzige Weg — beides steht noch aus.
 
 **[Agent — widerlegt, siehe §8]** Dessen Erklärung für `m^1.57` war, `nLo + nHi ≪ m`, weil viele Halbräume `|mz| ≈ 0`
 hätten und den `mz == 0`-Zweig nähmen.
