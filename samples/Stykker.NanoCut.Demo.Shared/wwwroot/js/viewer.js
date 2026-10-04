@@ -190,6 +190,8 @@ function fitRadius(box) {
 // ---------- scale bar ----------
 // A 1-2-5 length that always spans a readable part of the viewport. Without it a 1 nm step on a 20 mm part is an
 // image nobody can read, because the same picture also has to work at 20 mm.
+// `halfFov` is the half vertical field of view in RADIANS: three.js states its fov in degrees, Babylon in radians,
+// and mixing the two puts the bar out by a factor of ~60.
 function makeScaleBar(el) {
   const root = document.createElement('div');
   root.className = 'scalebar';
@@ -197,8 +199,10 @@ function makeScaleBar(el) {
   root.append(bar, label);
   el.appendChild(root);
   return {
-    update(worldPerPx, widthPx) {
-      if (!(worldPerPx > 0) || widthPx < 80) return;
+    update(distance, halfFov, heightPx, widthPx) {
+      if (!(heightPx > 0) || !(distance > 0) || !(halfFov > 0)) return;
+      const worldPerPx = 2 * distance * Math.tan(halfFov) / heightPx;
+      if (!(worldPerPx > 0)) return;
       const len = niceLength(worldPerPx, 70, Math.min(200, widthPx - 60));
       bar.style.width = (len / worldPerPx).toFixed(1) + 'px';
       label.textContent = fmtLength(len);
@@ -306,7 +310,7 @@ function createThree(el) {
     if (!running) return;
     controls.update();
     if (el.clientHeight > 0)
-      bar.update(2 * camera.position.distanceTo(controls.target) * Math.tan(camera.fov * Math.PI / 360) / el.clientHeight, el.clientWidth);
+      bar.update(camera.position.distanceTo(controls.target), camera.fov * Math.PI / 360, el.clientHeight, el.clientWidth);
     renderer.render(scene, camera);
     requestAnimationFrame(loop);
   })();
@@ -425,6 +429,9 @@ async function createBabylon(el) {
   scene.clearColor = B.Color4.FromHexString('#f4f5f7ff');
   const camera = new B.ArcRotateCamera('cam', 0, 1, 50, B.Vector3.Zero(), scene);
   camera.upVector = new B.Vector3(0, 0, 1);
+  // The three.js camera uses 32 degrees. Babylon defaults to 0.8 rad, which frames the same box wider, and a part
+  // that sits at a different place in the frame depending on the engine is not somewhere you can find yourself.
+  camera.fov = 32 * Math.PI / 180;
   camera.attachControl(canvas, true);
   camera.wheelPrecision = 20;
   const hemi = new B.HemisphericLight('hemi', new B.Vector3(0, 0, 1), scene);
@@ -445,10 +452,10 @@ async function createBabylon(el) {
   };
   const bar = makeScaleBar(el);
   engine.runRenderLoop(() => {
-    const h = engine.getRenderHeight();
+    const h = canvas.clientHeight;
     if (h > 0) {
-      const d = B.Vector3.Distance(camera.position, camera.getTarget());
-      bar.update(2 * d * Math.tan(camera.fov * Math.PI / 360) / h, canvas.clientWidth);
+      // ArcRotateCamera.fov is in radians, and it is the whole vertical angle, so the half is fov / 2.
+      bar.update(B.Vector3.Distance(camera.position, camera.getTarget()), camera.fov / 2, h, canvas.clientWidth);
     }
     scene.render();
   });
@@ -480,8 +487,14 @@ async function createBabylon(el) {
       }
     },
     pick(clientX, clientY) {
+      // scene.pick reads the engine's render size, not the CSS box, so a canvas rendered at another device ratio
+      // needs its coordinates scaled before they mean anything. The predicate keeps the line meshes (the nominal
+      // form, the lattice) out of the way: pick returns the closest hit, and a line system is not an answer.
       const rect = canvas.getBoundingClientRect();
-      const info = scene.pick(clientX - rect.left, clientY - rect.top);
+      const sx = engine.getRenderWidth() / Math.max(1, rect.width);
+      const sy = engine.getRenderHeight() / Math.max(1, rect.height);
+      const info = scene.pick((clientX - rect.left) * sx, (clientY - rect.top) * sy,
+                              (m) => m?.__nanocut?.kind === 'mesh');
       const o = info?.hit ? info.pickedMesh?.__nanocut : null;
       return o?.kind === 'mesh' ? nearestVertex(o, info.faceId, info.pickedPoint) : null;
     },
