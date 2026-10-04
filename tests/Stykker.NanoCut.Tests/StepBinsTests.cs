@@ -133,6 +133,13 @@ public class StepBinsTests(ITestOutputHelper output)
     /// The same completeness check for the convex layout, where the box comes from the swept polytope's corners
     /// instead of a radius. A step the binning loses leaves its columns uncut and the launch cannot report it, so the
     /// check runs against <see cref="ConvexProfile.Span"/>, the same evaluation the kernel applies.
+    /// <para>
+    /// Against a copy whose bounding boxes have been widened past the map, not against the packed steps.
+    /// <see cref="ConvexProfile.Span"/> now turns a column away on that box before it looks at a half-space, and the
+    /// binning reads the very same four floats -- so asking the packed steps would compare the box against itself and
+    /// pass even if the box were too small, which is the one thing this test exists to catch. Widening them puts the
+    /// answer back on the half-spaces, which is the independent side of the comparison.
+    /// </para>
     /// </summary>
     [Fact]
     public void EveryConvexStepThatReachesAColumnIsInThatColumnsTile()
@@ -144,6 +151,7 @@ public class StepBinsTests(ITestOutputHelper output)
         ConvexStep[] steps = WalkConvex(300, size);
         float[] packed = ConvexProfile.Pack(steps, tool, (0, 0, 0));
         float[] planes = ConvexProfile.PackPlanes(tool);
+        float[] oracle = BluntedSteps.WithoutBoundingBoxes(packed);
         StepBins.Bins bins = StepBins.Build(packed, ConvexProfile.StepFloats, convex: true, cells, cells, cellX, cellY);
 
         int missed = 0, reached = 0, extra = 0;
@@ -155,7 +163,7 @@ public class StepBinsTests(ITestOutputHelper output)
                 float y = (j + 0.5f) * cellY;
                 for (int i = 0; i < cells; i++)
                 {
-                    if (!ConvexProfile.Span((i + 0.5f) * cellX, y, packed, planes, s, out _, out _)) continue;
+                    if (!ConvexProfile.Span((i + 0.5f) * cellX, y, oracle, planes, s, out _, out _)) continue;
                     reached++;
                     if (!tiles[(j / StepBins.Tile) * bins.TilesX + i / StepBins.Tile]) missed++;
                 }

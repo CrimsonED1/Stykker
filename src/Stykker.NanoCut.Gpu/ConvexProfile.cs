@@ -64,7 +64,18 @@ internal static class ConvexProfile
     internal const int StepFloats = 32;
 
     /// <summary>Offset of the swept body's bounding box in x and y: (min x, min y, width, width).</summary>
-    private const int BoxOffset = 0;
+    internal const int BoxOffset = 0;
+
+    /// <summary>Grown onto that box before a column is tested against it, so a centre exactly on the boundary is not
+    /// lost to the rounding of a float. The same value as <c>StepBins.MarginMm</c> and <c>kConvexBoxMarginMm</c>.
+    /// <para>
+    /// It is not a tolerance that absorbs the whole float chain. The box is stored as independently rounded floats
+    /// and the consumer adds them, so a reconstructed edge sits a few ulps of the coordinate off -- past this margin
+    /// once the coordinates leave single-digit millimetres. That is inherited from the binning, which reads the same
+    /// four floats and reaches the same pairs, and no fixed margin absorbs it: see CudaLongProgramsFindings.md
+    /// §9.4.
+    /// </para></summary>
+    internal const float BoxMarginMm = 1e-6f;
 
     /// <summary>Offset of T<sub>A</sub>, relative to the grid origin.</summary>
     private const int FromOffset = 4;
@@ -177,6 +188,16 @@ internal static class ConvexProfile
         out float low, out float high)
     {
         int o = s * StepFloats;
+
+        // The step's own bounding box, grown by the margin, and the column centre against it. The swept body is the
+        // convex hull of the two endpoint positions and this box is that hull's, so a centre outside it cannot meet
+        // the body, and four comparisons replace the walk over every crossing below. The comparison is strict, so a
+        // centre exactly on the boundary still goes in. Same margin as the binning, so the two filters cannot part
+        // company over a column; see BoxMarginMm for what the margin does and does not absorb.
+        float boxX = steps[o + BoxOffset] - BoxMarginMm, boxY = steps[o + BoxOffset + 1] - BoxMarginMm;
+        float boxW = steps[o + BoxOffset + 2] + 2 * BoxMarginMm, boxH = steps[o + BoxOffset + 3] + 2 * BoxMarginMm;
+        if (x < boxX || x > boxX + boxW || y < boxY || y > boxY + boxH) { low = high = 0f; return false; }
+
         int m = (int)steps[o + CountOffset];
         float ax = steps[o + FromOffset], ay = steps[o + FromOffset + 1], az = steps[o + FromOffset + 2];
         float wx = steps[o + MoveOffset], wy = steps[o + MoveOffset + 1], wz = steps[o + MoveOffset + 2];

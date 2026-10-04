@@ -253,6 +253,61 @@ public class ConvexDexelTests(ITestOutputHelper output)
         Assert.False(At(12f, 10f, out _, out _));
     }
 
+    [Fact]
+    public void TheSweptBoxTurnsAwayNothingTheLinearProgramWouldAccept()
+    {
+        // Span rejects a column whose centre is outside the step's own bounding box before it walks the half-spaces at
+        // all. That is only sound if every point of the swept body lies inside that box, so this runs one program twice:
+        // as packed, and against a copy whose boxes have been widened past the map, which switches the early-out off
+        // and leaves the half-spaces to answer. The two must agree on every column of every step, and a box that is too
+        // small shows up right here as a column the blunt copy accepts and the real one rejects.
+        const int cells = 96;
+        const float size = 10f;
+        float cell = size / cells;
+        ConvexTool tool = ConvexTool.Ball(1.2, 12);
+        ConvexStep[] steps = Turn(tool, 3.0, (size / 2, size / 2, size / 2));
+        float[] packed = ConvexProfile.Pack(steps, tool, (0, 0, 0));
+        float[] blunt = BluntedSteps.WithoutBoundingBoxes(packed);
+        float[] planes = ConvexProfile.PackPlanes(tool);
+
+        int pairs = 0, hits = 0, byBox = 0;
+        for (int s = 0; s < steps.Length; s++)
+        {
+            for (int j = 0; j < cells; j++)
+            {
+                float y = (j + 0.5f) * cell;
+                for (int i = 0; i < cells; i++)
+                {
+                    float x = (i + 0.5f) * cell;
+                    bool on = ConvexProfile.Span(x, y, packed, planes, s, out float lo, out float hi);
+                    bool off = ConvexProfile.Span(x, y, blunt, planes, s, out float blo, out float bhi);
+                    pairs++;
+
+                    Assert.True(on == off, $"step {s}, column ({i}, {j}): the box says {on}, the half-spaces say {off}");
+                    if (!on)
+                    {
+                        // The two agreed on a miss, and the box is what decided it -- that pair is the work the
+                        // early-out saves, and it is what the count below measures.
+                        byBox++;
+                        continue;
+                    }
+                    hits++;
+                    // Both arms run the same arithmetic on the same pose and the same planes, so a hit has to come
+                    // back bit for bit, not merely close.
+                    Assert.Equal(blo, lo);
+                    Assert.Equal(bhi, hi);
+                }
+            }
+        }
+
+        output.WriteLine($"{steps.Length} steps, {pairs} (step, column) pairs, {hits} reach, {byBox} turned away");
+        // Both sides have to be substantial, or the comparison is quiet for a reason that has nothing to do with the box.
+        // A geometry where nothing reaches is as weak as one where everything does.
+        Assert.True(hits > 1_000, $"only {hits} of {pairs} pairs reach, the case is too weak");
+        Assert.True(byBox > pairs / 10, $"only {byBox} of {pairs} pairs are turned away, too weak to notice a box " +
+                                        "that is too small");
+    }
+
     // ---- the volumes, against closed forms ---------------------------------------------------------------
 
     [Fact]

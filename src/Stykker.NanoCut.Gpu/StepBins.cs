@@ -23,8 +23,10 @@ internal static class StepBins
     /// <summary>Columns and rows per tile. One tile is one thread block, so this has to match the kernel's launch.</summary>
     internal const int Tile = 16;
 
-    /// <summary>Grown onto the box so a column exactly on the boundary cannot be lost to the rounding of a float.</summary>
-    private const float MarginMm = 1e-6f;
+    /// <summary>Grown onto the box so a column exactly on the boundary cannot be lost to the rounding of a float. The
+    /// kernel's per-column early-out grows the same box by the same value, so the two filters cannot part company over
+    /// a column; that is why this is the one constant and not a second literal.</summary>
+    private const float MarginMm = ConvexProfile.BoxMarginMm;
 
     /// <summary>Where the steps of a batch live, per tile.</summary>
     /// <param name="TileStart">Offsets into <paramref name="TileSteps"/>, tileCount + 1 of them.</param>
