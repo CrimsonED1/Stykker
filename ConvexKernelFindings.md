@@ -458,11 +458,37 @@ oben korrigiert wurde. Für Frage (1) ist zusätzlich
 `sm__instruction_throughput.avg.pct_of_peak_sustained_elapsed` vorhanden und die treffendere Größe, weil
 „issue-bound" genau das beschreibt.
 
-**[zu messen, Nachtrag]** Die Messung selbst ist **nicht ausgeführt**, sie ist aber jetzt ausführbar: der
-Zugriff auf die GPU-Performance-Counter ist seit dem 2026-10-04 freigegeben (NVIDIA Control Panel,
-*Performance Counter Permissions*), vorher brach `ncu` mit `ERR_NVGPUCTRPERM` ab. Die Tabellen für
-Compute Capability 12.x bleiben leer, also wäre für Frage (3) und (4) `cuobjdump -res-usage` oder `ncu`
-der einzige Weg — beides steht noch aus.
+**[gemessen, 2026-10-04]** Die vier Zahlen sind gezogen, `ncu --kernel-name regex:dexel_apply` gegen
+`LongPrograms convex` (400 × 400 Spalten über 20 mm, 0,05-mm-Zellen, 4 Intervalle je Spalte, Werkzeug mit
+12 Halbräumen), GeForce RTX 5070 Ti (GB203), Nsight Compute 2026.3.0:
+
+| | konvex, gebinnt | konvex, ungebinnt |
+| --- | ---: | ---: |
+| Kernel | `dexel_apply_binned_kernel` | `dexel_apply_kernel` |
+| Register je Thread | **56** | **56** |
+| geteilt je Block | 1,02 KB | 1,02 KB |
+| `sm__throughput.avg.pct_of_peak_sustained_elapsed` | **65,28 %** | 69,59 % |
+| `smsp__inst_executed.sum` | 960 134 791 | 224 081 736 971 |
+| `smsp__inst_executed_op_local_ld.sum` | 28 720 225 | 5 220 498 145 |
+| Lokalspeicher-Anteil an den Befehlen | **2,99 %** | 2,33 % |
+
+**(1) Ja, issue-bound, mit 65 %** — die Bedingung, unter der §A–§D wie geschätzt zahlen, ist erfüllt.
+**(2)** Der Lokalspeicher ist **3 % der Befehle**: eine Größenordnung, nicht zwei, und das stützt §7.2
+gegen den Agenten, der einen "silent 10–100× penalty" vermutet hatte. **(3) 56 Register je Thread.**
+**(4)** Der **konvexe Pfad kostet null zusätzliche Register.** Beide `__global__`s sind derselbe
+kompilierte Kernel mit einem Laufzeit-Zweig, und die Registerzuteilung ist Eigenschaft des Kernels,
+nicht der Daten — jeder Start von `dexel_apply_kernel` nutzt dieselben 56, ob Ball oder konvex. Damit ist
+die Frage beantwortet, die §7.2 als "bisher nirgends notiert" offengelassen hatte.
+
+Daraus die Belegung, **unter der Annahme** von 65 536 Registern je SM (die Zahl steht in den Tabellen für
+compute capability 9.0; für 12.x sind sie leer, die Annahme ist also nicht aus der Doku belegt): 56 × 256 =
+14 336 Register je Block, damit **4 Blöcke je SM = 1024 Threads**. Die Warnung von §7.2 ist damit
+nachgerechnet statt behauptet: zwöngt auf 130 Register (die vollständige Promotion von `gLo`/`gHi`) käme
+man auf 33 280 Register je Block und **einen** Block je SM, also 16,7 % statt 66,7 % Belegung.
+
+Nebenbefund: das Binning zahlt auf dem konvexen Pfad noch deutlicher als auf dem Ball-Pfad — 65,6 ms
+gegen 422,4 ms bei der kleinsten Größe (Faktor 6,4), 59,3 ms gegen 13 812 ms bei der größten (Faktor
+233).
 
 **[Agent — widerlegt, siehe §8]** Dessen Erklärung für `m^1.57` war, `nLo + nHi ≪ m`, weil viele Halbräume `|mz| ≈ 0`
 hätten und den `mz == 0`-Zweig nähmen.
