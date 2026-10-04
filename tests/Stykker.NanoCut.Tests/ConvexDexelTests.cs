@@ -285,7 +285,19 @@ public class ConvexDexelTests(ITestOutputHelper output)
             }
         }
 
-        int hits = 0, pairs = 0;
+        // The linear program, with the early-out taken out of the way. Asking Span whether its own box test is right
+        // cannot work -- it returns false for a rejected column whether or not the rejection was correct -- so the box
+        // is blunted in a copy of the packed steps instead: a box so large that every column passes it, leaving the
+        // linear program to answer for itself. Only the early-out reads those four floats; the program reads the move,
+        // the position and the rotation after them.
+        float[] blunt = (float[])packed.Clone();
+        for (int s = 0; s < steps.Length; s++)
+        {
+            int o = s * ConvexProfile.StepFloats;
+            blunt[o] = -1e30f; blunt[o + 1] = -1e30f; blunt[o + 2] = 2e30f; blunt[o + 3] = 2e30f;
+        }
+
+        int hits = 0, pairs = 0, byBox = 0;
         for (int s = 0; s < steps.Length; s++)
         {
             int o = s * ConvexProfile.StepFloats;
@@ -297,7 +309,13 @@ public class ConvexDexelTests(ITestOutputHelper output)
                     if (!assigned[s * cells * cells + j * cells + i]) continue;
                     pairs++;
                     float x = (i + 0.5f) * cell, y = (j + 0.5f) * cell;
-                    if (!ConvexProfile.Span(x, y, packed, planes, s, out _, out _)) continue;
+                    if (!ConvexProfile.Span(x, y, packed, planes, s, out _, out _))
+                    {
+                        byBox++;
+                        Assert.False(ConvexProfile.Span(x, y, blunt, planes, s, out _, out _),
+                            $"step {s} rejects ({x:F3}, {y:F3}) on its box, but the linear program cuts it");
+                        continue;
+                    }
                     hits++;
                     Assert.InRange(x, bx, bx1);
                     Assert.InRange(y, by, by1);
@@ -310,7 +328,8 @@ public class ConvexDexelTests(ITestOutputHelper output)
         // to be non-zero.
         Assert.True(pairs > 4 * hits, $"{pairs} pairs for {hits} hits leaves nothing for the box to reject");
         output.WriteLine($"{steps.Length} steps, {pairs} (step, column) pairs binned, {hits} of them reach the tool, " +
-                         $"{100.0 * (pairs - hits) / pairs:F1} % rejected by the box");
+                         $"{byBox} of the rest turned away by the box and agreed by the linear program, " +
+                         $"{100.0 * byBox / pairs:F1} % rejected");
     }
 
     // ---- the volumes, against closed forms ---------------------------------------------------------------
