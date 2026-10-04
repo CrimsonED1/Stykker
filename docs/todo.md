@@ -222,10 +222,13 @@ From [gpu-findings.md](gpu-findings.md); nothing here blocks a preview, all of i
   bit-identical result, 5.0 s of the 7.5 s of union recovered and the rest lost to memory bandwidth between two
   allocating strands. The cost is that `Process2.Cut` is no longer implicitly single-threaded, which the server mode
   needs to know: *n* concurrent planar cuts take 2*n* threads. Second gear section in `docs/processes.md`.
-- **Renormalise the result every N batches.** The one of the three still open. The subtract costs what the result's
-  loop count costs and every batch leaves slivers behind in it; whether a periodic `Normalize()` collects them faster
-  than it costs is unmeasured. And do not judge a batching variant by volume — it moves in the eighth decimal with the
-  contour count, because the extrusion tessellates the decomposition. The flank is the gate.
+- ~~**Renormalise the result every N batches.**~~ Measured and shipped on 2026-10-04, at every 32 batches
+  (`Process2.RenormalizeEvery`): 26 216 ms against 26 516 ms for never, in the same build, where the spread inside
+  one setting is 0.2 % — the worst run at 32 still beats the best control run. The window is narrow, and the shape
+  says why: 128 and 512 are both *slower* than never, so renormalising less often does not merely stop paying, it
+  costs. Exactness-neutral at every setting — same removed volume, same 69 contours, same 107 328 profile
+  vertices. That closes the last of the three items in this block. And the warning on how to judge a batching
+  variant stays: not by volume, which moves in the eighth decimal with the contour count, but by the flank.
 
 ## Profile extraction – follow-ups
 
