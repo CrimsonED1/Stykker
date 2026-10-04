@@ -19,6 +19,17 @@
             </div>
         </header>
         <div id="viewport" class="viewport" @onclick="Pick">
+            @if (_inspection is { } shown)
+            {
+                @* The data bar a microscope puts on every image: what you are looking at, and with which settings. *@
+                <div class="samplelabel">
+                    <b>@shown.Name</b>
+                    @foreach (var p in Params)
+                    {
+                        <span>@p.Label @F(_values[p.Key])@(p.Unit == "" ? "" : " " + p.Unit)</span>
+                    }
+                </div>
+            }
             @if (_busy)
             {
                 <div class="busy"><div class="spinner"></div>Computing (@Runner.Where)…</div>
