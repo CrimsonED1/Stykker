@@ -921,8 +921,12 @@ __device__ __forceinline__ bool convex_where(const float* __restrict__ below, in
         {
             // The pair reads ai + bi·t ≤ aj + bj·t, that is (ai − aj) + (bi − bj)·t ≤ 0.
             const float k = ai - above[2 * j], s = bi - above[2 * j + 1];
-            if (s > 0.f) tHi = fminf(tHi, -k / s);
-            else if (s < 0.f) tLo = fmaxf(tLo, -k / s);
+            // Whether the bound moves at all can be asked without dividing: for s > 0, -k/s lies under tHi exactly when
+            // k + s·tHi >= 0, and for s < 0 it lies over tLo under the same form. So the division is only paid where t
+            // actually moves, and where it does the range still moves a ulop at a time. The test is >= and not >, so a
+            // pair whose crossing sits exactly on the end is narrowed as it was before rather than left alone.
+            if (s > 0.f) { if (k + s * tHi >= 0.f) tHi = fminf(tHi, -k / s); }
+            else if (s < 0.f) { if (k + s * tLo >= 0.f) tLo = fmaxf(tLo, -k / s); }
             else if (k > 0.f) return false;   // parallel, and the lower one sits above the upper one
         }
     }
