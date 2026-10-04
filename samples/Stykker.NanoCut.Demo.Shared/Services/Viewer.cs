@@ -6,6 +6,17 @@ using Stykker.NanoCut.Gpu;
 namespace Stykker.NanoCut.Demo.Services;
 
 /// <summary>
+/// A picked point: which object of the last <c>AddMesh</c> it belongs to, which triangle, and which vertex of that
+/// triangle sits nearest to the cursor. The vertex index is an index into the buffers that were sent, which is where
+/// the caller kept the exact nanometre coordinates.
+/// </summary>
+/// <param name="Object">Index of the mesh in the order it was added.</param>
+/// <param name="Name">Name that mesh was added under.</param>
+/// <param name="Triangle">Index of the triangle that was hit.</param>
+/// <param name="Vertex">Index of the vertex of that triangle nearest to the cursor.</param>
+public sealed record PickResult(int Object, string Name, int Triangle, int Vertex);
+
+/// <summary>
 /// Thin wrapper around wwwroot/js/viewer.js. Buffers are passed as raw bytes (Uint8Array), not JSON; in Blazor Server
 /// they travel the same way over the circuit. Calls after the browser went away (a closed tab on the server host) are
 /// dropped instead of throwing, so a page that is still finishing a step or disposing does not fault the circuit.
@@ -32,12 +43,27 @@ public sealed class Viewer(IJSRuntime js) : IAsyncDisposable
 
     public async Task Clear() => await Invoke("clear");
 
-    public async Task AddMesh(string name, MeshBuffers b, string color, double opacity) =>
+    /// <summary>
+    /// Adds a mesh. <paramref name="colors"/> is optional: three RGB floats per vertex, drawn unlit, so a colour that
+    /// carries a measurement is not shaded by the lighting. It must have one triple per buffer vertex.
+    /// </summary>
+    public async Task AddMesh(string name, MeshBuffers b, string color, double opacity, float[]? colors = null) =>
         await Invoke("addMesh", name,
             MemoryMarshal.AsBytes(b.Positions.AsSpan()).ToArray(),
             MemoryMarshal.AsBytes(b.Normals.AsSpan()).ToArray(),
             MemoryMarshal.AsBytes(b.Indices.AsSpan()).ToArray(),
-            color, opacity);
+            color, opacity,
+            colors is null ? null : MemoryMarshal.AsBytes(colors.AsSpan()).ToArray());
+
+    /// <summary>
+    /// Picks the mesh vertex nearest to a point of the viewport, given in browser coordinates. Null when the ray
+    /// missed every mesh.
+    /// </summary>
+    public async Task<PickResult?> Pick(double clientX, double clientY)
+    {
+        try { return await (await Module()).InvokeAsync<PickResult?>("pick", clientX, clientY); }
+        catch (JSDisconnectedException) { return null; }
+    }
 
     /// <summary>
     /// Adds the top surface of a preview height field. The buffers go straight through: a <see cref="ZMapMesh"/>
