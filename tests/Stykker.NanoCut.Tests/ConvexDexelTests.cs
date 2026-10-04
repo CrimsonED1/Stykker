@@ -253,6 +253,66 @@ public class ConvexDexelTests(ITestOutputHelper output)
         Assert.False(At(12f, 10f, out _, out _));
     }
 
+    [Fact]
+    public void EveryColumnAStepReachesIsInsideItsOwnBox()
+    {
+        // The early-out in Span and in convex_span settles a column against the step's own bounding box before it runs
+        // the linear program. That is only allowed if the box contains every column the sweep reaches, so this walks
+        // exactly the (step, column) pairs the binned launch hands to the kernel -- StepBins decides which tiles a step
+        // belongs to -- and judges every hit against the box the packing wrote. The premise, not the code using it.
+        ConvexTool grain = ConvexTool.Octahedron(0.65);          // a grinding grain, 1.3 mm across
+        float[] planes = ConvexProfile.PackPlanes(grain);
+        ConvexStep[] steps =
+        [
+            .. Turn(grain, 0.2, (10, 10, 10), tolMm: 0.0005),   // turning where it stands
+            new ConvexStep(Orientation3.AboutZ(0.4), (9, 9, 10), (11, 11, 10)),   // and travelling while it turns
+        ];
+        float[] packed = ConvexProfile.Pack(steps, grain, (0, 0, 0));
+
+        const int cells = 200;                                    // 20 mm of map at 0.1 mm cells
+        const float cell = 0.1f;
+        var bins = StepBins.Build(packed, ConvexProfile.StepFloats, true, cells, cells, cell, cell);
+        var assigned = new bool[steps.Length * cells * cells];
+        for (int t = 0; t < bins.TileCount; t++)
+        {
+            int tx = t % bins.TilesX, ty = t / bins.TilesX;
+            for (int q = bins.TileStart[t]; q < bins.TileStart[t + 1]; q++)
+            {
+                int s = bins.TileSteps[q];
+                for (int j = ty * StepBins.Tile; j < Math.Min((ty + 1) * StepBins.Tile, cells); j++)
+                    for (int i = tx * StepBins.Tile; i < Math.Min((tx + 1) * StepBins.Tile, cells); i++)
+                        assigned[s * cells * cells + j * cells + i] = true;
+            }
+        }
+
+        int hits = 0, pairs = 0;
+        for (int s = 0; s < steps.Length; s++)
+        {
+            int o = s * ConvexProfile.StepFloats;
+            float bx = packed[o] - StepBins.MarginMm, by = packed[o + 1] - StepBins.MarginMm;
+            float bx1 = bx + packed[o + 2] + 2 * StepBins.MarginMm, by1 = by + packed[o + 3] + 2 * StepBins.MarginMm;
+            for (int j = 0; j < cells; j++)
+                for (int i = 0; i < cells; i++)
+                {
+                    if (!assigned[s * cells * cells + j * cells + i]) continue;
+                    pairs++;
+                    float x = (i + 0.5f) * cell, y = (j + 0.5f) * cell;
+                    if (!ConvexProfile.Span(x, y, packed, planes, s, out _, out _)) continue;
+                    hits++;
+                    Assert.InRange(x, bx, bx1);
+                    Assert.InRange(y, by, by1);
+                }
+        }
+
+        Assert.True(hits > 100, $"{hits} hits over {pairs} pairs is not the walk this needs to mean anything");
+        // And the early-out is not dead code: a grain 13 columns across sits in a tile 16 wide, so the binning hands the
+        // kernel most of the tile and the box throws it away again. The share is a measurement, so it is only here
+        // to be non-zero.
+        Assert.True(pairs > 4 * hits, $"{pairs} pairs for {hits} hits leaves nothing for the box to reject");
+        output.WriteLine($"{steps.Length} steps, {pairs} (step, column) pairs binned, {hits} of them reach the tool, " +
+                         $"{100.0 * (pairs - hits) / pairs:F1} % rejected by the box");
+    }
+
     // ---- the volumes, against closed forms ---------------------------------------------------------------
 
     [Fact]

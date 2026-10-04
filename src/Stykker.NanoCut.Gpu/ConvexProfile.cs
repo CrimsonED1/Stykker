@@ -178,6 +178,16 @@ internal static class ConvexProfile
     {
         int o = s * StepFloats;
         int m = (int)steps[o + CountOffset];
+
+        // The swept body's own box, the first four floats of the step, on the window StepBins tiles with. The binning
+        // hands a step to every tile of 16 columns it touches, so a column in an assigned tile but outside the box runs
+        // the whole linear program below to be told "no" -- and for a tool smaller than a tile that is most of them.
+        // Four comparisons settle it. Mirrors convex_span, and it cannot be stricter than the binning.
+        float bx = steps[o] - StepBins.MarginMm, by = steps[o + 1] - StepBins.MarginMm;
+        if (x < bx || y < by ||
+            x > bx + steps[o + 2] + 2 * StepBins.MarginMm || y > by + steps[o + 3] + 2 * StepBins.MarginMm)
+        { low = high = 0f; return false; }
+
         float ax = steps[o + FromOffset], ay = steps[o + FromOffset + 1], az = steps[o + FromOffset + 2];
         float wx = steps[o + MoveOffset], wy = steps[o + MoveOffset + 1], wz = steps[o + MoveOffset + 2];
         float r00 = steps[o + RotationOffset], r01 = steps[o + RotationOffset + 1], r02 = steps[o + RotationOffset + 2];
