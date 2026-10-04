@@ -463,6 +463,29 @@ public class ConvexDexelTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public void ATiltedToolThatTravelsAgreesWithTheExactCut()
+    {
+        // Where asks now whether the bound moves before it divides, and the pair loop only has a slope to ask about
+        // when the tool travels. This case is here for the combination the other ones do not have: a tilt about x by
+        // 0.3 rad and 4 mm of travel along y, which gives nLo = nHi = 2 and four pairs whose s is non-zero on both
+        // sides. Travelling along x instead would leave every dot at zero - w is parallel to the tilt's own axis -
+        // and the new branch would go unreached, so the direction of the travel is the point of the case.
+        ConvexTool tool = BoxTool(1, 2, 0.5);
+        var from = (X: 10.0, Y: 6.0, Z: 10.0);
+        var to = (X: 10.0, Y: 10.0, Z: 10.0);
+        var motion = Motion3.Between(
+            Pose3.Rotation(0.3, 1, 0, 0, Vec3.Mm(from.X, from.Y, from.Z)) with
+            { TxNm = (long)(from.X * 1e6), TyNm = (long)(from.Y * 1e6), TzNm = (long)(from.Z * 1e6) },
+            Pose3.Rotation(0.3, 1, 0, 0, Vec3.Mm(from.X, from.Y, from.Z)) with
+            { TxNm = (long)(to.X * 1e6), TyNm = (long)(to.Y * 1e6), TzNm = (long)(to.Z * 1e6) });
+        var steps = new[]
+        {
+            new ConvexStep(Orientation3.AboutAxis(0.3, 1, 0, 0), (from.X, from.Y, from.Z), (to.X, to.Y, to.Z)),
+        };
+        ThreeGrids(BoxSolid(1, 2, 0.5), motion, tool, steps);
+    }
+
+    [Fact]
     public void ARotatingToolAgreesWithTheExactCut()
     {
         // A turn about z on a wheel that also travels: every step carries its own orientation, so the preview has to

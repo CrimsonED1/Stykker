@@ -258,8 +258,11 @@ internal static class ConvexProfile
             {
                 // The pair reads ai + bi·t ≤ aj + bj·t, that is (ai − aj) + (bi − bj)·t ≤ 0.
                 float k = ai - above[2 * j], s = bi - above[2 * j + 1];
-                if (s > 0f) tHi = MathF.Min(tHi, -k / s);
-                else if (s < 0f) tLo = MathF.Max(tLo, -k / s);
+                // Whether the bound moves at all can be asked without dividing: for s > 0, -k/s lies under tHi exactly
+                // when k + s·tHi >= 0, and for s < 0 it lies over tLo under the same form. Mirrors convex_where, and
+                // keeps the narrowing a chain of min and max, so an ulop moves an end of the range by an ulop.
+                if (s > 0f) { if (k + s * tHi >= 0f) tHi = MathF.Min(tHi, -k / s); }
+                else if (s < 0f) { if (k + s * tLo >= 0f) tLo = MathF.Max(tLo, -k / s); }
                 else if (k > 0f) return false;   // parallel, and the lower one sits above the upper one
             }
         }
