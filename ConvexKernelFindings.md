@@ -28,6 +28,12 @@ richtige Größe.
 | **B** | Der Kreuzungspunkt `t_ij` ist **affin in (x, y)** — `Where` ganz divisionsfrei | `ConvexProfile.cs:242-260` | ~4,5× auf dem Teilmengenlauf, der **immer** läuft | niedrig–mittel |
 | **C** | Early-Out gegen die Box, die schon im Schritt-Payload steht | `zmap.cu:1107` | **~60 % der Paare** in der Schritt-4-Geometrie | sehr niedrig |
 | **D** | Pro-Schritt-Vorberechnung (Rotation, Divisionen, Steigung, Aufteilung) nach `__shared__` | `zmap.cu:1000-1030` | groß, entkoppelt m von der Spalte | mittel |
+| **C2** | Silhouetten-Vorprüfung über den Support-Funktionssatz (§7.1) | `zmap.cu:1107` | fängt auch die Spalten **in** der Box, aber **außerhalb** des Körpers | niedrig |
+
+**Die Reihenfolge ändert sich dadurch:** C und C2 sind **unabhängig von der Envelope**, brauchen keine neue Theorie
+und keinen Eingriff in die Mathematik — sie sind nur zwei zusätzliche Abbrüche vor dem LP. A und B ebenfalls. **D**
+ist der große strukturelle Umbau. Wer in einem Schritt den größten Hebel auf das kleinste Risiko will, macht **C
+zuerst** und **D zuletzt**.
 
 **Was der Plan nicht weiß:** die geplante O(m)-Envelope steht in `docs/todo.md` und `docs/long-programs.md`. Sie ist
 richtig, aber sie ist der **viertgrößte** von vier Hebeln — und der größte (§C) steht in keinem Dokument.
@@ -293,7 +299,88 @@ unabhängig bestätigt.
 
 ### 7.1 Algorithmus (externe Literatur)
 
-*(ausstehend — dieser Agent läuft noch)*
+**[Agent, „bestätigt"/„Folgerung"]** Inhaltlich richtig und in der Substanz bestätigt; **die Literatur selbst ist
+unbelegt** — der Agent hatte keinen Netzzugang, und die beiden von ihm genannten URLs (cp-algorithms
+`geometry/convex-hull-trick.html`, `atcoder.github.io/slope-trick/slope_trick.html`) liefern inzwischen **404**.
+Wer die Quellen lesen will, muss sie selbst suchen. Der Inhalt:
+
+**Der Hüllenalgorithmus.** Die obere Hülle von n Geraden ist eine Davenport-Schinzel-Folge der Ordnung 2, hat also
+**höchstens 2n − 1 Stücke** und ist bei vorsortierten Steigungen **Θ(n)**. Der Stack hält Tripel `(a, b, start)`,
+`start` = linkester Punkt, ab dem diese Gerade die_maximierende_ ist, und `start` ist streng steigend. Der Pop-Test:
+
+```
+p = S[-1];  b >= p.b
+if b == p.b:                      # parallel
+    if a <= p.a: i verwerfen; break     # i dominiert überall
+    S.pop(); continue                   # p dominiert überall
+s = (p.a - a) / (b - p.b)
+if s <= p.start: S.pop(); continue      # <<< DIE POP-BEDINGUNG
+```
+
+**`<=` ist wesentlich.** `<` liefert Stücke der Länge null, und ein Stück der Länge null schiebt einen redundanten
+Kandidaten `t` ein, dessen U/V-Werte bis auf ein Ulop gleich sind — genau die Falle, gegen die der Kommentar in
+`ConvexProfile.cs` argumentiert. Links auf `tLo` geclippt, rechts **nicht** — rechts zu clippen nachdem man in
+derselben Iteration schon gepoppt hat, ist im Float unsicher.
+
+**Minimum der oberen Hülle über `[tLo, tHi]`.** U ist konvex PWL, also liegt das Minimum am Rand oder an einem
+Hüllenknick:
+
+```
+Kandidaten = {tLo, tHi} ∪ {S[k].start : S[k].start < tHi},  Minimum darüber
+```
+
+**Und hier ist der eigentliche Gewinn, der größer ist als die O(m³) → O(m)-Reduktion:** an einem Knick
+`s = S[k].start` gilt `U(s) = S[k].a + S[k].b·s` — **eine** Gerade, nicht das Maximum über m. Die innere Schleife
+`convex_envelope` / `ExtremumAt`, die das O(m³) erzeugt, **verschwindet**. Ein Durchlauf über ≤ n Stack-Einträge.
+
+**Die Falle, die man übersieht.** Das Minimum **während** des Aufbaus zu akkumulieren ist **falsch**: wird eine
+Gerade später gepoppt, ist der akkumulierte Wert der Hüllenwert der bis dahin gesehenen Geraden, also ≤ dem der
+endgültigen Hülle — ein **zu kleines** `low`, also mehr abgetragen als das Werkzeug je tat. Genau das verbietet der
+Kommentar an `ConvexAt`. Also: zwei Durchläufe, Aufbau und Akkumulation. Bei ≤ 16 Einträgen sind das ~16 triviale
+Iterationen.
+
+**F in O(m), und das ist Vorarbeit, nicht Theorie.** `D(t) = V(t) − U(t)` ist konkav PWL, `F = {t : D ≥ 0}` ein
+Intervall. Man finde das **Maximum** von `D` über die zusammengeführten Knickpunkte (zwei monotone Zeiger, O(1)
+amortisiert je Punkt), laufe dann nach links und rechts bis zum ersten Vorzeichenwechsel und interpoliere **auf dem
+einen Stück, das die Wurzel nachweislich enthält**. Der Nenner der Interpolation ist `D(τ_p) + |D(τ_{p+1})|` —
+**keine Subtraktion ähnlicher Größen**, also besser konditioniert als der heutige Paar-Durchlauf. Und die Fehlerwirkung
+ist beschränkt: eine falsch gelesene Vorzeichenlage verschiebt eine Wurzel um **eine Stückbreite**, heute um einen
+beliebigen Betrag. Der Agent verweist auf `SLOPE_TRICK::find_roots` in der AtCoder Library — **unbelegt**, der Link
+ist 404.
+
+**[Agent, „Folgerung"] — asymptotisch besser, aber nicht jetzt.** Weil `s_ij(x, y)` affin in (x, y) ist, ist die
+**kombinatorische Struktur der Hülle** über jeder Zelle einer Planaranordnung aus ≤ C(m,2) Geraden konstant. Pro
+Schritt auf dem Host die Anordnung bauen, pro Spalte nur noch **eine Punktlokation und zwei FMA**. Das ist O(1) pro
+Spalte statt O(m). Der Agent rät **ausdrücklich davon ab**, und ich auch: die Punktlokation ist der Aufwand, nicht
+die Auswertung, sie kollidiert mit dem bestehenden Binning und die O(m)-Fassung holt den größten Teil des Gewinns
+bei einem Bruchteil des Risikos.
+
+**[Agent — die Silhouetten-Vorprüfung ist besser als mein Box-Test in §4]** und ich habe sie nachgeprüft: der
+Support-Funktionssatz gibt den Innen-Test **ohne Polygon und ohne Punkt-im-Polygon**:
+
+```
+für jeden Halbraum i:   n_i·(p − T_A) − d_i ≤ max(0, n_i·w)
+```
+
+16 Punktprodukte, 16 `fmaxf`, eine Reduktion — **keine Zweige, keine Sortierung, kein Stack, 4-fach vektorisierbar**,
+und die Schwelle `max(0, n_i·w)` ist eine **Pro-Schritt-Konstante**. Zwei Einschränkungen, beide ehrlich: der Test
+ist **korrekt, aber nicht vollständig** — die Facettennormalen von `P ⊕ [0,w]` sind die m Facettennormalen **plus**
+die ⊥ w zu den Kanten von P (die Kontur). Er kann also eine Spalte durchlassen, die draußen liegt; **das ist die
+sichere Richtung**, ein falsches Ablehnen ist unmöglich. Und der Ertrag hängt von der Werkzeugform ab, denn der
+Binning liefert bereits eine AABB-Vorprüfung. **[abgeleitet]** Die richtige Schichtung ist also: **AABB-Test (§4, vier
+Vergleiche) → Silhouetten-Test (~50 Befehle) → LP.** Beide sind unabhängig von der Envelope und können sofort.
+
+**[Agent — der wichtigste Einzelfund, unabhängig von der Envelope]** `-fmad=false`:
+
+> nvcc defaultet auf `-fmad=true` und **kontrahiert** `p*q − r*s` zu `fmaf(p, q, −(r*s))` — ein anderes Ergebnis als
+> erst beide Produkte zu runden und dann zu subtrahieren. **RyuJIT kontrahiert nicht.**
+
+`x*y − z*w` ist genau die Form der Pop-Bedingung. Das wäre also der Ort, an dem CPU und CUDA **stillschweigend**
+auseinanderlaufen — deterministisch auf beiden Seiten, aber verschieden. **[abgeleitet]** Nur als „Agent, Folgerung"
+markiert, weil das nvcc-Verhalten in der Doku nicht wörtlich steht (siehe §7.3 — dort steht es für `--fmad`
+immerhin als Default). **Und wichtig für die Reihenfolge:** `--fmad=false` ist ein **globales** Flag und trifft auch
+`swept_span`, den Ball-Pfad, auf dem die Referenzzahlen aus Schritt 2 stehen. Es ist **kein kostenloser Gewinn,
+sondern eine Entscheidung mit Neubaseline.**
 
 ### 7.2 CUDA-Leistungsverhalten
 
@@ -349,6 +436,51 @@ der **Ball**-Kernel gegen den konvexen?
 
 **[Agent — widerlegt, siehe §8]** Dessen Erklärung für `m^1.57` war, `nLo + nHi ≪ m`, weil viele Halbräume `|mz| ≈ 0`
 hätten und den `mz == 0`-Zweig nähmen.
+
+### 7.3 Primärquellen — was ich selbst nachgeladen und wörtlich belegt habe
+
+**[geprüft]** Die Doku liegt ab jetzt lokal unter
+`.qwen/refs/cuda-programming-guide/` im Worktree keen-elm-b95ffa (11 Seiten, ~2,1 MB, **nicht** committet), weil sie
+sich sonst bei jedem Nachschlag neu durch ein Modell schicken ließe. Geladen: Programming Model, Writing CUDA
+Kernels, Writing Tile Kernels, Understanding Memory, nvcc, Advanced Kernel Programming, Compute Capabilities,
+C/C++ Language Extensions, Floating-Point Computation, CUDA C++ Execution Model, plus die nvcc-Compiler-Referenz.
+
+**§2 steht damit auf Primärquelle.** Aus `05-appendices/nvcc.html`, wörtlich:
+
+> `--prec-div=true` enables the IEEE round-to-nearest mode and `--prec-div=false` enables the fast approximation mode.
+
+> This option is set to `true` and `nvcc` enables the contraction of floating-point multiplies and
+> adds/subtracts into floating-point multiply-add operations (FMAD, FFMA, or DFMA).
+
+> `--use_fast_math` implies `--ftz=true --prec-div=false --prec-sqrt=false --fmad=true`.
+
+**[geprüft]** `build.ps1:81` setzt keines dieser Flags, also gelten beide Defaults. Meine Überschrift aus §2 und der
+`--fmad`-Punkt aus §7.1 sind damit belegt statt vermutet.
+
+**Die Größenordnung beim Local Memory wird durch die Doku entschieden — und der Algorithmus-Agent lag falsch.**
+Aus `02-basics/writing-cuda-kernels.html:780`, wörtlich:
+
+> Because the local memory space resides in device memory, local memory accesses have **the same latency and
+> bandwidth as global memory accesses** and are subject to the same requirements for memory coalescing... However,
+> local memory is organized such that consecutive 32-bit words are accessed by consecutive thread IDs. Accesses are
+> therefore **fully coalesced as long as all threads in a warp access the same relative address, such as the same
+> index in an array variable**.
+
+Das ist genau die Analyse des CUDA-Agenten und **widerspricht** der Schätzung des Algorithmus-Agenten von einem
+„silent 10–100× penalty". **[abgeleitet]** Die drei Leser in `convex_where` / `convex_extremum` /
+`convex_envelope` haben über den Warp **denselben** Index — also sind sie nach der Doku **vollständig
+koalesziert**, und kosten einen globalen Speicherzugriff, keinen Registeroperanden. Der einzige divergente Zugriff
+bleibt `g[at]` in der Aufbauschleife (`zmap.cu:1025`). **Die Wirkung ist eine Größenordnung, nicht zwei, und sie ist
+kein Grund, die Arrays in Register zu zwingen — §7.2 zeigt, dass das ein Rückschritt wäre.**
+
+**[geprüft]** Und die Grenze dieser Doku: Für **compute capability 12.x sind die Technical-Specifications-Tabellen
+leer**. `05-appendices/compute-capabilities.html` führt 12.x als Spalte, aber ohne Werte. Belegt sind dort nur
+7.5 bis 11.0 sowie 12.x ohne Eintrag; die höchsten belegten Zahlen (1536 Threads/SM, 255 Register je Thread,
+512 KB Lokalspeicher je Thread) stehen für **compute capability 9.0**. **Die Kennzahlen für die Karte, auf der
+dieser Kernel läuft, sind nicht dokumentiert** — sie müssen `cuobjdump -res-usage` oder `ncu` liefern.
+
+**Unbelegt bleibt:** die Literatur in §7.1 (beide vom Agenten genannten URLs 404), und alle Hardwarezahlen in §7.2
+sind Folgerungen eines Agenten ohne Profiler.
 
 ---
 
