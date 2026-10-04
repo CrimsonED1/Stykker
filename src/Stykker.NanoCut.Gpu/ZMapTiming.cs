@@ -14,18 +14,23 @@ namespace Stykker.NanoCut.Gpu;
 /// (<see cref="CudaBackend.BinSteps"/>). Zero for the CPU backend and for the unbinned launch. It is part of
 /// <paramref name="WallMs"/>, reported apart so the saving of a binned launch is not credited with work it did not
 /// save.</param>
+/// <param name="PackMs">Host-side cost of packing the steps into the flat layout the kernel reads
+/// (<see cref="ToolProfile.Pack"/>). Reported on both backends because it falls inside
+/// <paramref name="WallMs"/> on CUDA and outside it on the CPU, so without this field the two WallMs
+/// columns of a table cover different spans and cannot be compared against each other.</param>
 public readonly record struct ZMapTiming(
     double KernelMs,
     double UploadMs,
     double DownloadMs,
     double FirstCallMs,
     double WallMs,
-    double BinMs = 0)
+    double BinMs = 0,
+    double PackMs = 0)
 {
     /// <summary>The sum of two timings, for accumulating over several calls.</summary>
     public static ZMapTiming operator +(ZMapTiming a, ZMapTiming b) =>
         new(a.KernelMs + b.KernelMs, a.UploadMs + b.UploadMs, a.DownloadMs + b.DownloadMs,
-            a.FirstCallMs + b.FirstCallMs, a.WallMs + b.WallMs, a.BinMs + b.BinMs);
+            a.FirstCallMs + b.FirstCallMs, a.WallMs + b.WallMs, a.BinMs + b.BinMs, a.PackMs + b.PackMs);
 
     /// <summary>Every part zero.</summary>
     public static ZMapTiming Zero { get; }
