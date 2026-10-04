@@ -127,11 +127,18 @@ export function clear() {
   impl?.clear();
 }
 
-export function addMesh(name, positions, normals, indices, color, opacity) {
-  const o = { name, kind: 'mesh', positions: f32(positions), normals: f32(normals), indices: u32(indices), color, opacity };
+export function addMesh(name, positions, normals, indices, color, opacity, colors) {
+  const o = { name, kind: 'mesh', positions: f32(positions), normals: f32(normals), indices: u32(indices), color, opacity, colors: colors ? f32(colors) : null };
   objects.push(o);
   impl?.add(o);
 }
+
+/**
+ * Picks the vertex nearest to a point of the viewport. `clientX`/`clientY` are browser coordinates; the returned
+ * `vertex` is an index into the buffer that was last passed to addMesh, which is the index the .NET side kept its
+ * exact nanometre coordinates in.
+ */
+export function pick(clientX, clientY) { return impl?.pick(clientX, clientY) ?? null; }
 
 export function addLines(name, xyz, color) {
   const o = { name, kind: 'lines', positions: f32(xyz), color, opacity: 1 };
@@ -160,7 +167,7 @@ let fitBox = null;
 function bounds() {
   if (fitBox) {
     const center = [0, 1, 2].map((k) => (fitBox[k] + fitBox[k + 3]) / 2);
-    return { center, radius: Math.max(1, Math.hypot(fitBox[3] - fitBox[0], fitBox[4] - fitBox[1], fitBox[5] - fitBox[2]) / 2) };
+    return { center, radius: fitRadius(fitBox) };
   }
   const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
   for (const o of objects) {
@@ -171,14 +178,77 @@ function bounds() {
   }
   if (!isFinite(min[0])) return { center: [0, 0, 0], radius: 20 };
   const center = [0, 1, 2].map((k) => (min[k] + max[k]) / 2);
-  const radius = Math.max(1, Math.hypot(max[0] - min[0], max[1] - min[1], max[2] - min[2]) / 2);
-  return { center, radius };
+  return { center, radius: fitRadius([min[0], min[1], min[2], max[0], max[1], max[2]]) };
+}
+
+// The floor keeps a degenerate box from collapsing the camera; it is 1 µm, not 1 mm, so a 0.14 mm staircase can still
+// be framed and a 1 nm step is inside the depth range.
+function fitRadius(box) {
+  return Math.max(1e-3, Math.hypot(box[3] - box[0], box[4] - box[1], box[5] - box[2]) / 2);
+}
+
+// ---------- scale bar ----------
+// A 1-2-5 length that always spans a readable part of the viewport. Without it a 1 nm step on a 20 mm part is an
+// image nobody can read, because the same picture also has to work at 20 mm.
+function makeScaleBar(el) {
+  const root = document.createElement('div');
+  root.className = 'scalebar';
+  const bar = document.createElement('i'), label = document.createElement('span');
+  root.append(bar, label);
+  el.appendChild(root);
+  return {
+    update(worldPerPx, widthPx) {
+      if (!(worldPerPx > 0) || widthPx < 80) return;
+      const len = niceLength(worldPerPx, 70, Math.min(200, widthPx - 60));
+      bar.style.width = (len / worldPerPx).toFixed(1) + 'px';
+      label.textContent = fmtLength(len);
+    },
+    dispose() { root.remove(); },
+  };
+}
+
+const NICE = [1, 2, 5];
+
+function niceLength(worldPerPx, minPx, maxPx) {
+  const from = Math.floor(Math.log10(minPx * worldPerPx));
+  let best = worldPerPx * minPx;
+  for (let p = from; p <= from + 6; p++) {
+    for (const m of NICE) {
+      const len = m * Math.pow(10, p), px = len / worldPerPx;
+      if (px > maxPx) return best;
+      best = len;
+      if (px >= minPx) return len;
+    }
+  }
+  return best;
+}
+
+function fmtLength(mm) {
+  for (const [name, k] of [['mm', 1], ['µm', 1e-3], ['nm', 1e-6]]) {
+    const v = mm / k;
+    if (v >= 1 || k === 1e-6)
+      return String(Number(v.toFixed(v >= 100 ? 0 : v >= 10 ? 1 : 2))) + ' ' + name;
+  }
+  return '';
+}
+
+/** The vertex of triangle `tri` that is nearest to the hit point — the vertex under the cursor, not the cursor. */
+function nearestVertex(o, tri, p) {
+  let vertex = -1, best = Infinity;
+  for (let k = 0; k < 3; k++) {
+    const v = o.indices[3 * tri + k];
+    const dx = o.positions[3 * v] - p.x, dy = o.positions[3 * v + 1] - p.y, dz = o.positions[3 * v + 2] - p.z;
+    const d = dx * dx + dy * dy + dz * dz;
+    if (d < best) { best = d; vertex = v; }
+  }
+  return { object: objects.indexOf(o), name: o.name, triangle: tri, vertex };
 }
 
 // Camera directions per view (z up).
 const VIEWS = {
   iso: [-0.62, -0.42, 0.66], top: [0, -0.0001, 1], gear: [-0.38, -0.62, 0.68],
   lathe: [0.05, -1, 0.25], mill: [-0.42, -0.62, 0.66], cubes: [-0.55, -0.85, 0.55], spin: [-0.3, -0.8, 0.75],
+  inspect: [-0.42, -0.86, 0.5],
 };
 
 function eyeFor(b, view) {
@@ -230,9 +300,13 @@ function createThree(el) {
   const ro = new ResizeObserver(resize);
   ro.observe(el);
   resize();
+  const bar = makeScaleBar(el);
+  const ray = new THREE.Raycaster();
   (function loop() {
     if (!running) return;
     controls.update();
+    if (el.clientHeight > 0)
+      bar.update(2 * camera.position.distanceTo(controls.target) * Math.tan(camera.fov * Math.PI / 360) / el.clientHeight, el.clientWidth);
     renderer.render(scene, camera);
     requestAnimationFrame(loop);
   })();
@@ -240,16 +314,29 @@ function createThree(el) {
   return {
     add(o) {
       if (o.kind === 'mesh') {
-        const mat = new THREE.MeshStandardMaterial({
-          color: o.color, metalness: 0.3, roughness: 0.5, side: THREE.DoubleSide,
-          transparent: o.opacity < 1, opacity: o.opacity, depthWrite: o.opacity >= 1,
-        });
-        group.add(new THREE.Mesh(toThreeGeometry(o), mat));
+        const mat = o.colors
+          // A deviation colour is a measurement, not a surface: no light may touch it.
+          ? new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide, transparent: o.opacity < 1, opacity: o.opacity, depthWrite: o.opacity >= 1 })
+          : new THREE.MeshStandardMaterial({
+              color: o.color, metalness: 0.3, roughness: 0.5, side: THREE.DoubleSide,
+              transparent: o.opacity < 1, opacity: o.opacity, depthWrite: o.opacity >= 1,
+            });
+        const mesh = new THREE.Mesh(toThreeGeometry(o), mat);
+        mesh.__nanocut = o;
+        group.add(mesh);
       } else {
         const g = new THREE.BufferGeometry();
         g.setAttribute('position', new THREE.BufferAttribute(o.positions, 3));
         group.add(new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: o.color })));
       }
+    },
+    pick(clientX, clientY) {
+      const rect = el.getBoundingClientRect();
+      ray.setFromCamera(new THREE.Vector2(
+        ((clientX - rect.left) / rect.width) * 2 - 1,
+        -((clientY - rect.top) / rect.height) * 2 + 1), camera);
+      const hit = ray.intersectObjects(group.children, false).find(h => h.object.__nanocut?.kind === 'mesh');
+      return hit ? nearestVertex(hit.object.__nanocut, hit.faceIndex, hit.point) : null;
     },
     clear() {
       for (const c of [...group.children]) { group.remove(c); c.geometry?.dispose(); c.material?.dispose(); }
@@ -292,7 +379,8 @@ function createThree(el) {
     fit(b, view) {
       camera.position.set(...eyeFor(b, view));
       controls.target.set(...b.center);
-      camera.near = b.radius / 100;
+      // near/far are a thousandth / fifty times the radius: a 1 nm feature on a 0.14 mm part sits inside that range.
+      camera.near = b.radius / 1000;
       camera.far = b.radius * 50;
       camera.updateProjectionMatrix();
       controls.update();
@@ -300,6 +388,7 @@ function createThree(el) {
     dispose() {
       running = false;
       ro.disconnect();
+      bar.dispose();
       gizmo.detach();
       gizmo.dispose();
       if (toolMesh) scene.remove(toolMesh);
@@ -354,7 +443,15 @@ async function createBabylon(el) {
     const p = toolMesh.position, q = toolMesh.rotationQuaternion;
     toolMoved([p.x, p.y, p.z, q.x, q.y, q.z, q.w]);
   };
-  engine.runRenderLoop(() => scene.render());
+  const bar = makeScaleBar(el);
+  engine.runRenderLoop(() => {
+    const h = engine.getRenderHeight();
+    if (h > 0) {
+      const d = B.Vector3.Distance(camera.position, camera.getTarget());
+      bar.update(2 * d * Math.tan(camera.fov * Math.PI / 360) / h, canvas.clientWidth);
+    }
+    scene.render();
+  });
   const ro = new ResizeObserver(() => engine.resize());
   ro.observe(el);
 
@@ -362,9 +459,12 @@ async function createBabylon(el) {
     add(o) {
       if (o.kind === 'mesh') {
         const mesh = toBabylonMesh(o, o.name, scene);
+        mesh.__nanocut = o;
         const mat = new B.StandardMaterial(o.name + '-mat', scene);
-        mat.diffuseColor = B.Color3.FromHexString(o.color);
-        mat.specularColor = new B.Color3(0.25, 0.25, 0.25);
+        // A deviation colour is a measurement, not a surface: switch the lighting off for it.
+        mat.diffuseColor = o.colors ? new B.Color3(1, 1, 1) : B.Color3.FromHexString(o.color);
+        mat.specularColor = o.colors ? new B.Color3(0, 0, 0) : new B.Color3(0.25, 0.25, 0.25);
+        if (o.colors) { mat.emissiveColor = new B.Color3(1, 1, 1); mat.disableLighting = true; }
         mat.alpha = o.opacity;
         mat.backFaceCulling = false;
         mesh.material = mat;
@@ -378,6 +478,12 @@ async function createBabylon(el) {
         ls.color = B.Color3.FromHexString(o.color);
         meshes.push(ls);
       }
+    },
+    pick(clientX, clientY) {
+      const rect = canvas.getBoundingClientRect();
+      const info = scene.pick(clientX - rect.left, clientY - rect.top);
+      const o = info?.hit ? info.pickedMesh?.__nanocut : null;
+      return o?.kind === 'mesh' ? nearestVertex(o, info.faceId, info.pickedPoint) : null;
     },
     clear() {
       for (const m of meshes) m.dispose(false, true);
@@ -430,11 +536,13 @@ async function createBabylon(el) {
       const eye = eyeFor(b, view);
       camera.setTarget(new B.Vector3(...b.center));
       camera.setPosition(new B.Vector3(...eye));
-      camera.minZ = b.radius / 100;
+      // near/far are a thousandth / fifty times the radius: a 1 nm feature on a 0.14 mm part sits inside that range.
+      camera.minZ = b.radius / 1000;
       camera.maxZ = b.radius * 50;
     },
     dispose() {
       ro.disconnect();
+      bar.dispose();
       gizmos.dispose();
       toolMesh?.dispose(false, true);
       this.clear();

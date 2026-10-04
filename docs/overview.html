@@ -1,0 +1,278 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stykker NanoCut — Genauigkeit, Geschwindigkeit und was auf die GPU geht</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Ein schmales Technikblatt in den Farben des Logos. Gleiches Schema wie die Bench-Ergebnisseiten, andere Palette. */
+:root {
+  --bg: #0b1315;
+  --paper: #122b2f;
+  --card: #0e181a;
+  --fg: #e4e9ec;
+  --muted: #8fb0b2;
+  --rule: #1d4646;
+  --teal: #3c9797;
+  --beam: #d8f6f8;
+  --font-display: "Barlow Condensed", "Arial Narrow", sans-serif;
+  --font-body: "IBM Plex Sans", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--fg); font: 15px/1.55 var(--font-body); padding-inline: 16px; padding-block: 32px 48px; }
+.sheet { max-width: 920px; margin: 0 auto; background: var(--paper); border: 1px solid var(--rule); padding: clamp(20px, 4vw, 44px); display: grid; gap: 32px; }
+header { display: grid; gap: 12px; }
+.brandline { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.brandline img { height: 44px; display: block; }
+.eyebrow { font: 500 12px/1.35 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+h1 { font: 700 clamp(28px, 5vw, 44px)/1.04 var(--font-display); letter-spacing: -.01em; margin: 0; text-wrap: balance; }
+h1 em { font-style: normal; color: var(--beam); }
+.lede { margin: 0; max-width: 66ch; }
+.lede strong { color: var(--beam); }
+h2 { font: 600 22px/1.1 var(--font-display); letter-spacing: .01em; margin: 0 0 4px; text-wrap: balance; }
+.sub { margin: 0 0 16px; color: var(--muted); font-size: 13.5px; max-width: 72ch; }
+
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1px; background: var(--rule); border: 1px solid var(--rule); }
+.kpi { background: var(--card); padding: 14px 16px; display: grid; gap: 3px; }
+.kpi b { font: 600 34px/1 var(--font-display); font-variant-numeric: tabular-nums; color: var(--beam); }
+.kpi span { font-size: 12.5px; color: var(--muted); }
+
+.bars { display: grid; gap: 9px; }
+.bar { display: grid; grid-template-columns: minmax(130px, 200px) 1fr; gap: 12px; align-items: center; }
+.bar .lab { font-size: 13px; line-height: 1.25; min-width: 0; }
+.bar .lab small { display: block; color: var(--muted); font: 12px var(--font-mono); }
+.track { position: relative; height: 25px; }
+.fill { height: 100%; background: #24565a; display: flex; align-items: center; justify-content: flex-end; padding-right: 8px; min-width: 56px; }
+.fill.nc { background: var(--teal); }
+.fill span { font: 500 12.5px var(--font-mono); font-variant-numeric: tabular-nums; color: var(--beam); }
+.axis { display: grid; grid-template-columns: minmax(130px, 200px) 1fr; gap: 12px; }
+.axis .ticks { display: flex; justify-content: space-between; font: 11px var(--font-mono); color: var(--muted); border-top: 1px solid var(--rule); padding-top: 4px; }
+
+.tablewrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; min-width: 600px; font-size: 13.5px; }
+th, td { padding: 7px 10px; text-align: right; border-bottom: 1px solid var(--rule); font-variant-numeric: tabular-nums; white-space: nowrap; }
+th:first-child, td:first-child { text-align: left; }
+thead th { font: 500 11.5px var(--font-mono); letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+td.scene { font-weight: 600; }
+td.win { color: var(--beam); font-weight: 600; }
+td.f { font-family: var(--font-mono); font-size: 12.5px; }
+td.zero { color: var(--beam); font-weight: 600; }
+
+.ramp { height: 18px; border: 1px solid var(--rule); border-radius: 4px; background: linear-gradient(90deg,#2f6fd6,#91bee7,#e8ecf1 50%,#fabe87,#ff8a3d); }
+.ramp-axis { display: flex; justify-content: space-between; font: 11px var(--font-mono); color: var(--muted); margin-top: 4px; }
+
+.cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 28px; }
+.cols > section { min-width: 0; }
+ul { margin: 0; padding-left: 18px; display: grid; gap: 7px; }
+li::marker { color: var(--teal); }
+li b { color: var(--fg); }
+.note { border-left: 2px solid var(--teal); padding-left: 14px; color: var(--muted); font-size: 13.5px; margin: 0 0 16px; }
+footer { border-top: 1px solid var(--rule); padding-top: 14px; font: 12px/1.6 var(--font-mono); color: var(--muted); }
+code { font: 12.5px var(--font-mono); background: #0a1214; border: 1px solid var(--rule); padding: 1px 4px; color: var(--beam); }
+@media (max-width: 620px) {
+  .bar, .axis { grid-template-columns: 1fr; }
+  .bar .lab { margin-bottom: -4px; }
+  .axis > div:first-child { display: none; }
+}
+</style>
+</head>
+<body>
+<main class="sheet">
+
+<header>
+<div class="brandline">
+<img src="images/logo.png" alt="Stykker-NanoCut">
+<div class="eyebrow">Übersicht · 4. Oktober 2026</div>
+</div>
+<h1>Ein Rastermikroskop für <em>geschliffene und geformte</em> Modelle — und was es genau kann</h1>
+<p class="lede">Stykker NanoCut schneit Volumenkörper aus Rohteil und Werkzeugbahn exakt: nicht angenähert über ein
+Dreiecksgitter, sondern in ganzzahligen <strong>Nanometern</strong>. Jede neue Schnittkante ist eine exakte
+Drei-Ebenen-Schnittstelle, die nie gerundet wird. Das heißt: ein 20-mm-Zahnrad und eine 1-nm-Stufe sind im selben
+Ergebnis exakt. Diese Seite sagt, wie genau das <em>gemessen</em> ist, wie schnell, und welche Teile davon auf die GPU
+gehen — und welche aus einem Grund nicht.</p>
+</header>
+
+<div class="kpis">
+<div class="kpi"><b>1 nm</b><span>Rasterweite. Alle Koordinaten sind Int64 auf einem 1-nm-Gitter.</span></div>
+<div class="kpi"><b>0 nm</b><span>Abweichung der 1-nm-Treppe — auf die Ziffer, nicht innerhalb einer Toleranz.</span></div>
+<div class="kpi"><b>0,1 µm</b><span>garantiertes Gesamtbudget, aufgeteilt in vier nachprüfbare Posten</span></div>
+<div class="kpi"><b>202,4 nm</b><span>Flankenabweichung eines 20-zahnigen Racks — ein Lauf, keine Konstante</span></div>
+<div class="kpi"><b>1862×</b><span>schneller mit GPU-Vorschau als der exakte Kernel (2,5 ms gegen 4655 ms)</span></div>
+</div>
+
+<section>
+<h2>Woher die 0,1 Mikrometer kommen</h2>
+<p class="sub">Das Budget wird nicht als eine Zahl behauptet, sondern in vier Posten zerlegt, die man einzeln prüfen
+kann. Jeder Posten gehört zu genau einer Stelle im Code.</p>
+<div class="tablewrap">
+<table>
+<thead><tr><th>Fehlerquelle</th><th>wie sie behandelt wird</th><th>Budget</th></tr></thead>
+<tbody>
+<tr><td class="scene">Zahlen Darstellung</td><td style="text-align:left;white-space:normal">Int64 auf 1-nm-Raster, exakte Prädikate (Int128/Int384). Schnittpunkte werden <b>einmal</b> gerundet (≤ 0,71 nm) und danach nie wieder bewegt.</td><td>0,5 nm je Achse</td></tr>
+<tr><td class="scene">Diskretisierung</td><td style="text-align:left;white-space:normal">Kreise werden als einbeschriebene Vielecke erzeugt, Segmentzahl aus θ = 2·acos(1 − s/r), auf ein Vielfaches von 4 aufgerundet, damit die Achsenextrema exakt treffen.</td><td>50 nm</td></tr>
+<tr><td class="scene">Bahnschritt</td><td style="text-align:left;white-space:normal">Bogen werden als Sehnen mit Scheitelhöhe ≤ SweepNm geführt; gerade Verfahrbewegungen sind exakt (konvexe Hülle der Endpunkte).</td><td>30 nm</td></tr>
+<tr><td class="scene">Reserve</td><td style="text-align:left;white-space:normal">alles, was die drei Posten nicht brauchen</td><td>19,5 nm</td></tr>
+</tbody>
+</table>
+</div>
+</section>
+
+<section>
+<h2>Was gemessen wurde</h2>
+<p class="sub">Keine Schätzung: jede Zeile ist ein Test gegen eine analytische Lösung oder gegen eine zweite,
+unabhängige Implementierung. <code>|Δ|</code> ist der gemessene Fehler, <code>erlaubt</code> das Budget.</p>
+<div class="tablewrap">
+<table>
+<thead><tr><th>Prüfung</th><th>gemessen</th><th>exakt</th><th>|Δ|</th><th>erlaubt</th></tr></thead>
+<tbody>
+<tr><td class="scene">1-nm-Treppe: Stufenhöhen (1 … 100 nm, 7 Stufen)</td><td class="f">1,000000 … 100,000000 nm</td><td class="f">1 … 100 nm</td><td class="f zero">0 nm</td><td class="f">1e−9 nm</td></tr>
+<tr><td class="scene">Beispiel 1, 3D: maximale Tiefe</td><td class="f">1,000000000 mm</td><td class="f">1 mm</td><td class="f zero">0</td><td class="f">1e−4 mm</td></tr>
+<tr><td class="scene">Beispiel 1, 3D: Nut-Vertices zur Werkzeugachse (schlechtester)</td><td class="f">≤ 0,6 nm</td><td class="f">3 mm</td><td class="f">≤ 0,6 nm</td><td class="f">1e−4 mm</td></tr>
+<tr><td class="scene">Beispiel 1, 2D: Schnittfläche</td><td class="f">3,097316064 mm²</td><td class="f">3,097482080 mm²</td><td class="f">1,66e−4 mm²</td><td class="f">5,05e−4 mm²</td></tr>
+<tr><td class="scene">Referenzkörper: Steinmetz, r = 3 mm</td><td class="f">−4,7e−3 mm³</td><td class="f">16r³/3</td><td class="f">4,7e−3 mm³</td><td class="f">1,44e−2 mm³</td></tr>
+<tr><td class="scene">Restvolumen gegen ManifoldSharp (gleiche Eingangspolyeder)</td><td class="f">3938,051198120 mm³</td><td class="f">3938,051198120 mm³</td><td class="f zero">&lt; 1e−9 mm³</td><td class="f">—</td></tr>
+<tr><td class="scene">Zahnflanke z = 20, Modul 2 mm gegen die ideale Evolute <em>(ein Lauf)</em></td><td class="f">202,4 nm</td><td class="f">0</td><td class="f">202,4 nm</td><td class="f">3 000 nm</td></tr>
+<tr><td class="scene">Sehnenfacetten: 64 Facetten, feinste Sehne 1 nm</td><td class="f">1,000 nm</td><td class="f">1 nm</td><td class="f zero">0 nm</td><td class="f">0,71 nm</td></tr>
+</tbody>
+</table>
+</div>
+<p class="note">Der Faktor 0,71 nm bei den Sehnenfacetten ist kein Haken, sondern die Herkunft: die beiden Endpunkte
+einer Sehne werden je auf halbe Nanometer gerundet, und das kann die Sehnengerade um bis zu √2/2 nm verschieben. Der
+Faktor bei der Zahnflanke ist der Bahnschritt — die Abweichung folgt ihm und ist kein Modellfehler.</p>
+<p class="note"><b>Und diese eine Zeile ist keine Konstante.</b> Der 2D-Boolesche-Kern ist nachweislich keine reine
+Funktion: gleiche Eingabe, je nach Maschinenlast andere Ausgabe (<code>GearFlankFlakeFindings.md</code>, 4. Oktober
+2026). Für Zahnfiguren heißt das: die Flankenabweichung ist eine Stichprobe aus einer Verteilung, keine Eigenschaft.
+Sie ist als „schlechtester aus mehreren Läufen" zu lesen oder gar nicht — und jede Gegenüberstellung zweier
+<code>Process2</code>-Varianten, die kleiner ist als diese Streuung, ist kein Ergebnis. Genau das trifft auch die
+Zahlen, die früher in <code>docs/processes.md</code> stehen. Die übrigen Zeilen dieser Tabelle sind nicht betroffen:
+Treppe, Sehnenfacetten und die analytischen Vergleichsfälle laufen nicht durch den Booleschen Kern.</p>
+<p class="sub" style="margin-top:16px">Eine Warnung, die beim Zahn wichtig ist: unterhalb von z = 2/sin²α = 17,1
+ist ein gewalztes Zahnrad <em>unterschnitten</em>, seine Flanke ist dann nicht die Evolute. Eine Abweichung gegen die
+Evolute misst dort den unterschnittenen Bereich — bei z = 10 sind das 1357 µm, eine wahre Zahl über die falsche
+Sache. Der Betrachter verweigert deshalb z &lt; 18, statt eine Zahl zu zeigen, die nichts bedeutet.</p>
+</section>
+
+<section>
+<h2>Die Farbe ist die Messung</h2>
+<p class="sub">Der Betrachter unter <code>/inspect</code> färbt jedes Vertex nicht nach einem Material, sondern nach
+seinem gemessenen Abstand zur Nennform — ohne Licht, weil eine Beleuchtung eine Zahl verfälschen würde. Die Skala
+endet bei dem, was der Lauf gefunden hat, nicht bei einem festen Wert.</p>
+<div class="ramp"></div>
+<div class="ramp-axis"><span>−100 nm · Material fehlt</span><span>0 · auf der Nennform</span><span>+100 nm · Material bleibt stehen</span></div>
+<p class="sub" style="margin-top:16px">Drei Fälle, in dieser Reihenfolge:</p>
+<figure style="margin:0 0 20px">
+<img src="images/inspect-staircase-1nm.png" alt="Der Betrachter auf der 1-nm-Treppe: links der Block mit sieben abgesetzten Stufen, eingefärbt nach der Tiefe jeder Stufe; rechts die Farblegende von 0 bis 100 nm und die Tabelle mit den gemessenen Stufenhöhen." style="width:100%;border:1px solid var(--rule);border-radius:6px;display:block">
+<figcaption style="font-size:12.5px;color:var(--muted);margin-top:6px">Fall 1: die 1-nm-Treppe auf <code>/inspect</code>. Die Farbe ist die Tiefe der
+Stufe (0 … 100 nm), die Maßstabsleiste steht bei 20 µm, und die Tabelle rechts nennt die gemessenen Stufenhöhen —
+1,000000 bis 100,000000 nm bei einer Abweichung von 0. Alle 148 Vertex liegen auf dem Raster.</figcaption>
+</figure>
+<div class="tablewrap">
+<table>
+<thead><tr><th>Fall</th><th>Was die Farbe zeigt</th><th>Was man lernen soll</th></tr></thead>
+<tbody>
+<tr><td class="scene">1-nm-Treppe</td><td style="text-align:left">Tiefe der Stufe, 1 … 100 nm</td><td style="text-align:left;white-space:normal">Ein Nanometer ist ein echtes Feature und kein Rauschen. Die Skala ist 100-mal feiner als das garantierte Budget.</td></tr>
+<tr><td class="scene">Sehnenfacetten</td><td style="text-align:left">Sehnenfehler der Facette, 1 … 23,8 nm</td><td style="text-align:left;white-space:normal">64 Facetten, die sich um × 1,025 verbreitern. Gezeichnet wird nicht ein Kreis, sondern das Polyeder, das der Kernel baut. Am feinen Ende ist es bei jedem nützlichen Zoom nicht vom Kreis zu unterscheiden, am groben sind die Facetten sichtbar — beides innerhalb des Budgets.</td></tr>
+<tr><td class="scene">Zahnflanke</td><td style="text-align:left">Abweichung von der Evolute, vorzeichenbehaftet</td><td style="text-align:left;white-space:normal">Der Realteil-Fall: Nanometer auf einem Millimeter-Teil. Außerhalb des Flankenbands bleibt die Oberfläche neutral — eine Prüfung meldet nur den Bereich von Interesse.</td></tr>
+</tbody>
+</table>
+</div>
+<p class="sub" style="margin-top:12px">Ein Klick auf eine Fläche nennt die <b>exakte</b> Ganzzahl-Koordinate des
+angeklickten Vertex in Nanometern und sagt, ob es ein Rasterpunkt ist oder eine berechnete Schnittstelle. Die Zahl
+kommt aus dem Integer-Gitter auf dem Server, nicht aus dem float32, aus dem der Browser gezeichnet hat — bei 100 mm
+Absolutmaß hat ein float32 8 µm Auflösung, also tausendmal zu grob für das, was hier gezeigt wird.</p>
+</section>
+
+<section>
+<h2>Wie schnell</h2>
+<p class="sub">Alles nativ gemessen auf demselben Rechner, auf dem auch die Bench-Ergebnisseite steht.
+Die Balken sind logarithmiert getrennt, damit die kurzen Fälle sichtbar bleiben.</p>
+<div class="bars">
+<div class="bar"><div class="lab">Zahnfräsen z = 20<small>209 089 Swept-Pieces, Modul 2 mm</small></div><div class="track"><div class="fill nc" style="width:66%"><span>34,7 s</span></div></div></div>
+<div class="bar"><div class="lab">Zahnfräsen z = 40<small>398 178 Swept-Pieces</small></div><div class="track"><div class="fill nc" style="width:94%"><span>147,6 s</span></div></div></div>
+<div class="bar"><div class="lab">Schleifen, 960 Körner<small>8 033 Hüllen, Ra 4,72 µm</small></div><div class="track"><div class="fill nc" style="width:29%"><span>2,98 s</span></div></div></div>
+<div class="bar"><div class="lab">pocket-large, 876 Schritte<small>exakter 3D-Kern, nach 6 Optimierungsrunden</small></div><div class="track"><div class="fill nc" style="width:34%"><span>4,66 s</span></div></div></div>
+</div>
+<div class="axis" aria-hidden="true"><div></div><div class="ticks"><span>0 s</span><span>40</span><span>80</span><span>120</span><span>160 s</span></div></div>
+<p class="sub" style="margin-top:14px">Zum Vergleich: derselbe pocket-large-Fall brauchte am Anfang
+<strong>30,9 s</strong> und liegt heute bei 4,66 s — sechsmal schneller, dabei exakt. Gegen C++ Manifold ist
+NanoCut bei langen Aufgaben schneller (4,9 s gegen 8,2 s), bei kurzen noch nicht (1,3- bis 2,3-fach).</p>
+</section>
+
+<section>
+<h2>Wie viel auf die GPU geht</h2>
+<p class="sub">Hier ist die Antwort in zwei Teilen, und der zweite Teil ist der wichtigere: <b>der exakte Kernel
+braucht die GPU nicht und bekommt sie nicht.</b> Er läuft zu 0 % auf der GPU — das ist eine Entscheidung, keine
+Lücke. Auf der GPU läuft ausschließlich die <em>Vorschau</em>, und die kann zu 100 % dort bleiben.</p>
+<div class="tablewrap">
+<table>
+<thead><tr><th>Teil</th><th>wo</th><th>gemessen</th><th>Faktor</th></tr></thead>
+<tbody>
+<tr><td class="scene">Exakter 3D-Kern</td><td>CPU, immer</td><td class="f">4 655 ms</td><td class="f">—</td></tr>
+<tr><td class="scene">Vorschau, Höhenfeld, CPU</td><td>CPU, 16 Threads</td><td class="f">286 ms</td><td class="f">16,3×</td></tr>
+<tr><td class="scene">Vorschau, Höhenfeld, CUDA</td><td>GPU, nur Kernel</td><td class="f">1,5 ms</td><td class="f">3 103×</td></tr>
+<tr><td class="scene">Vorschau, Höhenfeld, CUDA</td><td>GPU, Wandzeit inkl. Transfer</td><td class="f win">2,5 ms</td><td class="f win">1 862×</td></tr>
+<tr><td class="scene">Vorschau ohne Rücklesen</td><td>GPU, Feld bleibt auf dem Gerät</td><td class="f win">1,665 ms</td><td class="f win">2 796×</td></tr>
+<tr><td class="scene">Konvexes Langprogramm, 24 800 Schritte</td><td>GPU gegen dasselbe Programm auf der CPU</td><td class="f win">16,4 ms gegen 57 661,7 ms</td><td class="f win">3 515×</td></tr>
+</tbody>
+</table>
+</div>
+<p class="note"><b>Der Preis steht nicht in einer Fußnote.</b> Dieselbe Vorschau weicht im abgetragenen Volumen um
+−0,106 % von der exakten Rechnung ab: −0,090 % davon ist die Darstellung (ein Höhenfeld kann die dünne Decke über der
+Schneidspitze nicht halten), −0,016 % das Werkzeugmodell, +0,0005 % das Raster. Der Darstellungsanteil
+<em>schrumpft nicht</em>, wenn man das Raster verfeinert — wer auf dieser Basis ein Restmaß entscheidet, entscheidet
+falsch. Für eine Vorschau, der ein Mensch zusehen darf, ist das in Ordnung. Für das Ergebnis ist es nicht, und
+deshalb ist es das nicht.</p>
+</section>
+
+<div class="cols">
+<section>
+<h2>Was schon fertig ist</h2>
+<ul>
+<li><b>Exakter Boolescher Kern in 2D und 3D</b> mit Int128/Int384-Prädikaten, geprüft gegen CGAL und Manifold.</li>
+<li><b>Sechs Optimierungsrunden</b>, jede gegen die Runde davor differential getestet; pocket-large von 30,9 s auf
+4,66 s, das Ergebnis auf die letzte Ziffer identisch.</li>
+<li><b>Prozesse:</b> Drehen, Fräsen, Verzahnen, Schleifen, Rotationskörper, Ganzkörper-Verformung.</li>
+<li><b>Vorschau auf der GPU</b> mit Kugelwerkzeug und mit konvexem Werkzeug auf einer Posenfolge, inklusive
+Schritt-Binning für lange Programme.</li>
+<li><b>Betrachter</b> mit Abweichungs-Farbskala, Maßstabsleiste, 1-nm-Gitter und Vertex-Inspektor — läuft im Browser,
+ohne Server.</li>
+</ul>
+</section>
+<section>
+<h2>Was noch offen ist</h2>
+<ul>
+<li><b>Schritt 4 – Schleifvorschau:</b> Körner einer Schleifscheibe als konvexe Werkzeuge auf ihren Trochoiden,
+geprüft gegen <code>GrindingSimulation</code>, zuerst 60 Körner, dann die belegte Scheibe.</li>
+<li><b>Schritt 5 – Zahnradvorschau (2D):</b> Zielzahl ist die 1231,252941 mm² aus dem exakten Lauf.</li>
+<li><b>Servermodus, Teil 1:</b> Geometrie auf dem Server, Fortschritt über SignalR, abbrechbar. Die Vorschau ist
+heute schon reif dafür.</li>
+<li><b>Der Rotationsfall ist teuer:</b> <code>Process3.Sample</code> sampling einen Winkel linear, was für eine
+1,2-rad-Drehung eines 2,4-mm-Zahns rund 50 000 exakte Lagen verlangt — je Lage eine Hülle und eine Boolesche
+Operation. Das liegt auf dem kritischen Pfad für alles, was gegen den exakten Kern gemessen wird.</li>
+</ul>
+</section>
+</div>
+
+<footer>
+Alle Zahlen sind gemessen, nicht geschätzt. Quellen: <code>docs/accuracy.md</code> (Budget und Abweichungen),
+<code>docs/performance.md</code> (Optimierungsrunden, GPU-Vorschau, Langprogramme),
+<code>docs/long-programs.md</code> (Schritte 2 und 3, Binning, konvexes Werkzeug),
+<code>docs/processes.md</code> (Zahnfräsen), <code>docs/todo.md</code> (offene Punkte),
+<code>tests/Stykker.NanoCut.Tests/InspectCasesTests.cs</code> (die drei Betrachter-Fälle) und die Seite
+<code>/inspect</code> selbst, aus der die Zeilen zu Treppe, Sehnenfacetten und Zahnflanke abgelesen sind, sowie
+<code>GearFlankFlakeFindings.md</code> (der 2D-Boolesche-Kern ist keine reine Funktion — die Flankenabweichung ist
+eine Stichprobe).
+Gemessen am 4. Oktober 2026 auf diesem Rechner: RTX 5070 Ti (16 275 MiB, Blackwell, sm_120), CUDA 13.4,
+Windows 11, .NET SDK 10.0.401. GPU-Zeiten mit vorgewärmtem Kontext, der nicht mitgemessen wird; beste von drei
+Läufen. Die Farben dieser Seite sind dem Logo in <code>docs/images/logo.png</code> entnommen
+(<code>#0E181A</code> Grundfläche, <code>#122B2F</code> Fläche, <code>#3C9797</code> Akzent,
+<code>#D8F6F8</code> Strahlkern) und per Pixel-Histogramm ausgelesen.
+</footer>
+
+</main>
+</body>
+</html>

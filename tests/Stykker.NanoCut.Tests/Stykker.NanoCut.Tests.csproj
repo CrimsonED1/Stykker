@@ -19,6 +19,11 @@
     <Compile Include="../Shared/*.cs" Link="Shared/%(Filename)%(Extension)" />
     <!-- The demo's compute queue has no dependency beyond the BCL; linked so it is tested without the Razor library. -->
     <Compile Include="../../samples/Stykker.NanoCut.Demo.Shared/Services/ComputeRunner.cs" Link="Demo/ComputeRunner.cs" />
+    <!-- The inspection cases are plain geometry code as well, and the page's claims are measurements worth pinning.
+         The parameter record they share with the scenes comes along with them. -->
+    <Compile Include="../../samples/Stykker.NanoCut.Demo.Shared/Pages/InspectCases.cs" Link="Demo/InspectCases.cs" />
+    <Compile Include="../../samples/Stykker.NanoCut.Demo.Shared/Scenes/DemoScene.cs" Link="Demo/DemoScene.cs" />
+    <Compile Include="../../samples/Stykker.NanoCut.Demo.Shared/Scenes/Scenes.cs" Link="Demo/Scenes.cs" />
     <Using Include="Xunit" />
   </ItemGroup>
 </Project>

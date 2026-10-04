@@ -1,12 +1,16 @@
 // three.js adapter for Stykker.NanoCut buffers.
-// buffers: { positions: Float32Array|number[], normals: Float32Array|number[], indices: Uint32Array|number[], origin: [x, y, z] }
+// buffers: { positions, normals, indices, colors?, origin: [x, y, z] }
 import * as THREE from 'three';
 
-/** Creates a THREE.BufferGeometry from NanoCut mesh buffers (coordinates in mm relative to buffers.origin). */
+/**
+ * Creates a THREE.BufferGeometry from NanoCut mesh buffers (coordinates in mm relative to buffers.origin).
+ * `colors` is optional: three RGB floats per vertex, a data colour that the caller shades without any lighting.
+ */
 export function toThreeGeometry(buffers) {
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.BufferAttribute(asFloat32(buffers.positions), 3));
   geometry.setAttribute('normal', new THREE.BufferAttribute(asFloat32(buffers.normals), 3));
+  if (buffers.colors) geometry.setAttribute('color', new THREE.BufferAttribute(asFloat32(buffers.colors), 3));
   geometry.setIndex(new THREE.BufferAttribute(asUint32(buffers.indices), 1));
   geometry.computeBoundingSphere();
   return geometry;
