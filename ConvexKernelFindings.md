@@ -26,14 +26,14 @@ richtige Größe.
 | --- | --- | --- | --- | --- |
 | **A** | `m(m+1)/2` IEEE-Divisionen pro (Spalte, Schritt) — vorzeichenbasierte Tests | `ConvexProfile.cs:213,251,281` / `zmap.cu:1022,918,964` | ~ein Drittel der Befehle im heißesten Loop | niedrig |
 | **B** | Der Kreuzungspunkt `t_ij` ist **affin in (x, y)** — `Where` ganz divisionsfrei | `ConvexProfile.cs:242-260` | ~4,5× auf dem Teilmengenlauf, der **immer** läuft | niedrig–mittel |
-| **C** | Early-Out gegen die Box, die schon im Schritt-Payload steht | `zmap.cu:1107` | **~60 % der Paare** in der Schritt-4-Geometrie | sehr niedrig |
+| **C** | Early-Out gegen die Box, die schon im Schritt-Payload steht | `zmap.cu:1107` | **~43 % der Paare** im Mittel (§10.3) | sehr niedrig |
 | **D** | Pro-Schritt-Vorberechnung (Rotation, Divisionen, Steigung, Aufteilung) nach `__shared__` | `zmap.cu:1000-1030` | groß, entkoppelt m von der Spalte | mittel |
-| **C2** | Silhouetten-Vorprüfung über den Support-Funktionssatz (§7.1) | `zmap.cu:1107` | fängt auch die Spalten **in** der Box, aber **außerhalb** des Körpers | niedrig |
+| ~~C2~~ | ~~Silhouetten-Vorprüfung~~ — **gestrichen, siehe §10.3**: für diese Geometrien nahezu wertlos | — | — | — |
 
-**Die Reihenfolge ändert sich dadurch:** C und C2 sind **unabhängig von der Envelope**, brauchen keine neue Theorie
-und keinen Eingriff in die Mathematik — sie sind nur zwei zusätzliche Abbrüche vor dem LP. A und B ebenfalls. **D**
-ist der große strukturelle Umbau. Wer in einem Schritt den größten Hebel auf das kleinste Risiko will, macht **C
-zuerst** und **D zuletzt**.
+**Die Reihenfolge:** C ist der billigste und der größte Hebel — vier Vergleiche gegen Floats, die der Thread ohnehin
+liest, **unabhängig von der Envelope**, ohne Eingriff in die Mathematik. A und B ebenfalls. **D** ist der große
+strukturelle Umbau. Wer in einem Schritt den größten Hebel auf das kleinste Risiko will, macht **C zuerst** und **D
+zuletzt**.
 
 **Was der Plan nicht weiß:** die geplante O(m)-Envelope steht in `docs/todo.md` und `docs/long-programs.md`. Sie ist
 richtig, aber sie ist der **viertgrößte** von vier Hebeln — und der größte (§C) steht in keinem Dokument.
@@ -213,13 +213,26 @@ liegt. Es gibt keinen Vorab-Test. Die Kachel ist `kDexelTile = 16` × 16 = 256 S
 Zuweisung ist **kachel-, nicht spaltengenau**.
 
 **[rechnet]** Deshalb ist die Verworfenquote in der Schritt-4-Geometrie erheblich. Bei `h = 0,010 mm` ist die Box des
-Korns nach `Step4FeasibilityFindings.md:298` **48 × 13 = 624 Spalten**. Sie überspannt in x 3–4 Kacheln (48/16 = 3,
-versetzt bis 4) und in y 1–2 Kacheln (13/16 → 1, versetzt bis 2), also **3 bis 8 Kacheln = 768 … 2048 Spalten**, die
-bearbeitet werden. Bei einem Mittelwert von ~1500 ist der Anteil der Spalten **außerhalb** der Box
+Korns nach `Step4FeasibilityFindings.md:298` **48 × 13 = 624 Spalten**. Die Kachel ist 16 × 16. Ein Lauf von `L`
+Zellen berührt im Mittel `1 + (L−1)/16` Kacheln, also
 
 ```
-1 − 624 / 1500  ≈  58 %
+x: 1 + 47/16 = 3,94 Kacheln        y: 1 + 12/16 = 1,75 Kacheln
+zusammen 6,89 Kacheln = 1103 Spalten, von denen 624 in der Box liegen
 ```
+
+```
+1 − 624 / 1103  ≈  43 %   (Mittelwert; je nach Ausrichtung 19 % … 70 %)
+```
+
+**[abgeleitet]** Der Verwurf kommt also **nicht** daher, dass das Werkzeug seine Box schlecht füllt — es füllt sie
+gut (siehe §10.3). Er kommt daher, dass die Kachel 16 Zeilen hoch ist und die Box nur 13. Das ist der eigentliche
+Grund, und er ist nicht schöner, sondern wichtiger: **er ist eine Eigenschaft des Binnings, nicht des Werkzeugs**, und
+er trifft jede Geometrie mit einem Werkzeug, das kleiner ist als eine Kachel.
+
+**[rechnet]** Die Wirkung auf die Schritt-4-Vorschau: die 5,9 ms der Tabelle in §1 zählen **nur** die Spalten **in**
+der Box. Mit dem Early-Out wären es faktisch ~57 % davon, also **~3,4 ms statt 5,9 ms** bei `h = 0,01 mm` und
+~340 ms statt 592 ms bei `h = 0,001 mm`.
 
 **[abgeleitet]** **Der Test kostet vier Vergleiche gegen vier Floats, die der Thread ohnehin liest** (`p[0]` bis
 `p[3]`, dieselbe Cache-Zeile wie der Rest des Schritt-Payloads). Er ist **korrekt**, weil der Sweep in seiner eigenen
@@ -552,14 +565,139 @@ bewegen und **neu gemessen** werden müssen.
 
 ---
 
-## 10. Nicht durchgeführt
+## 10. Die drei offenen Fragen, beantwortet
+
+### 10.1 Der Exponent m^1.57 löst sich auf, ohne dass etwas gebaut wird — er ist 2
+
+**[rechnet]** §8 hat den Widerspruch offengelassen: `nLo + nHi = m` **exakt** (die Fibonacci-Normalen treffen den
+`mz == 0`-Zweig nie), also ist `Where` Θ(m²/4) und läuft unkonditioniert — **ein m²-Wachstum müsste man sehen.**
+Gemessen sind 704,1 / 1055,6 / 1935,4 / 3278,2 ms bei 6 / 8 / 12 / 16 Halbräumen (`docs/performance.md:290`). Der
+Widerspruch löst sich, wenn man die **richtige Modellform** benutzt. Statt eines Potenzgesetzes:
+
+| m | gemessen | `289,4 + 11,63·m²` | Abweichung |
+| ---: | ---: | ---: | ---: |
+| 6 | 704,1 | 708,1 | +0,6 % |
+| 8 | 1055,6 | 1033,8 | −2,1 % |
+| 12 | 1935,4 | 1964,3 | +1,5 % |
+| 16 | 3278,2 | 3266,9 | −0,3 % |
+
+**[rechnet]** Zwei freie Parameter treffen alle vier Punkte innerhalb ±2,1 %. Und die dokumentierte Zahl 1,57 ist
+genau das, was ein Potenzgesetz durch dieselben Daten liefert — ich habe die Kleinste-Quadrate-Fit in log-log
+nachgerechnet und komme auf **1,558**. **[abgeleitet]** **Die Daten sind nicht `Potenz`, sondern `konstant +
+quadratisch`.** Der Exponent 1,57 ist ein Artefakt des falschen Modells: eine Potenzkurve durch Daten mit
+konstantem Anteil berichtet den Exponenten zu klein.
+
+**[rechnet]** Und der konstante Anteil ist nicht klein:
+
+| m | Anteil der Konstante an der gemessenen Zeit |
+| ---: | ---: |
+| 6 | **41 %** |
+| 8 | 27 % |
+| 12 | 15 % |
+| 16 | 9 % |
+
+**[abgeleitet]** **Das ist der eigentliche Fund dieser Sektion.** Es gibt eine große, m-unabhängige Arbeit pro
+(Spalte, Schritt) — bei m = 6 sind es 41 % der Laufzeit. Sie ist genau das, was **§5 (Pro-Schritt-Vorberechnung)**
+angreift: die Rotation, das `m·w`- und `m·T_A`-Dotprodukt und die Division `1/mz` pro Halbraum, die alle nicht von m
+abhängen, sondern nur vom Schritt und der Spalte. **Die Exponent-Frage hat diese Arbeit die ganze Zeit verdeckt.**
+
+**[abgeleitet]** Und die 33 % beim Drehen (§8) fügen sich in dasselbe Bild: Drehen fügt **keine** m-abhängige Arbeit
+hinzu. Bleibt nur, dass die Paarzahl steigt — die gedrehte Keule hat eine fattere Box und landet in mehr Kacheln. Das
+ist die Erklärung (a) aus §8, und sie ist mit dem konstanten Anteil konsistent.
+
+**[zu messen]** Der Fit ist eine Rechnung auf vier Punkten. Er sollte an einem fünften geprüft werden — der m-Sweep
+existiert bereits im Bench (`LongPrograms convex`, `--planes`), ein weiterer Wert kostet einen Lauf. **Fällt ein
+gemessener Punkt auf `289 + 11,63·m²`, ist die Sache erledigt.** Fällt er nicht, ist das Modell zu grob und die
+Konstante muss aufgeteilt werden.
+
+### 10.2 `-fmad=false` ist nicht neu — es ist F7, und was fehlt, ist die Kontrolle
+
+**[geprüft]** Ich habe das letzte Mal als „der wichtigste Einzelfund" dargestellt. Das war falsch: **der Punkt ist im
+Projekt bereits viermal dokumentiert.**
+
+- `Step3Verification.md:190-194` — **F7**, wörtlich: „nvcc contracts `a*b + c` into an FMA by default; C#'s `MathF`
+  does not". Und `:275-276`: „Divergences found, all of them real but none algorithmic: **F7** (fma contraction,
+  which the commit message acknowledges and the kernel comment denies)".
+- `Step3KernelFindings.md:70-71` — dieselbe Aussage mit dem RyuJIT-Gegenstück, und `:320` stuft den Kommentar
+  `zmap.cu:946-947` als **falsch** ein: „so the backends differ by ulps. `ConvexDexelTests.cs:563-566` says the
+  opposite and is right."
+- `CudaLongProgramsFindings.md:756-757` — dasselbe, plus die zweite Abweichung; `:783` — der Kommentar sei
+  „**still false, still unreworded**".
+
+**[geprüft] Die eigentliche Lücke steht wörtlich in `CudaLongProgramsFindings.md:327-329`:**
+
+> Release builds with `-O3` only, no `-fmad=false` variant (`build.ps1:70-72`), while the CPU/CUDA divergence is
+> attributed to fma contraction. Step 3's test has more multiply-adds than the ball's, so **the one control that
+> would separate a real bug from contraction does not exist.**
+
+und in der Tabelle `:369` als **„7.6 no `-fmad=false` variant | absent"**.
+
+**[abgeleitet]** Das ist die Antwort auf die Frage, und sie ist eine andere als die gestellte. **Nicht** „das Flag
+setzen", sondern **die Kontrolle bauen**: eine zweite Build-Konfiguration mit `-fmad=false`, ein Bench-Lauf und ein
+Testlauf, dann ist F7 eine Messung statt einer Vermutung — und man weiß, wie viel der beobachteten Divergenz
+(4,3·10⁻⁵ … 1,3·10⁻⁴ mm gegen 8,3·10⁻⁴ Toleranz) wirklich von der Kontraktion stammt und wie viel von etwas
+Unerwartetem. Das ist ein halber Tag Aufwand und es beantwortet gleichzeitig die Frage, ob die Toleranzen in
+`ConvexDexelTests.cs:593` und `DexelMapTests.cs:191` die **feste** Grenze `1e-4` brauchen.
+
+**[geprüft] Zwei Dinge, die das Flag _nicht_ repariert:**
+
+1. **F8** — `fmaxf`/`fminf` folgen IEEE-754-2008 `maximumNumber` und **schlucken NaN**, `MathF.Max`/`MathF.Min`
+   **propagieren** es (`zmap.cu:937` gegen `ConvexProfile.cs:302`;
+   `Step3KernelFindings.md:54-57`, `Step3Verification.md:196`). `-fmad=false` ändert daran nichts. Ob F8 je
+   aufgetreten ist, steht in `Step3Verification.md:531` weiterhin offen und braucht ein entartetes Werkzeug.
+2. **Die Ball-Referenzzahlen aus Schritt 2.** Das Flag ist global und trifft auch `swept_span`. Die Baseline müsste
+   neu gemessen werden — und die ist nach `Step3KernelFindings.md §f` ohnehin schon verdächtig, weil sie aus einer
+   Binärdatei mit doppeltem Local-Memory-Rahmen stammt.
+
+**[abgeleitet] Empfehlung: die Kontrolle bauen, das Flag noch nicht setzen.** Und unabhängig davon sollte jemand den
+Kommentar an `zmap.cu:946-947` korrigieren — er behauptet „both backends land on the same float" und das ist
+falsch. Das ist eine Zeile und der billigste Widerspruch im ganzen Repository.
+
+### 10.3 Korrektur: der Box-Test schlägt den Silhouetten-Test deutlich, und meine 58 % waren zu hoch
+
+**[rechnet]** Beides in einer Rechnung, weil die Geometrie des Sweeps sie entscheidet.
+
+**Der Box-Test** steht in §4: **43 % im Mittel**, 19–70 % je nach Ausrichtung (nicht 58 % — das war der Mittelwert
+über eine zu grob geschätzte Kachelzahl). Die Korrektur ändert den Hebel, nicht seine Richtung.
+
+**Der Silhouetten-Test** ist der Support-Funktionssatz aus §7.1. Sein Ertrag hängt davon ab, wie gut der Sweep seine
+eigene Box füllt — und das habe ich in §7.1 nicht gerechnet, sondern behauptet. Für die Schritt-4-Geometrie rechnet es
+sich so (`Step4FeasibilityFindings.md:290-298`: der Schritt bewegt das Korn 0,349 mm in x, die Oktaederbreite ist
+0,075–0,13 mm, genommen 0,13, die Sweep-Box ist 0,48 × 0,13 mm):
+
+- Die Projektion des geschlobenen Oktaeders ist die Raute der Breite `w` **⊕** das Segment der Länge `L`. Nach der
+  Minkowski-Formel für ein Segment: `Fläche = w²/2 + L·w`.
+- `0,13²/2 + 0,349 · 0,13 = 0,00845 + 0,04537 = 0,0538 mm²` gegen eine Box von `0,48 · 0,13 = 0,0624 mm²`.
+
+```
+Füllgrad der Sweep-Box  ≈  86 %     →  der Silhouetten-Test verwirft nur 14 %
+```
+
+**[abgeleitet]** Und das ist keine Eigenschaft des Korns, sondern **eine Eigenschaft des Regimes**: der Füllgrad
+`w²/2 + L·w` über `w(L+w)` geht gegen 1, wenn `L ≫ w`. **Der Silhouetten-Test zahlt genau dann, wenn der Schritt kurz
+ist, und am wenigsten, wenn er lang ist** — und Schritt 4 hat mit 0,349 mm gegen 0,13 mm ausgerechnet den Fall
+`L ≫ w`. Für den Bench-Fall (0,2-mm-Polyeder auf einem langen Finish-Pass) gilt dasselbe.
+
+**[abgeleitet] Also: §7.1 hat den Silhouetten-Test zu hoch bewertet, und ich habe das letzte Mal übernommen.** Für die
+Geometrien dieses Projekts ist er nahezu wertlos, und ich habe ihn in §0 gestrichen. **Der Box-Test ist der Early-Out,
+und der einzige, den man braucht** — vier Vergleiche, keine Theorie, und 43 % der Paare.
+
+**[zu messen]** Die Verwerfquote des Box-Tests ist eine Rechnung auf der Kachelgeometrie, keine Messung. Ein Zähler
+(`columnsSeen`, `columnsInBox`) im Kernel macht sie in einem Lauf zur Tatsache — und er ist derselbe Zähler, den §8
+für die Paarzahl ohnehin braucht.
+
+---
+
+## 11. Nicht durchgeführt
 
 - Kein `dotnet build`, kein `dotnet test`, kein Bench-Lauf, kein `cuobjdump`, kein `ncu`, kein `nvcc`.
-- Keine Datei im Repo verändert außer dieser Notiz.
-- **Keine der Zahlen in §1, §3, §4 ist gemessen.** Sie folgen aus dem Quelltext, aus den bereits gemessenen Größen
-  in `docs/performance.md` und `docs/long-programs.md` und aus `Step4FeasibilityFindings.md`. Der Ertrag jeder Stufe
-  ist eine Hypothese mit einer Größenordnung, **kein Ergebnis**.
-- Die Hardwarezahlen in §7.2 sind Folgerungen des Rechercheagenten ohne Netzzugang und ohne Profiler. Sie sind als
-  solche markiert und **nicht** von mir geprüft.
-- Die Rechercheagenten konnten keine URLs abrufen. Für §7.1 fehlt die Literaturseite vollständig; sie wird nachgetragen,
-  sobald der zweite Agent zurück ist.
+- Keine Datei im Repo verändert außer dieser Notiz. Die CUDA-Doku liegt unter `.qwen/refs/` und ist nicht Teil des
+  Commits.
+- **Keine der Zahlen in §1, §3, §4, §10.1, §10.3 ist gemessen.** Sie folgen aus dem Quelltext, aus den bereits
+  gemessenen Größen in `docs/performance.md`, `docs/long-programs.md` und `Step4FeasibilityFindings.md`. Der Ertrag
+  jeder Stufe ist eine Hypothese mit einer Größenordnung, **kein Ergebnis**.
+- **Der Fit in §10.1 ist eine Rechnung auf vier Punkten** und nicht durch einen fünften Messpunkt bestätigt. Das ist
+  die einzige Aussage in dieser Notiz, die schon eine eigene Messung verdient, weil sie die anderen trägt.
+- Die Hardwarezahlen in §7.2 sind Folgerungen des Rechercheagenten ohne Profiler. Sie sind als solche markiert und
+  **nicht** von mir geprüft. Die Aussagen aus §7.3 sind von mir gegen die geladene Doku geprüft.
+- Die Literatur in §7.1 ist **unbelegt**: beide vom Agenten genannten URLs liefern 404.
