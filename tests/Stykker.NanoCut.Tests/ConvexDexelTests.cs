@@ -253,6 +253,85 @@ public class ConvexDexelTests(ITestOutputHelper output)
         Assert.False(At(12f, 10f, out _, out _));
     }
 
+    [Fact]
+    public void EveryColumnAStepReachesIsInsideItsOwnBox()
+    {
+        // The early-out in Span and in convex_span settles a column against the step's own bounding box before it runs
+        // the linear program. That is only allowed if the box contains every column the sweep reaches, so this walks
+        // exactly the (step, column) pairs the binned launch hands to the kernel -- StepBins decides which tiles a step
+        // belongs to -- and judges every hit against the box the packing wrote. The premise, not the code using it.
+        ConvexTool grain = ConvexTool.Octahedron(0.65);          // a grinding grain, 1.3 mm across
+        float[] planes = ConvexProfile.PackPlanes(grain);
+        ConvexStep[] steps =
+        [
+            .. Turn(grain, 0.2, (10, 10, 10), tolMm: 0.0005),   // turning where it stands
+            new ConvexStep(Orientation3.AboutZ(0.4), (9, 9, 10), (11, 11, 10)),   // and travelling while it turns
+        ];
+        float[] packed = ConvexProfile.Pack(steps, grain, (0, 0, 0));
+
+        const int cells = 200;                                    // 20 mm of map at 0.1 mm cells
+        const float cell = 0.1f;
+        var bins = StepBins.Build(packed, ConvexProfile.StepFloats, true, cells, cells, cell, cell);
+        var assigned = new bool[steps.Length * cells * cells];
+        for (int t = 0; t < bins.TileCount; t++)
+        {
+            int tx = t % bins.TilesX, ty = t / bins.TilesX;
+            for (int q = bins.TileStart[t]; q < bins.TileStart[t + 1]; q++)
+            {
+                int s = bins.TileSteps[q];
+                for (int j = ty * StepBins.Tile; j < Math.Min((ty + 1) * StepBins.Tile, cells); j++)
+                    for (int i = tx * StepBins.Tile; i < Math.Min((tx + 1) * StepBins.Tile, cells); i++)
+                        assigned[s * cells * cells + j * cells + i] = true;
+            }
+        }
+
+        // The linear program, with the early-out taken out of the way. Asking Span whether its own box test is right
+        // cannot work -- it returns false for a rejected column whether or not the rejection was correct -- so the box
+        // is blunted in a copy of the packed steps instead: a box so large that every column passes it, leaving the
+        // linear program to answer for itself. Only the early-out reads those four floats; the program reads the move,
+        // the position and the rotation after them.
+        float[] blunt = (float[])packed.Clone();
+        for (int s = 0; s < steps.Length; s++)
+        {
+            int o = s * ConvexProfile.StepFloats;
+            blunt[o] = -1e30f; blunt[o + 1] = -1e30f; blunt[o + 2] = 2e30f; blunt[o + 3] = 2e30f;
+        }
+
+        int hits = 0, pairs = 0, byBox = 0;
+        for (int s = 0; s < steps.Length; s++)
+        {
+            int o = s * ConvexProfile.StepFloats;
+            float bx = packed[o] - StepBins.MarginMm, by = packed[o + 1] - StepBins.MarginMm;
+            float bx1 = bx + packed[o + 2] + 2 * StepBins.MarginMm, by1 = by + packed[o + 3] + 2 * StepBins.MarginMm;
+            for (int j = 0; j < cells; j++)
+                for (int i = 0; i < cells; i++)
+                {
+                    if (!assigned[s * cells * cells + j * cells + i]) continue;
+                    pairs++;
+                    float x = (i + 0.5f) * cell, y = (j + 0.5f) * cell;
+                    if (!ConvexProfile.Span(x, y, packed, planes, s, out _, out _))
+                    {
+                        byBox++;
+                        Assert.False(ConvexProfile.Span(x, y, blunt, planes, s, out _, out _),
+                            $"step {s} rejects ({x:F3}, {y:F3}) on its box, but the linear program cuts it");
+                        continue;
+                    }
+                    hits++;
+                    Assert.InRange(x, bx, bx1);
+                    Assert.InRange(y, by, by1);
+                }
+        }
+
+        Assert.True(hits > 100, $"{hits} hits over {pairs} pairs is not the walk this needs to mean anything");
+        // And the early-out is not dead code: a grain 13 columns across sits in a tile 16 wide, so the binning hands the
+        // kernel most of the tile and the box throws it away again. The share is a measurement, so it is only here
+        // to be non-zero.
+        Assert.True(pairs > 4 * hits, $"{pairs} pairs for {hits} hits leaves nothing for the box to reject");
+        output.WriteLine($"{steps.Length} steps, {pairs} (step, column) pairs binned, {hits} of them reach the tool, " +
+                         $"{byBox} of the rest turned away by the box and agreed by the linear program, " +
+                         $"{100.0 * byBox / pairs:F1} % rejected");
+    }
+
     // ---- the volumes, against closed forms ---------------------------------------------------------------
 
     [Fact]
@@ -400,6 +479,109 @@ public class ConvexDexelTests(ITestOutputHelper output)
         var motion = Motion3.Linear(Vec3.Mm(6, 8, 9), Vec3.Mm(13, 11, 12));
         var steps = new[] { ConvexStep.Move((6, 8, 9), (13, 11, 12)) };
         ThreeGrids(solid, motion, tool, steps);
+    }
+
+    [Fact]
+    public void TheGrownPackedBoxAlwaysContainsTheExactOne()
+    {
+        // The early-out and the binning both trust the packed box, and Pack rounds a box computed in double down into
+        // a float. The margin is what has to absorb that rounding, and it only absorbs it while the coordinate's own
+        // float resolution is finer than the margin: fl(c - margin) == c exactly once ulp(c) exceeds twice it, and
+        // past that the subtraction vanishes and the box can sit inside the body it is meant to contain. That is a
+        // property of the coordinate, not of the tool, so it is walked out to the far corner of maps of several sizes.
+        ConvexTool grain = ConvexTool.Octahedron(0.65);
+        double worstShort = 0, worstLong = 0;
+
+        foreach (double size in new[] { 20.0, 50.0, 100.0, 200.0, 1000.0 })
+        {
+            var origin = (X: 0.0, Y: 0.0, Z: 0.0);
+            var steps = new[]
+            {
+                new ConvexStep(Orientation3.AboutZ(0.3), (size - 3, size - 3, 10), (size - 1, size - 1, 11)),
+                new ConvexStep(Orientation3.AboutAxis(0.4, 1, 0, 0), (size - 2, size - 2, 9), (size - 2, size - 2, 9)),
+            };
+            float[] packed = ConvexProfile.Pack(steps, grain, origin);
+
+            for (int s = 0; s < steps.Length; s++)
+            {
+                var (loX, loY, hiX, hiY) = ExactBox(steps[s], grain.CornersMm, origin);
+                int o = s * ConvexProfile.StepFloats;
+                float grownLoX = packed[o] - StepBins.MarginMm, grownLoY = packed[o + 1] - StepBins.MarginMm;
+                float grownHiX = grownLoX + packed[o + 2] + 2 * StepBins.MarginMm;
+                float grownHiY = grownLoY + packed[o + 3] + 2 * StepBins.MarginMm;
+
+                worstShort = Math.Max(worstShort, grownLoX - loX);
+                worstShort = Math.Max(worstShort, grownLoY - loY);
+                worstLong = Math.Max(worstLong, hiX - grownHiX);
+                worstLong = Math.Max(worstLong, hiY - grownHiY);
+
+                Assert.True(grownLoX <= loX && grownLoY <= loY && grownHiX >= hiX && grownHiY >= hiY,
+                    $"a {size:F0} mm map, step {s}: the grown float box [{grownLoX:F9}, {grownHiX:F9}] x " +
+                    $"[{grownLoY:F9}, {grownHiY:F9}] does not contain the exact box [{loX:F9}, {hiX:F9}] x " +
+                    $"[{loY:F9}, {hiY:F9}]; the margin has been rounded away");
+            }
+        }
+
+        output.WriteLine($"margin {StepBins.MarginMm:E1} mm, maps to 1000 mm: the box overhangs its exact self by " +
+                         $"{worstShort:E1} mm at the near corner and is short by {worstLong:E1} mm at the far one");
+        Assert.True(worstLong <= 0 && worstShort <= 0, "a grown box that ends inside the body loses material");
+    }
+
+    /// <summary>
+    /// The box of the body one step sweeps, in double and without the packing: the tool's corners put through the
+    /// rotation, then through the position and both ends of the move. Deliberately a second implementation of what
+    /// <see cref="ConvexProfile.Pack"/> computes, because a test that recomputes it the same way can only confirm the
+    /// packing agrees with itself.
+    /// </summary>
+    private static (double LoX, double LoY, double HiX, double HiY) ExactBox(
+        ConvexStep step, IReadOnlyList<(double X, double Y, double Z)> corners, (double X, double Y, double Z) origin)
+    {
+        double loX = double.MaxValue, loY = double.MaxValue, hiX = double.MinValue, hiY = double.MinValue;
+        double wx = step.ToMm.X - step.FromMm.X, wy = step.ToMm.Y - step.FromMm.Y;
+        foreach (var (cx, cy, _) in corners)
+        {
+            var (rx, ry, _) = step.Orientation.Apply(cx, cy, 0);
+            for (int t = 0; t < 2; t++)
+            {
+                double f = t;
+                double x = step.FromMm.X + rx + f * wx - origin.X;
+                double y = step.FromMm.Y + ry + f * wy - origin.Y;
+                loX = Math.Min(loX, x); hiX = Math.Max(hiX, x);
+                loY = Math.Min(loY, y); hiY = Math.Max(hiY, y);
+            }
+        }
+        return (loX, loY, hiX, hiY);
+    }
+
+    [Fact]
+    public void ATiltedToolThatTravelsAgreesWithTheExactCut()
+    {
+        // Where asks now whether the bound moves before it divides, and the pair loop only has a slope to ask about
+        // when the tool travels. This case gives it that: a tilt about x by 0.3 rad with 4 mm of travel along y, which
+        // is nLo = nHi = 2 and four pairs whose s is non-zero on both sides. Travelling along x instead would leave
+        // every dot at zero - w is parallel to the tilt's own axis - and the new branch would go unreached. Checked
+        // against the exact kernel on three grids.
+        // <para>
+        // What it does not do is pin the fire condition. Both ends of the interval come out at t = tLo = 0 in this
+        // geometry, so narrowing tHi changes nothing that is read: measured over all three grids, four wrong
+        // implementations of the rewrite - > for >=, the condition inverted, the two probes swapped, the sign of the
+        // term flipped - produce zero differing columns, and so do the two Process3 cases that turn a tool while it
+        // travels. The only test in the suite that separates them is CudaAgreesWithTheCpuReference, which needs a
+        // device, so on the CPU alone the rewrite is unverified.
+        // </para>
+        ConvexTool tool = BoxTool(1, 2, 0.5);
+        var from = (X: 10.0, Y: 6.0, Z: 10.0);
+        var to = (X: 10.0, Y: 10.0, Z: 10.0);
+        var motion = Motion3.Between(
+            Pose3.Rotation(0.3, 1, 0, 0, Vec3.Mm(from.X, from.Y, from.Z)) with
+            { TxNm = (long)(from.X * 1e6), TyNm = (long)(from.Y * 1e6), TzNm = (long)(from.Z * 1e6) },
+            Pose3.Rotation(0.3, 1, 0, 0, Vec3.Mm(from.X, from.Y, from.Z)) with
+            { TxNm = (long)(to.X * 1e6), TyNm = (long)(to.Y * 1e6), TzNm = (long)(to.Z * 1e6) });
+        var steps = new[]
+        {
+            new ConvexStep(Orientation3.AboutAxis(0.3, 1, 0, 0), (from.X, from.Y, from.Z), (to.X, to.Y, to.Z)),
+        };
+        ThreeGrids(BoxSolid(1, 2, 0.5), motion, tool, steps);
     }
 
     [Fact]

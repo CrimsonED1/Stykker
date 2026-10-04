@@ -143,8 +143,100 @@ column in NVIDIA's own table is empty, so figures quoted for this card are docum
 
 ## 7. Not done
 
+> This section describes the session that wrote the document. A later session built and measured several of the things
+> it lists as open; §8 says which, and §8 is the current state. Everything below is as of `437612f`.
+
 - No `dotnet build`, no `dotnet test`, no bench run, no `cuobjdump`, no `ncu`, no `nvcc`. Builds and tests run in
   other sessions.
 - No source file changed. No commit on any branch but this one. **Nothing pushed.**
 - The two background research agents completed; their results are in `3e195dc`. Their literature could not be
   fetched — they had no network access, which this session did have.
+
+---
+
+# 8. Later session: what was built, what was measured, what is next
+
+**Written 2026-10-04 on `worktree-quick-elm-a7a7ca`, after `f39a8ed`.** Nine commits on top, and this document is the
+ninth. Two findings documents carry the detail: **`ConvexEarlyOutFindings.md`** (levers A, B and the measurements) and
+**`ConvexOccupancyFindings.md`** (what the kernel actually spends its time on). This section is the map: what is done,
+what is refused and why, and the single next measurement.
+
+## 8.1 Done and kept
+
+| commit | what | measured |
+| --- | --- | --- |
+| `cc1fbc6` | the box early-out — four comparisons against the step's own swept box, at the top of `convex_span` and mirrored in `ConvexProfile.Span` | binned kernel 8.0–8.3 → 4.4–5.2 ms, unbinned 1736 → 76 ms, removed volume unchanged to the last digit |
+| `f950cee` | `Where` asks whether the bound moves before it divides (`k + s·tHi >= 0`) | `smsp__inst_executed_pipe_xu` 78 260 184 → 42 396 362; **no wall-clock change**, and §3 of the findings says why the analysis in `ConvexKernelFindings.md` §2.1 was wrong by a factor of three |
+| `310487b` | the box margin was 1e-6 mm and had to outlast the coordinate's own float resolution; now 1e-4 mm | this one is a **correctness fix**, not a speed change: at 1e-6 the grown box ended 3.81e-7 mm *inside* the body already on a 20 mm map |
+
+## 8.2 Built, measured, and refused
+
+**The O(m) envelope walk.** Correct — a differential test over 30 configurations and 432 000 columns found **zero**
+hit/miss disagreements against the crossing walk it replaces, worst end difference 4.77e-06 mm. And worth 2.4 % at twelve
+half-spaces, 4.5 % at sixteen, **−10 % at eight**. Refused: 4.5 % at the top of the range is not worth a hundred lines
+of subtle code in a kernel whose correctness rests on a documented ulop argument. `ConvexEarlyOutFindings.md` §6 has the
+numbers, the mutation checks, and the correction of an earlier verdict that had it backwards.
+
+**Lever D on its own**, the per-step rotation into shared memory: not started. Its bound was mis-drawn. The 0.45 ms
+"constant" in `ConvexKernelFindings.md` §10.1 is the *fitted intercept* of measured times, and the per-step preparation
+is O(m) — so it lives in the **m²** term, 89 % of the kernel at m = 12, not in the 10 % constant. Roughly 27 of the ~40
+instructions per plane are block-uniform. Those are counts, not measurements.
+
+## 8.3 The next measurement — it decides the next lever
+
+`ConvexOccupancyFindings.md` §3 is the argument, in one line: **the binned launch keeps 8.09 of 32 threads active per
+warp** (Nsight Compute's estimate for fixing it: 40.3 %), against 21.34 for the sphere arm of the same kernel and the
+same program. The kernel is issue-bound at 62.70 % compute and only 20 % long-scoreboard stall, so the waste is lanes,
+not bandwidth and not arithmetic.
+
+**What to measure first, before any restructuring:** per tile, how many of the 256 columns are touched by at least one
+of the steps assigned to that tile. That number is the speedup ceiling for compacting the surviving columns into dense
+warps, and it costs one instrumented build. If it is close to 256, the lever is worth building; if it is close to the
+per-step footprint, it is not, and nothing else on the list should be tried in its place.
+
+## 8.4 How to measure anything here — four rules that cost wrong numbers first
+
+1. **`--repeat 50`, not `--repeat 3`, for anything under about 10 %.** The same code in different processes reads
+   anywhere from 4.1 to 5.2 ms on this machine: a 24 % spread against effects of 2–4 %. Every verdict in §6 of the
+   findings rests on best-of-50.
+2. **`--tilt-deg` for anything about how `nLo` and `nHi` split** (`8b03f79`). `--turn-deg` rotates about z and leaves
+   every m_z sign untouched, so the crossing walk — which costs `nLo³ + nHi³` — was only ever measured at its cheapest,
+   with the split balanced 6/6 by `ConvexTool.Ball`'s construction.
+3. **`smsp__inst_executed_op_local_st.sum` next to `op_local_ld`,** and pair every instruction count with the
+   throughput **from the same run**: `cycles ∝ instructions / throughput`, so a count from one build beside a throughput
+   from another invents a cycle ratio. Take `gpc__cycles_elapsed` directly. On this kernel a store costs several
+   times a load, and an insertion sort is store-dominated — that is the whole reason the first envelope attempt looked
+   catastrophic.
+4. **Rebuild the bench before profiling it.** `build.ps1` is not enough: the bench copies `nanocut_gpu.dll` into its
+   own `bin`, and `dotnet build Stykker.NanoCut.slnx` does not build the bench. Getting that wrong put the envelope's
+   profile numbers into `ConvexOccupancyFindings.md` as the walk's for one revision. And `ncu --launch-count 1`
+   profiles the 8-step warm-up; `--launch-skip 1` reaches the measured launch.
+
+## 8.5 Two things that are still not settled
+
+- **An intermittent failure in the CPU planar path**, `ProcessTests.RackGeneratedGearHasInvoluteFlanks`, once in six
+  full-suite runs, flank 5327 nm against that test's 300 nm tolerance. It does not reproduce in isolation (five solo
+  runs green) and did not appear in four baseline runs of `f39a8ed`. It is `Process2.Cut`, untouched by anything here —
+  but this branch's `376f705` made that path run the union and the subtract on two strands at once, and a result that
+  depends on scheduling would look exactly like this. **Not established, not dismissed.** It belongs next to that
+  commit.
+- **`k + s·tHi` is now a branch predicate**, which is the first place in `Where` where nvcc's `-fmad=true` contraction
+  can change an *outcome* rather than a last bit. Measured: 0 of 107 252 pair evaluations differ on the tested
+  geometry, general order ~1e-9 per pair. Rare, new, and covered by nothing.
+
+## 8.6 One branch to close
+
+`origin/feature/box-early-out` (`e72ad33`, worktree `worktree-keen-sky-991dba`) holds `box-earlyout.patch` — a diff
+draft of the **same** box early-out, verified to apply and never built. `cc1fbc6` implements it instead, built and
+measured. Applying that patch on top of this branch would conflict on the same lines. **Close the branch rather than
+apply the patch**; the two ideas are otherwise the same, down to the 1e-6 mm margin that both got wrong and that
+`310487b` fixed.
+
+## 8.7 Not done
+
+- Nothing of the lane-occupancy lever: no instrumented build, no restructuring.
+- No `CpuBackend` measurement of what the early-out did for the CPU convex path — and before anyone writes one:
+  `CpuBackend.ApplyConvexDexels` returns a `ZMapTiming` whose `PackMs` is 0, so the two `WallMs` columns would still
+  cover different spans, which is the reason `PackMs` exists.
+- The sphere path (`swept_span`) has no box early-out; its payload carries a position and a radius, not a box.
+- The literature in `ConvexKernelFindings.md` §7.1 is still unverified — both URLs the research agent named return 404.
