@@ -91,13 +91,16 @@ on a pose sequence) are done; steps 4 to 6 are the preview itself.
   removed 84.82 mm³, with the overflow counter still at zero). The launch takes the pointer from the count it was
   given, and `ConvexDexelTests.AConvexToolThenASphereOnTheSameDevice` runs convex → sphere against the CPU, which is
   the order the earlier test did not have.
-- **"The order of steps inside a tile does not matter" is written down and is false.**
-  `docs/long-programs.md:83-84` claims it, with the parenthetical "only the overflow counting can differ". The
-  capacity guard in `dexel_subtract` (`if (left && right && n + 1 > capacity)`) keeps the part *below* a cut and drops
-  the roof above it, so which side survives depends on the order the cuts arrive in — the intervals move, not only
-  the count. It holds for columns that never reach capacity. Step 3 puts the convex path through the same
-  `dexel_apply_column`, so the same guard and the same caveat apply there. Correcting the sentence needs no
-  measurement; what would need one is a counter-example to put next to it.
+- ~~**"The order of steps inside a tile does not matter" is written down and is false.**~~ Corrected in
+  `docs/long-programs.md` on 2026-10-04: removal is a union, but that alone does not make a tile order-independent.
+  The counter-example is now measured as well, not only argued — the binned launch test asserts that overflows
+  actually occur, because `Assert.Equal(b.Overflows, a.Overflows)` would also pass at `0 == 0` with the guard never
+  reached. They occur at 32, 64 and 301 cells (1, 3 and 36) and not at 16, which is why that assertion sums over the
+  four sizes rather than looking at one. The mechanism it corrects: the capacity guard in `dexel_subtract`
+  (`if (left && right && n + 1 > capacity)`) keeps the part below a cut and drops the roof above it, so the
+  intervals move with the order the cuts arrive in, not only the count. It holds for columns that never reach
+  capacity, and the overflows above are what make the difference observable at all. Step 3 puts the convex path
+  through the same `dexel_apply_column`, so the same guard and the same caveat apply there.
 - **The sampling bound in `ConvexDexelTests.SamplingBound` is the maximum over the steps, not their union.** For a
   program that fans out — the rotating case — the box one step contributes is smaller than the area the whole program
   sweeps, so what the test asks for (0.1253 mm³ at 500 cells) is not "the volume a column model can be off by" as the
@@ -189,9 +192,14 @@ From [gpu-findings.md](gpu-findings.md); nothing here blocks a preview, all of i
 - ~~**Warm up before measuring.**~~ Done: every query number needed a warm-up to mean anything — the first table was
   off by a factor of ten because the bench called each query once on freshly allocated arrays. The bench prints the
   cold call beside the warm one now, and `docs/gpu-findings.md` reports only warm numbers.
-- **Time the call as well as the work inside it.** The CPU backend reported 3.46 ms for a query the caller waited
+- ~~**Time the call as well as the work inside it.**~~ Decided and built on 2026-10-04. The CPU backend reported
+  3.46 ms for a query the caller waited
   5.87 ms for, because the span-to-array copy sat outside its stopwatch. The bench now prints the caller-side time next
-  to the backend's own figure; whether `CpuBackend` should report its staging in `WallMs` is undecided.
+  to the backend's own figure. `ZMapTiming` now carries a `PackMs` that both backends fill, and the deliberate part
+  is where it sits: the CPU stopwatch still covers the parallel loop only, because every CPU timing already recorded
+  in the docs depends on that span, so packing is reported apart rather than folded in. It falls inside `WallMs` on
+  CUDA and outside it on the CPU, which is exactly why the two `WallMs` columns of a table could not be compared
+  against each other before.
 - **A partial read-back** (a row band of the field) for a caller that wants a picture of a part of the stock while the
   cut runs. The whole-field copy is the only thing left that scales with the grid.
 - **Server mode** (`samples/Stykker.NanoCut.Server`): geometry on the server, progress over SignalR, cancellable, the WASM

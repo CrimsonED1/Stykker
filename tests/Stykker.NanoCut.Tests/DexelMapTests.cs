@@ -211,6 +211,7 @@ public class DexelMapTests(ITestOutputHelper output)
             return;
         }
         var steps = MixedSteps();
+        long overflows = 0;
         foreach (int cells in new[] { 16, 32, 64, 301 })
         {
             var a = Stock(cells, k: 6, backend: binned);
@@ -232,7 +233,15 @@ public class DexelMapTests(ITestOutputHelper output)
             Assert.Equal(0, bad);
             Assert.Equal(0, worst);
             Assert.Equal(b.Overflows, a.Overflows);
+            overflows += a.Overflows;
         }
+
+        // "overflows included" is worth nothing unless the capacity guard actually fires: 0 == 0 would
+        // pass with the guard never reached, and the order the cuts arrive in would then never have been
+        // observed to matter. If this fails, the scene does not overflow and the claim in
+        // docs/long-programs.md is what needs correcting, not the test.
+        Assert.True(overflows > 0, $"no column overflowed at any of the four sizes ({overflows} in total), " +
+            "so this test does not exercise the capacity guard");
     }
 
     [Fact]

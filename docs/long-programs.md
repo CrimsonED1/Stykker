@@ -80,8 +80,10 @@ found as a tiny linear program in (z, t): minimise and maximise z subject to n_i
 That interval is subtracted from the column's intervals exactly as in the dexel map.
 
 Steps are binned by tiles of columns: each step's bounding box (tool box swept by its translation) lists the tiles it
-touches (CSR on the host), and a GPU block works on one tile with only those steps. Removal is a union, so the order of
-steps inside a tile does not matter for the result (only the overflow counting can differ).
+touches (CSR on the host), and a GPU block works on one tile with only those steps. Removal is a union, but that alone
+does not make a tile order-independent: the dexel capacity guard keeps the part below a cut and discards the roof
+above it, so which side survives depends on the order the cuts arrive in, and the intervals move with it. What does
+hold is that a column sees its steps in the same order whichever launch runs it — see "Binning (step 2)" below.
 
 ## Binning (step 2)
 
