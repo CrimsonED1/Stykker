@@ -3,6 +3,7 @@
 @using Stykker.NanoCut.Geometry3D
 @inject Viewer Viewer
 @inject IComputeRunner Runner
+@inject NavigationManager Nav
 @implements IAsyncDisposable
 
 <div class="scene">
@@ -141,7 +142,18 @@
 
     private static string F(double v) => v.ToString("0.####", CultureInfo.InvariantCulture);
 
-    protected override void OnInitialized() => _values = InspectCases.Defaults(_case);
+    protected override void OnInitialized()
+    {
+        // The overview links straight to a case ("/inspect?case=flank"), so a deep link does not cost a click.
+        string query = new Uri(Nav.Uri).Query;
+        int q = query.IndexOf("case=", StringComparison.Ordinal);
+        if (q >= 0)
+        {
+            string id = query[(q + 5)..].Split('&')[0];
+            if (InspectCases.Ids.Contains(id)) _case = id;
+        }
+        _values = InspectCases.Defaults(_case);
+    }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -234,6 +246,8 @@
 
         await Viewer.Clear();
         await Viewer.AddMesh("measured", buffers, "#9fb4c8", 1, _colored ? ToColors(_perVertex, lo, hi) : null);
+        if (_inspection.NominalLines is { } nominal)
+            await Viewer.AddLines("nominal form", nominal, "#1d2733");
         await AddLattice();
         await ZoomTo(_zoom);
     }

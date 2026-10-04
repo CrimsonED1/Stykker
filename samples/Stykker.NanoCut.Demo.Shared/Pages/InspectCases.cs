@@ -28,6 +28,13 @@ public sealed class Inspection
 
     public required string ValueLabel { get; init; }
 
+    /// <summary>
+    /// The nominal form as line segments in mm (x, y, z pairs), drawn next to the body. The gap between this curve
+    /// and the surface <em>is</em> what the colour measures, so it is worth seeing rather than only believing. Null
+    /// where the nominal is a plane rather than a curve.
+    /// </summary>
+    public float[]? NominalLines { get; set; }
+
     /// <summary>Framing choices: a label and the box [minX, minY, minZ, maxX, maxY, maxZ] in mm.</summary>
     public IReadOnlyList<(string Label, double[] Box)> Zoom { get; set; } = [];
 
@@ -271,6 +278,9 @@ public static class InspectCases
                 result.Metric($"facet {i + 1} ({widths[i].SagittaNm:0.##} nm)", $"{measured:0.000} nm gemessen, {widths[i].FacetNm / 1000:0.00} µm lang");
         }
         result.Checks.Add(new("chord error against its target (worst)", worst, 0, slack, "nm"));
+        // On the top face, not inside the solid: the arc and the rim it replaces have to be visible together, and
+        // the gap between them is the sagitta the colour is reporting.
+        result.NominalLines = CircleLines(rNm, zUm * 1e-3, 720);
         result.Metric("facets", n.ToString(CultureInfo.InvariantCulture));
         result.Metric("finest / coarsest chord", $"{widths[0].SagittaNm:0.###} / {widths[^1].SagittaNm:0.0} nm");
         result.Metric("finest / coarsest facet", $"{widths[0].FacetNm:0} / {widths[^1].FacetNm / 1000:0.00} µm");
@@ -286,6 +296,46 @@ public static class InspectCases
         double half = rUm * 1e-3 * 1.5, z = zUm * 1e-3;
         result.Zoom = [("whole disc", [-half, -half, -z, half, half, z + z])];
         return result;
+    }
+
+    /// <summary>A circle as a closed polyline: radius in nanometres, height in mm, emitted as line segments in mm.</summary>
+    private static float[] CircleLines(double rNm, double zMm, int segments)
+    {
+        var line = new List<float>();
+        for (int i = 0; i < segments; i++)
+        {
+            double a0 = 2 * Math.PI * i / segments, a1 = 2 * Math.PI * (i + 1) / segments;
+            line.AddRange([(float)(rNm * Math.Cos(a0) * 1e-6), (float)(rNm * Math.Sin(a0) * 1e-6), (float)zMm,
+                           (float)(rNm * Math.Cos(a1) * 1e-6), (float)(rNm * Math.Sin(a1) * 1e-6), (float)zMm]);
+        }
+        return [.. line];
+    }
+
+    /// <summary>
+    /// The ideal involute flank of every tooth, built exactly as the deviation formula expects to find it: at the
+    /// roll angle α the radius is rb/cos α and the angle away from the tooth centre is ψb − Inv(α). Drawn on the top
+    /// face, so the curve and the profile it should have are visible together.
+    /// </summary>
+    private static float[] InvoluteLines(int z, double rbNm, double raNm, double psiB, double widthMm, int steps = 60)
+    {
+        double mid = widthMm, arMax = Math.Acos(Math.Clamp(rbNm / raNm, -1, 1));
+        var line = new List<float>();
+        foreach (int side in new[] { 1, -1 })
+            for (int k = 0; k < z; k++)
+            {
+                double centre = 2 * Math.PI * k / z;
+                float px = 0, py = 0;
+                for (int i = 0; i <= steps; i++)
+                {
+                    double ar = arMax * i / steps;
+                    double r = rbNm / Math.Cos(ar), a = centre + side * (psiB - GearProfile.Inv(ar));
+                    float x = (float)(r * Math.Cos(a) * 1e-6), y = (float)(r * Math.Sin(a) * 1e-6);
+                    if (i > 0) line.AddRange([px, py, (float)mid, x, y, (float)mid]);
+                    px = x;
+                    py = y;
+                }
+            }
+        return [.. line];
     }
 
     /// <summary>Distance from the point to the segment, both given in nanometres.</summary>
@@ -373,6 +423,7 @@ public static class InspectCases
         result.Metric("swept pieces", stats.Pieces.ToString(CultureInfo.InvariantCulture));
         result.Metric("profile vertices", profile.Contours.Sum(c => c.Count).ToString(CultureInfo.InvariantCulture));
         result.Checks.Add(new("worst flank deviation", worst, 0, sweep, "nm"));
+        result.NominalLines = InvoluteLines(z, rb, ra, psiB, width);
         double half = m * z / 2 + m + 1;
         result.Zoom = [("whole gear", [-half, -half, -1, half, half, width + 1]),
                        ("one tooth", [-m * 2, m * z / 2 - m, -1, m * 2, m * z / 2 + m, width + 1])];

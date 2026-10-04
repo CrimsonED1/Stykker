@@ -1,5 +1,117 @@
 @page "/"
+@using System.Globalization
+@inject IComputeRunner Runner
 @inject NavigationManager Nav
+
+<div class="pad ov">
+<header class="ov-head">
+<div class="eyebrow">@Runner.Where · three.js / Babylon.js</div>
+<h1>Exact cutting on a 1&nbsp;nm grid</h1>
+<p class="lede">NanoCut subtracts a tool from a solid instead of approximating the result with a triangle mesh. Every
+coordinate is an <code>Int64</code> on a one-nanometre lattice, every Boolean is exact, and a vertex a Boolean creates
+is the intersection of three planes that is never rounded. A 20&nbsp;mm gear and a 1&nbsp;nm step come out of the same
+run. This page is the map: what there is, where to start, and what it cannot do yet.</p>
+</header>
+
+<div class="kpis">
+<div class="kpi"><b>1 nm</b><span>the lattice every coordinate sits on</span></div>
+<div class="kpi"><b>0.1 µm</b><span>total error budget, split into four separately checked parts</span></div>
+<div class="kpi"><b>0 nm</b><span>deviation of the 1 nm staircase — on the digit, not within a tolerance</span></div>
+<div class="kpi"><b>0.106 %</b><span>what the GPU preview costs in removed volume, printed rather than buried</span></div>
+</div>
+
+<section>
+<h2>Start here</h2>
+<p class="desc">Four pages, in the order they answer the question "what is this, actually?"</p>
+<div class="cards">
+@foreach (var (title, route, why) in StartHere)
+{
+    <NavLink class="card" href="@route">
+        <b>@title</b>
+        <span>@why</span>
+        <i>@route</i>
+    </NavLink>
+}
+</div>
+</section>
+
+<section>
+<h2>Scenes</h2>
+<p class="desc">One page per scene, with parameters and a check against a closed-form or an independent implementation.
+The list comes from the scene catalogue, so it cannot name a scene that does not exist.</p>
+@foreach (var group in SceneCatalog.All.GroupBy(s => s.Category))
+{
+    <h3 class="grp">@group.Key</h3>
+    <div class="cards">
+        @foreach (var s in group)
+        {
+            <NavLink class="card small" href="@($"scene/{s.Id}")">
+                <b>@s.Title</b>
+                <span>@s.Description</span>
+                <i>@(Slow.Contains($"scene/{s.Id}") ? "slow in the browser" : $"{s.Params.Count} parameters")</i>
+            </NavLink>
+        }
+    </div>
+}
+</section>
+
+<section>
+<h2>Pages</h2>
+<div class="cards">
+@foreach (var group in PageIndex.All.GroupBy(p => p.Group))
+{
+    <div class="cards">
+        @foreach (var p in group)
+        {
+            <NavLink class="card small" href="@p.Route">
+                <b>@p.Title</b>
+                <span>@p.Blurb</span>
+                <i>@(Slow.Contains(p.Route) ? "slow in the browser" : p.Route)</i>
+            </NavLink>
+        }
+    </div>
+}
+</div>
+</section>
+
+<section>
+<h2>What it cannot do yet</h2>
+<p class="desc">Written down here so nobody has to find out the hard way.</p>
+<ul class="limits">
+<li><b>The exact 2D Boolean is not a pure function.</b> The same input produces a different result depending on machine
+load, so gear figures are samples from a spread rather than constants. Read them as "the worst of several runs" or
+do not read them. <span class="src">GearFlankFlakeFindings.md</span></li>
+<li><b>Long programs have no preview yet.</b> A grinding wheel covered with grains or a gear rolled over its whole
+face is only affordable on the exact kernel. Steps 4 and 5 of the plan are open. <span class="src">docs/long-programs.md</span></li>
+<li><b>The browser build is slow for heavy scenes.</b> WebAssembly runs this integer code 5 to 20 times slower than
+native. The gear flank case takes about half a minute on the server and minutes in the browser — marked
+"slow in the browser" above.</li>
+<li><b>Rotating tools are expensive on the exact side.</b> <code>Process3.Sample</code> samples an angle linearly, which
+asks for tens of thousands of exact hulls for a modest turn. That is on the critical path for anything measured
+against the exact kernel.</li>
+<li><b>The inspection viewer's rim case stops at 64 facets.</b> Above that the widest facet was seen to miss its own
+chord error, once failing and once passing on unchanged code. Not understood, so not offered.</li>
+</ul>
+</section>
+</div>
+
 @code {
-    protected override void OnInitialized() => Nav.NavigateTo($"scene/{SceneCatalog.All[0].Id}", replace: true);
+    /// <summary>Routes where the WebAssembly build takes minutes rather than seconds.</summary>
+    private static readonly HashSet<string> Slow = ["scene/gear-generation", "inspect", "preview"];
+
+    private static readonly (string Title, string Route, string Why)[] StartHere =
+    [
+        ("See nanometres", "inspect",
+            "The measuring microscope. The colour of every vertex is a measured deviation, drawn unlit so no highlight "
+            + "can falsify a number. Start with the 1 nm staircase: seven steps from 1 to 100 nm, exact on the digit."),
+        ("Check the exactness", "scene/example1-3d",
+            "The reference case. A ball tool cuts a groove across a block, and volume, depth, groove width and the "
+            + "distance of every groove vertex to the tool axis are compared with the closed-form solution."),
+        ("Watch a real process", "grinding",
+            "A grinding wheel carrying 60 abrasive grains and counting. Each grain follows its own trochoid and only "
+            + "removes what the grains before it left, so the surface roughness is a result rather than an input."),
+        ("See what the GPU does", "preview",
+            "The same program cut three ways: exactly, as a height field on the CPU, and as a height field on the GPU. "
+            + "The panel times all three and prints what each preview costs in accuracy."),
+    ];
 }
