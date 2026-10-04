@@ -1,0 +1,72 @@
+diff --git a/src/Stykker.NanoCut.Gpu.Native/zmap.cu b/src/Stykker.NanoCut.Gpu.Native/zmap.cu
+index 5d105e2..782469b 100644
+--- a/src/Stykker.NanoCut.Gpu.Native/zmap.cu
++++ b/src/Stykker.NanoCut.Gpu.Native/zmap.cu
+@@ -830,12 +830,19 @@ constexpr int kPlaneFloats = 4;
+ /// <summary>Floats per packed convex step. Mirrors ConvexProfile.StepFloats.</summary>
+ constexpr int kConvexStepFloats = 32;
+ 
+-/// <summary>Offsets into a packed convex step: T_A, the move w, and then the rotation. The half-space count and the
+-/// swept box that precede them are read by the host, not here.</summary>
++/// <summary>Offsets into a packed convex step: the swept body's bounding box in x and y, then T_A, the move w and the
++/// rotation. The half-space count sits between the move and the rotation and arrives as a kernel argument, so it is
++/// never read from here. The box, on the other hand, is read here: it is the whole input of the early-out.</summary>
++constexpr int kConvexBox = 0;
+ constexpr int kConvexFrom = 4;
+ constexpr int kConvexMove = 7;
+ constexpr int kConvexRot = 11;
+ 
++/// <summary>Grown onto the box before a column is tested against it. Mirrors ConvexProfile.BoxMarginMm and
++/// StepBins.MarginMm, and has to stay equal to them: the early-out in convex_span may only reject what the host's
++/// binning already refused to route to this column.</summary>
++constexpr float kConvexBoxMarginMm = 1e-6f;
++
+ struct Dexel
+ {
+     int nx = 0;
+@@ -988,6 +995,14 @@ __device__ __forceinline__ float convex_extremum(const float* __restrict__ g, in
+ __device__ __forceinline__ bool convex_span(float x, float y, const float* __restrict__ p,
+                                             const float* __restrict__ planes, int planeCount, float& low, float& high)
+ {
++    // The step's own bounding box, grown by the margin. The sweep lies inside it, so a column whose centre is
++    // outside cannot meet the body, and four comparisons replace the walk over every crossing below. The
++    // comparison is strict, so a centre exactly on the boundary still goes in. Mirrors ConvexProfile.Span.
++    const float boxX = p[kConvexBox] - kConvexBoxMarginMm, boxY = p[kConvexBox + 1] - kConvexBoxMarginMm;
++    const float boxW = p[kConvexBox + 2] + 2 * kConvexBoxMarginMm;
++    const float boxH = p[kConvexBox + 3] + 2 * kConvexBoxMarginMm;
++    if (x < boxX || x > boxX + boxW || y < boxY || y > boxY + boxH) return false;
++
+     const float ax = p[kConvexFrom], ay = p[kConvexFrom + 1], az = p[kConvexFrom + 2];
+     const float wx = p[kConvexMove], wy = p[kConvexMove + 1], wz = p[kConvexMove + 2];
+     const float r00 = p[kConvexRot], r01 = p[kConvexRot + 1], r02 = p[kConvexRot + 2];
+diff --git a/src/Stykker.NanoCut.Gpu/ConvexProfile.cs b/src/Stykker.NanoCut.Gpu/ConvexProfile.cs
+index f17310e..5238a78 100644
+--- a/src/Stykker.NanoCut.Gpu/ConvexProfile.cs
++++ b/src/Stykker.NanoCut.Gpu/ConvexProfile.cs
+@@ -66,6 +66,11 @@ internal static class ConvexProfile
+     /// <summary>Offset of the swept body's bounding box in x and y: (min x, min y, width, width).</summary>
+     private const int BoxOffset = 0;
+ 
++    /// <summary>Grown onto the box before a column is tested against it, so a centre exactly on the boundary cannot be
++    /// lost to the rounding of a float. The same value as <c>StepBins.MarginMm</c> and <c>kConvexBoxMarginMm</c>: the
++    /// early-out has to accept every column the binning accepted, or the two backends would stop agreeing.</summary>
++    internal const float BoxMarginMm = 1e-6f;
++
+     /// <summary>Offset of T<sub>A</sub>, relative to the grid origin.</summary>
+     private const int FromOffset = 4;
+ 
+@@ -177,6 +182,14 @@ internal static class ConvexProfile
+         out float low, out float high)
+     {
+         int o = s * StepFloats;
++
++        // The step's own bounding box, grown by the margin. The sweep lies inside it, so a column whose centre is
++        // outside cannot meet the body, and four comparisons replace the walk over every crossing below. The
++        // comparison is strict, so a centre exactly on the boundary still goes in.
++        float boxX = steps[o + BoxOffset] - BoxMarginMm, boxY = steps[o + BoxOffset + 1] - BoxMarginMm;
++        float boxW = steps[o + BoxOffset + 2] + 2 * BoxMarginMm, boxH = steps[o + BoxOffset + 3] + 2 * BoxMarginMm;
++        if (x < boxX || x > boxX + boxW || y < boxY || y > boxY + boxH) { low = high = 0f; return false; }
++
+         int m = (int)steps[o + CountOffset];
+         float ax = steps[o + FromOffset], ay = steps[o + FromOffset + 1], az = steps[o + FromOffset + 2];
+         float wx = steps[o + MoveOffset], wy = steps[o + MoveOffset + 1], wz = steps[o + MoveOffset + 2];
