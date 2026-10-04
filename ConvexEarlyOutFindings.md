@@ -13,10 +13,16 @@ deciding whether to go on. One of the four claims that analysis rests on turned 
 and it is the wrong one that decided the order. The detail is in §3; the short version is that the divisions were never
 a third of the instruction stream, they were 3.7 % of it.
 
-A third lever was then built and **measured and reverted**: the O(m) envelope walk. It did everything it promised on
-the instruction counters — 15 % fewer instructions, 38 % fewer divisions, zero disagreements against the old walk over
-432 000 columns — and lost the wall clock anyway, because the kernel stopped being issue-bound and the sort behind it
-stalled on local memory. §6 is that result, and §6.2 is where it points next.
+A third lever was then built and **measured, and not taken**: the O(m) envelope walk. It is correct — zero disagreements
+against the old walk over 432 000 columns, a few ulps apart — and it cuts the special-function pipe by 38 %. It is also
+worth 2.4 % at twelve half-spaces, 4.5 % at sixteen, and **−10 % at eight**, which is not a trade worth a hundred
+lines of subtle code in a kernel whose correctness rests on a documented ulop argument. §6 is that result, and §6.2 is
+the correction that had to be made to reach it: the first measurement of it used a bench whose spread is wider than the
+effect.
+
+Two things out of that are worth more than the lever: **the bench cannot resolve anything under about 10 % at
+best-of-3** — `--repeat 50` is the discipline — and **`smsp__inst_executed_op_local_st.sum` is the metric that decides
+a change like this**, not the load count.
 
 ---
 
@@ -53,7 +59,7 @@ ask about when the tool travels, and a tilt about x with travel along x leaves e
 unreached, so this case tilts 0.3 rad about x and travels 4 mm along y: `nLo = nHi = 2`, four pairs with `s` non-zero
 on both sides. Against the exact kernel on three grids: 26.0999 / 25.0970 / 25.0994 against 25.0993 mm³.
 
-**It does not, however, pin the fire condition, and this document said it did.** §8 records the correction: both ends of
+**It does not, however, pin the fire condition, and this document said it did.** §7.2 records the correction: both ends of
 the interval come out at `t = tLo = 0` in that geometry, so narrowing `tHi` changes nothing that is read, and four
 wrong implementations of the rewrite produce zero differing columns. The only test that separates them is
 `CudaAgreesWithTheCpuReference`, which needs a device.
@@ -153,124 +159,147 @@ What is left there is reading the step payload and comparing. So:
 
 ## 5. What this leaves open, in the order it should be taken
 
-**§6 has since rewritten this list** — lever C was built and measured, and it lost. What is below is the order as it
-stood after the first two commits, with the two entries it superseded marked.
+**§6 has since rewritten this list.** Lever C was built, measured and not taken, and `ConvexOccupancyFindings.md` moved
+the target again. What is below is the order as it stands, with the entry that was tried and dropped marked.
 
-1. ~~**The O(m³) envelope walk (`convex_extremum`) is now the largest identified block of instructions.**~~ **Built,
-   measured and reverted: §6.** It is still the largest block of *instructions*, and cutting them does not help,
-   because the kernel is not instruction-bound once the envelope is in. What is left of this item is its better
-   version: the envelope together with the per-step sort in shared memory, which is now item 1 below.
-2. **The envelope and the per-step preparation, together.** §6.2: the slopes are column-independent, so the sort is one
-   per step per block rather than one per column per step, and that is what turns lever C from a loss into the largest
-   remaining win. `__syncthreads()` per step is the price to measure.
-3. **The per-pair cost that survives the early-out** — the payload read, the branch, the `n > 0` test. It is the whole
-   difference between 8.3 and 4.4 ms not being the 88 % the geometry allows. §6 sharpened this: the same local-memory
-   traffic that sinks the sort is here too, on every payload read.
-4. **Lever D on its own, the rotation and `1/mz`.** Bounded by the 0.45 ms constant above, which §6 now knows is the
-   wrong bound to reason with.
+1. ~~**The O(m³) envelope walk (`convex_extremum`), on its own.**~~ **Built, measured, not taken: §6.** It is the
+   largest single block of *instructions* and cutting it is worth 2.4 % at twelve half-spaces and 4.5 % at sixteen —
+   against a 10 % loss at eight, and against a profiler that puts 40 % in lane occupancy.
+2. **Lane occupancy, not arithmetic.** `ConvexOccupancyFindings.md` §3: the binned launch keeps **8.09 of 32** threads
+   active per warp. Decoupling the thread from the column, so that the columns a tile ever touches are compacted into
+   dense warps, is the largest thing on this list by Nsight Compute's own estimate. The measurement that decides whether
+   it is reachable — how many of a tile's 256 columns any of its steps reaches — costs one instrumented build.
+3. **The per-pair cost that survives the early-out** — the payload read, the branch, the `n > 0` test. The payload read
+   is *global* and warp-uniform, so it broadcasts rather than costing local traffic; the local part of that path is the
+   `g[at]` stores, once per (column, step).
+4. **Lever D, the per-step preparation in shared memory.** Not bounded by the 0.45 ms constant of §4 after all: that
+   constant is the fitted intercept of §4's own measured times, and it bounds the wrong quantity. The per-step
+   preparation is **O(m)**, so it lives in the **m²** term — 89 % of the kernel at m = 12. Of the roughly 40
+   instructions per plane, about 27 are block-uniform (the four loads, nine rotation FMAs, `dot`, `1/mz`, the sign tests
+   and the partition) and only `c`, `c·inv` and the intercept store are per column. Those are counts, not measurements,
+   but they put lever D at roughly 9 % of instructions rather than the tenth the constant suggested.
+   **A barrier per step is not free to place**: `dexel_apply_column`'s loop condition `n > 0` is per thread, so a
+   `__syncthreads()` inside it is a divergent barrier until that test is hoisted. And the lever applies to the binned
+   launch only — in `dexel_apply_kernel` every block walks all 99 200 steps for a couple of thousand useful pairs, so
+   "one barrier per step" there would be 99 200 barriers to amortise over almost nothing.
 5. **`CpuBackend`'s convex path is still columns × steps.** The early-out gives it the same shape of win the kernel got —
   a miss costs four comparisons and a branch instead of the whole O(m³) program — but its asymptotics are unchanged and
   **no measurement of the CPU-side win exists**. `LongPrograms convex` measures the device. Before anyone writes one:
-  `CpuBackend.ApplyConvexDexels` (`CpuBackend.cs:227-259`) has no pack stopwatch and returns a `ZMapTiming` whose
+  `CpuBackend.ApplyConvexDexels` (`CpuBackend.cs:225-259`) has no pack stopwatch and returns a `ZMapTiming` whose
   `PackMs` is 0, while `ApplyDexels` times its pack — so on the convex path the two `WallMs` columns would still cover
   different spans, which is the whole reason `PackMs` exists.
 
-## 7. Not done, and one thing that is not settled
+## 6. Lever C measured: a crossover between 8 and 12 half-spaces, and not worth taking
 
-- **An intermittent failure in the CPU planar path, observed once in six full-suite runs.**
-  `ProcessTests.RackGeneratedGearHasInvoluteFlanks` failed with a flank deviation of 5327 nm against that test's 300 nm
-  tolerance. It does not reproduce in isolation (five solo runs green, 3 s each) and did not appear in four baseline
-  runs of `f39a8ed`. It is `Process2.Cut`, which neither commit touches — but this branch's own `376f705` made that
-  path run the union and the subtract on two strands at once, and a result that depends on scheduling would look
-  exactly like this. Not established and not dismissed. It belongs next to that commit, not to these two.
-- The sphere path (`swept_span`) has no box early-out: its payload carries a position and a radius, not a box. It is
-  19× cheaper than the convex path and was not worth the change.
-- No `ncu` section other than the metrics above, no roofline, no occupancy work. The launch configuration is 56
-  registers and a 16 × 16 block, which is fixed by the tile.
+**This section replaces an earlier one that reached the opposite verdict, and the correction is the useful part.**
+`012c8c1` recorded "the envelope is right on paper and loses on the wall". That was wrong, and it was wrong twice over:
+the bench number it leaned on was inside the bench's own process-to-process spread, and the profiler table beside it
+paired the instruction-throughput figure of one build with the instruction counts of another. §6.2 has the arithmetic.
 
----
+### 6.1 What was built, and that it is correct
 
-## 6. Lever C measured and rejected: the envelope is right on paper and loses on the wall
+`convex_extremum` walked every crossing of two of the m lines and scored each against the whole envelope — O(m³). It was
+replaced by the Davenport-Schinzel construction `ConvexKernelFindings.md` §7.1 recommends: the lines in slope order, a
+stack of the pieces (at most 2m−1), and **one line read per piece**, because the envelope's minimum on a piece sits at
+one of its two ends. Mirrored in both backends, with the two traps from the findings written into the comments.
 
-This one was built, measured and then taken back out. It is the most useful thing in the document, because it moves
-the diagnosis.
-
-`convex_extremum` walked every crossing of two of the m lines and scored each against the whole envelope, O(m³). It was
-replaced with the Davenport-Schinzel construction the findings recommend: sort the slopes, stack the pieces (at most
-2m−1), and read **one line per piece** — the envelope's minimum on a piece sits at one of its two ends, so no other
-line has to be looked at. Mirrored in both backends, with the two traps written into the comments: the answer is taken
-only after the stack is finished, and the pop test is `<=`.
-
-It works. The differential test ran the old walk beside the new one over 30 configurations and 432 000 columns:
+A differential test ran the old walk beside the new one over 30 configurations and 432 000 columns — box, octahedron
+and 8/12/16-plane balls, standing, travelling, turning and tilted about x, y and a general axis:
 
 ```
 30 configurations, 432000 columns, 117746 of them cut:
 0 hit/miss disagreements, worst low 1.91E-006 mm, worst high 4.77E-006 mm
 ```
 
-Zero disagreements on hit against miss, and the ends agree to a few ulps of a millimetre — which is what a different
-but equally valid order of candidates gives. The trap the comment calls load-bearing was checked by mutating it:
-accumulating during the stack build instead of after it moves the low by 1.24e+002 mm, so the test has teeth for that
-one. The pop test is a different matter — flipping it to `<` changes **nothing** over those 432 000 columns, because a
-difference needs three envelope values to coincide exactly. That is the reason of record, not a measured one, and both
-comments said so while it stood.
+Zero disagreements on hit against miss, and the ends agree to a few ulps of a millimetre, which is what a different but
+equally valid order of candidates gives. The trap both comments call load-bearing was checked by mutating it:
+accumulating the minimum **during** the stack build instead of after it moves the low by **1.24e+002 mm**, so the test has
+teeth for that one. The pop test is the other matter — flipping it from `<=` to `<` changes **nothing** over those
+432 000 columns, because a difference needs three envelope values to coincide exactly. That is the reason of record, not
+a measured one.
 
-### 6.1 And it is still slower
+### 6.2 Two corrections to how it was first judged
 
-| | crossing walk | stack envelope |
-| --- | ---: | ---: |
-| binned kernel, 6 planes | 1.4 ms | 1.4 ms |
-| binned kernel, 8 planes | 2.0 ms | 2.2 ms |
-| binned kernel, 10 planes | 3.1 ms | 3.0 ms |
-| binned kernel, 12 planes | 4.2 ms | 4.9 ms |
-| binned kernel, 16 planes | 7.1 ms | 7.1 ms |
-| unbinned kernel, 12 planes | 78.8 ms | 88.3 ms |
+**The first verdict used a measurement that could not resolve what it claimed.** The bench was run best-of-3 and gave
+4.2 ms before and 4.9 ms after. The same code, in different processes, reads anything from 4.1 to 5.2 ms on this
+machine — a spread of 24 % against a claimed effect of 17 %. At `--repeat 50` the same two builds read **4.2 and
+4.1 ms**. **Any comparison on this bench below about 10 % needs best-of-50; the numbers in §2 and §4 of this document
+were taken best-of-3 and should be read with that spread in mind.**
 
-No configuration gains. Nsight Compute says why, and it is not what the instruction counts suggest:
+**The profiler table mixed two builds.** `sm__instruction_throughput` is instructions as a fraction of peak over elapsed
+cycles, so `cycles ∝ instructions / throughput`. The "before" row paired the instruction count of the sign-test build
+with the throughput of an **earlier** build, and the arithmetic of that pairing implies the two took the *same* number
+of cycles while the table beneath it reads as a slowdown. Every figure in §6 is now from one metric list, run once per
+build, with `gpc__cycles_elapsed` taken directly rather than derived.
 
-| metric, binned launch at 12 planes | crossing walk | stack envelope | |
+### 6.3 The measurement
+
+`LongPrograms convex --steps 99200 --repeat 50`, binned kernel, 12-plane ball of r 0.20 mm unless the table says
+otherwise:
+
+| half-spaces | crossing walk | stack envelope | |
+| ---: | ---: | ---: | --- |
+| 8 | **2.0 ms** | 2.2 ms | **10 % worse** |
+| 12 | 4.2 ms | **4.1 ms** | 2.4 % better |
+| 16 | 6.6 ms | **6.3 ms** | 4.5 % better |
+
+The walk costs `nLo³ + nHi³`, which is cheapest when the split is balanced — and the bench tool is balanced *by
+construction* at every even m, `ConvexTool.Ball`'s Fibonacci spiral giving six positive and six negative m<sub>z</sub> for
+twelve planes. So this is the walk's best case and the crossover sits between 8 and 12 half-spaces, exactly where the
+cubic predicts.
+
+The regime where the walk should be at its worst is a lopsided split, and **the bench could not reach it**: `--turn-deg`
+rotates about z, which leaves every m<sub>z</sub> sign — and therefore n<sub>Lo</sub> and n<sub>Hi</sub> — untouched. So
+`ConvexPass` grew a `--tilt-deg` knob, a rotation about x, which is the one that moves half-spaces across the equator.
+At 30° the two are **4.3 ms each** — the tilt changes the work (removed volume 88.006673 → 81.314117 mm³) but not the
+balance enough to matter.
+
+### 6.4 What the counters say, including the metric that was missing
+
+Binned launch, 12 planes, one metric list per build. The envelope column is the **selection-order** variant, in which
+the lines are ordered by repeated minimum-finding rather than by sorting the array in place:
+
+| metric | crossing walk | stack envelope | |
 | --- | ---: | ---: | --- |
-| `smsp__inst_executed.sum` | 2 002 763 793 | 1 696 964 810 | **−15.3 %** |
-| `smsp__inst_executed_pipe_alu.sum` | 521 211 291 | 465 823 045 | −10.6 % |
-| `smsp__inst_executed_pipe_xu.sum` | 42 396 362 | 26 311 498 | **−37.9 %** |
-| `smsp__inst_executed_op_local_ld.sum` | 73 140 173 | 86 666 986 | **+18.5 %** |
-| `sm__instruction_throughput` | 64.4 % | 54.4 % | −10 points |
+| `smsp__inst_executed.sum` | 2 002 846 625 | 2 099 943 210 | **+4.9 %** |
+| `smsp__inst_executed_pipe_alu.sum` | 521 217 235 | 849 631 549 | +63 % |
+| `smsp__inst_executed_pipe_xu.sum` | 42 408 250 | 26 311 498 | **−38 %** |
+| `smsp__inst_executed_op_local_ld.sum` | 73 140 173 | 99 128 362 | +36 % |
+| **`smsp__inst_executed_op_local_st.sum`** | **8 883 619** | **27 575 683** | **+211 %** |
+| `sm__instruction_throughput` | 60.92 % | 65.10 % | +4.2 points |
+| `gpc__cycles_elapsed` | 11 750 293 | 11 534 947 | **−1.8 %** |
 
-**Every arithmetic promise came true and the wall clock did not follow.** Instructions down 15 %, the divisions down
-38 %, and ten points of issue throughput gone with them: the kernel stopped being issue-bound. The sort is what it
-costs. `gLo` and `gHi` live in local memory, the insertion sort moves pairs through it, and the indices it reads and
-writes depend on the data — so unlike the build loop, whose `g[at]` is uniform across the warp, the sort's addresses
-differ per thread and cannot coalesce. Local memory carries global-memory latency behind an L1 hit, and a dependent
-chain of those stalls on exactly what the arithmetic saved.
+Two things this table says that the earlier one did not.
 
-`cuobjdump -res-usage` is the other half of the story: the frame grew from 520 B to 592 B, which the 1024 B post-Volta
-limit absorbs comfortably, and registers stayed at 56. Neither is the problem.
+**The special-function pipe is a proxy, not a count.** −38 % of XU instructions is not −38 % of divisions: §3 of this
+document is explicit that a division is one XU instruction plus a Newton-Raphson tail on the ALU pipe, and reading the
+XU count as the division count is the same mistake in the opposite direction.
 
-So the rewrite was reverted.
+**The metric that was missing was the one that mattered.** `op_local_st` — local *stores* — was never collected in the
+first attempt, and it is three times the local loads. An insertion sort is store-dominated: the variant measured first
+went 8 9 → 43.2 million stores and its `l1tex` throughput to 49.8 %, which is why it looked catastrophic. Ordering by
+repeated selection instead reads the same lines about as often and writes none of them, and it recovered most of that.
+The lesson generalises past this lever: **on this kernel a store is far more expensive than a load, and a change that
+trades arithmetic for local traffic has to be judged on `op_local_st`, not on `op_local_ld`.**
 
-### 6.2 What this says the next lever actually is
+`cuobjdump -res-usage` is the other half and it was never the problem either way: frame 520 B → 592 B against the
+1024 B post-Volta limit, registers 56 → 55. And the frame's content is worth stating, because it is not what the sort
+adds: 520 B is 256 for `gLo` + `gHi`, 128 for the column's own intervals and **136 for `dexel_subtract`'s `out[]`**. The
+interval bookkeeping, not the lines, is the largest single item in the frame.
 
-The old ordering put "hoist the per-step preparation into `__shared__`" third, bounded by the 0.45 ms constant of §4.
-That bound was drawn from the arithmetic, and the arithmetic is not the constraint. The measurement points somewhere
-more specific:
+### 6.5 Why it is not being taken
 
-**The slopes do not depend on the column.** `b_i = dot_i · inv_i` with `dot_i = m_i · w` and `inv_i = 1 / mz_i`, and
-neither of those knows x or y — only the intercept `c_i = d + m·T_A − m_x·x − m_y·y` does. So within one tile, all 256
-columns sort the *same* lines into the same order, once per step, and the envelope is per column only in its intercepts.
+4.5 % at sixteen half-spaces, −10 % at eight, and the profiler says the arithmetic is not where the time is
+(`ConvexOccupancyFindings.md`: 8.09 of 32 lanes active per warp, an estimated 40 % available there). That is a bad
+trade for roughly a hundred lines of subtle code in a kernel whose correctness rests on a documented ulop argument, and
+a threshold that used the envelope only above ten half-spaces would double the code paths to buy the 4.5 %. **So the
+code is reverted, and this section is what is left.**
 
-That makes the envelope pay **if the sort is lifted out of the column loop**, and it makes it lose while it is inside.
-It is a different change from the one the findings proposed: not "rotate once per step" but "build the lines and sort
-them once per step per block, into shared memory, and let the columns read them". One `__syncthreads()` per step, 256
-bytes at m = 16, and both dexel kernels report `SHARED:0`, so there is room to 48 KB. The envelope then costs one stack
-pass per column over lines that are already in order, with no data-dependent sort in local memory.
+What survives is the measurement discipline it produced: best-of-50 for anything under 10 %, `--tilt-deg` for any
+question about how `nLo` and `nHi` split, and `op_local_st` alongside `op_local_ld` for any change that moves data
+through local memory.
 
-That is the next thing to build, and it is lever C and lever D in one step rather than in sequence. Whether the
-`__syncthreads()` per step eats the gain is the open question, and §4's own warning applies: measure it rather than
-argue it.
-
----
-
-## 8. What the verifier found, and the one defect it was right about
+## 7. What the verifier found, and the one defect it was right about
 
 A read-only verifier agent went over `cc1fbc6` and `f950cee` afterwards. Most of it confirmed what §2 and §3 say, and
 three things in it were wrong on my side. They are recorded here rather than folded away.
@@ -335,23 +364,52 @@ disagreement class in the convex path that has no test behind it.
 
 ---
 
+## 8. Not done, and one thing that is not settled
+
+- **An intermittent failure in the CPU planar path, observed once in six full-suite runs.**
+  `ProcessTests.RackGeneratedGearHasInvoluteFlanks` failed with a flank deviation of 5327 nm against that test's 300 nm
+  tolerance. It does not reproduce in isolation (five solo runs green, 3 s each) and did not appear in four baseline
+  runs of `f39a8ed`. It is `Process2.Cut`, which neither commit touches — but this branch's own `376f705` made that
+  path run the union and the subtract on two strands at once, and a result that depends on scheduling would look
+  exactly like this. Not established and not dismissed. It belongs next to that commit, not to these two.
+- The sphere path (`swept_span`) has no box early-out: its payload carries a position and a radius, not a box. It is
+  19× cheaper than the convex path and was not worth the change.
+- No `ncu` section other than the metrics above, no roofline, no occupancy work. The launch configuration is 56
+  registers and a 16 × 16 block, which is fixed by the tile.
+
+---
+
 ## 9. Reproducing
 
 ```
 powershell -ExecutionPolicy Bypass -File src\Stykker.NanoCut.Gpu.Native\build.ps1
 dotnet build bench\Stykker.NanoCut.LongPrograms -c Release
-dotnet bench\Stykker.NanoCut.LongPrograms\bin\Release\net10.0\Stykker.NanoCut.LongPrograms.dll convex --steps 99200 --planes 12 --repeat 3
-"C:\Program Files\NVIDIA Corporation\Nsight Compute 2026.3.0\ncu.bat" --kernel-name regex:dexel_apply_binned_kernel --launch-skip 1 --launch-count 1 --metrics smsp__inst_executed.sum,smsp__inst_executed_pipe_alu.sum,smsp__inst_executed_pipe_xu.sum,smsp__inst_executed_op_local_ld.sum,sm__instruction_throughput.avg.pct_of_peak_sustained_elapsed,launch__registers_per_thread,launch__shared_mem_per_block dotnet bench\Stykker.NanoCut.LongPrograms\bin\Release\net10.0\Stykker.NanoCut.LongPrograms.dll convex --steps 99200 --repeat 1
+dotnet bench\Stykker.NanoCut.LongPrograms\bin\Release\net10.0\Stykker.NanoCut.LongPrograms.dll convex --steps 99200 --planes 12 --repeat 50
+"C:\Program Files\NVIDIA Corporation\Nsight Compute 2026.3.0\ncu.bat" --kernel-name regex:dexel_apply_binned_kernel --launch-skip 1 --launch-count 1 --metrics gpu__time_duration.sum,gpc__cycles_elapsed.max,sm__instruction_throughput.avg.pct_of_peak_sustained_elapsed,smsp__inst_executed.sum,smsp__inst_executed_pipe_alu.sum,smsp__inst_executed_pipe_xu.sum,smsp__inst_executed_op_local_ld.sum,smsp__inst_executed_op_local_st.sum,l1tex__throughput.avg.pct_of_peak_sustained_active,smsp__average_warps_issue_stalled_long_scoreboard_per_issue_active.ratio,smsp__average_warps_issue_stalled_short_scoreboard_per_issue_active.ratio,smsp__average_warps_issue_stalled_math_pipe_throttle_per_issue_active.ratio,smsp__average_warps_issue_stalled_wait_per_issue_active.ratio,smsp__average_warps_issue_stalled_not_selected_per_issue_active.ratio dotnet bench\Stykker.NanoCut.LongPrograms\bin\Release\net10.0\Stykker.NanoCut.LongPrograms.dll convex --steps 99200 --repeat 1
 ```
 
-Four traps, all of which cost a wrong number before they were found:
+**`--repeat 50`, not `--repeat 3`, for anything under about 10 %.** The same code in different processes reads anywhere
+from 4.1 to 5.2 ms on this machine — a 24 % spread. Every verdict in §6 rests on best-of-50; the numbers in §2 and §4
+were taken best-of-3 and should be read with that spread in mind.
+
+**`--tilt-deg` for anything about how `nLo` and `nHi` split.** `--turn-deg` rotates about z and leaves every m_z sign,
+and therefore the split, untouched — and the walk is at its cheapest exactly there. The tilt about x is the knob that
+moves half-spaces across the equator.
+
+Five traps, all of which cost a wrong number before they were found:
 
 - **The bench keeps its own copy of `nanocut_gpu.dll`, and `dotnet build` of the solution does not build the bench.**
   A native rebuild is invisible to the bench until the bench itself is rebuilt. The m-sweep in §4 was first run against
-  the baseline binary and had to be thrown away.
+  the baseline binary and thrown away; and `ConvexOccupancyFindings.md` §1 first reported the *envelope's* profile as
+  the walk's, for this reason.
 - **`ncu --launch-count 1` profiles the warm-up, not the case.** The bench warms the context with an 8-step program
   whose launch has grid (1,1,1); `--launch-skip 1` is needed to reach the measured one. The first profile run reported
   480 ALU instructions and a 0.06 % instruction throughput, both of which were the warm-up's.
-- **`dotnet test` changes its summary format when the output is redirected**, so a `findstr` on the interactive summary
-  matches nothing on a logged run.
-- The shell here is cmd.exe: no heredocs, and `|` inside a `for (...)` block has to be escaped.
+- **Pair every instruction count with the throughput from the same run.** `cycles ∝ instructions / throughput`, so a
+  count from one build beside a throughput from another implies a cycle ratio that is pure fiction — which is exactly
+  the mistake §6.2 corrects. Take `gpc__cycles_elapsed` directly rather than deriving it.
+- **`op_local_st` is not optional next to `op_local_ld`.** An insertion sort is store-dominated, and on this kernel a
+  store costs several times a load; §6.4's reversal turns on that one metric having been absent.
+- `dotnet test` changes its summary format when the output is redirected, so a `findstr` on the interactive summary
+  matches nothing on a logged run. And the shell here is cmd.exe: no heredocs, and `|` inside a `for (...)` block has
+  to be escaped.

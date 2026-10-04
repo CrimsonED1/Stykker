@@ -24,61 +24,60 @@ this kernel never had — same structure, different per-column work.
 
 | | convex, 12 planes | ball, same kernel and program |
 | --- | ---: | ---: |
-| Duration | 4.40 ms | 0.470 ms |
-| **Avg. active threads per warp** | **9.35** of 32 | **21.34** of 32 |
-| Avg. not predicated off per warp | 8.77 | 20.40 |
-| Warp cycles per issued instruction | 11.10 | 10.93 |
-| L1/TEX cache throughput | 49.63 % | 60.64 % |
-| **L2 cache throughput** | **66.36 %** | 30.06 % |
-| Compute (SM) throughput | 55.55 % | 52.66 % |
-| DRAM throughput | 3.82 % | 2.88 % |
+| Duration | 4.60 ms | 0.470 ms |
+| **Avg. active threads per warp** | **8.09** of 32 | **21.34** of 32 |
+| Avg. not predicated off per warp | 7.64 | 20.40 |
+| Warp cycles per issued instruction | 9.84 | 10.93 |
+| L1/TEX cache throughput | 35.60 % | 60.64 % |
+| L2 cache throughput | 17.83 % | 30.06 % |
+| **Compute (SM) throughput** | **62.70 %** | 52.66 % |
+| DRAM throughput | 0.82 % | 2.88 % |
 
-Two things fall out of this, and they are not the same thing.
+Three things fall out of this, and they are not the same thing.
 
-**The instructions are not slow.** Warp cycles per issued instruction is 11.10 against the sphere's 10.93 — within two
-percent. Whatever the convex path costs per instruction, it costs about what the sphere path costs.
+**The instructions are not slow.** Warp cycles per issued instruction is 9.84 against the sphere's 10.93 — within ten
+percent, and the convex path is the *faster* of the two here. Whatever the linear program costs per instruction, it does
+not cost what a stall would.
 
-**The lanes are not there.** 9.35 of 32 threads are active per warp, against 21.34 for the sphere on the same data. The
-convex path issues each instruction with 29 % of its warp alive. Nsight Compute's own estimate for fixing that is
+**The lanes are not there.** 8.09 of 32 threads are active per warp, against 21.34 for the sphere on the same data. The
+convex path issues each instruction with a quarter of its warp alive. Nsight Compute's own estimate for fixing that is
 **40.3 %**, the largest single number it offers on this kernel.
 
-And the second row of the pair: the convex path drives L2 at 66.4 % while the sphere drives it at 30.1 %. L2 is the
-busiest unit in the kernel; DRAM is at 3.8 % and irrelevant. What fills L2 is local memory — `gLo` and `gHi` are
-per-thread arrays, and local memory is global memory behind an L1 hit. The stall statistics agree:
-**3.9 of the 11.1 cycles between two issued instructions are a long-scoreboard stall on L1TEX**, 35 % of the total, and
-Nsight Compute's estimate for removing it is 35.0 %.
+**The kernel is issue-bound, and only mildly stalled.** Compute at 62.70 % against memory at 32.74 %, and of the 9.84
+cycles between two issued instructions 3.03 are a fixed-latency wait and 2.01 a long-scoreboard stall on L1TEX — 20 %
+rather than a third. So the earlier reading of this kernel as "L2-bound" was wrong; it was taken from a build that was
+not this one. **The waste is lanes, and lanes are an occupancy problem, not a bandwidth one.**
 
-So the convex kernel is neither arithmetic-bound nor DRAM-bound. It is **lane-occupied at 29 % and pushing two thirds of
-its traffic through L2**, and those two are the same problem seen twice: one thread per column means the surviving
-columns are scattered across the warp and each of them carries its own copy of the lines.
+## 2. What the three levers have in common
 
-## 2. This is why the envelope lost
+`ConvexEarlyOutFindings.md` §6 has the numbers and, more usefully, the correction. The short version: the O(m)
+envelope is correct, it cuts the special-function pipe by 38 %, and it is worth 2.4 % at twelve half-spaces and 4.5 % at
+sixteen — against a 10 % loss at eight. Not taken.
 
-`ConvexEarlyOutFindings.md` §6 has the numbers: the O(m) envelope cut instructions by 15.3 % and the special-function
-pipe by 37.9 %, and the kernel got 17 % slower. The stall statistics above are the mechanism.
+Its first version ordered the lines with an insertion sort, which moves pairs through `gLo`/`gHi` in local memory, and
+that version really was catastrophic: local **stores** went 8 883 619 → 43 152 403, l1tex throughput to 49.8 %, and it
+looked like the lever had proved the kernel memory-bound. Ordering by repeated selection instead reads the same lines
+about as often and writes none, and it recovered most of that. Two lessons, and the second is the one that generalises:
+**a store on this kernel costs far more than a load**, so a change that trades arithmetic for local traffic has to be
+judged on `op_local_st` and not on `op_local_ld` — the metric that was missing when the first verdict was written.
 
-The envelope replaces arithmetic with a sort, and the sort moves pairs through `gLo`/`gHi` in local memory with
-data-dependent indices. Local loads went 73 140 173 → 86 666 986, **+18.5 %**, into a unit already at 66 % of peak, and
-instruction throughput fell from 64.4 % to 54.4 % — the kernel stopped being issue-bound and became memory-latency
-bound instead. It bought instructions with the one resource the kernel had least of.
-
-That is the general lesson of this branch, and it is the third time the same shape has appeared:
+That is the general shape of this branch, and it has appeared three times:
 
 | lever | what it optimised | what it cost | result |
 | --- | --- | --- | --- |
 | box early-out (`cc1fbc6`) | work per pair | four comparisons | **1.5–1.9×** |
 | sign test in `Where` (`f950cee`) | 36 divisions | 1 compare | flat on the wall clock |
-| stack envelope (built, reverted) | 15 % of instructions | 18.5 % more local traffic | **slower** |
+| stack envelope (built, not taken) | 38 % of the special-function pipe | 3× local stores, +4.9 % instructions | 2.4–4.5 % at m ≥ 12, −10 % at m = 8 |
 
-The first lever cut work. The second and third moved instructions around without cutting work, and paid for it in
-traffic. **What this kernel needs next is less work per surviving column and fewer lanes left idle — not fewer
+The first lever cut work and that is why it is the only one that paid. The other two moved instructions around without
+cutting work. **What this kernel needs next is less work per surviving column and fewer lanes left idle — not fewer
 instructions.**
 
 ## 3. The levers this opens, in the order the evidence ranks them
 
 ### 3.1 Decouple the thread from the column, so the surviving columns form full warps
 
-At 9.35 active lanes there are roughly 9 columns of a 32-column warp doing the linear program while 23 wait. Over the
+At 8.09 active lanes there are roughly 8 columns of a 32-column warp doing the linear program while 24 wait. Over the
 whole step list of a tile the set of columns any step reaches is much larger than any single step's, so a block that
 **decided once** which of its 256 columns are ever touched, compacted them into dense warps, and then ran every step over
 those dense warps would fill them. The per-step early-out of `cc1fbc6` would still be there — it is what decides "ever
@@ -93,9 +92,15 @@ speedup ceiling, and it costs one instrumented build before any of the restructu
 ### 3.2 Get the lines out of local memory
 
 `gLo`/`gHi` are 2·m floats per thread, per column, rebuilt for every step. Their *slopes* do not depend on the column
-(`ConvexEarlyOutFindings.md` §6.2), so per step and per tile they could live in shared memory, built once by the block
+(`ConvexEarlyOutFindings.md` §6.4), so per step and per tile they could live in shared memory, built once by the block
 and read by all 256 columns. 256 bytes at m = 16, both dexel kernels report `SHARED:0` today, and the L1TEX stall this
-attacks is 35 % of the cycles between instructions.
+attacks is 20 % of the cycles between instructions.
+
+**The barrier is the catch, and it is a structural one.** `dexel_apply_column`'s loop condition is `s < last && n > 0`,
+and `n > 0` is per thread, so a `__syncthreads()` inside that loop is a divergent barrier until that test is hoisted
+out of it — which changes the loop's own cost. And the lever is for the binned launch only: in `dexel_apply_kernel`
+every block walks all 99 200 steps for a couple of thousand useful pairs, so "one barrier per step" there is 99 200
+barriers to amortise over almost nothing.
 
 This is the lever the envelope experiment was reaching for and could not reach from inside the column loop. On its own
 it is worth less than 3.1 — it makes the *existing* walk cheaper in traffic rather than making the kernel do less work
@@ -108,17 +113,22 @@ allows. With 3.1 and 3.2 this largely dissolves: both change what a pair costs r
 
 ## 4. What is not settled
 
-- **The 40.3 % is Nsight Compute's estimate, not a measurement.** It is a rule of thumb over active-thread counts, and
-  the two figures it quotes (35.0 % from the stall, 40.3 % from occupancy) do not compose — they are not additive and
-  the kernel has only one to give.
+- **The 40.3 % is Nsight Compute's estimate, not a measurement.** It is a rule of thumb over active-thread counts. The
+  kernel's own numbers behind it are solid — 8.09 lanes, 9.84 cycles per issued instruction, compute 62.70 % — but the
+  estimate of what fixing it is worth is the profiler's.
 - **No occupancy measurement exists for a kernel that has the local arrays gone.** `launch__registers_per_thread` is
   56 with 256-thread blocks, which on this card is a comfortable occupancy; what is missing is the achieved one and
-  what it would be if the frame shrank. `cuobjdump -res-usage` puts the frame at 520 B of the 1024 B post-Volta limit.
+  what it would be if the frame shrank. `cuobjdump -res-usage` puts the frame at 520 B of the 1024 B post-Volta limit —
+  and the frame is mostly *not* the lines: 256 B is `gLo` + `gHi`, 128 B the column's own intervals and 136 B
+  `dexel_subtract`'s `out[]`.
 - **The lane figure is for this bench's tool.** A larger tool, or coarser cells, or steps that move further, change the
-  fraction of a tile that is touched and therefore the occupancy. The 9.35 belongs to a 0.4 mm tool on 0.05 mm cells,
+  fraction of a tile that is touched and therefore the occupancy. The 8.09 belongs to a 0.4 mm tool on 0.05 mm cells,
   and §3.1's ceiling number would have to be measured per regime.
-- **Nothing here has been built.** This document is a profile and a ranking, written after the envelope revert and
-  before anything was tried on the strength of it.
+- **An earlier version of §1 in this document reported these figures for the wrong build.** They were taken while the
+  bench still held the *envelope's* `nanocut_gpu.dll`, because the bench copies the native library into its own `bin`
+  and `dotnet build` of the solution does not build the bench. That is trap four in
+  `ConvexEarlyOutFindings.md` §9, walked into by the person who wrote it. The numbers above are from the reverted tree.
+- **Nothing here has been built.** This document is a profile and a ranking.
 
 ## 5. Reproducing
 
@@ -128,4 +138,9 @@ allows. With 3.1 and 3.2 this largely dissolves: both change what a pair costs r
 
 `--launch-skip 2` instead of 1 lands on the ball launch, which is the control in §1. The bench's own printed kernel
 times are distorted under the profiler (the kernel reads 716 ms there) — the Duration in the Speed Of Light table is the
-number to use, 4.40 ms against the 4.2 ms the bench reports unprofiled.
+number to use, 4.60 ms against the 4.2 ms the bench reports unprofiled at `--repeat 50`.
+
+**Rebuild the bench before profiling it.** `dotnet build src/Stykker.NanoCut.Gpu.Native/build.ps1` is not enough: the
+bench copies `nanocut_gpu.dll` into its own `bin`, and `dotnet build Stykker.NanoCut.slnx` does not build the bench, so
+a native rebuild is invisible there until the bench itself is rebuilt. Getting that wrong is how §1 of this document
+first reported the envelope's numbers as the walk's.
