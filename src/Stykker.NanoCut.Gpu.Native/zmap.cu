@@ -830,11 +830,20 @@ constexpr int kPlaneFloats = 4;
 /// <summary>Floats per packed convex step. Mirrors ConvexProfile.StepFloats.</summary>
 constexpr int kConvexStepFloats = 32;
 
-/// <summary>Offsets into a packed convex step: T_A, the move w, and then the rotation. The half-space count and the
-/// swept box that precede them are read by the host, not here.</summary>
+/// <summary>Offsets into a packed convex step: the swept body's bounding box in x and y, then T_A, the move w and the
+/// rotation. The half-space count sits between the move and the rotation and arrives as a kernel argument, so it is
+/// never read from here. The box, on the other hand, is read here: it is the whole input of the early-out.</summary>
+constexpr int kConvexBox = 0;
 constexpr int kConvexFrom = 4;
 constexpr int kConvexMove = 7;
 constexpr int kConvexRot = 11;
+
+/// <summary>Grown onto the box before a column is tested against it. Mirrors ConvexProfile.BoxMarginMm and
+/// StepBins.MarginMm, and has to stay equal to them so the two filters cannot part company over a column. It is not
+/// a tolerance that absorbs the whole float chain: the box is stored as independently rounded floats and this side
+/// reconstructs the edge by adding them, where StepBins associates the same addition the other way round, so a
+/// boundary column can fall either side by an ulp of the coordinate.</summary>
+constexpr float kConvexBoxMarginMm = 1e-6f;
 
 struct Dexel
 {
@@ -988,6 +997,15 @@ __device__ __forceinline__ float convex_extremum(const float* __restrict__ g, in
 __device__ __forceinline__ bool convex_span(float x, float y, const float* __restrict__ p,
                                             const float* __restrict__ planes, int planeCount, float& low, float& high)
 {
+    // The step's own bounding box, grown by the margin, and the column centre against it. The swept body is the
+    // convex hull of the two endpoint positions and this box is that hull's, so a centre outside it cannot meet
+    // the body, and four comparisons replace the walk over every crossing below. The comparison is strict, so a
+    // centre exactly on the boundary still goes in. Mirrors ConvexProfile.Span, operation for operation.
+    const float boxX = p[kConvexBox] - kConvexBoxMarginMm, boxY = p[kConvexBox + 1] - kConvexBoxMarginMm;
+    const float boxW = p[kConvexBox + 2] + 2 * kConvexBoxMarginMm;
+    const float boxH = p[kConvexBox + 3] + 2 * kConvexBoxMarginMm;
+    if (x < boxX || x > boxX + boxW || y < boxY || y > boxY + boxH) return false;
+
     const float ax = p[kConvexFrom], ay = p[kConvexFrom + 1], az = p[kConvexFrom + 2];
     const float wx = p[kConvexMove], wy = p[kConvexMove + 1], wz = p[kConvexMove + 2];
     const float r00 = p[kConvexRot], r01 = p[kConvexRot + 1], r02 = p[kConvexRot + 2];
