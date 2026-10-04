@@ -213,6 +213,16 @@ From [gpu-findings.md](gpu-findings.md); nothing here blocks a preview, all of i
 
 ## Gear generation – follow-ups
 
+- **`Process2.Cut` is not deterministic under load, and the flank gate is measuring that.** `RackGeneratedGearHasInvoluteFlanks`
+  fails roughly one full-suite run in three — flank 511 / 1596 / 2230 / 5327 nm against a 300 nm tolerance — and passes
+  every time it runs alone. It is not a flaky test: a probe running the gear case twice in one process gets two
+  different regions, while the blank, the rack and the swept pieces hash identically. **The 2D boolean kernel is not a
+  pure function of its arguments**, with the pipeline on or off. Until that is fixed, every gear figure in this repo —
+  the volumes in `docs/processes.md`, the flank in this item, the timings in the two commits above — is a sample from a
+  distribution rather than a constant, and no comparison smaller than the run-to-run spread is a result. The mechanism
+  is not identified and the fault is narrowed to `BooleanKernel.Execute`'s callees; see
+  [GearFlankFlakeFindings.md](../GearFlankFlakeFindings.md). **This is now the first thing to fix in this section**, and
+  it outranks all three items below it.
 - ~~**`Process2.Cut` is dominated by the sequential subtracts, not by the sweep.**~~ Answered on 2026-10-04, and not in
   the direction this item expected: the fix it asked for does not work. The batch size had never been swept for the
   shipped order, and 256 is an optimum from both sides (128 costs 1.47×, 512 1.27×, 1024 2.95×), so the win could not
