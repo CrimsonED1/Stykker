@@ -4,6 +4,23 @@ Open features and ideas, newest first. Each entry says what is wanted and which 
 
 ## Done
 
+- **Preview page: the exact kernel, a CPU preview and a GPU preview side by side** (`PreviewPage.razor`, the demo page
+  *Preview: exact vs CPU vs GPU*, commits e2f4138 and 861c6eb): one program, cut two ways. The panel times both
+  previews on the same height field and shows the exact cut once, as the reference they stand in for, with each
+  preview's Δ against it. The CUDA context is warmed before the GPU arm is timed and reported apart, so the device
+  number is work rather than start-up. Measured on the default finishing pass, 400 steps over 512 × 384 cells
+  (196 608 columns): CPU preview 39 ms, GPU preview 0.93 ms on cuda:0 — 42× — exact kernel 3314 ms, 799.825 mm³
+  against 799.820 mm³ remaining, Δ +0.001 % for both previews. The field download is timed out of the call and
+  printed beside each arm (0.00 ms and 0.16 ms). Verified 2026-10-04 in the browser: all three arms present, the two
+  field buttons correctly disabled until Compute has run, all three viewer buttons clicked through, and a clean
+  console — two Blazor info lines, no errors and no warnings. Two things that verification settled. The height
+  field does land visibly over the exact body, read off the canvas rather than off a picture: 167 434 body pixels
+  beside 352 410 field pixels on the CPU arm, and on the GPU arm 240 520 blend pixels of which all 240 520 lie on
+  the straight line between the body colour and the field colour, which is what a 0.85 cover over it looks like. And
+  the three buttons are exclusive toggles, not additive — the page holds one engine state, so clicking "+ GPU field"
+  removes the CPU field again, which the two plus signs do not promise. A screenshot of the page could not be taken
+  into account here: the vision bridge on this machine times out on every image.
+
 - **Long programs, step 3: a convex tool on a pose sequence** (`ConvexTool`, `ConvexStep`, `ConvexProfile`,
   `convex_span` in the kernel, plan in [long-programs.md](long-programs.md)): a tool is half-spaces, a step is an
   orientation and two positions, and where a column meets the sweep is a small linear program in (z, t) on both
@@ -93,7 +110,12 @@ on a pose sequence) are done; steps 4 to 6 are the preview itself.
   stack, m operations — is O(m) and is what the remarks on both point at; it needs a sort in local memory and a stable
   tie-break on parallel lines, which is why the walk is what it is today. **Measured** (`LongPrograms convex`, unbinned
   kernel at a fixed 99 200 steps): 704.1 / 1055.6 / 1935.4 / 3278.2 ms at 6 / 8 / 12 / 16 half-spaces — a factor 4.65
-  where m³ would give 18.9, an exponent of about 1.57 in a log-log fit. The bound is the worst case and a ball is not
+  where m³ would give 18.9. **The 1.57 this item used to quote was the wrong model rather than a smaller exponent:**
+  the data is `289.4 + 11.63·m²`, a constant plus a quadratic, which fits all four points within ±2.1 %, and a power
+  law through the same numbers returns 1.558 in log-log, because a power curve under-reports its exponent when a
+  constant share is in the data. That share is 41 % of the time at m = 6 and falls to 9 % at m = 16, so the exponent
+  is 2, which is what `Where` costs in any case: `nLo + nHi = m` exactly and the term runs unconditionally
+  ([ConvexKernelFindings.md](../ConvexKernelFindings.md) §10.1). The bound is the worst case and a ball is not
   the worst case: only the few half-spaces whose normal faces the column bound it at all. So the follow-up is worth less
   than the exponent suggested, and `MaxPlanes` (16) has more headroom than it looks — a tool with more half-spaces has
   to be split by the caller today, and whether it has to be at all is now a question with numbers behind it. The reason
@@ -174,15 +196,28 @@ From [gpu-findings.md](gpu-findings.md); nothing here blocks a preview, all of i
   cut runs. The whole-field copy is the only thing left that scales with the grid.
 - **Server mode** (`samples/Stykker.NanoCut.Server`): geometry on the server, progress over SignalR, cancellable, the WASM
   demo stays as it is.
+- **The viewer buttons on the preview page promise stacking and do not stack.** "Exact only", "+ CPU field" and
+  "+ GPU field" read as additive, but the page holds one engine state, so clicking "+ GPU field" removes the CPU field
+  again — measured on 2026-10-04, the CPU field's 352 410 pixels are gone once the GPU field is on. The two fields
+  are the same program on two backends and agree to +0.001 %, so stacking them would show the upper one and hide the
+  lower; renaming the buttons is the fix that keeps the page honest, and accumulating fields is the one that would
+  have to be argued for rather than assumed.
 
 ## Gear generation – follow-ups
 
-- **`Process2.Cut` is dominated by the sequential subtracts, not by the sweep.** Measured on the rack case (m = 2, z = 20,
-  2560 intervals): 0.3 s to build the pieces, the rest is 621–1200 exact subtracts of a growing region. The obvious
-  win — uniting neighbouring intervals in one batch instead of uniting 32 poses — makes the *union* 7× faster and the
-  *subtract* 2× slower, because each batch's union is no longer one contiguous ribbon and the result degenerates into
-  thousands of degenerate loops. The fix is to group the sweep by the region of the workpiece it removes, not by
-  interval. See `docs/processes.md` for the full numbers.
+- ~~**`Process2.Cut` is dominated by the sequential subtracts, not by the sweep.**~~ Answered on 2026-10-04, and not in
+  the direction this item expected: the fix it asked for does not work. The batch size had never been swept for the
+  shipped order, and 256 is an optimum from both sides (128 costs 1.47×, 512 1.27×, 1024 2.95×), so the win could not
+  have come from there. Grouping the pieces by the region of the workpiece they remove costs 1.40× to 2.63× — the
+  finer the cell, the worse, because it makes each union cheaper and multiplies the subtract count at the same time.
+  What paid was overlapping the union with the subtract (`Process2.Pipeline`, on by default): 31.6 s to 26.7 s on a
+  bit-identical result, 5.0 s of the 7.5 s of union recovered and the rest lost to memory bandwidth between two
+  allocating strands. The cost is that `Process2.Cut` is no longer implicitly single-threaded, which the server mode
+  needs to know: *n* concurrent planar cuts take 2*n* threads. Second gear section in `docs/processes.md`.
+- **Renormalise the result every N batches.** The one of the three still open. The subtract costs what the result's
+  loop count costs and every batch leaves slivers behind in it; whether a periodic `Normalize()` collects them faster
+  than it costs is unmeasured. And do not judge a batching variant by volume — it moves in the eighth decimal with the
+  contour count, because the extrusion tessellates the decomposition. The flank is the gate.
 
 ## Profile extraction – follow-ups
 

@@ -224,15 +224,96 @@ Reading the table:
 - **The fold split cannot be tuned into a win.** Coarser loses the flank by five orders of magnitude; finer changes
   nothing, because the fold point is essentially stationary over a 30 nm step and there is less of the edge to split.
 
-**Conclusion: the shipped order is a local optimum, and the win has to come from the grouping, not the order or the
-batch size.** The change worth making is to group the swept pieces by the region of the workpiece they remove, so each
-batch is one contiguous ribbon and each subtract sees a result whose loop count stays near 69. That is a change to how
-`Process2.Cut` batches, not to the sweep, and it is listed in `docs/todo.md`.
+**Conclusion: the shipped order is a local optimum, and the win does not come from the grouping.** The recommendation
+this section used to end with — group the swept pieces by the region of the workpiece they remove, so each batch is one
+contiguous ribbon — was measured on 2026-10-04 and is a loss of 1.4× to 2.6×; the next section has the numbers. It
+could not have been reached from the order or the batch size either. What did pay was overlapping the union with the
+subtract, which changes no arithmetic at all.
 
 The one change that survived from this investigation is the bounds filter: it runs on every piece of every sweep, and
 the four LINQ passes over the vertices became a single pass (0.01 s of 41.0 s — kept because it is strictly less work,
 not because it moved the needle). It is a kernel change, so it went to the kernel optimisation branch (`perf-round-3`)
 rather than with the GPU work; the 0.01 s in the table above were measured with it.
+
+### The gear case again: batch size, region grouping, and overlapping the two costs (2026-10-04)
+
+The three questions the section above leaves open, all measured on `bench/scenes/gear-m2-z20.json` with
+`--warm --repeat 3`, reporting medians.
+
+**This is not the machine the 41.0 s came from.** The same sequential configuration reads 31.6 s here, with the
+union and the subtract timed directly inside the call: 7.5 s and 23.1 s, plus 1.0 s of sweep, bounds filter and
+batching. The subtract matches the 23 s above almost exactly; the union is 2.4× cheaper, which is why the totals
+differ. Rows from the two sets are comparable within a set, not across — and even that needs care: two runs of the
+*same* sequential configuration on this machine read 31.6 s (±0.6 %) and 34.6 s (±13 %) in different sessions. The
+factors below are the reliable part; the absolute baselines are not. The warm-up rule buys tier-1 code, not a quiet
+machine.
+
+`bench/README.md` and the long-programs documents quote **34.7 s** for this same case, because
+`Stykker.NanoCut.LongPrograms` calls the same `Process2.Cut` and its figures are quoted from one specific run. That
+row is left where it is — it belongs to that run, and re-quoting it means re-running the long-programs bench, not
+transferring a number from another bench. Through `Stykker.NanoCut.Bench` the case now reads 26.7 s; expect the same
+win there and treat 34.7 s as pre-overlap until somebody re-runs it.
+
+**Batch size was never swept for the shipped order.** The 1024-batch and overlapping-batch rows in the table above
+are all interval-order rows. Swept for the shipped order, each factor against the 256 control of its own sweep:
+
+| Pieces per batch | Median | Factor | Result contours | Allocated |
+| --- | ---: | ---: | ---: | ---: |
+| 128 | 50.8 s | 1.47× | 81 | 70 GB |
+| **256 (shipped)** | **34.6 s** | **1.00×** | 69 | 40 GB |
+| 512 | 44.1 s | 1.27× | 62 | 25 GB |
+| 1024 | 102.2 s | 2.95× | 60 | 19 GB |
+
+Bigger batches do reach fewer result contours and allocate half as much, and are still slower: the union's
+superlinearity costs more than the subtract saves. 256 is an optimum from both sides, so the recommendation the
+section above ended with could not have been reached through the batch size either.
+
+**Grouping by region is a loss.** Cells along the longer axis of the workpiece bounds, batches never spanning two
+cells, everything else as shipped:
+
+| Cells | Median | Factor | Result contours |
+| ---: | ---: | ---: | ---: |
+| 4 | 48.4 s | 1.40× | 79 |
+| 16 | 55.1 s | 1.59× | 108 |
+| 64 | 91.0 s | 2.63× | 155 |
+
+Monotone in the wrong direction: the coarser the cell, the better, and the best is no grouping at all. A finer cell
+makes each batch's union cheaper and multiplies the batch count at the same time, and every subtract then runs
+against a result whose loop count has already grown (69 → 155). The two costs cannot both be won — the same wall
+the interval order runs into from the other side.
+
+One trap worth naming, because it nearly became a wrong conclusion: these rows move the volume in the eighth
+decimal (12312.529413 → 12312.529430 mm³ at 108 contours). That is not a wrong answer — the boolean is exact and the
+region does not change — but the extrusion tessellates the contour decomposition, so **volume is not an exactness
+gate for a batching variant**. The flank is: it caught the pose-parts-dropped row at 205 614 nm while the area
+stayed right to nine decimals.
+
+**Overlapping the union with the subtract is what paid.** The two are independent — the union reads only the swept
+pieces, the subtract only the result — and the planar boolean kernel keeps no state outside its arguments: no
+`ArrayPool`, no `[ThreadStatic]` and no locks in `Stykker.NanoCut.Geometry2D`. `Process2.Cut` therefore hands the
+union of batch *i+1* to a worker thread while batch *i* is subtracted, one batch of lookahead:
+
+| | Median | min / max | Contours | Allocated |
+| --- | ---: | --- | ---: | ---: |
+| sequential | 31.6 s | 31 445 / 31 844 | 69 | 39 788 MB |
+| **overlapped** | **26.7 s** | **26 599 / 26 700** | **69** | **39 783 MB** |
+
+The result is identical to the last digit: 12312.529413 mm³, 69 contours, 107 328 profile vertices, 428 800
+triangles. No extra memory — a batch of lookahead is held either way — and the GC pause fell from 1028 ms to 853 ms.
+
+The overlap is not free, and the shortfall says by how much. A free overlap would cost the longer chain, 23.1 s,
+plus the 1.0 s that runs before either. It costs 26.7 s, so **5.0 s of the 7.5 s of union come back and 2.5 s do
+not**: both strands allocate heavily (39.8 GB between them) and contend for memory bandwidth. The spread collapses
+at the same time, because two steady chains replace one uneven one.
+
+One consequence for the server, which is not built yet: `Process2.Cut` is no longer implicitly single-threaded. The
+demo and the bench run one job at a time, so that is one extra thread there; *n* concurrent planar cuts now take 2*n*
+threads. It is bounded — nothing in `samples` or `Stykker.NanoCut.Cutting` nests `Parallel.*`, and the only
+`Task.Run` is `ComputeRunner` handing a whole job to the pool — but worth knowing before the queue is filled.
+
+The same change replaced the per-batch `Skip(...).Take(...)` with `GetRange`. The LINQ form walked the list from the
+start once per batch, so a sweep cost O(n²) in the number of pieces over 821 batches. Strictly less work, no
+behaviour change, same 69 contours.
 
 ### Other processes
 
