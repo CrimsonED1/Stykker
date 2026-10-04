@@ -89,8 +89,11 @@ native. The gear flank case takes about half a minute on the server and minutes 
 <li><b>Rotating tools are expensive on the exact side.</b> <code>Process3.Sample</code> samples an angle linearly, which
 asks for tens of thousands of exact hulls for a modest turn. That is on the critical path for anything measured
 against the exact kernel.</li>
-<li><b>The inspection viewer's rim case stops at 64 facets.</b> Above that the widest facet was seen to miss its own
-chord error, once failing and once passing on unchanged code. Not understood, so not offered.</li>
+<li><b>The inspection viewer's rim case has two limits, both deliberate.</b> The facet count fixes how far the
+chord-error range reaches, because the widening factor is what has to close the turn: too many facets already
+exceed a full turn at the finest chord error, and a count that does close leaves a widest facet longer than the
+radius, which is a polygon missing sides rather than a rim that gets rougher. The page stops at 128 facets, where
+both are comfortable.</li>
 </ul>
 </section>
 </div>
