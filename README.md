@@ -80,6 +80,13 @@ the CPU and 0.85 ms on the GPU, both within +0.001 % of the exact result. The CU
 once and reported apart, the way the bench does it. One run on an RTX 5070 Ti; numbers of this page vary with the
 machine.*
 
+### Overview: where you are, and what it cannot do
+
+`/` is an index rather than a redirect into the first scene: what NanoCut is, where to click, and the five things it
+cannot do yet — read from the repository, not from a wish list.
+
+![Demo overview: start here, scenes, pages, and what it cannot do yet](docs/images/demo-overview.png)
+
 ### Measuring: colour as the reading
 
 The inspection page (`/inspect`) is a measuring microscope: every vertex is coloured by a **measured** quantity —
@@ -102,6 +109,10 @@ plane the wheel left behind. Only the top vertex of a column carries a value. At
 7 5800X3D: 28 584 nm peak to valley, Ra 5 937 nm, 0,006639 mm³ removed from 0,48 mm³ of stock, 4 842 hulls,
 2,5 s. Form and roughness are different questions and this page shows both, because they differ by more than most
 readers expect.
+
+![Inspection: a ground surface, colour = form error in nm](docs/images/inspect-ground.png)
+
+![Inspection: a rim of 64 facets, colour = the chord error of each facet](docs/images/inspect-chord-facets.png)
 
 [docs/overview.html](docs/overview.html) states the same numbers in German, in the logo's colours, with the
 preview's −0,106 % deviation in the open rather than in a footnote.
