@@ -4,6 +4,63 @@ Open features and ideas, newest first. Each entry says what is wanted and which 
 
 ## Done
 
+- **Inspection: colour as the reading** (demo page *Inspection*, route `/inspect`, cases in `Pages/InspectCases.cs`,
+  tests in `tests/Stykker.NanoCut.Tests/InspectCasesTests.cs`): a measuring microscope for ground and formed models.
+  Every vertex is coloured by a measured quantity and drawn unlit, because a highlight would falsify a number; the
+  scale is fitted to what the run found, so a 1 nm case and a 100 nm case are both readable. Three cases: the 1 nm
+  staircase (axis-parallel, so the Boolean rounds nothing — measured 1,000000 … 100,000000 nm, deviation 0, 148
+  vertices on the grid), a rim whose facets widen by a constant factor from a 1 nm chord error up to the coarse end
+  (colour = the distance from the centre to the facet's chord, measured on the geometry — a per-vertex radial distance
+  cannot show it, because the vertices of an inscribed polygon lie *on* the circle), and the gear flank against the
+  involute. The viewer grows a scale bar in nm/µm/mm, the 1 nm lattice at a pitch that follows the zoom, the nominal
+  form as a curve on the top face, a data bar on the picture, and a click that reports the exact integer nanometre
+  from the server. Two bugs came out of driving the page on both engines: the Babylon scale bar was out by a factor of
+  ~60 (three.js states the field of view in degrees, Babylon in radians) and Babylon's pick never hit anything
+  (`scene.pick` returned a line mesh). A third came out of the gear case: **the exact 2D Boolean is not a pure
+  function** — see `GearFlankFlakeFindings.md` — so the flank deviation is a sample, and the page says so instead of
+  printing a constant. The case also refuses z < 18, because below z = 2/sin²α the flank is undercut and is not the
+  involute at all. German one-pager with the same numbers: `docs/overview.html`.
+
+- **Inspection: a ground surface, which is what the viewer is for** (fourth case in `Pages/InspectCases.cs`, tests
+  `TheWheelCutsAndNothingIsAdded` and `TheGroundColourIsInNanometres`): a block with a flat top face, 60 abrasive grains
+  over it, and the colour is the **form error** — how far each point of the ground surface sits from the plane the wheel
+  left behind. Only the top vertex of a column carries a value; the block below it stays neutral, because a
+  metrologist looks at the surface and not at the block. Measured at 60 grains: 28 584 nm peak to valley, Ra 5 937 nm,
+  0,006639 mm³ removed from 0,48 mm³ stock, 4 842 hulls, 2,5 s native. The nominal is the **measured mean ground
+  level**, not a theoretical plane — how deep a wheel of random grains ends up is a result, not a promise the kernel
+  makes, so a flatness has to be stated against the level that came out. Form and roughness are printed side by side
+  because they are different questions that differ by more than most readers expect. This made `Inspection` carry a
+  **list** of bodies: grinding leaves the workpiece as several cells, and uniting them would mean running the exact
+  Boolean over the result — slower, and the one kernel here that is not a pure function. Two bugs were on the way and
+  are worth writing down: the wheel has to be *oriented*, not just placed (`Linear ∘ Fixed(Rotation(−π/2, 1, 0, 0))`,
+  or it spins about Z, its tips never reach the workpiece and the simulation cheerfully reports zero active grains and a
+  perfectly flat, entirely meaningless surface); and the colour value is a difference of two nanometre heights, so an
+  extra `* 1e-6` reports the whole form error a million times too small. The first one passed its check, because a
+  surface that came out flat with a deviation of zero looks exactly like a correct answer.
+
+- **Demo overview** (`Pages/Home.razor`, `Pages/PageIndex.cs`): "/" was a redirect into the first scene, so a newcomer
+  arrived mid-groove with no way to see what else existed. It is now an index — what this is, where to click, and what
+  it cannot do yet. The scene pages come from `SceneCatalog` and cannot go missing; the hand-written pages became
+  `PageIndex.All`, which the sidebar and the overview both read, so adding a page is one line in one file. Routes that
+  take minutes in WebAssembly rather than seconds are marked as such.
+
+- **Preview page: the exact kernel, a CPU preview and a GPU preview side by side** (`PreviewPage.razor`, the demo page
+  *Preview: exact vs CPU vs GPU*, commits e2f4138 and 861c6eb): one program, cut two ways. The panel times both
+  previews on the same height field and shows the exact cut once, as the reference they stand in for, with each
+  preview's Δ against it. The CUDA context is warmed before the GPU arm is timed and reported apart, so the device
+  number is work rather than start-up. Measured on the default finishing pass, 400 steps over 512 × 384 cells
+  (196 608 columns): CPU preview 39 ms, GPU preview 0.93 ms on cuda:0 — 42× — exact kernel 3314 ms, 799.825 mm³
+  against 799.820 mm³ remaining, Δ +0.001 % for both previews. The field download is timed out of the call and
+  printed beside each arm (0.00 ms and 0.16 ms). Verified 2026-10-04 in the browser: all three arms present, the two
+  field buttons correctly disabled until Compute has run, all three viewer buttons clicked through, and a clean
+  console — two Blazor info lines, no errors and no warnings. Two things that verification settled. The height
+  field does land visibly over the exact body, read off the canvas rather than off a picture: 167 434 body pixels
+  beside 352 410 field pixels on the CPU arm, and on the GPU arm 240 520 blend pixels of which all 240 520 lie on
+  the straight line between the body colour and the field colour, which is what a 0.85 cover over it looks like. And
+  the three buttons are exclusive toggles, not additive — the page holds one engine state, so clicking "+ GPU field"
+  removes the CPU field again, which the two plus signs do not promise. A screenshot of the page could not be taken
+  into account here: the vision bridge on this machine times out on every image.
+
 - **Long programs, step 3: a convex tool on a pose sequence** (`ConvexTool`, `ConvexStep`, `ConvexProfile`,
   `convex_span` in the kernel, plan in [long-programs.md](long-programs.md)): a tool is half-spaces, a step is an
   orientation and two positions, and where a column meets the sweep is a small linear program in (z, t) on both
@@ -74,13 +131,16 @@ on a pose sequence) are done; steps 4 to 6 are the preview itself.
   removed 84.82 mm³, with the overflow counter still at zero). The launch takes the pointer from the count it was
   given, and `ConvexDexelTests.AConvexToolThenASphereOnTheSameDevice` runs convex → sphere against the CPU, which is
   the order the earlier test did not have.
-- **"The order of steps inside a tile does not matter" is written down and is false.**
-  `docs/long-programs.md:83-84` claims it, with the parenthetical "only the overflow counting can differ". The
-  capacity guard in `dexel_subtract` (`if (left && right && n + 1 > capacity)`) keeps the part *below* a cut and drops
-  the roof above it, so which side survives depends on the order the cuts arrive in — the intervals move, not only
-  the count. It holds for columns that never reach capacity. Step 3 puts the convex path through the same
-  `dexel_apply_column`, so the same guard and the same caveat apply there. Correcting the sentence needs no
-  measurement; what would need one is a counter-example to put next to it.
+- ~~**"The order of steps inside a tile does not matter" is written down and is false.**~~ Corrected in
+  `docs/long-programs.md` on 2026-10-04: removal is a union, but that alone does not make a tile order-independent.
+  The counter-example is now measured as well, not only argued — the binned launch test asserts that overflows
+  actually occur, because `Assert.Equal(b.Overflows, a.Overflows)` would also pass at `0 == 0` with the guard never
+  reached. They occur at 32, 64 and 301 cells (1, 3 and 36) and not at 16, which is why that assertion sums over the
+  four sizes rather than looking at one. The mechanism it corrects: the capacity guard in `dexel_subtract`
+  (`if (left && right && n + 1 > capacity)`) keeps the part below a cut and drops the roof above it, so the
+  intervals move with the order the cuts arrive in, not only the count. It holds for columns that never reach
+  capacity, and the overflows above are what make the difference observable at all. Step 3 puts the convex path
+  through the same `dexel_apply_column`, so the same guard and the same caveat apply there.
 - **The sampling bound in `ConvexDexelTests.SamplingBound` is the maximum over the steps, not their union.** For a
   program that fans out — the rotating case — the box one step contributes is smaller than the area the whole program
   sweeps, so what the test asks for (0.1253 mm³ at 500 cells) is not "the volume a column model can be off by" as the
@@ -93,7 +153,12 @@ on a pose sequence) are done; steps 4 to 6 are the preview itself.
   stack, m operations — is O(m) and is what the remarks on both point at; it needs a sort in local memory and a stable
   tie-break on parallel lines, which is why the walk is what it is today. **Measured** (`LongPrograms convex`, unbinned
   kernel at a fixed 99 200 steps): 704.1 / 1055.6 / 1935.4 / 3278.2 ms at 6 / 8 / 12 / 16 half-spaces — a factor 4.65
-  where m³ would give 18.9, an exponent of about 1.57 in a log-log fit. The bound is the worst case and a ball is not
+  where m³ would give 18.9. **The 1.57 this item used to quote was the wrong model rather than a smaller exponent:**
+  the data is `289.4 + 11.63·m²`, a constant plus a quadratic, which fits all four points within ±2.1 %, and a power
+  law through the same numbers returns 1.558 in log-log, because a power curve under-reports its exponent when a
+  constant share is in the data. That share is 41 % of the time at m = 6 and falls to 9 % at m = 16, so the exponent
+  is 2, which is what `Where` costs in any case: `nLo + nHi = m` exactly and the term runs unconditionally
+  ([ConvexKernelFindings.md](../ConvexKernelFindings.md) §10.1). The bound is the worst case and a ball is not
   the worst case: only the few half-spaces whose normal faces the column bound it at all. So the follow-up is worth less
   than the exponent suggested, and `MaxPlanes` (16) has more headroom than it looks — a tool with more half-spaces has
   to be split by the caller today, and whether it has to be at all is now a question with numbers behind it. The reason
@@ -167,22 +232,53 @@ From [gpu-findings.md](gpu-findings.md); nothing here blocks a preview, all of i
 - ~~**Warm up before measuring.**~~ Done: every query number needed a warm-up to mean anything — the first table was
   off by a factor of ten because the bench called each query once on freshly allocated arrays. The bench prints the
   cold call beside the warm one now, and `docs/gpu-findings.md` reports only warm numbers.
-- **Time the call as well as the work inside it.** The CPU backend reported 3.46 ms for a query the caller waited
+- ~~**Time the call as well as the work inside it.**~~ Decided and built on 2026-10-04. The CPU backend reported
+  3.46 ms for a query the caller waited
   5.87 ms for, because the span-to-array copy sat outside its stopwatch. The bench now prints the caller-side time next
-  to the backend's own figure; whether `CpuBackend` should report its staging in `WallMs` is undecided.
+  to the backend's own figure. `ZMapTiming` now carries a `PackMs` that both backends fill, and the deliberate part
+  is where it sits: the CPU stopwatch still covers the parallel loop only, because every CPU timing already recorded
+  in the docs depends on that span, so packing is reported apart rather than folded in. It falls inside `WallMs` on
+  CUDA and outside it on the CPU, which is exactly why the two `WallMs` columns of a table could not be compared
+  against each other before.
 - **A partial read-back** (a row band of the field) for a caller that wants a picture of a part of the stock while the
   cut runs. The whole-field copy is the only thing left that scales with the grid.
 - **Server mode** (`samples/Stykker.NanoCut.Server`): geometry on the server, progress over SignalR, cancellable, the WASM
   demo stays as it is.
+- **The viewer buttons on the preview page promise stacking and do not stack.** "Exact only", "+ CPU field" and
+  "+ GPU field" read as additive, but the page holds one engine state, so clicking "+ GPU field" removes the CPU field
+  again — measured on 2026-10-04, the CPU field's 352 410 pixels are gone once the GPU field is on. The two fields
+  are the same program on two backends and agree to +0.001 %, so stacking them would show the upper one and hide the
+  lower; renaming the buttons is the fix that keeps the page honest, and accumulating fields is the one that would
+  have to be argued for rather than assumed.
 
 ## Gear generation – follow-ups
 
-- **`Process2.Cut` is dominated by the sequential subtracts, not by the sweep.** Measured on the rack case (m = 2, z = 20,
-  2560 intervals): 0.3 s to build the pieces, the rest is 621–1200 exact subtracts of a growing region. The obvious
-  win — uniting neighbouring intervals in one batch instead of uniting 32 poses — makes the *union* 7× faster and the
-  *subtract* 2× slower, because each batch's union is no longer one contiguous ribbon and the result degenerates into
-  thousands of degenerate loops. The fix is to group the sweep by the region of the workpiece it removes, not by
-  interval. See `docs/processes.md` for the full numbers.
+- **`Process2.Cut` is not deterministic under load, and the flank gate is measuring that.** `RackGeneratedGearHasInvoluteFlanks`
+  fails roughly one full-suite run in three — flank 511 / 1596 / 2230 / 5327 nm against a 300 nm tolerance — and passes
+  every time it runs alone. It is not a flaky test: a probe running the gear case twice in one process gets two
+  different regions, while the blank, the rack and the swept pieces hash identically. **The 2D boolean kernel is not a
+  pure function of its arguments**, with the pipeline on or off. Until that is fixed, every gear figure in this repo —
+  the volumes in `docs/processes.md`, the flank in this item, the timings in the two commits above — is a sample from a
+  distribution rather than a constant, and no comparison smaller than the run-to-run spread is a result. The mechanism
+  is not identified and the fault is narrowed to `BooleanKernel.Execute`'s callees; see
+  [GearFlankFlakeFindings.md](../GearFlankFlakeFindings.md). **This is now the first thing to fix in this section**, and
+  it outranks all three items below it.
+- ~~**`Process2.Cut` is dominated by the sequential subtracts, not by the sweep.**~~ Answered on 2026-10-04, and not in
+  the direction this item expected: the fix it asked for does not work. The batch size had never been swept for the
+  shipped order, and 256 is an optimum from both sides (128 costs 1.47×, 512 1.27×, 1024 2.95×), so the win could not
+  have come from there. Grouping the pieces by the region of the workpiece they remove costs 1.40× to 2.63× — the
+  finer the cell, the worse, because it makes each union cheaper and multiplies the subtract count at the same time.
+  What paid was overlapping the union with the subtract (`Process2.Pipeline`, on by default): 31.6 s to 26.7 s on a
+  bit-identical result, 5.0 s of the 7.5 s of union recovered and the rest lost to memory bandwidth between two
+  allocating strands. The cost is that `Process2.Cut` is no longer implicitly single-threaded, which the server mode
+  needs to know: *n* concurrent planar cuts take 2*n* threads. Second gear section in `docs/processes.md`.
+- ~~**Renormalise the result every N batches.**~~ Measured and shipped on 2026-10-04, at every 32 batches
+  (`Process2.RenormalizeEvery`): 26 216 ms against 26 516 ms for never, in the same build, where the spread inside
+  one setting is 0.2 % — the worst run at 32 still beats the best control run. The window is narrow, and the shape
+  says why: 128 and 512 are both *slower* than never, so renormalising less often does not merely stop paying, it
+  costs. Exactness-neutral at every setting — same removed volume, same 69 contours, same 107 328 profile
+  vertices. That closes the last of the three items in this block. And the warning on how to judge a batching
+  variant stays: not by volume, which moves in the eighth decimal with the contour count, but by the flank.
 
 ## Profile extraction – follow-ups
 

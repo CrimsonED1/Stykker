@@ -23,10 +23,14 @@ internal static class StepBins
     /// <summary>Columns and rows per tile. One tile is one thread block, so this has to match the kernel's launch.</summary>
     internal const int Tile = 16;
 
-    /// <summary>Grown onto the box so a column exactly on the boundary cannot be lost to the rounding of a float. The
-    /// kernel's per-column early-out grows the same box by the same value, so the two filters cannot part company over
-    /// a column; that is why this is the one constant and not a second literal.</summary>
-    private const float MarginMm = ConvexProfile.BoxMarginMm;
+    /// <summary>Grown onto the box so a column exactly on the boundary cannot be lost to the rounding of a float.
+    /// <para>
+    /// One constant for the whole host side, on purpose: the binning that assigns a step to a tile and the early-out
+    /// in <see cref="ConvexProfile.Span"/> compare a column against the same window, so they cannot part company over
+    /// a column. The value, and what it has to outlast, live on <c>ConvexProfile.BoxMarginMm</c>. The kernel keeps
+    /// its own copy in <c>kConvexBoxMarginMm</c>, because C++ and C# share no header here.
+    /// </para></summary>
+    internal const float MarginMm = ConvexProfile.BoxMarginMm;
 
     /// <summary>Where the steps of a batch live, per tile.</summary>
     /// <param name="TileStart">Offsets into <paramref name="TileSteps"/>, tileCount + 1 of them.</param>

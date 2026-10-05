@@ -80,6 +80,43 @@ the CPU and 0.85 ms on the GPU, both within +0.001 % of the exact result. The CU
 once and reported apart, the way the bench does it. One run on an RTX 5070 Ti; numbers of this page vary with the
 machine.*
 
+### Overview: where you are, and what it cannot do
+
+`/` is an index rather than a redirect into the first scene: what NanoCut is, where to click, and the five things it
+cannot do yet — read from the repository, not from a wish list.
+
+![Demo overview: start here, scenes, pages, and what it cannot do yet](docs/images/demo-overview.png)
+
+### Measuring: colour as the reading
+
+The inspection page (`/inspect`) is a measuring microscope: every vertex is coloured by a **measured** quantity —
+the depth of the tread it sits on, the chord error of its facet, the deviation of the gear flank from the involute —
+drawn unlit, because a highlight would falsify a number. Beside it: a scale bar in nm/µm/mm, the 1 nm lattice at a
+pitch that follows the zoom, the nominal form as a curve on the top face, a data bar that says which case and which
+settings the picture is, and a click that reports the **exact integer nanometre** from the server rather than the
+float32 the browser drew from.
+
+![Inspection: the 1 nm staircase, colour = tread depth in nm](docs/images/inspect-staircase-1nm.png)
+
+*Case 1, the 1 nm staircase: seven steps of 1, 2, 5, 10, 20, 50 and 100 nm, every edge axis parallel, so the Boolean
+computes no intersection and rounds no coordinate. Measured 1,000000 to 100,000000 nm — deviation 0 on the digit, and
+all 148 vertices on the grid. At 100 mm absolute a float32 has 8 µm, a thousand times too coarse for any of this,
+which is why the reported coordinate comes from the server.*
+
+The fourth case is the one the viewer exists for: a **ground surface**. A block with a flat top face, 60 abrasive
+grains running over it, and the colour is the form error — how far each point of the ground surface sits from the
+plane the wheel left behind. Only the top vertex of a column carries a value. At 60 grains on an RTX 5070 Ti / Ryzen
+7 5800X3D: 28 584 nm peak to valley, Ra 5 937 nm, 0,006639 mm³ removed from 0,48 mm³ of stock, 4 842 hulls,
+2,5 s. Form and roughness are different questions and this page shows both, because they differ by more than most
+readers expect.
+
+![Inspection: a ground surface, colour = form error in nm](docs/images/inspect-ground.png)
+
+![Inspection: a rim of 64 facets, colour = the chord error of each facet](docs/images/inspect-chord-facets.png)
+
+[docs/overview.html](docs/overview.html) states the same numbers in German, in the logo's colours, with the
+preview's −0,106 % deviation in the open rather than in a footnote.
+
 ## Quick start (2D)
 
 ```csharp

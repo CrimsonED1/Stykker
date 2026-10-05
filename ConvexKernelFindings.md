@@ -441,11 +441,54 @@ Ladungen pro Thread am Einstieg und `2·n` am Ausstieg, amortisiert über ~377 S
 
 **Die Messung, die alles entscheidet.**
 **[Agent]** `ncu --kernel-name regex:dexel_apply_binned_kernel` mit
-`smsp__throughput.avg.pct_of_peak_sustained_elapsed`, `smsp__inst_executed_pipe_alu.sum`,
+`sm__throughput.avg.pct_of_peak_sustained_elapsed`, `smsp__inst_executed_pipe_alu.sum`,
 `smsp__inst_executed_op_local_ld.sum`, `launch__registers_per_thread`, `launch__shared_mem_per_block`, dazu
 `cuobjdump -res-usage`. **Vier Zahlen entscheiden:** (1) Ist der Kernel issue-bound (> 50 %)? Dann zahlen §A–§D wie
 geschätzt. (2) Wie groß ist der Anteil der Lokalspeicher-Befehle? (3) Wie viele Register? (4) Wie viele Register hat
 der **Ball**-Kernel gegen den konvexen?
+
+**[geprüft, Nachtrag 2026-10-04]** Die sechs Namen oben sind an der Quelle geprüft, gegen
+`ncu --query-metrics --query-metrics-mode all` aus Nsight Compute 2026.3.0 auf einer GeForce RTX 5070 Ti
+(GB203), ergänzt um `--query-metrics-collection launch` für die beiden `launch__`-Namen. Gültig sind
+`smsp__inst_executed_pipe_alu.sum` und `smsp__inst_executed_op_local_ld.sum` (je 44 Suffixe, `.sum` ist
+enthalten) sowie `launch__registers_per_thread` und `launch__shared_mem_per_block` (nur in der
+Launch-Sammlung, ohne Suffix). **Falsch war nur `smsp__throughput.avg.pct_of_peak_sustained_elapsed`**:
+eine Familie `smsp__throughput` gibt es nicht, `sm__throughput` hat dagegen acht Suffixe, weshalb das Präfix
+oben korrigiert wurde. Für Frage (1) ist zusätzlich
+`sm__instruction_throughput.avg.pct_of_peak_sustained_elapsed` vorhanden und die treffendere Größe, weil
+„issue-bound" genau das beschreibt.
+
+**[gemessen, 2026-10-04]** Die vier Zahlen sind gezogen, `ncu --kernel-name regex:dexel_apply` gegen
+`LongPrograms convex` (400 × 400 Spalten über 20 mm, 0,05-mm-Zellen, 4 Intervalle je Spalte, Werkzeug mit
+12 Halbräumen), GeForce RTX 5070 Ti (GB203), Nsight Compute 2026.3.0:
+
+| | konvex, gebinnt | konvex, ungebinnt |
+| --- | ---: | ---: |
+| Kernel | `dexel_apply_binned_kernel` | `dexel_apply_kernel` |
+| Register je Thread | **56** | **56** |
+| geteilt je Block | 1,02 KB | 1,02 KB |
+| `sm__throughput.avg.pct_of_peak_sustained_elapsed` | **65,28 %** | 69,59 % |
+| `smsp__inst_executed.sum` | 960 134 791 | 224 081 736 971 |
+| `smsp__inst_executed_op_local_ld.sum` | 28 720 225 | 5 220 498 145 |
+| Lokalspeicher-Anteil an den Befehlen | **2,99 %** | 2,33 % |
+
+**(1) Ja, issue-bound, mit 65 %** — die Bedingung, unter der §A–§D wie geschätzt zahlen, ist erfüllt.
+**(2)** Der Lokalspeicher ist **3 % der Befehle**: eine Größenordnung, nicht zwei, und das stützt §7.2
+gegen den Agenten, der einen "silent 10–100× penalty" vermutet hatte. **(3) 56 Register je Thread.**
+**(4)** Der **konvexe Pfad kostet null zusätzliche Register.** Beide `__global__`s sind derselbe
+kompilierte Kernel mit einem Laufzeit-Zweig, und die Registerzuteilung ist Eigenschaft des Kernels,
+nicht der Daten — jeder Start von `dexel_apply_kernel` nutzt dieselben 56, ob Ball oder konvex. Damit ist
+die Frage beantwortet, die §7.2 als "bisher nirgends notiert" offengelassen hatte.
+
+Daraus die Belegung, **unter der Annahme** von 65 536 Registern je SM (die Zahl steht in den Tabellen für
+compute capability 9.0; für 12.x sind sie leer, die Annahme ist also nicht aus der Doku belegt): 56 × 256 =
+14 336 Register je Block, damit **4 Blöcke je SM = 1024 Threads**. Die Warnung von §7.2 ist damit
+nachgerechnet statt behauptet: zwöngt auf 130 Register (die vollständige Promotion von `gLo`/`gHi`) käme
+man auf 33 280 Register je Block und **einen** Block je SM, also 16,7 % statt 66,7 % Belegung.
+
+Nebenbefund: das Binning zahlt auf dem konvexen Pfad noch deutlicher als auf dem Ball-Pfad — 65,6 ms
+gegen 422,4 ms bei der kleinsten Größe (Faktor 6,4), 59,3 ms gegen 13 812 ms bei der größten (Faktor
+233).
 
 **[Agent — widerlegt, siehe §8]** Dessen Erklärung für `m^1.57` war, `nLo + nHi ≪ m`, weil viele Halbräume `|mz| ≈ 0`
 hätten und den `mz == 0`-Zweig nähmen.

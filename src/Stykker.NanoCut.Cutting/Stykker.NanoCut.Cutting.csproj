@@ -8,4 +8,7 @@
     <ProjectReference Include="../Stykker.NanoCut.Geometry2D/Stykker.NanoCut.Geometry2D.csproj" />
     <ProjectReference Include="../Stykker.NanoCut.Geometry3D/Stykker.NanoCut.Geometry3D.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Stykker.NanoCut.Bench" />
+  </ItemGroup>
 </Project>

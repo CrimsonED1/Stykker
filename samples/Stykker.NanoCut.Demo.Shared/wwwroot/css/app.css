@@ -88,3 +88,47 @@ textarea.program { width: 100%; height: 150px; font-family: ui-monospace, monosp
 .sec-band { fill: #ff8a3d; fill-opacity: 0.75; fill-rule: nonzero; stroke: none; }
 .plot.section { max-height: 420px; }
 .sec-nominal { fill: none; stroke: #2f6fdc; stroke-width: 1; stroke-dasharray: 4 3; vector-effect: non-scaling-stroke; }
+
+/* Inspection: the colour legend, the case tabs, and the scale bar the viewer draws itself. */
+.tabs { display: flex; flex-wrap: wrap; gap: 4px; }
+.tabs button { border: 1px solid var(--line); background: var(--panel); color: var(--ink); padding: 5px 10px; border-radius: 6px; cursor: pointer; font-size: 13px; }
+.tabs button.on { background: var(--ink); color: #fff; border-color: var(--ink); }
+.ramp { height: 16px; border-radius: 4px; border: 1px solid var(--line); margin: 4px 0 0; }
+.ramp-axis { display: flex; justify-content: space-between; gap: 8px; font-size: 11px; color: var(--muted); margin-top: 3px; }
+.ramp-axis span:nth-child(2) { text-align: center; }
+.note { font-size: 12px; color: var(--muted); line-height: 1.45; margin: 6px 0 0; }
+.scalebar { position: absolute; left: 16px; bottom: 14px; display: flex; align-items: center; gap: 8px; pointer-events: none; font-size: 12px; color: var(--muted); }
+.scalebar i { display: block; height: 0; border: 1px solid var(--muted); border-top: none; }
+/* The data bar a microscope prints on every image: which case, and with which settings. It sits on the picture so it
+   travels with it — a screenshot without it does not say what it is a screenshot of. */
+.samplelabel { position: absolute; left: 16px; top: 14px; z-index: 1; display: grid; gap: 1px; pointer-events: none;
+  background: rgba(255,255,255,.82); border: 1px solid var(--line); border-radius: 6px; padding: 7px 10px; max-width: 60%; }
+.samplelabel b { font-size: 12.5px; }
+.samplelabel span { font: 11px ui-monospace, Consolas, monospace; color: var(--muted); }
+
+/* Overview ("/"): the map of the demo. Cards link to a page and say what it is for, so the list reads as an index
+   rather than a menu. */
+.ov { max-width: 980px; margin: 0 auto; }
+.ov-head { display: grid; gap: 8px; margin-bottom: 22px; }
+.eyebrow { font: 500 11.5px var(--font-mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.ov h1 { font-size: 30px; }
+.lede { margin: 0; max-width: 74ch; color: var(--muted); font-size: 14.5px; line-height: 1.55; }
+.ov h2 { margin: 30px 0 6px; }
+.ov h3.grp { font: 600 12px/1 var(--font-mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin: 18px 0 8px; }
+.ov code { font: 12.5px ui-monospace, Consolas, monospace; background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 0 3px; }
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.kpi { background: var(--panel); padding: 12px 14px; display: grid; gap: 2px; }
+.kpi b { font-size: 22px; font-variant-numeric: tabular-nums; color: var(--accent); }
+.kpi span { font-size: 12px; color: var(--muted); line-height: 1.35; }
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 10px; margin-bottom: 4px; }
+.card { display: grid; gap: 4px; align-content: start; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; text-decoration: none; color: var(--ink); }
+.card:hover { border-color: var(--accent); }
+.card b { font-size: 14.5px; }
+.card span { font-size: 12.5px; color: var(--muted); line-height: 1.45; }
+.card i { font: 500 11px var(--font-mono); color: var(--accent); font-style: normal; margin-top: 2px; }
+.card.small b { font-size: 13.5px; }
+.card.small span { font-size: 12px; }
+.limits { margin: 0; padding-left: 18px; display: grid; gap: 9px; max-width: 92ch; }
+.limits li { font-size: 13.5px; line-height: 1.5; color: var(--muted); }
+.limits li b { color: var(--ink); }
+.limits .src { font: 11.5px ui-monospace, Consolas, monospace; color: var(--accent); }

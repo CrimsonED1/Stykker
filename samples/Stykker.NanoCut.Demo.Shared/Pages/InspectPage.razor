@@ -1,0 +1,425 @@
+@page "/inspect"
+@using System.Globalization
+@using Stykker.NanoCut.Geometry3D
+@inject Viewer Viewer
+@inject IComputeRunner Runner
+@inject NavigationManager Nav
+@implements IAsyncDisposable
+
+<div class="scene">
+    <section class="stage">
+        <header class="stage-head">
+            <div>
+                <h1>Inspection · @(_inspection?.Name ?? "…")</h1>
+                <p class="desc">@(_inspection?.Description ?? "Pick a case.")</p>
+            </div>
+            <div class="engine">
+                <button class="@(_engine == "three" ? "on" : "")" @onclick='() => SwitchEngine("three")'>three.js</button>
+                <button class="@(_engine == "babylon" ? "on" : "")" @onclick='() => SwitchEngine("babylon")'>Babylon.js</button>
+            </div>
+        </header>
+        <div id="viewport" class="viewport" @onclick="Pick">
+            @if (_inspection is { } shown)
+            {
+                @* The data bar a microscope puts on every image: what you are looking at, and with which settings. *@
+                <div class="samplelabel">
+                    <b>@shown.Name</b>
+                    @foreach (var p in Params)
+                    {
+                        <span>@p.Label @F(_values[p.Key])@(p.Unit == "" ? "" : " " + p.Unit)</span>
+                    }
+                </div>
+            }
+            @if (_busy)
+            {
+                <div class="busy"><div class="spinner"></div>Computing (@Runner.Where)…</div>
+            }
+        </div>
+    </section>
+
+    <aside class="panel">
+        <h2>Case</h2>
+        <div class="tabs">
+            @foreach (var id in InspectCases.Ids)
+            {
+                <button class="@(_case == id ? "on" : "")" @onclick="() => Select(id)">@InspectCases.NameOf(id)</button>
+            }
+        </div>
+
+        <h2>Parameters</h2>
+        @foreach (var p in Params)
+        {
+            <label class="param">
+                <span>@p.Label</span>
+                <span class="num">
+                    <input type="number" min="@F(p.Min)" max="@F(p.Max)" step="@F(p.Step)" value="@F(_values[p.Key])"
+                           @onchange="e => Set(p, (string?)e.Value)" />
+                    <em>@p.Unit</em>
+                </span>
+            </label>
+        }
+        <div class="actions">
+            <button class="run" disabled="@_busy" @onclick="Run">Measure</button>
+            <button class="ghost" disabled="@_busy" @onclick="Show">Show again</button>
+        </div>
+
+        @if (_error is not null)
+        {
+            <div class="error">@_error</div>
+        }
+
+        @if (_inspection is not null)
+        {
+            <h2>Colour</h2>
+            <div class="ramp" style="background:linear-gradient(90deg, @Stops)"></div>
+            <div class="ramp-axis"><span>@F(_lo) nm</span><span>@_inspection.ValueLabel</span><span>@F(_hi) nm</span></div>
+            <p class="note">Drawn without lighting: the colour is the measurement, not a surface. @(_colored
+                ? "Neutral means exactly on the nominal." : "Colour is off — the plain surface is shown.")</p>
+            <div class="actions">
+                <button class="ghost" @onclick="ToggleColor">@(_colored ? "Colour off" : "Colour on")</button>
+                <button class="ghost" @onclick="ToggleGrid">@(_gridLines ? $"Lattice {_pitchNm:0.###} nm — hide" : "Show lattice")</button>
+            </div>
+
+            <h2>View</h2>
+            <div class="tabs">
+                @for (int i = 0; i < _inspection.Zoom.Count; i++)
+                {
+                    int k = i;
+                    <button class="@(_zoom == k ? "on" : "")" @onclick="() => ZoomTo(k)">@_inspection.Zoom[k].Label</button>
+                }
+                <button class="@(_zoom < 0 ? "on" : "")" @onclick="FitAll">whole part</button>
+            </div>
+
+            <h2>Results</h2>
+            <table class="metrics">
+                @foreach (var (label, value) in _inspection.Metrics)
+                {
+                    <tr><td>@label</td><td>@value</td></tr>
+                }
+            </table>
+
+            <h2>Checks</h2>
+            @foreach (var c in _inspection.Checks)
+            {
+                <div class="check @(c.Passed ? "pass" : "fail")">
+                    <b>@(c.Passed ? "PASS" : "FAIL")</b> @c.Name
+                    <small>|Δ| @c.Deviation.ToString("0.###e+0", CultureInfo.InvariantCulture) ≤ @c.Allowed.ToString("0.###e+0", CultureInfo.InvariantCulture) @c.Unit</small>
+                </div>
+            }
+
+            <h2>Vertex under the cursor</h2>
+            @if (_picked is not { } q)
+            {
+                <p class="note">Click a surface in the viewport. The numbers are read from the integer grid on the
+                    server, not from the float32 the browser draws from it.</p>
+            }
+            else
+            {
+                <table class="metrics">
+                    <tr><td>x, y, z</td><td>@q.XNm / @q.YNm / @q.ZNm</td></tr>
+                    <tr><td>in nanometres</td><td>@F(q.XNm * 1e-6) / @F(q.YNm * 1e-6) / @F(q.ZNm * 1e-6) mm</td></tr>
+                    <tr><td>kind</td><td>@(q.Grid ? "grid point, exact" : "three-plane intersection")</td></tr>
+                    <tr><td>triangle</td><td>@q.Triangle</td></tr>
+                    <tr><td>@_inspection.ValueLabel</td><td>@F(q.Value) nm</td></tr>
+                </table>
+            }
+
+            <h2>Download</h2>
+            <div class="actions">
+                <button class="ghost" @onclick="DownloadStl">STL</button>
+            </div>
+        }
+    </aside>
+</div>
+
+@code {
+    private string _case = "staircase";
+    private Inspection? _inspection;
+    private Dictionary<string, double> _values = [];
+    private (long XNm, long YNm, long ZNm, bool Grid, int Triangle, double Value)? _picked;
+    private long[] _exact = [];
+    private bool[] _onGrid = [];
+    private double[] _perVertex = [];
+    private double _lo, _hi, _pitchNm = 1;
+    private bool _colored = true, _gridLines = true, _busy, _attached;
+    private string? _error;
+    private string _engine = "three";
+    private int _zoom;
+    private readonly CancellationTokenSource _stop = new();
+
+    private IReadOnlyList<Param> Params => InspectCases.ParamsFor(_case);
+
+    private string Stops => string.Join(", ", Ramp(_lo, _hi).Select(s => "rgb(" + s + ")"));
+
+    private static string F(double v) => v.ToString("0.####", CultureInfo.InvariantCulture);
+
+    protected override void OnInitialized()
+    {
+        // The overview links straight to a case ("/inspect?case=flank"), so a deep link does not cost a click.
+        string query = new Uri(Nav.Uri).Query;
+        int q = query.IndexOf("case=", StringComparison.Ordinal);
+        if (q >= 0)
+        {
+            string id = query[(q + 5)..].Split('&')[0];
+            if (InspectCases.Ids.Contains(id)) _case = id;
+        }
+        _values = InspectCases.Defaults(_case);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!_attached)
+        {
+            await Viewer.Attach("viewport", _engine);
+            _attached = true;
+            await Run();
+        }
+        else if (_inspection is null && !_busy)
+        {
+            await Run(); // another case was picked: Select() cleared the result, this measures the new one
+        }
+    }
+
+    private void Select(string id)
+    {
+        if (_case == id) return;
+        _case = id;
+        _values = InspectCases.Defaults(id);
+        _inspection = null;
+        _picked = null;
+        _zoom = 0;
+        _error = null;
+    }
+
+    private void Set(Param p, string? text)
+    {
+        if (double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var v))
+            _values[p.Key] = Math.Clamp(v, p.Min, p.Max);
+    }
+
+    private async Task Run()
+    {
+        if (_busy) return;
+        _busy = true;
+        _error = null;
+        _picked = null;
+        StateHasChanged();
+        await Task.Delay(30);
+        try
+        {
+            var (id, values) = (_case, _values);
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            var inspection = await Runner.Run(() => InspectCases.Build(id, values), _stop.Token);
+            sw.Stop();
+            (_exact, _onGrid) = inspection.ExactVertices();
+            inspection.Metric("compute time", $"{sw.ElapsedMilliseconds} ms");
+            _inspection = inspection;
+            await Show();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+            StateHasChanged();
+        }
+    }
+
+    /// <summary>
+    /// Sends the body with one colour per vertex, mapped over the range this run actually produced — the way an
+    /// inspection scales its contrast to what it found, so a 1 nm case and a 100 nm case are both readable.
+    /// </summary>
+    private async Task Show()
+    {
+        if (_inspection is null) return;
+        // One mesh out of every body: grinding leaves several cells, and Concat appends their vertices in the same
+        // order ExactVertices walks them, which is what keeps a picked vertex index pointing at the right point.
+        var buffers = MeshBuffers.Concat(_inspection.Bodies.Select(b => b.ToMeshBuffers(OriginMode.Centroid)));
+        var (ox, oy, oz) = buffers.OriginMm;
+        int n = buffers.Positions.Length / 3;
+
+        // The value is a position in space, not a buffer offset: the origin has to come back in double, because
+        // float32 at 100 mm absolute is 8 µm — a thousand times the features this page is about.
+        _perVertex = new double[n];
+        double lo = double.MaxValue, hi = double.MinValue;
+        for (int i = 0; i < n; i++)
+        {
+            _perVertex[i] = _inspection.ValueNm(Vec3.Mm(
+                (double)buffers.Positions[3 * i] + ox,
+                (double)buffers.Positions[3 * i + 1] + oy,
+                (double)buffers.Positions[3 * i + 2] + oz));
+            lo = Math.Min(lo, _perVertex[i]);
+            hi = Math.Max(hi, _perVertex[i]);
+        }
+        if (hi - lo < 1e-9) hi = lo + 1;
+        _lo = lo;
+        _hi = hi;
+
+        await Viewer.Clear();
+        await Viewer.AddMesh("measured", buffers, "#9fb4c8", 1, _colored ? ToColors(_perVertex, lo, hi) : null);
+        if (_inspection.NominalLines is { } nominal)
+            await Viewer.AddLines("nominal form", nominal, "#1d2733");
+        await AddLattice();
+        await ZoomTo(_zoom);
+    }
+
+    private static float[] ToColors(double[] values, double lo, double hi)
+    {
+        var c = new float[values.Length * 3];
+        for (int i = 0; i < values.Length; i++)
+        {
+            var (r, g, b) = Ramp(values[i], lo, hi);
+            c[3 * i] = r; c[3 * i + 1] = g; c[3 * i + 2] = b;
+        }
+        return c;
+    }
+
+    // The demo's own language: the accent blue is material missing, the tool orange is material left over, and the
+    // neutral is the stock. The gamma below 1 keeps a 1 nm step visible beside a 100 nm one.
+    private static (float R, float G, float B) Ramp(double nm, double lo, double hi)
+    {
+        var neutral = Neutral;
+        bool diverging = lo < 0 && hi > 0;
+        double t = diverging ? (nm < 0 ? nm / lo : nm / hi) : (nm - lo) / (hi - lo);
+        if (t <= 0) return neutral;
+        var target = diverging || hi > 0 ? High : Low;
+        float g = (float)Math.Pow(Math.Min(t, 1), 0.6);
+        return (neutral.R + (target.R - neutral.R) * g,
+                neutral.G + (target.G - neutral.G) * g,
+                neutral.B + (target.B - neutral.B) * g);
+    }
+
+    private static readonly (float R, float G, float B) Neutral = (0.910f, 0.925f, 0.945f);
+    private static readonly (float R, float G, float B) Low = (0.184f, 0.435f, 0.839f);
+    private static readonly (float R, float G, float B) High = (1.000f, 0.541f, 0.239f);
+
+    private static IEnumerable<string> Ramp(double lo, double hi) =>
+        Enumerable.Range(0, 9).Select(k =>
+        {
+            var (r, g, b) = Ramp(lo + (hi - lo) * k / 8.0, lo, hi);
+            return $"{(int)(r * 255 + 0.5)} {(int)(g * 255 + 0.5)} {(int)(b * 255 + 0.5)}";
+        });
+
+    /// <summary>
+    /// Draws the 1 nm lattice the kernel works on over what is currently framed, at a 1-2-5 pitch that keeps about a
+    /// dozen lines on screen. Only the case's lattice, never a grid finer than the part — on a 20 mm gear a 1 nm
+    /// lattice is 20 million lines and nothing would be readable.
+    /// </summary>
+    private async Task AddLattice()
+    {
+        if (!_gridLines || _inspection is null) return;
+        var b = Box();
+        double extent = Math.Max(b[3] - b[0], b[4] - b[1]);
+        if (!(extent > 0)) return;
+        double targetNm = extent * 1e6 / 14;
+        double e = Math.Pow(10, Math.Floor(Math.Log10(targetNm)));
+        _pitchNm = e * (targetNm <= e ? 1 : targetNm <= 2 * e ? 2 : targetNm <= 5 * e ? 5 : 10);
+
+        long pitch = (long)Math.Round(_pitchNm);
+        long x0 = Units.MmToNm(b[0]), x1 = Units.MmToNm(b[3]), y0 = Units.MmToNm(b[1]), y1 = Units.MmToNm(b[4]);
+        double z = b[2];
+        var line = new List<float>();
+        for (long x = Floor(x0, pitch); x <= x1; x += pitch)
+            line.AddRange([(float)(x * 1e-6), (float)b[1], (float)z, (float)(x * 1e-6), (float)b[4], (float)z]);
+        for (long y = Floor(y0, pitch); y <= y1; y += pitch)
+            line.AddRange([(float)b[0], (float)(y * 1e-6), (float)z, (float)b[3], (float)(y * 1e-6), (float)z]);
+        if (line.Count > 0) await Viewer.AddLines($"{_pitchNm:0.###} nm lattice", [.. line], "#aebac6");
+    }
+
+    private static long Floor(long a, long b) => a - Mod(a, b);
+
+    private static long Mod(long a, long b) => ((a % b) + b) % b;
+
+    /// <summary>The box the lattice is drawn on: the current view's, or the body's own bounds when nothing is framed.</summary>
+    private double[] Box()
+    {
+        if (_inspection is null) return [0, 0, 0, 1, 1, 1];
+        if (_zoom >= 0 && _zoom < _inspection.Zoom.Count) return _inspection.Zoom[_zoom].Box;
+        var min = new[] { double.MaxValue, double.MaxValue, double.MaxValue };
+        var max = new[] { double.MinValue, double.MinValue, double.MinValue };
+        foreach (var body in _inspection.Bodies)
+            foreach (var v in body.Vertices)
+            {
+                min[0] = Math.Min(min[0], v.X * 1e-6); max[0] = Math.Max(max[0], v.X * 1e-6);
+                min[1] = Math.Min(min[1], v.Y * 1e-6); max[1] = Math.Max(max[1], v.Y * 1e-6);
+                min[2] = Math.Min(min[2], v.Z * 1e-6); max[2] = Math.Max(max[2], v.Z * 1e-6);
+            }
+        return min[0] > max[0]
+            ? [0, 0, 0, 1, 1, 1]
+            : [min[0] - 0.05, min[1] - 0.05, min[2] - 0.05, max[0] + 0.05, max[1] + 0.05, max[2] + 0.05];
+    }
+
+    private async Task ZoomTo(int index)
+    {
+        if (_inspection is null) return;
+        _zoom = index;
+        if (index >= 0 && index < _inspection.Zoom.Count) await Viewer.Fit("inspect", _inspection.Zoom[index].Box);
+        else await Viewer.Fit("inspect");
+    }
+
+    private Task FitAll() => ZoomTo(int.MaxValue);
+
+    private async Task ToggleColor()
+    {
+        _colored = !_colored;
+        await Show();
+    }
+
+    private async Task ToggleGrid()
+    {
+        _gridLines = !_gridLines;
+        await Show();
+    }
+
+    /// <summary>
+    /// Reads the vertex under the cursor. The browser hands back an index into the buffer it drew; the exact integer
+    /// nanometre coordinates live on this side, so what is reported is what the kernel stored rather than what the
+    /// renderer interpolated from a float32 of it.
+    /// </summary>
+    private async Task Pick(MouseEventArgs e)
+    {
+        if (_inspection is null) return;
+        var hit = await Viewer.Pick(e.ClientX, e.ClientY);
+        if (hit is not { } h || h.Object != 0 || h.Vertex < 0 || h.Vertex * 3 + 2 >= _exact.Length)
+        {
+            _picked = null;
+            StateHasChanged();
+            return;
+        }
+        int v = h.Vertex;
+        _picked = (_exact[3 * v], _exact[3 * v + 1], _exact[3 * v + 2], _onGrid[v], h.Triangle, _perVertex[v]);
+        StateHasChanged();
+    }
+
+    private async Task SwitchEngine(string engine)
+    {
+        if (_engine == engine) return;
+        _engine = engine;
+        try
+        {
+            await Viewer.SetEngine(engine);
+            await Show();
+        }
+        catch (Exception ex)
+        {
+            _error = $"Could not start {engine}: {ex.Message}";
+        }
+    }
+
+    private async Task DownloadStl()
+    {
+        if (_inspection is null) return;
+        byte[] stl = _inspection.Bodies.Count == 1
+            ? _inspection.Bodies[0].ToMeshBuffers(OriginMode.Absolute).ToStl()
+            : MeshBuffers.Concat(_inspection.Bodies.Select(b => b.ToMeshBuffers(OriginMode.Absolute))).ToStl();
+        await Viewer.Download($"{_inspection.Id}.stl", stl);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _stop.Cancel();
+        if (_attached) await Viewer.Clear();
+    }
+}
