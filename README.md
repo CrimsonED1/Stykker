@@ -96,6 +96,13 @@ computes no intersection and rounds no coordinate. Measured 1,000000 to 100,0000
 all 148 vertices on the grid. At 100 mm absolute a float32 has 8 µm, a thousand times too coarse for any of this,
 which is why the reported coordinate comes from the server.*
 
+The fourth case is the one the viewer exists for: a **ground surface**. A block with a flat top face, 60 abrasive
+grains running over it, and the colour is the form error — how far each point of the ground surface sits from the
+plane the wheel left behind. Only the top vertex of a column carries a value. At 60 grains on an RTX 5070 Ti / Ryzen
+7 5800X3D: 28 584 nm peak to valley, Ra 5 937 nm, 0,006639 mm³ removed from 0,48 mm³ of stock, 4 842 hulls,
+2,5 s. Form and roughness are different questions and this page shows both, because they differ by more than most
+readers expect.
+
 [docs/overview.html](docs/overview.html) states the same numbers in German, in the logo's colours, with the
 preview's −0,106 % deviation in the open rather than in a footnote.
 

@@ -234,7 +234,9 @@
     private async Task Show()
     {
         if (_inspection is null) return;
-        var buffers = _inspection.Body.ToMeshBuffers(OriginMode.Centroid);
+        // One mesh out of every body: grinding leaves several cells, and Concat appends their vertices in the same
+        // order ExactVertices walks them, which is what keeps a picked vertex index pointing at the right point.
+        var buffers = MeshBuffers.Concat(_inspection.Bodies.Select(b => b.ToMeshBuffers(OriginMode.Centroid)));
         var (ox, oy, oz) = buffers.OriginMm;
         int n = buffers.Positions.Length / 3;
 
@@ -330,15 +332,23 @@
 
     private static long Mod(long a, long b) => ((a % b) + b) % b;
 
-    /// <summary>The box the lattice is drawn on: the current view's, or the part's own bounds when nothing is framed.</summary>
+    /// <summary>The box the lattice is drawn on: the current view's, or the body's own bounds when nothing is framed.</summary>
     private double[] Box()
     {
         if (_inspection is null) return [0, 0, 0, 1, 1, 1];
         if (_zoom >= 0 && _zoom < _inspection.Zoom.Count) return _inspection.Zoom[_zoom].Box;
-        var b = _inspection.Body.BoundsMm;
-        return b is { } g
-            ? [g.MinX - 0.05, g.MinY - 0.05, g.MinZ - 0.05, g.MaxX + 0.05, g.MaxY + 0.05, g.MaxZ + 0.05]
-            : [0, 0, 0, 1, 1, 1];
+        var min = new[] { double.MaxValue, double.MaxValue, double.MaxValue };
+        var max = new[] { double.MinValue, double.MinValue, double.MinValue };
+        foreach (var body in _inspection.Bodies)
+            foreach (var v in body.Vertices)
+            {
+                min[0] = Math.Min(min[0], v.X * 1e-6); max[0] = Math.Max(max[0], v.X * 1e-6);
+                min[1] = Math.Min(min[1], v.Y * 1e-6); max[1] = Math.Max(max[1], v.Y * 1e-6);
+                min[2] = Math.Min(min[2], v.Z * 1e-6); max[2] = Math.Max(max[2], v.Z * 1e-6);
+            }
+        return min[0] > max[0]
+            ? [0, 0, 0, 1, 1, 1]
+            : [min[0] - 0.05, min[1] - 0.05, min[2] - 0.05, max[0] + 0.05, max[1] + 0.05, max[2] + 0.05];
     }
 
     private async Task ZoomTo(int index)
@@ -400,8 +410,11 @@
 
     private async Task DownloadStl()
     {
-        if (_inspection is not null)
-            await Viewer.Download($"{_inspection.Id}.stl", _inspection.Body.ToMeshBuffers(OriginMode.Absolute).ToStl());
+        if (_inspection is null) return;
+        byte[] stl = _inspection.Bodies.Count == 1
+            ? _inspection.Bodies[0].ToMeshBuffers(OriginMode.Absolute).ToStl()
+            : MeshBuffers.Concat(_inspection.Bodies.Select(b => b.ToMeshBuffers(OriginMode.Absolute))).ToStl();
+        await Viewer.Download($"{_inspection.Id}.stl", stl);
     }
 
     public async ValueTask DisposeAsync()
