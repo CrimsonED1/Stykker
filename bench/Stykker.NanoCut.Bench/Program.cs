@@ -42,6 +42,8 @@ int par = ArgInt("--par", 0);
 int batch = Array.IndexOf(args, "--batch") is int bi and >= 0 ? int.Parse(args[bi + 1]) : 1;
 // --pipeline (nanocut): the hull of the next step is computed on other cores while the current step is subtracted.
 bool pipeline = args.Contains("--pipeline");
+// --renorm N: batches between two normalisations of the running result in a process2-gear cut (0 = never).
+int renorm = ArgInt("--renorm", 0);
 Directory.CreateDirectory(outDir);
 
 int ArgInt(string name, int fallback)
@@ -279,11 +281,13 @@ int ProcessBench()
                 double dphi = 2 * Math.PI / z * t, phi = 2 * Math.PI * k / z + dphi;
                 return Pose2.Rotation(-phi).Compose(new Pose2(0, pitch / 2 - rp * dphi, rp));
             }))]);
+            if (renorm > 0) Process2.RenormalizeEvery = renorm;
             var g2 = Process2.Cut([blank], rack, rolling, tol, out var st)[0];
             var solid = Solid.Extrude(g2, 0, scene["extrudeMm"]?.GetValue<double>() ?? 10);
             return (solid.VolumeMm3, solid.ToMeshBuffers(OriginMode.Absolute).Indices.Length / 3, st.Intervals,
                     $"{st.Intervals} roll steps, profile vertices {g2.Contours.Sum(c => c.Count)}, " +
-                    $"contours {g2.Contours.Count}, extrude to {solid.FaceCount} faces");
+                    $"contours {g2.Contours.Count}, extrude to {solid.FaceCount} faces, " +
+                    $"pipeline {(Process2.Pipeline ? "on" : "off")}, renorm every {renorm}");
         }
 
         // process3

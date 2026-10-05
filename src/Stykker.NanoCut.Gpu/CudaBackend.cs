@@ -301,7 +301,10 @@ public sealed class CudaBackend : IZMapBackend, IZMapQueryBackend, IDexelBackend
         if (why is not null) throw new GpuNativeException("nc_dexel_apply_steps", -1, why);
 
         var wall = Stopwatch.StartNew();
+        var pack = Stopwatch.StartNew();
         float[] packed = ToolProfile.Pack(steps, map.OriginMm);
+        pack.Stop();
+        double packMs = pack.Elapsed.TotalMilliseconds;
         DeviceDexel device = DexelOf(map, out double firstCall);
         double kernelMs, uploadMs, binMs;
         if (BinSteps)
@@ -323,7 +326,8 @@ public sealed class CudaBackend : IZMapBackend, IZMapQueryBackend, IDexelBackend
         }
         double downloadMs = readBack == ZMapReadBack.Always ? ReadDexelDevice(device, map) : 0;
         wall.Stop();
-        return new ZMapTiming(kernelMs, uploadMs, downloadMs, firstCall, wall.Elapsed.TotalMilliseconds, binMs);
+        return new ZMapTiming(kernelMs, uploadMs, downloadMs, firstCall, wall.Elapsed.TotalMilliseconds, binMs,
+            packMs);
     }
 
     /// <inheritdoc />

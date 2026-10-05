@@ -181,7 +181,13 @@ public sealed class CpuBackend : IZMapBackend, IZMapQueryBackend, IDexelBackend
     /// <inheritdoc />
     public ZMapTiming ApplyDexels(DexelMap map, ReadOnlySpan<BallStep> steps, ZMapReadBack readBack)
     {
+        // Timed separately and reported as PackMs, but deliberately outside the stopwatch below: the
+        // CPU wall has always meant the parallel loop only, and every CPU timing already recorded in
+        // the docs depends on that. The separate field is what makes the two backends comparable.
+        var pack = Stopwatch.StartNew();
         float[] packed = ToolProfile.Pack(steps, map.OriginMm);
+        pack.Stop();
+        double packMs = pack.Elapsed.TotalMilliseconds;
         int stepCount = steps.Length, nx = map.CellsX, ny = map.CellsY, k = map.MaxIntervals;
         float cx = (float)map.CellSizeXMm, cy = (float)map.CellSizeYMm;
         float[] iv = map.Intervals;
@@ -212,7 +218,7 @@ public sealed class CpuBackend : IZMapBackend, IZMapQueryBackend, IDexelBackend
         map.Overflows += overflows;
 
         double ms = sw.Elapsed.TotalMilliseconds;
-        return new ZMapTiming(ms, 0, 0, 0, ms);
+        return new ZMapTiming(ms, 0, 0, 0, ms, 0, packMs);
     }
 
     /// <inheritdoc />

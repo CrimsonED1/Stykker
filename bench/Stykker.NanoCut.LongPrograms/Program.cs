@@ -143,6 +143,7 @@ if (opt.Out is { } outDir)
             ["rows"] = r.Rows,
             ["planes"] = r.Planes,
             ["turnDeg"] = r.TurnDeg,
+            ["tiltDeg"] = r.TiltDeg,
             ["mapMm"] = r.MapMm,
             ["cellMm"] = r.CellMm,
             ["stepMm"] = r.StepMm,
@@ -228,7 +229,7 @@ sealed record DexelRow(int Steps, int Rows, double MapMm, double CellMm, double 
 /// is lower than the ball's by construction: <c>ConvexTool.Ball</c> inscribes its polyhedron in the sphere, so it
 /// cuts less -- that difference is the representation, not a defect.
 /// </remarks>
-sealed record ConvexRow(int Steps, int Rows, int Planes, double TurnDeg, double MapMm, double CellMm, double StepMm,
+sealed record ConvexRow(int Steps, int Rows, int Planes, double TurnDeg, double TiltDeg, double MapMm, double CellMm, double StepMm,
     double RadiusMm, int Columns, int MaxIntervals, double FirstCallMs,
     double BinnedKernelMs, double BinnedBinMs, double BinnedUploadMs, double BinnedWallMs,
     double UnbinnedKernelMs, double UnbinnedUploadMs, double UnbinnedWallMs,
@@ -561,17 +562,26 @@ static class ConvexCases
         double VolumeMm3, long Overflows);
 
     /// <summary>
-    /// The pass of <see cref="DexelCases.Pass"/> as poses. With <paramref name="turnDeg"/> the tool also turns about z
-    /// across the whole program, so every step carries its own orientation and the kernel has to turn the half-spaces
-    /// per column instead of once per step -- the shape a gear tooth has over a wheel.
+    /// The pose sequence of a convex run: a turn about z over the program, and a tilt about x.
     /// </summary>
-    private static ConvexStep[] ConvexPass(BallStep[] path, double turnDeg)
+    /// <remarks>
+    /// The two are not the same knob. The turn about z leaves every half-space's m<sub>z</sub> unchanged, so it leaves
+    /// n<sub>Lo</sub> and n<sub>Hi</sub> -- how many half-spaces bound the column from below and from above -- balanced
+    /// at whatever the tool is, and the crossing walk costs n<sub>Lo</sub>^3 + n<sub>Hi</sub>^3, which is cheapest
+    /// exactly there. The tilt about x is what makes the split lopsided, and the split is what decides whether
+    /// building the envelope pays against walking the crossings. Measuring that needs the two separated.
+    /// </remarks>
+    private static ConvexStep[] ConvexPass(BallStep[] path, double turnDeg, double tiltDeg)
     {
         var steps = new ConvexStep[path.Length];
         double last = Math.Max(1, path.Length - 1);
         for (int s = 0; s < path.Length; s++)
-            steps[s] = new ConvexStep(Orientation3.AboutZ(turnDeg * s / last * (Math.PI / 180.0)),
-                path[s].From, path[s].To);
+        {
+            double turn = turnDeg * s / last * (Math.PI / 180.0);
+            double tilt = tiltDeg * (Math.PI / 180.0);
+            var o = tilt == 0 ? Orientation3.AboutZ(turn) : Orientation3.AboutAxis(turn + tilt, 1, 0, 0);
+            steps[s] = new ConvexStep(o, path[s].From, path[s].To);
+        }
         return steps;
     }
 
@@ -626,12 +636,12 @@ static class ConvexCases
         Console.WriteLine($"pose sequence on the convex dexel kernel: {cells}x{cells} columns over {opt.MapMm:F1} mm " +
                           $"({opt.CellMm:F3} mm cells, {opt.Intervals} intervals per column), tool {opt.Planes} " +
                           $"half-spaces in a ball of r {opt.RadiusMm:F2} mm, steps {opt.StepMm:F3} mm apart, " +
-                          $"turn {opt.TurnDeg:F0} deg over the program, device {binned.Name}");
+                          $"turn {opt.TurnDeg:F0} deg about z over the program, tilt {opt.TiltDeg:F0} deg about x, device {binned.Name}");
 
         // The context and the module are created before the first measured case, so its FirstCallMs belongs to no case.
         var warm = new DexelMap(0, 0, 0, opt.MapMm, opt.MapMm, DexelCases.StockMm, 16, 16, opt.Intervals, binned);
         warm.ApplyConvexSteps(tool,
-            ConvexPass(DexelCases.Pass(2, 4, opt.MapMm, opt.StepMm, opt.RadiusMm, z), opt.TurnDeg), ZMapReadBack.Never);
+            ConvexPass(DexelCases.Pass(2, 4, opt.MapMm, opt.StepMm, opt.RadiusMm, z), opt.TurnDeg, opt.TiltDeg), ZMapReadBack.Never);
         Console.WriteLine($"context and module ready in {warm.LastTiming.FirstCallMs:F0} ms, not measured");
         Console.WriteLine();
 
@@ -639,7 +649,7 @@ static class ConvexCases
         {
             int caseRows = Math.Max(1, want / perRow), count = caseRows * perRow;
             BallStep[] path = DexelCases.Pass(caseRows, perRow, opt.MapMm, opt.StepMm, opt.RadiusMm, z);
-            ConvexStep[] steps = ConvexPass(path, opt.TurnDeg);
+            ConvexStep[] steps = ConvexPass(path, opt.TurnDeg, opt.TiltDeg);
             bool withCpu = count <= opt.CpuMaxSteps;
             Console.WriteLine($"{count,7} steps over {caseRows,4} rows ({count * cells,10:N0} column steps unbinned)" +
                               (withCpu ? "" : ", cpu arm not run") + " ...");
@@ -664,7 +674,7 @@ static class ConvexCases
                 }
             }
 
-            var row = new ConvexRow(count, caseRows, opt.Planes, opt.TurnDeg, opt.MapMm, opt.CellMm, opt.StepMm,
+            var row = new ConvexRow(count, caseRows, opt.Planes, opt.TurnDeg, opt.TiltDeg, opt.MapMm, opt.CellMm, opt.StepMm,
                 opt.RadiusMm, cells * cells, opt.Intervals, warm.LastTiming.FirstCallMs,
                 bestBinned.KernelMs, bestBinned.BinMs, bestBinned.UploadMs, bestBinned.WallMs,
                 bestPlain.KernelMs, bestPlain.UploadMs, bestPlain.WallMs,
@@ -815,6 +825,7 @@ sealed class Options
     public required int Intervals { get; init; }
     public required int Planes { get; init; }
     public required double TurnDeg { get; init; }
+    public required double TiltDeg { get; init; }
     public required int CpuMaxSteps { get; init; }
     public required int Repeat { get; init; }
     public required bool Cold { get; init; }
@@ -859,6 +870,7 @@ sealed class Options
             Intervals = int.Parse(Value("--intervals") ?? "4", CultureInfo.InvariantCulture),
             Planes = int.Parse(Value("--planes") ?? "12", CultureInfo.InvariantCulture),
             TurnDeg = double.Parse(Value("--turn-deg") ?? "0", CultureInfo.InvariantCulture),
+            TiltDeg = double.Parse(Value("--tilt-deg") ?? "0", CultureInfo.InvariantCulture),
             CpuMaxSteps = int.Parse(Value("--cpu-max-steps") ?? "24800", CultureInfo.InvariantCulture),
             Repeat = int.Parse(Value("--repeat") ?? "1", CultureInfo.InvariantCulture),
             Cold = args.Contains("--cold"),

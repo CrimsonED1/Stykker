@@ -838,12 +838,23 @@ constexpr int kConvexFrom = 4;
 constexpr int kConvexMove = 7;
 constexpr int kConvexRot = 11;
 
-/// <summary>Grown onto the box before a column is tested against it. Mirrors ConvexProfile.BoxMarginMm and
-/// StepBins.MarginMm, and has to stay equal to them so the two filters cannot part company over a column. It is not
-/// a tolerance that absorbs the whole float chain: the box is stored as independently rounded floats and this side
-/// reconstructs the edge by adding them, where StepBins associates the same addition the other way round, so a
-/// boundary column can fall either side by an ulp of the coordinate.</summary>
-constexpr float kConvexBoxMarginMm = 1e-6f;
+/// <summary>Grown onto the swept box before a column is compared against it, so a column exactly on the boundary
+/// cannot be lost to the rounding of the box into a float. It is the same number as StepBins.MarginMm on the host and
+/// has to be: the early-out that reads this box must never be stricter than the binning that put this thread here, or a
+/// column the binning counted would go uncut. It is a separate literal because C++ and C# share no header here, so the
+/// two can drift and nothing here would notice; the test TheGrownPackedBoxAlwaysContainsTheExactOne is what pins the
+/// consequence, and ConvexKernelFindings' margin note says what the number has to outlast.
+///
+/// The margin has to outlast the coordinate's own float resolution, because that is what eats it: fl(c - margin) == c
+/// as soon as ulp(c) exceeds twice the margin, which for 1e-6 mm is already the case at 32 mm, and - because the
+/// rounding accumulates over the corner, the width and the two ends - the far edge falls inside the body already
+/// at 17 mm. 1e-4 mm survives to about a metre and is a fifth of a 0.05 mm cell.
+/// <para>
+/// It is not a tolerance that absorbs the whole float chain: the box is stored as independently rounded floats and this
+/// side reconstructs the edge by adding them, where StepBins associates the same addition the other way round, so a
+/// boundary column can fall either side by an ulp of the coordinate.
+/// </para></summary>
+constexpr float kConvexBoxMarginMm = 1e-4f;
 
 struct Dexel
 {
@@ -924,8 +935,14 @@ __device__ __forceinline__ bool convex_where(const float* __restrict__ below, in
         {
             // The pair reads ai + bi·t ≤ aj + bj·t, that is (ai − aj) + (bi − bj)·t ≤ 0.
             const float k = ai - above[2 * j], s = bi - above[2 * j + 1];
-            if (s > 0.f) tHi = fminf(tHi, -k / s);
-            else if (s < 0.f) tLo = fmaxf(tLo, -k / s);
+            // Whether the bound moves at all can be asked without dividing: for s > 0, -k/s lies under tHi exactly when
+            // k + s·tHi >= 0, and for s < 0 it lies over tLo under the same form. So the division is only paid where t
+            // actually moves, and where it does the range still moves a ulop at a time. The test is >= and not >: at an
+            // exact tie the clamp is a no-op either way, so the two differ only where the computed sum lands on zero
+            // while the exact sum has not, and there >= keeps the clamp. Measured: no column of the octahedron-on-
+            // 0.1 mm-geometry differs between them over 1.3 million columns.
+            if (s > 0.f) { if (k + s * tHi >= 0.f) tHi = fminf(tHi, -k / s); }
+            else if (s < 0.f) { if (k + s * tLo >= 0.f) tLo = fmaxf(tLo, -k / s); }
             else if (k > 0.f) return false;   // parallel, and the lower one sits above the upper one
         }
     }
@@ -997,14 +1014,17 @@ __device__ __forceinline__ float convex_extremum(const float* __restrict__ g, in
 __device__ __forceinline__ bool convex_span(float x, float y, const float* __restrict__ p,
                                             const float* __restrict__ planes, int planeCount, float& low, float& high)
 {
-    // The step's own bounding box, grown by the margin, and the column centre against it. The swept body is the
-    // convex hull of the two endpoint positions and this box is that hull's, so a centre outside it cannot meet
-    // the body, and four comparisons replace the walk over every crossing below. The comparison is strict, so a
-    // centre exactly on the boundary still goes in. Mirrors ConvexProfile.Span, operation for operation.
+// The swept body's own box, in the first four floats: the corner (x, y) and the size, both relative to the grid
+    // origin, which is the space x and y above are in. The binning hands a step to every tile of kDexelTile columns it
+    // touches, so a column in an assigned tile but outside the box runs the whole linear program below to be told
+    // "no" -- and for a tool smaller than a tile that is most of them. Four comparisons settle it, on the window the
+    // binning tiled with so that this cannot be stricter than the binning.
+    // The comparison is strict, so a centre exactly on the boundary still goes in. Mirrors ConvexProfile.Span,
+    // operation for operation.
     const float boxX = p[kConvexBox] - kConvexBoxMarginMm, boxY = p[kConvexBox + 1] - kConvexBoxMarginMm;
     const float boxW = p[kConvexBox + 2] + 2 * kConvexBoxMarginMm;
     const float boxH = p[kConvexBox + 3] + 2 * kConvexBoxMarginMm;
-    if (x < boxX || x > boxX + boxW || y < boxY || y > boxY + boxH) return false;
+    if (x < boxX || y < boxY || x > boxX + boxW || y > boxY + boxH) return false;
 
     const float ax = p[kConvexFrom], ay = p[kConvexFrom + 1], az = p[kConvexFrom + 2];
     const float wx = p[kConvexMove], wy = p[kConvexMove + 1], wz = p[kConvexMove + 2];

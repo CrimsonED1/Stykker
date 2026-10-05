@@ -422,10 +422,14 @@ the note under the tables.
 | z | Cut | Extrude | Area | Ideal involute | Δ | Contours | Vertices | Roll steps | Pieces | Flank |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | 10 | 28.8 s | 0.9 s | 296.905130 mm² | 297.949 mm² | −0.35 % | 76 | 81 653 | 2560 | 224 988 | – † |
-| 20 | 34.7 s | 0.8 s | 1231.252941 mm² | 1226.103 mm² | +0.42 % | 69 | 107 328 | 2560 | 209 089 | 5.4 nm |
+| 20 | **26.7 s** | 0.8 s | 1231.252941 mm² | 1226.103 mm² | +0.42 % | 69 | 107 328 | 2560 | 209 089 | 5.4 nm |
 | 40 | 147.6 s | 2.1 s | 4985.752597 mm² | 4982.782 mm² | +0.06 % | 53 | 243 515 | 5120 | 398 178 | 2.2 nm |
 
 z = 20 is the case of `docs/processes.md` (same area, same 209 089 pieces, same 5.4 nm), so the two documents agree.
+It is also the only row measured after `Process2.Cut` began uniting the next batch while subtracting the current one,
+which took it from 34.7 s to 26.7 s with a bit-identical result. z = 10 and z = 40 predate that change and are not
+re-measured, so they read high by whatever it wins on them. The flank column is the gate for a batching change, not
+the area: see the second gear section in `docs/processes.md`.
 † below z = 2/sin²α = 17.1 a generated gear is undercut, so its flank is not the involute and the column says nothing;
 the area still matches the ideal gear, so the profile itself is right.
 

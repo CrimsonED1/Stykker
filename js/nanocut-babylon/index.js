@@ -19,9 +19,19 @@ export function toBabylonMesh(buffers, name, scene) {
   data.positions = Float32Array.from(buffers.positions);
   data.normals = Float32Array.from(buffers.normals);
   data.indices = indices;
+  if (buffers.colors) data.colors = toColor4(Float32Array.from(buffers.colors));
   const mesh = new Mesh(name, scene);
   data.applyToMesh(mesh);
   return mesh;
+}
+
+/** Babylon wants RGBA per vertex; the caller sends RGB. */
+function toColor4(rgb) {
+  const rgba = new Float32Array((rgb.length / 3) * 4);
+  for (let i = 0, j = 0; i < rgb.length; i += 3, j += 4) {
+    rgba[j] = rgb[i]; rgba[j + 1] = rgb[i + 1]; rgba[j + 2] = rgb[i + 2]; rgba[j + 3] = 1;
+  }
+  return rgba;
 }
 
 /** Creates line meshes from 2D polylines (arrays of interleaved x, y in mm), closing each loop. */
