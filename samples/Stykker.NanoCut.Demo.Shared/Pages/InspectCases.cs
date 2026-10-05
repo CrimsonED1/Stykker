@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using Stykker.NanoCut.Cutting;
 using Stykker.NanoCut.Demo.Scenes;
 using Stykker.NanoCut.Geometry2D;
@@ -17,8 +17,13 @@ public sealed class Inspection
     public required string Name { get; init; }
     public required string Description { get; init; }
 
-    /// <summary>The measured body, drawn with the deviation colour.</summary>
-    public required Solid Body { get; init; }
+    /// <summary>
+    /// The measured body, drawn with the deviation colour. A list, because grinding leaves the workpiece as several
+    /// cells and uniting them would mean running the exact Boolean over the result - slower, and the one kernel in
+    /// this library that is not a pure function. The viewer concatenates the buffers instead, which is also what the
+    /// grinding page does.
+    /// </summary>
+    public required IReadOnlyList<Solid> Bodies { get; init; }
 
     /// <summary>The nominal form, drawn as a plain outline next to the body.</summary>
     public Solid? Nominal { get; init; }
@@ -56,7 +61,9 @@ public sealed class Inspection
     /// </summary>
     public (long[] Nm, bool[] Grid) ExactVertices()
     {
-        var all = Body.Vertices.ToArray();
+        // MeshBuffers.Concat walks the buffers in the same order and appends their vertices, so walking the bodies in
+        // the same order is what makes a picked vertex index addressable here.
+        var all = Bodies.SelectMany(b => b.Vertices).ToArray();
         var nm = new long[all.Length * 3];
         var grid = new bool[all.Length];
         for (int i = 0; i < all.Length; i++)
@@ -74,11 +81,12 @@ public sealed class Inspection
 /// <summary>The three inspection cases, in the order the page offers them.</summary>
 public static class InspectCases
 {
-    public static readonly string[] Ids = ["staircase", "facets", "flank"];
+    public static readonly string[] Ids = ["staircase", "facets", "ground", "flank"];
 
     public static string NameOf(string id) => id switch
     {
         "facets" => "Chord error: 1 nm up to the coarse end",
+        "ground" => "Ground surface: form error",
         "flank" => "Gear flank against the involute",
         _ => "1 nm staircase",
     };
@@ -92,6 +100,19 @@ public static class InspectCases
             new("chord", "Finest chord error", 1, 0.2, 100, 0.1, "nm"),
             new("facets", "Facets around the rim", 64, 12, 128, 4),
             new("z", "Thickness", 0.2, 0.05, 20, 0.05, "µm"),
+        ],
+        "ground" =>
+        [
+            new("grains", "Grains on the wheel", 60, 20, 1920, 20),
+            new("grain", "Grain size", 150, 20, 400, 10, "µm"),
+            new("protrusion", "Protrusion, mean", 40, 5, 120, 1, "µm"),
+            new("sigma", "Protrusion, σ", 15, 0, 60, 0.5, "µm"),
+            new("depth", "Depth of cut", 10, 1, 80, 1, "µm"),
+            new("rpm", "Wheel speed", 12000, 1000, 30000, 500, "rpm"),
+            new("feed", "Feed", 10, 1, 60, 1, "mm/s"),
+            new("length", "Grinding length", 2, 0.2, 8, 0.2, "mm"),
+            new("width", "Workpiece width", 0.8, 0.2, 4, 0.2, "mm"),
+            new("seed", "Seed", 1, 0, 999, 1),
         ],
         "flank" =>
         [
@@ -121,9 +142,121 @@ public static class InspectCases
         return id switch
         {
             "facets" => Facets(p),
+            "ground" => Ground(p),
             "flank" => Flank(p),
             _ => Staircase(p),
         };
+    }
+
+    /// <summary>
+    /// A ground surface — the case this viewer exists for. A block with a flat top face, a wheel of abrasive grains
+    /// running along it, and the colour is the **form error**: how far each point of the ground surface sits from the
+    /// plane the wheel was set to leave. Only the top vertex of a column carries a value; everything below it is
+    /// neutral, because a metrologist looks at the surface and not at the block.
+    /// <para>
+    /// The nominal is the <em>measured mean ground level</em>, not a theoretical plane: how deep a wheel of random
+    /// grains ends up is a result, not something the kernel promises, so a flatness has to be stated against the level
+    /// that came out. The peak-to-valley spread around it is the number, and Ra/Rz are printed beside it because the
+    /// roughness measures something else and the two disagree by more than most readers expect.
+    /// </para>
+    /// </summary>
+    private static Inspection Ground(IReadOnlyDictionary<string, double> p)
+    {
+        int grains = (int)p["grains"];
+        double lengthMm = p["length"], halfWidth = p["width"] / 2, feed = p["feed"];
+        double rpm = p["rpm"], seed = p["seed"], depthMm = p["depth"] * 1e-3;
+        double grainMm = p["grain"] * 1e-3, protrusionMm = p["protrusion"] * 1e-3, sigmaMm = p["sigma"] * 1e-3;
+        const double topMm = 0, bottomMm = -0.4, backMm = -0.3, wheelRadiusMm = 10;
+
+        // The wheel is far bigger than the workpiece, so it has to be placed, not just moved: its rim reaches
+        // (protrusion − depth of cut) below the unmachined top face, which is what "a grain of mean protrusion cuts
+        // as deep as the depth of cut" means in coordinates. Without this the rim sits a whole radius away and
+        // nothing is removed at all.
+        double zCentre = wheelRadiusMm + protrusionMm - depthMm;
+
+        var tol = Tolerance.Budget(totalUm: 2.051, chordNm: 50, sweepNm: 1000);
+        var block = Solid.Box(Vec3.Mm(0, -halfWidth, backMm), Vec3.Mm(lengthMm, halfWidth, topMm), tol);
+        var wheel = GrindingWheel.Random(wheelRadiusMm, 4, grains, grainMm, protrusionMm, sigmaMm, rpm, (int)seed);
+        // The wheel stands with its axis along Y, so its grain tips sweep the x-z plane and reach the top face. That
+        // orientation is the -90 deg turn about X; without it the wheel spins about Z, its tips never come down to the
+        // workpiece, and the simulation reports zero active grains — which looks like a broken kernel and is not.
+        var axisAlongY = Pose3.Rotation(-Math.PI / 2, 1, 0, 0);
+        var feedMotion = Motion3.Compose(
+            Motion3.Linear(Vec3.Mm(-0.1, 0, zCentre), Vec3.Mm(lengthMm + 0.1, 0, zCentre)),
+            Motion3.Fixed(axisAlongY));
+        var sim = new GrindingSimulation(block, wheel, feedMotion, SpinningTool.Durations(feedMotion, feed), tol);
+        sim.Run();
+
+        var cells = sim.Cells.ToArray();
+        if (cells.Length == 0) throw new InvalidOperationException("The wheel removed everything; there is no surface to inspect.");
+
+        // The highest vertex of each column is the ground surface. Everything else is the block below it.
+                var envelope = new Dictionary<(long, long), long>();
+        foreach (var cell in cells)
+            foreach (var v in cell.Vertices)
+            {
+                var key = ((long)Math.Round(v.X), (long)Math.Round(v.Y));
+                long z = (long)Math.Round(v.Z);
+                if (!envelope.TryGetValue(key, out var seen) || z > seen) envelope[key] = z;
+            }
+
+        // A profile across the middle of the workpiece, read through the library's own surface reader, which is an
+        // independent way of asking the same question as the envelope above.
+        double[] line = new SurfaceProfile(cells).Line(lengthMm / 2, -halfWidth, lengthMm / 2, halfWidth, 301);
+        double meanMm = line.Average(), formMm = line.Max() - line.Min();
+        var (raMm, rzMm) = SurfaceProfile.Roughness(line);
+        long nominalNm = Units.MmToNm(meanMm);
+        long topFaceNm = Units.MmToNm(topMm);
+        double riseNm = envelope.Values.Max() - topFaceNm;
+
+        var result = new Inspection
+        {
+            Id = "ground",
+            Name = "Ground surface: form error",
+            Description =
+                $"A {lengthMm:0.##} × {p["width"]:0.##} mm block with a flat top face, ground by {grains} abrasive " +
+                $"grains of {p["grain"]:0.#} µm running along it at {rpm:0} rpm and {feed:0} mm/s. The colour is how " +
+                "far each point of the ground surface sits from the plane the wheel left behind, in nanometres. Only " +
+                "the top of each column is coloured; the block below it is neutral. Note that the form error and the " +
+                "roughness are different questions: the first is the shape, the second the texture, and the two " +
+                "numbers below differ by more than most readers expect.",
+            Bodies = cells,
+            ValueLabel = "form error against the mean ground level",
+            // z and nominal are both nanometres, so the difference is one too: no conversion, and an extra *1e-6
+            // here silently reports the whole form error a million times too small.
+            ValueNm = v => envelope.TryGetValue((v.X, v.Y), out var z) && z == v.Z ? z - nominalNm : 0,
+        };
+
+        result.NominalLines = PlaneOutline(nominalNm, -halfWidth * 1.15, halfWidth * 1.15, lengthMm * 1.1);
+        result.Metric("mean ground level", $"{meanMm:0.000000} mm");
+        result.Metric("form error (peak to valley)", $"{formMm * 1e6:0.0} nm");
+        result.Metric("Ra / Rz", $"{raMm * 1e6:0.0} / {rzMm * 1e6:0.0} nm");
+        result.Metric("removed", $"{sim.RemovedMm3:0.000000} mm³ of {block.VolumeMm3:0.0000} mm³ stock");
+        result.Metric("grains active", $"{sim.ActiveGrains} of {grains}");
+        result.Metric("passes / cutting", $"{sim.Passes.Count} / {sim.Passes.Count(p => p.RemovedMm3 > 0)}");
+        result.Metric("hulls", sim.Hulls.ToString(CultureInfo.InvariantCulture));
+        result.Metric("deepest chip", $"{sim.Grains.Max(g => g.MaxChipThicknessMm) * 1000:0.0} µm");
+        result.Metric("surface vertices", envelope.Count.ToString(CultureInfo.InvariantCulture));
+        result.Checks.Add(new("the ground surface rises above the unmachined top face", riseNm, 0, 0, "nm"));
+        result.Zoom =
+        [
+            ("whole workpiece", [-0.15, -halfWidth * 1.15, bottomMm * 0.5, lengthMm + 0.15, halfWidth * 1.15, topMm + 0.05]),
+            ("ground surface", [-0.05, -halfWidth * 1.1, -0.08, lengthMm + 0.05, halfWidth * 1.1, topMm + 0.02]),
+        ];
+        return result;
+    }
+
+    /// <summary>The nominal plane of a ground face, drawn as its outline: four segments at a height in nanometres.</summary>
+    private static float[] PlaneOutline(long zNm, double y0, double y1, double x1)
+    {
+        double z = zNm * 1e-6;
+        return
+        [
+            0f, (float)y0, (float)z, (float)x1, (float)y0, (float)z,
+            (float)x1, (float)y0, (float)z, (float)x1, (float)y1, (float)z,
+            (float)x1, (float)y1, (float)z, 0f, (float)y1, (float)z,
+            0f, (float)y1, (float)z, 0f, (float)y0, (float)z,
+        ];
     }
 
     /// <summary>
@@ -158,7 +291,7 @@ public static class InspectCases
                 "parallel, so no intersection point is ever computed and no coordinate is ever rounded — what the " +
                 "table measures is the grid itself, not a curve. The colour is the depth of the tread a vertex sits " +
                 "on; the underside of the bar stays neutral.",
-            Body = part,
+            Bodies = [part],
             ValueLabel = "tread depth below the top face",
             ValueNm = v => levels.Contains(v.Y) ? topNm - v.Y : 0,
         };
@@ -281,7 +414,7 @@ public static class InspectCases
                 "replaces, measured on the geometry the kernel produced. At the fine end the rim is indistinguishable from " +
                 "a circle at any useful zoom; at the coarse end the facets are long enough to see. Both are inside the " +
                 "budget, and the picture is how far apart the two ends of that budget look.",
-            Body = disc,
+            Bodies = [disc],
             ValueLabel = "chord error of the facet (sagitta)",
             ValueNm = v => sagittaByVertex.GetValueOrDefault((v.X, v.Y), 0),
         };
@@ -431,7 +564,7 @@ public static class InspectCases
                 "prints is a sample, not a property: the 2D boolean kernel is not a pure function, so the same input " +
                 "gives a different flank depending on machine load — see GearFlankFlakeFindings.md. Read it as the " +
                 "worst of several runs, or do not read it.",
-            Body = Solid.Extrude(profile, 0, width),
+            Bodies = [Solid.Extrude(profile, 0, width)],
             ValueLabel = "deviation from the ideal involute (flank band)",
             ValueNm = v => Deviation(Vec2.Nm(v.X, v.Y)),
         };

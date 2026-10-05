@@ -137,9 +137,19 @@ unabhängige Implementierung. <code>|Δ|</code> ist der gemessene Fehler, <code>
 <tr><td class="scene">Restvolumen gegen ManifoldSharp (gleiche Eingangspolyeder)</td><td class="f">3938,051198120 mm³</td><td class="f">3938,051198120 mm³</td><td class="f zero">&lt; 1e−9 mm³</td><td class="f">—</td></tr>
 <tr><td class="scene">Zahnflanke z = 20, Modul 2 mm gegen die ideale Evolute <em>(ein Lauf)</em></td><td class="f">202,4 nm</td><td class="f">0</td><td class="f">202,4 nm</td><td class="f">3 000 nm</td></tr>
 <tr><td class="scene">Sehnenfacetten: 64 Facetten, feinste Sehne 1 nm</td><td class="f">1,000 nm</td><td class="f">1 nm</td><td class="f zero">0 nm</td><td class="f">0,71 nm</td></tr>
+<tr><td class="scene">Geschliffene Fläche, 60 Körner: Formfehler</td><td class="f">28 584 nm</td><td class="f">—</td><td class="f">28 584 nm</td><td class="f">—</td></tr>
 </tbody>
 </table>
 </div>
+<p class="note"><b>Die geschliffene Fläche ist der Fall, für den es den Betrachter gibt.</b> Ein Block mit ebener
+Oberseite, 60 Schleifkörner von 150 µm laufen mit 12 000 U/min und 10 mm/s darüber. Die Farbe ist der Formfehler: wie
+weit jede Stelle der geschliffenen Fläche von der Ebene abweicht, die das Rad hinterlassen hat — hier 28 584 nm
+Spitze-zu-Tal, Ra 5937 nm, Rz 28 584 nm, 0,006639 mm³ abgetragen von 0,48 mm³ Rohteil, 4842 Hüllen, 2,5 s nativ.
+Nur der oberste Eckpunkt jeder Spalte trägt einen Wert, der Rest bleibt neutral: eine Prüfung sieht die Fläche an,
+nicht den Block darunter. Zwei Dinge, die man dort trennen muss und die weit auseinanderliegen: der **Formfehler** ist
+die Form — 28 µm — und die **Rauheit** ist die Textur — Ra 5,9 µm. Wichtig ist auch, dass die Nennfläche die
+*gemessene* mittlere Schleifebene ist und keine theoretische: wie tief ein Rad aus Zufallskörnern am Ende steht, ist
+ein Ergebnis und keine Zusicherung des Kernels.</p>
 <p class="note">Der Faktor 0,71 nm bei den Sehnenfacetten ist kein Haken, sondern die Herkunft: die beiden Endpunkte
 einer Sehne werden je auf halbe Nanometer gerundet, und das kann die Sehnengerade um bis zu √2/2 nm verschieben. Der
 Faktor bei der Zahnflanke ist der Bahnschritt — die Abweichung folgt ihm und ist kein Modellfehler.</p>

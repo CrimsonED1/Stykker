@@ -1,4 +1,4 @@
-using Stykker.NanoCut.Demo.Pages;
+﻿using Stykker.NanoCut.Demo.Pages;
 using Stykker.NanoCut.Geometry3D;
 
 namespace Stykker.NanoCut.Tests;
@@ -12,6 +12,43 @@ public class InspectCasesTests
 {
     private static Inspection Build(string id, params (string Key, double Value)[] values) =>
         InspectCases.Build(id, values.Length == 0 ? null : values.ToDictionary(p => p.Key, p => p.Value));
+
+    /// <summary>The first number of a metric whose value starts with a number.</summary>
+    private static double Number(Inspection inspection, string label) => double.Parse(
+        inspection.Metrics.Single(m => m.Label == label).Value.Split(' ')[0].Replace(',', '.'),
+        System.Globalization.CultureInfo.InvariantCulture);
+
+    /// <summary>
+    /// The ground case is the one that hangs on a real process, so two things have to hold for it to mean anything:
+    /// the wheel must actually cut — a simulation that reports no active grains produces a beautifully flat and
+    /// entirely meaningless surface, which is exactly what happened before the wheel's axis was fixed — and the
+    /// surface must never rise above the face it started from, because a subtractive process that adds material is
+    /// not a process.
+    /// </summary>
+    [Fact]
+    public void TheWheelCutsAndNothingIsAdded()
+    {
+        var inspection = Build("ground");
+        Assert.True(Number(inspection, "removed") > 0, "the wheel removed nothing, so there is no ground surface");
+        Assert.True(Number(inspection, "form error (peak to valley)") > 0, "a surface that came out flat was not ground");
+        Assert.Contains(inspection.Checks, c => c.Name.Contains("rises above") && c.Passed);
+    }
+
+    /// <summary>
+    /// The colour of a ground vertex is a difference of two nanometre heights, so what it reports has to be in
+    /// nanometres. Reading the unit off the page is the check: the reported range must be of the order of the form
+    /// error, not a millionth of it.
+    /// </summary>
+    [Fact]
+    public void TheGroundColourIsInNanometres()
+    {
+        var inspection = Build("ground");
+        double formNm = Number(inspection, "form error (peak to valley)");
+        double[] values = inspection.Bodies.SelectMany(b => b.Vertices)
+            .Select(v => inspection.ValueNm(new Vec3((long)Math.Round(v.X), (long)Math.Round(v.Y), (long)Math.Round(v.Z))))
+            .ToArray();
+        Assert.InRange(values.Max(), formNm / 100, formNm * 100);
+    }
 
     /// <summary>
     /// The staircase's whole point: every edge is axis parallel, so the Boolean computes no intersection and rounds
@@ -62,7 +99,7 @@ public class InspectCasesTests
         foreach (var id in new[] { "staircase", "facets" })
         {
             var inspection = Build(id);
-            var buffers = inspection.Body.ToMeshBuffers(OriginMode.Centroid);
+            var buffers = MeshBuffers.Concat(inspection.Bodies.Select(b => b.ToMeshBuffers(OriginMode.Centroid)));
             var (nm, grid) = inspection.ExactVertices();
             Assert.Equal(buffers.Positions.Length / 3, nm.Length / 3);
             Assert.Equal(nm.Length / 3, grid.Length);
@@ -157,7 +194,7 @@ public class InspectCasesTests
                                    System.Globalization.CultureInfo.InvariantCulture));
 
         // Taken from the geometry rather than from the table, so a formatting change cannot make this pass or fail.
-        double[] rim = inspection.Body.Vertices
+        double[] rim = inspection.Bodies.SelectMany(b=>b.Vertices)
             .Select(v => inspection.ValueNm(new Vec3((long)Math.Round(v.X), (long)Math.Round(v.Y), (long)Math.Round(v.Z))))
             .Where(v => v > 0)
             .Distinct()
@@ -176,7 +213,7 @@ public class InspectCasesTests
     public void TheColourOfAFacetIsItsOwnSagitta()
     {
         var inspection = Build("facets");
-        double[] seen = inspection.Body.Vertices
+        double[] seen = inspection.Bodies.SelectMany(b=>b.Vertices)
             .Select(v => inspection.ValueNm(new Vec3((long)Math.Round(v.X), (long)Math.Round(v.Y), (long)Math.Round(v.Z))))
             .Distinct()
             .OrderBy(v => v)

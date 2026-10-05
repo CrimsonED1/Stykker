@@ -21,6 +21,23 @@ Open features and ideas, newest first. Each entry says what is wanted and which 
   printing a constant. The case also refuses z < 18, because below z = 2/sin²α the flank is undercut and is not the
   involute at all. German one-pager with the same numbers: `docs/overview.html`.
 
+- **Inspection: a ground surface, which is what the viewer is for** (fourth case in `Pages/InspectCases.cs`, tests
+  `TheWheelCutsAndNothingIsAdded` and `TheGroundColourIsInNanometres`): a block with a flat top face, 60 abrasive grains
+  over it, and the colour is the **form error** — how far each point of the ground surface sits from the plane the wheel
+  left behind. Only the top vertex of a column carries a value; the block below it stays neutral, because a
+  metrologist looks at the surface and not at the block. Measured at 60 grains: 28 584 nm peak to valley, Ra 5 937 nm,
+  0,006639 mm³ removed from 0,48 mm³ stock, 4 842 hulls, 2,5 s native. The nominal is the **measured mean ground
+  level**, not a theoretical plane — how deep a wheel of random grains ends up is a result, not a promise the kernel
+  makes, so a flatness has to be stated against the level that came out. Form and roughness are printed side by side
+  because they are different questions that differ by more than most readers expect. This made `Inspection` carry a
+  **list** of bodies: grinding leaves the workpiece as several cells, and uniting them would mean running the exact
+  Boolean over the result — slower, and the one kernel here that is not a pure function. Two bugs were on the way and
+  are worth writing down: the wheel has to be *oriented*, not just placed (`Linear ∘ Fixed(Rotation(−π/2, 1, 0, 0))`,
+  or it spins about Z, its tips never reach the workpiece and the simulation cheerfully reports zero active grains and a
+  perfectly flat, entirely meaningless surface); and the colour value is a difference of two nanometre heights, so an
+  extra `* 1e-6` reports the whole form error a million times too small. The first one passed its check, because a
+  surface that came out flat with a deviation of zero looks exactly like a correct answer.
+
 - **Demo overview** (`Pages/Home.razor`, `Pages/PageIndex.cs`): "/" was a redirect into the first scene, so a newcomer
   arrived mid-groove with no way to see what else existed. It is now an index — what this is, where to click, and what
   it cannot do yet. The scene pages come from `SceneCatalog` and cannot go missing; the hand-written pages became
