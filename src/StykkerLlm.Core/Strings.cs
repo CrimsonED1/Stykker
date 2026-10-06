@@ -108,7 +108,7 @@ public static partial class Strings
     // Aufgeklappter Rest der Liste wieder zuklappen (Klick auf „+n more“)
     public const string MemShowLess = "show less";
 
-    // Eval (Model tests): Bereiche in allen Oberflächen (UI-SPEC Bereich 9)
+    // Eval (Model tests): Bereiche in allen Oberflächen (docs/ui.md, Bereich 9)
     public const string EvalTitle = "Model tests", EvalRuns = "Runs", EvalResults = "Results", EvalCatalog = "Catalog", EvalModels = "Models";
     public const string EvalStartQueue = "▶ Start queue", EvalStopQueue = "■ Stop", EvalClearFinished = "Clear finished", EvalAddToQueue = "+ Add to queue";
     public const string EvalAllowCode = "run model-written Python code (coding tasks)", EvalFindModels = "Find models", EvalTry = "▶ Try on model",

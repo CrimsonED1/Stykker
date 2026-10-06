@@ -26,17 +26,20 @@ public sealed class EngineHost : IDisposable
     public EvalQueue? Queue { get; set; }
     // Die gekoppelten Nodes (dieser Server als Hub, docs/nodes.md)
     public NodeRegistry Nodes { get; }
+    public SimHost? Sim { get; }
 
-    public EngineHost(AppPaths paths, IPlatform? platform = null)
+    // sim != null: simulierte Server statt der echten (--sim, für Vorführung und Bilder der Dokumentation)
+    public EngineHost(AppPaths paths, IPlatform? platform = null, SimHost? sim = null)
     {
         _paths = paths;
-        _platform = platform ?? CreatePlatform();
+        _platform = sim?.Platform ?? platform ?? CreatePlatform();
+        Sim = sim;
         // Bewusst kein SingleInstance: den Mutex des Datenordners hält nur das Fenster (nur ein Fenster je Ordner).
         // Der Server dürfte ihn nie nehmen – sonst blockierte ein zuerst gestarteter Server das Fenster, das sich
         // lautlos beendete, und umgekehrt lief ein vom Fenster gestarteter Server nur lesend (S4: Server = Engine).
         // Ein zweiter Serverprozess wird schon in Program.cs über einen eigenen Mutex abgewiesen.
         var settings = AppSettings.Load(paths.SettingsFile);
-        Engine = new MonitorEngine(_platform, paths, settings, readOnly: false);
+        Engine = sim?.Engine ?? new MonitorEngine(_platform, paths, settings, readOnly: false);
         Engine.Notice += text => StateJson.Notice(text);
         Engine.ServerLost += lost =>
         {

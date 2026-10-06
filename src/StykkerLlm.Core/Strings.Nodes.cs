@@ -9,7 +9,7 @@ public static partial class Strings
     public static string CodeValidFor(TimeSpan left) =>
         left.TotalSeconds <= 0 ? "expired, a new code follows" : $"valid for {(int)left.TotalMinutes}:{left.Seconds:00} min, once";
     public const string PairOtherWay = "Or the other way round";
-    public const string PairShowCodeHint = "This device shows a code. Type it in on a device that is already signed in: window ☰ → Phone access, “stykker approve”, or the web page Phone access.";
+    public const string PairShowCodeHint = "This device shows a code. Type it in on a device that is already signed in: ☰ → Phone access in the window or web page, or “stykker approve”.";
     public const string PairShowCode = "Show a code on this device";
     public const string PairWaiting = "Waiting for approval …";
     public const string PairDenied = "The request was declined.";
@@ -34,7 +34,11 @@ public static partial class Strings
     public const string ShellDeviceName = "Desktop window";
     // Beim Schließen gefragt: in den Tray legen (das Fenster läuft unsichtbar weiter) oder beenden
     public const string ShellCloseText = "Keep the window in the tray, or quit?";
-    public const string ShellCloseTray = "Keep in tray", ShellCloseQuit = "Quit";
+    public const string ShellCloseTray = "Keep in tray", ShellCloseQuit = "Quit", ShellCloseCancel = "Cancel";
+    public const string ShellCloseRemember = "Don't ask again (the tray menu brings the question back)";
+    public const string TrayAskOnClose = "Ask when closing";
+    public static string ServerPortBusy(int port, string detail) =>
+        $"Port {port} is already in use (another StykkerLLM server with a different data folder, or another program). Start with --port <number>. ({detail})";
 
     // ── Nodes ──
     public const string NavNodes = "Nodes";
@@ -53,7 +57,7 @@ public static partial class Strings
     public static string NodeOfflineSince(TimeSpan t) =>
         t.TotalMinutes < 1 ? "offline" : t.TotalHours < 1 ? $"offline {(int)t.TotalMinutes} min" : t.TotalDays < 1 ? $"offline {(int)t.TotalHours} h" : $"offline {(int)t.TotalDays} d";
     public static string NodePairShowCode(string code) => $"Enter {code} on the other PC";
-    public const string NodePairWhere = "There: window ☰ → Phone access, “stykker approve <code>”, or its web page Phone access.";
+    public const string NodePairWhere = "There: ☰ → Phone access (window or web page), or “stykker approve <code>”.";
     public const string NodePairDone = "Node paired.";
     public const string NodePairFailed = "Pairing failed";
     public const string NodeNotReachable = "Not reachable. Is the server running there and Home/VPN switched on?";

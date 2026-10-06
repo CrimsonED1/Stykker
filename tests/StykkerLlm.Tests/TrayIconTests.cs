@@ -5,7 +5,7 @@ using StykkerLlm.Platform.Windows;
 
 namespace StykkerLlm.Tests;
 
-// Tray-Symbol des Servers (PLAN-server, offen seit 2026-10-02). Der Test prüft den echten Weg: die Shell
+// Tray-Symbol des Servers (seit 2026-10-02). Der Test prüft den echten Weg: die Shell
 // bekommt das Symbol wirklich zu sehen (Shell_NotifyIcon antwortet), und eine Menünachricht, die an das Fenster
 // dieses Symbols geschickt wird, läuft durch die echte Fensterprozedur und kommt als Aktion an.
 // Sichtbar ist das Symbol damit für die Kommandozeile – das Bild im Infobereich kann nur der Nutzer prüfen.
@@ -44,7 +44,7 @@ public class TrayIconTests
     [TestMethod]
     public void MenueKommtDurchDieEchteFensterprozedurAn()
     {
-        if (!Verfuegbar) Assert.Inconclusive("Hier gibt es kein Tray-Symbol (kein Desktop oder user32 ohne Shell_NotifyIconW)");
+        if (!Verfuegbar) Assert.Inconclusive("Hier gibt es kein Tray-Symbol (kein Desktop oder shell32 ohne Shell_NotifyIconW)");
 
         var befehle = new List<int>();
         var geklickt = 0;
@@ -67,7 +67,7 @@ public class TrayIconTests
     [TestMethod]
     public void SymbolLaesstSichWiederAufbauenUndWiederSchliessen()
     {
-        if (!Verfuegbar) Assert.Inconclusive("Hier gibt es kein Tray-Symbol (kein Desktop oder user32 ohne Shell_NotifyIconW)");
+        if (!Verfuegbar) Assert.Inconclusive("Hier gibt es kein Tray-Symbol (kein Desktop oder shell32 ohne Shell_NotifyIconW)");
 
         for (int i = 0; i < 2; i++)
         {

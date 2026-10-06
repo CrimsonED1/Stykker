@@ -28,19 +28,20 @@ public sealed class TrayIcon : IDisposable
     private readonly Action _onOpen;
     private readonly IReadOnlyList<Item> _items;
     private Thread? _thread;
+    private WndProc? _wndProc;
     private IntPtr _window, _icon;
     private bool _added;
     private string? _grund;
 
     public bool Visible { get { lock (_gate) return _added; } }
 
-    // Ob die Shell hier überhaupt ein Symbol annehmen kann: Windows mit Bildschirm und ein user32 mit dem
-    // Einstiegspunkt. In manchen Umgebungen (gefilterte user32) fehlt der – dann läuft der Server ohne Symbol.
+    // Ob die Shell hier überhaupt ein Symbol annehmen kann: Windows mit Bildschirm und ein shell32 mit dem
+    // Einstiegspunkt (Shell_NotifyIconW liegt in shell32, nicht in user32). In manchen Umgebungen fehlt er – dann läuft der Server ohne Symbol.
     public static bool Possible => OperatingSystem.IsWindows() && Environment.UserInteractive && HasNotifyIcon();
 
     private static bool HasNotifyIcon()
     {
-        if (!NativeLibrary.TryLoad("user32.dll", out var lib)) return false;
+        if (!NativeLibrary.TryLoad("shell32.dll", out var lib)) return false;
         try { return NativeLibrary.TryGetExport(lib, "Shell_NotifyIconW", out _); }
         finally { NativeLibrary.Free(lib); }
     }
@@ -63,7 +64,7 @@ public sealed class TrayIcon : IDisposable
         {
             error = !OperatingSystem.IsWindows() ? "no tray outside Windows"
                 : !Environment.UserInteractive ? "no desktop for this session"
-                : "user32.dll here has no Shell_NotifyIconW";
+                : "shell32.dll here has no Shell_NotifyIconW";
             return false;
         }
 
@@ -95,10 +96,13 @@ public sealed class TrayIcon : IDisposable
                 cbSize = (uint)Marshal.SizeOf<WNDCLASSEX>(), lpfnWndProc = Marshal.GetFunctionPointerForDelegate(wndProc), hInstance = Instance,
                 lpszClassName = cls, hIcon = LoadIcon(IntPtr.Zero, IdiApplication),   // Message-only-Fenster: ohne Bild, nur der Rahmen
             };
+            _wndProc = wndProc;   // der Delegat muss leben, solange das Fenster lebt (sonst sammelt ihn der GC ein)
             registered = RegisterClassEx(ref wc) != 0;
+            int regError = registered ? 0 : Marshal.GetLastWin32Error();
             var window = CreateWindowEx(0, cls, "", 0, 0, 0, 0, 0, HwndMessage, IntPtr.Zero, Instance, IntPtr.Zero);
+            int createError = window == IntPtr.Zero ? Marshal.GetLastWin32Error() : 0;
             lock (_gate) { _window = window; _icon = AppIcon(); }
-            if (window == IntPtr.Zero) { Fail(ready, $"the tray window was not created (error {Marshal.GetLastWin32Error()})"); return; }
+            if (window == IntPtr.Zero) { Fail(ready, $"the tray window was not created (error {createError}, class {(registered ? "ok" : "error " + regError)})"); return; }
 
             var data = new NOTIFYICONDATA
             {
@@ -255,10 +259,10 @@ public sealed class TrayIcon : IDisposable
 
     // Alle Einstiegspunkte ausgeschrieben: der CharSet-Automatismus hängt am Namen, und ein fehlender Einstiegspunkt
     // (siehe TryShow) soll als klarer Fehler kommen und nicht als Absturz.
-    [DllImport("kernel32.dll", EntryPoint = "GetModuleHandleW", SetLastError = true)] private static extern IntPtr GetModuleHandle(string? name);
+    [DllImport("kernel32.dll", EntryPoint = "GetModuleHandleW", CharSet = CharSet.Unicode, SetLastError = true)] private static extern IntPtr GetModuleHandle(string? name);
     [DllImport("user32.dll", EntryPoint = "RegisterClassExW", SetLastError = true)] private static extern ushort RegisterClassEx(ref WNDCLASSEX cls);
-    [DllImport("user32.dll", EntryPoint = "UnregisterClassW", SetLastError = true)] private static extern bool UnregisterClass(string cls, IntPtr inst);
-    [DllImport("user32.dll", EntryPoint = "CreateWindowExW", SetLastError = true)] private static extern IntPtr CreateWindowEx(int ex, string cls, string name, uint style, int x, int y, int w, int h, IntPtr parent, IntPtr menu, IntPtr inst, IntPtr param);
+    [DllImport("user32.dll", EntryPoint = "UnregisterClassW", CharSet = CharSet.Unicode, SetLastError = true)] private static extern bool UnregisterClass(string cls, IntPtr inst);
+    [DllImport("user32.dll", EntryPoint = "CreateWindowExW", CharSet = CharSet.Unicode, SetLastError = true)] private static extern IntPtr CreateWindowEx(int ex, string cls, string name, uint style, int x, int y, int w, int h, IntPtr parent, IntPtr menu, IntPtr inst, IntPtr param);
     [DllImport("user32.dll", EntryPoint = "DefWindowProcW", SetLastError = true)] private static extern IntPtr DefWindowProc(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
     [DllImport("user32.dll", EntryPoint = "DestroyWindow", SetLastError = true)] private static extern bool DestroyWindow(IntPtr hWnd);
     [DllImport("user32.dll", EntryPoint = "GetMessageW", SetLastError = true)] private static extern int GetMessage(out MSG msg, IntPtr hWnd, uint min, uint max);
@@ -268,12 +272,12 @@ public sealed class TrayIcon : IDisposable
     [DllImport("user32.dll", EntryPoint = "PostMessageW", SetLastError = true)] private static extern bool PostMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
     [DllImport("user32.dll", EntryPoint = "SetForegroundWindow", SetLastError = true)] private static extern bool SetForegroundWindow(IntPtr hWnd);
     [DllImport("user32.dll", EntryPoint = "GetCursorPos", SetLastError = true)] private static extern bool GetCursorPos(out POINT pt);
-    [DllImport("user32.dll", EntryPoint = "Shell_NotifyIconW", SetLastError = true)] private static extern bool Shell_NotifyIcon(int msg, ref NOTIFYICONDATA data);
-    [DllImport("shell32.dll", EntryPoint = "ExtractIconExW", SetLastError = true)] private static extern int ExtractIconEx(string path, int index, out IntPtr large, out IntPtr small, int count);
+    [DllImport("shell32.dll", EntryPoint = "Shell_NotifyIconW", SetLastError = true)] private static extern bool Shell_NotifyIcon(int msg, ref NOTIFYICONDATA data);
+    [DllImport("shell32.dll", EntryPoint = "ExtractIconExW", CharSet = CharSet.Unicode, SetLastError = true)] private static extern int ExtractIconEx(string path, int index, out IntPtr large, out IntPtr small, int count);
     [DllImport("user32.dll", EntryPoint = "DestroyIcon", SetLastError = true)] private static extern bool DestroyIcon(IntPtr icon);
     [DllImport("user32.dll", EntryPoint = "LoadIconW", SetLastError = true)] private static extern IntPtr LoadIcon(IntPtr inst, IntPtr name);
     [DllImport("user32.dll", EntryPoint = "CreatePopupMenu", SetLastError = true)] private static extern IntPtr CreatePopupMenu();
-    [DllImport("user32.dll", EntryPoint = "AppendMenuW", SetLastError = true)] private static extern bool AppendMenu(IntPtr menu, uint flags, IntPtr id, string? text);
+    [DllImport("user32.dll", EntryPoint = "AppendMenuW", CharSet = CharSet.Unicode, SetLastError = true)] private static extern bool AppendMenu(IntPtr menu, uint flags, IntPtr id, string? text);
     [DllImport("user32.dll", EntryPoint = "TrackPopupMenuEx", SetLastError = true)] private static extern IntPtr TrackPopupMenuEx(IntPtr menu, uint flags, int x, int y, IntPtr hWnd, IntPtr param);
     [DllImport("user32.dll", EntryPoint = "DestroyMenu", SetLastError = true)] private static extern bool DestroyMenu(IntPtr menu);
 }

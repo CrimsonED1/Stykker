@@ -19,7 +19,7 @@ a{color:var(--acc);text-decoration:none}
 .brand{font-weight:600;letter-spacing:.06em}.logo,.acc{color:var(--acc)}.dim{color:var(--muted)}
 nav{display:flex;gap:6px}nav a{padding:5px 14px;border-radius:999px;color:var(--muted);border:1px solid transparent}
 nav a.active{color:var(--ink);border-color:rgb(var(--acc-rgb)/.55);background:rgb(var(--acc-rgb)/.12)}
-/* Zurück/Vor: nur in der Fenster-Hülle (StykkerLLM-Web) sichtbar – ein Browser hat eigene Knöpfe */
+/* Zurück/Vor: nur in der Fenster-Hülle (StykkerUI) sichtbar – ein Browser hat eigene Knöpfe */
 .navback{display:flex;gap:4px}button.icon{padding:3px 10px;font-size:15px;line-height:1.3}
 /* „Sie sind hier“: im Kompakt-Modus neben der Marke, wenn die Seite im ☰ liegt (dort ist kein Reiter aktiv) */
 .here{display:none}
@@ -102,3 +102,134 @@ label{color:var(--muted);font-size:12px;display:block;margin:8px 0 3px}
 .chip{display:inline-block;border:1px solid var(--line);border-radius:999px;padding:1px 10px;font-size:12px;margin:2px 4px 2px 0}.chip b{font-weight:600;margin-left:4px}
 .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}.kpi .muted{font-size:12px}
 .sec{color:var(--muted);font-size:12px;font-weight:400;letter-spacing:.08em;margin:18px 2px 8px;text-transform:uppercase}
+/* ── Feinschliff: Bewegung, Licht, Tiefe. Alles aus den Farben des Themas; wer weniger Bewegung will
+   (prefers-reduced-motion), bekommt die Farben ohne Animation. ── */
+::selection{background:rgb(var(--acc-rgb)/.35);color:var(--ink)}
+*{scrollbar-width:thin;scrollbar-color:rgb(var(--acc-rgb)/.35) transparent}
+
+/* Kopf: leuchtende Linie unten, Marke mit Verlauf und pulsierendem Rhombus */
+.top{border-bottom-color:transparent;box-shadow:0 1px 0 rgb(var(--ink-rgb)/.04),0 10px 30px rgb(0 0 0/.25)}
+.top::after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:1px;background:linear-gradient(90deg,transparent,rgb(var(--acc-rgb)/.7) 30%,rgb(var(--second-rgb)/.7) 70%,transparent);opacity:.75;pointer-events:none}
+.brand{font-size:15px;white-space:nowrap}
+.brand .acc{background:linear-gradient(90deg,var(--acc),var(--second));-webkit-background-clip:text;background-clip:text;color:transparent}
+.brand .logo{display:inline-block;text-shadow:0 0 12px rgb(var(--acc-rgb)/.8);animation:logo 4s ease-in-out infinite}
+@keyframes logo{0%,100%{transform:scale(1) rotate(0);opacity:1}50%{transform:scale(1.18) rotate(45deg);opacity:.8}}
+nav a{transition:color .2s,background .2s,border-color .2s,box-shadow .2s}
+nav a:hover{color:var(--ink);background:rgb(var(--ink-rgb)/.05)}
+nav a.active{box-shadow:0 0 0 1px rgb(var(--acc-rgb)/.15),0 0 18px rgb(var(--acc-rgb)/.25),inset 0 1px 0 rgb(255 255 255/.08)}
+details.menu>summary{transition:background .2s,box-shadow .2s}
+details.menu>summary:hover{background:rgb(var(--acc-rgb)/.12);box-shadow:0 0 14px rgb(var(--acc-rgb)/.25)}
+details.menu[open]>summary{background:rgb(var(--acc-rgb)/.18)}
+details.menu>div{animation:drop .16s ease-out;transform-origin:top right;backdrop-filter:blur(12px);background:color-mix(in srgb,var(--card) 92%,transparent)}
+details.menu>div>a{padding:5px 10px;border-radius:8px;color:var(--ink);transition:background .15s}
+details.menu>div>a:hover,details.menu>div>a.active{background:rgb(var(--acc-rgb)/.14)}
+@keyframes drop{from{opacity:0;transform:translateY(-4px) scale(.97)}to{opacity:1;transform:none}}
+
+/* Knöpfe: weiche Übergänge, beim Überfahren ein Lichthof in der Farbe des Knopfs, beim Drücken nachgeben */
+button,.btn{transition:background .18s,border-color .18s,box-shadow .18s,transform .12s,color .18s;display:inline-block}
+button:not(:disabled):hover,.btn:hover{box-shadow:0 0 0 1px rgb(var(--acc-rgb)/.25),0 4px 16px rgb(var(--acc-rgb)/.22);transform:translateY(-1px)}
+button:not(:disabled):active,.btn:active{transform:translateY(0) scale(.97);box-shadow:none}
+button:focus-visible,.btn:focus-visible,a:focus-visible,summary:focus-visible{outline:2px solid rgb(var(--acc-rgb)/.8);outline-offset:2px}
+button.primary{background:linear-gradient(180deg,color-mix(in srgb,var(--acc) 82%,white),var(--acc));color:var(--bg);border-color:transparent;font-weight:600;box-shadow:0 4px 18px rgb(var(--acc-rgb)/.35)}
+button.primary:not(:disabled):hover{background:linear-gradient(180deg,color-mix(in srgb,var(--acc) 68%,white),var(--acc));box-shadow:0 6px 24px rgb(var(--acc-rgb)/.5)}
+button.good{color:var(--good)}button.bad{color:var(--bad)}
+button.good:not(:disabled):hover{background:rgb(var(--good-rgb)/.18);box-shadow:0 0 0 1px rgb(var(--good-rgb)/.3),0 4px 16px rgb(var(--good-rgb)/.25)}
+button.bad:not(:disabled):hover{background:rgb(var(--bad-rgb)/.18);box-shadow:0 0 0 1px rgb(var(--bad-rgb)/.3),0 4px 16px rgb(var(--bad-rgb)/.25)}
+button.ghost{background:transparent;color:var(--muted);border-color:var(--line)}
+button.ghost:not(:disabled):hover{color:var(--ink);background:rgb(var(--ink-rgb)/.06);box-shadow:none}
+button.link:not(:disabled):hover,button.icon:not(:disabled):hover{transform:none}
+button.link:not(:disabled):hover{box-shadow:none}
+
+/* Karten: kommen sanft herein, ein Lichtschimmer an der Oberkante, beim Überfahren hebt sich der Rand */
+.card{position:relative;transition:border-color .25s,box-shadow .25s;animation:rise .35s ease-out backwards}
+.card::before{content:"";position:absolute;left:14px;right:14px;top:-1px;height:1px;background:linear-gradient(90deg,transparent,rgb(var(--acc-rgb)/.55),transparent);opacity:.55;pointer-events:none}
+.card:hover{border-color:color-mix(in srgb,var(--card-border) 60%,var(--acc));box-shadow:inset 0 1px 0 var(--top-line),0 14px 34px rgb(0 0 0/.38)}
+@keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+/* ein Server, der gerade schreibt, leuchtet an der Kante, ein Lichtstreif läuft über die Oberkante */
+.card.server.busy{border-color:rgb(var(--good-rgb)/.45);box-shadow:inset 0 1px 0 var(--top-line),0 10px 26px rgb(0 0 0/.32),0 0 26px rgb(var(--good-rgb)/.12)}
+.card.server.busy::before{left:0;right:0;opacity:1;background:linear-gradient(90deg,transparent,var(--good),transparent) no-repeat;background-size:40% 100%;animation:sweep 2.4s linear infinite}
+@keyframes sweep{from{background-position:-60% 0}to{background-position:160% 0}}
+
+/* Abschnittsköpfe: Akzentstrich davor, Haarlinie dahinter */
+.sec{display:flex;align-items:center;gap:10px}
+.sec::before{content:"";width:3px;height:12px;border-radius:2px;background:linear-gradient(180deg,var(--acc),var(--second));box-shadow:0 0 8px rgb(var(--acc-rgb)/.6)}
+.sec::after{content:"";flex:1;height:1px;background:linear-gradient(90deg,var(--line),transparent)}
+
+/* Lebenszeichen: der Punkt eines erreichbaren Servers pulsiert */
+.dot{display:inline-block;line-height:1}
+.dot.on,.dot.ok{color:var(--good);animation:pulse 2s ease-in-out infinite}.dot.off{color:var(--warn)}
+@keyframes pulse{0%,100%{text-shadow:0 0 0 rgb(var(--good-rgb)/0)}50%{text-shadow:0 0 10px rgb(var(--good-rgb)/.9)}}
+
+/* große Zahlen mit Verlauf, Kennzahlen als kleine Kacheln */
+.big{background:linear-gradient(180deg,var(--ink),color-mix(in srgb,var(--ink) 50%,var(--acc)));-webkit-background-clip:text;background-clip:text;color:transparent;font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+.card.server.busy .big{background-image:linear-gradient(180deg,color-mix(in srgb,var(--good) 55%,white),var(--good));filter:drop-shadow(0 0 10px rgb(var(--good-rgb)/.35))}
+.kpi{background:rgb(var(--ink-rgb)/.03);border:1px solid rgb(var(--ink-rgb)/.06);border-radius:10px;padding:10px 12px;transition:border-color .2s,background .2s}
+.kpi:hover{border-color:rgb(var(--acc-rgb)/.3);background:rgb(var(--acc-rgb)/.05)}
+.kpi .bar{margin-top:6px}
+
+/* Balken: Verlauf mit wanderndem Glanz; die Breite gleitet statt zu springen */
+.bar{box-shadow:inset 0 1px 2px rgb(0 0 0/.35)}
+.bar>div{position:relative;background:linear-gradient(90deg,var(--second),var(--acc));box-shadow:0 0 10px rgb(var(--acc-rgb)/.45);transition:width .6s cubic-bezier(.2,.8,.2,1);border-radius:4px;overflow:hidden}
+.bar>div::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgb(255 255 255/.35),transparent);transform:translateX(-100%);animation:gloss 2.8s ease-in-out infinite}
+@keyframes gloss{60%,100%{transform:translateX(100%)}}
+.stack>div{transition:width .6s cubic-bezier(.2,.8,.2,1)}
+.spark{background:linear-gradient(180deg,rgb(var(--acc-rgb)/.07),transparent);border:1px solid rgb(var(--ink-rgb)/.04)}
+.spark polyline{filter:drop-shadow(0 0 4px rgb(var(--acc-rgb)/.8))}
+
+/* Pillen und Chips: getönter Grund, der Status hat einen leuchtenden Punkt */
+.pill{background:rgb(var(--ink-rgb)/.04)}
+.pill.ok{background:rgb(var(--good-rgb)/.1)}.pill.run{background:rgb(var(--acc-rgb)/.1)}.pill.fail{background:rgb(var(--bad-rgb)/.1)}.pill.half{background:rgb(var(--warn-rgb)/.1)}
+.pill.ok::before,.pill.run::before,.pill.half::before{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;background:currentColor;margin-right:6px;vertical-align:1px;box-shadow:0 0 6px currentColor}
+.pill.run::before{animation:blink 1.2s ease-in-out infinite}
+@keyframes blink{50%{opacity:.25}}
+.chip{background:rgb(var(--ink-rgb)/.035);border-color:rgb(var(--ink-rgb)/.08)}.chip b{color:var(--ink)}
+
+/* Tabellen: Zeile unter der Maus hervorheben */
+tr{transition:background .15s}
+tr:hover td{background:rgb(var(--acc-rgb)/.06)}
+th{text-transform:uppercase;letter-spacing:.05em;font-size:11px}
+
+/* Felder: Leuchten beim Fokus */
+input,select,textarea{transition:border-color .18s,box-shadow .18s}
+input:focus,select:focus,textarea:focus{outline:none;border-color:rgb(var(--acc-rgb)/.7);box-shadow:0 0 0 3px rgb(var(--acc-rgb)/.18)}
+input[type=checkbox],input[type=radio]{accent-color:var(--acc)}
+
+/* Dialoge: Hintergrund blendet ein, der Kasten springt leicht auf */
+.modal-back{animation:fade .18s ease-out}
+.modal{animation:pop .22s cubic-bezier(.2,1.2,.4,1)}
+.modal h2{margin-top:0;font-size:16px;letter-spacing:.06em}
+.modal .row.end{justify-content:flex-end;margin-top:14px}
+label.check{display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin:6px 0 2px}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+@keyframes pop{from{opacity:0;transform:translateY(10px) scale(.96)}to{opacity:1;transform:none}}
+.pairbox .code{text-shadow:0 0 18px rgb(var(--acc-rgb)/.55)}
+
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation:none!important;transition:none!important}
+}
+.spark .area{fill:rgb(var(--acc-rgb)/.13)}
+.card.server.busy .spark polyline{stroke:var(--good);filter:drop-shadow(0 0 4px rgb(var(--good-rgb)/.8))}
+.card.server.busy .spark .area{fill:rgb(var(--good-rgb)/.12)}
+.brand .acc{background-image:linear-gradient(90deg,var(--acc),color-mix(in srgb,var(--acc) 55%,white))}
+details.menu>div>a{text-align:left;padding-left:12px}details.menu{z-index:6}
+/* Kompakt: ☰ oben rechts neben der Marke, Messwerte darunter, Reiter als letzte Zeile */
+[data-view=small] details.menu.more{order:1;margin-left:auto}[data-view=small] .status{order:2;flex:1 1 100%}
+/* Im Fenster StykkerUI zeichnet die WebView ohne GPU (kein VRAM): dort kostet jede Endlos-Animation dauernd
+   Rechenzeit. Einmalige Effekte (Einblenden, Hover, Dialoge) bleiben, die Dauerbewegung ruht. */
+html.shell *,html.shell *::before,html.shell *::after{animation-iteration-count:1!important}
+html.shell .bar>div::after{display:none}
+/* ebenso Weichzeichner und Filter: ohne GPU rechnet jeder Takt sie neu (Lichthöfe bleiben als box-shadow) */
+html.shell .top,html.shell details.menu>div,html.shell .modal-back{backdrop-filter:none}
+html.shell .top{background:rgb(var(--bg-rgb)/.97)}
+html.shell .spark polyline,html.shell .card.server.busy .big,html.shell .card.server.busy .spark polyline{filter:none}
+/* und weiche Schatten und gleitende Breiten: der Takt (alle 2 s) zeichnet die Karten neu, ohne GPU kostet ein
+   breiter Weichzeichner-Schatten dann jedes Mal. Kanten und Farben bleiben, nur ohne Weichzeichner. */
+html.shell .bar>div,html.shell .stack>div{transition:none;box-shadow:none}
+html.shell .card,html.shell .card:hover{box-shadow:inset 0 1px 0 var(--top-line)}
+html.shell .card.server.busy{box-shadow:inset 0 1px 0 var(--top-line),0 0 0 1px rgb(var(--good-rgb)/.25)}
+html.shell .top{box-shadow:none}
+html.shell nav a.active{box-shadow:0 0 0 1px rgb(var(--acc-rgb)/.25)}
+html.shell .pill.ok::before,html.shell .pill.run::before,html.shell .pill.half::before{box-shadow:none}
+html.shell .sec::before{box-shadow:none}
+html.shell .brand .logo{text-shadow:none}
+html.shell .dot.on,html.shell .dot.ok{text-shadow:0 0 6px rgb(var(--good-rgb)/.6)}

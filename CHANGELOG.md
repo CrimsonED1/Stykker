@@ -4,33 +4,49 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-## Unreleased
+## 0.3.0
 
-### Added
-- **Compact view for the web interface**, chosen per device: switch to **Auto / Compact / Full** in the ☰. Below 780 px
-  it turns on by itself. In compact the header wraps instead of hiding its tabs behind a sideways swipe, wide tables
-  scroll inside their block instead of pushing the whole page, and dropdowns in table rows expand in place.
-- **Back and forward** (⟵ ⟶, Alt+←/→) in the window shell StykkerLLM-Web — where there are no browser buttons. A
-  browser never shows them.
-- **Closing StykkerLLM-Web asks where to go**: *Keep in tray* really hides the window (gone from the taskbar too) and
-  the tray icon brings it back, *Quit* ends it. The shell starts the server with `--no-tray` (one icon, not two) and
-  shuts it down on quit if it started it. Windows only; elsewhere the window closes as before.
+A new start in a new repository: the server with its web interface is the core, and every interface is a view on it.
 
 ### Changed
-- **The web interface is called StykkerLLM** as well: the header, the page title and the pairing page no longer say
-  "Server".
-- **The web header carries fewer main points and the rest in the ☰**: Monitor, Model tests, Benchmarks and Recordings
-  stay visible; Runs, Catalog, Models, GPU details, Prompt, Compare, Nodes, Phone access and Settings are grouped
-  under EVAL / TOOLS / VIEW (like the window's ☰ panel). The ☰ lights up when the current page sits inside it.
-- **"Details …" on the GPU card is gone**: the whole list of VRAM consumers is reached by clicking **"+n more"** (the
-  window opens *GPU details*, the web goes to `/gpu`, which is also in the ☰). On the System card "+n more" expands
-  the remaining RAM consumers in place.
-- **The program is called StykkerLLM now** (was Stykker-LLM-Monitor). The window is `StykkerLLM.exe`, the server
-  `StykkerLLM-Server.exe`; the terminal companion keeps its short name `stykker`. The head shows STYKKER LLM, the
-  third word MONITOR is gone. npm (`stykker-llm`, `@stykker-llm/win32-x64`), winget (`CrimsonED1.StykkerLLM`) and
-  the repository (github.com/CrimsonED1/Stykker-LLM) follow. Nothing has to be moved: the data folder was already
-  `%APPDATA%\StykkerLLM`. Only the autostart entry changes its name – an old entry stays behind in
-  `HKCU\...\Run` and is worth deleting once.
+- **One UI codebase.** The WinForms window is gone. The app window is now **StykkerUI** (`StykkerUI.exe`), a small
+  Photino window around the web interface. It starts the server if needed and signs itself in. It draws in software and
+  uses **no GPU memory** (`--gpu` turns the GPU on).
+- **The web interface got a new look**: glowing header line and active tab, buttons with light and press effects, cards
+  that fade in, a card that glows and shows a moving light while its server is writing, filled sparklines, bars with a
+  moving shine, pulsing status dots, section heads with an accent bar, animated menus and dialogs. Motion is switched off
+  for people who prefer reduced motion.
+- **The web header carries fewer main items** (Monitor, Model tests, Benchmarks, Recordings); everything else is grouped
+  in the ☰ (EVAL / TOOLS / VIEW), and the ☰ lights up when the current page is inside it. "+n more" opens the full list of
+  VRAM consumers.
+- Names: the web interface is called StykkerLLM; the server is `StykkerLLM-Server.exe`, the terminal companion `stykker`.
+  The data folder stays `%APPDATA%\StykkerLLM`.
+
+### Added
+- **Compact view**, per device: Auto / Compact / Full in the ☰ (Auto switches below 780 px). The header wraps, wide tables
+  scroll inside their block.
+- **StykkerUI: back and forward** (← →, Alt+←/→), and **closing asks** in a dialog over the current page: *Keep in tray*,
+  *Quit* or *Cancel*, with *Don't ask again*. The tray menu brings the question back (*Ask when closing*). From the tray the
+  window comes back on the page you left.
+- **`StykkerLLM-Server --sim`**: the web interface with simulated servers (demo, screenshots).
+- **Nodes**: pair other PCs with a six-digit code or by searching the network, see and control their servers, spread model
+  tests over them, and use their models through the Stykker-Proxy (`node/model`).
+- **Pairing with six digits and QR code** in both directions: type the code of the PC, or approve the code a new device
+  shows. Roles Admin, Viewer and Hub.
+- **Prompt tester** on every loaded model (web and TUI): streaming, thinking shown apart, time to first token and tokens/s,
+  and tools (list, read, write, edit, cmd/PowerShell) with approval per call.
+- **Model test suite "agent"**: multi-step tasks where the model works with real tools in a throwaway folder; checked by
+  running Python in that folder.
+- **AGENTS.md** and `docs/` (architecture, UI parity, nodes) for contributors and coding agents.
+- **One StykkerUI per data folder**: a second start brings the open window to the front (also out of the tray).
+
+### Fixed
+- **The tray icon never appeared** (server and window): `Shell_NotifyIconW` was looked up in `user32.dll` instead of
+  `shell32.dll`, and the window class name went to the Unicode API as ANSI text.
+- **A second server on the same data folder was not stopped**: the name of its lock used `string.GetHashCode()`, which
+  differs in every .NET process. A busy port now ends the server with a clear message instead of a crash.
+- The window draws without a GPU, so endless animations, blur and large soft shadows are left out there (CPU in the
+  window with four busy simulated servers: about 5–9 % of one core instead of 55 %).
 
 ## 0.1.0
 

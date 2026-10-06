@@ -32,6 +32,15 @@ internal static class Program
             Environment.SetEnvironmentVariable("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
         }
 
+        // Ein Fenster je Datenordner: ein zweiter Start holt das vorhandene nach vorn (auch aus dem Tray) und endet
+        using var single = new SingleInstance(SingleInstance.NameFor(paths.Root));
+        if (!single.IsFirst)
+        {
+            single.SignalFirst();
+            ShellLog.Write(paths, "start: already open, brought to front");
+            return 0;
+        }
+        ShellLog.Write(paths, $"start: port {opt.Port}, gpu {opt.Gpu}");
         string page = "", adopt = "";
         bool startedServer = false;
         try
@@ -44,6 +53,7 @@ internal static class Program
         catch (Exception ex) when (ex is HttpRequestException or IOException or InvalidOperationException or TaskCanceledException)
         {
             page = Html.Message(Strings.ShellFailed, ex.Message);
+            ShellLog.Write(paths, $"start failed: {ex.GetType().Name}: {ex.Message}");
         }
 
         var window = new PhotinoWindow()
@@ -63,11 +73,21 @@ internal static class Program
             var closeToTray = new CloseToTray(window, paths, platform, opt.Port, adopt, startedServer);
             window.RegisterWindowClosingHandler(closeToTray.OnClosing);
             window.RegisterWebMessageReceivedHandler(closeToTray.OnMessage);
+            single.ActivationRequested += () => Try(() => window.Invoke(closeToTray.Activate));
         }
 
         window.LoadRawString(page);
+        ShellLog.Write(paths, "window: open");
         window.WaitForClose();
+        ShellLog.Write(paths, "window: closed");
         return 0;
+    }
+
+    // Kommt eine Aktivierung, bevor das Fenster steht, gibt es noch nichts nach vorn zu holen
+    private static void Try(Action a)
+    {
+        try { a(); }
+        catch (Exception ex) when (ex is InvalidOperationException or NullReferenceException) { Debug.WriteLine(ex.Message); }
     }
 
     // Die erste Seite im Fenster: ein Formular, das sich selbst an /pair/adopt schickt (Token als Cookie setzen)
@@ -78,6 +98,7 @@ internal static class Program
         bool started = false;
         if (!await ServerClient.IsRunningAsync(opt.Port).ConfigureAwait(false))
         {
+            ShellLog.Write(paths, "server: not answering, starting it");
             StartServer(paths, opt.Port);
             started = true;
             var end = DateTime.Now.AddSeconds(30);
@@ -87,7 +108,9 @@ internal static class Program
                 await Task.Delay(500).ConfigureAwait(false);
             }
         }
+        ShellLog.Write(paths, "server: running");
         var token = await Token(http, baseUrl, paths, platform).ConfigureAwait(false);
+        ShellLog.Write(paths, "token: ok");
         var adopt = Html.Adopt(baseUrl, token, opt.Page);
         return new StartPageResult(adopt, adopt, started);
     }
@@ -180,13 +203,20 @@ internal static class Html
 {
     private static string Esc(string s) => s.Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;").Replace("\"", "&quot;");
 
-    private const string Style = "body{margin:0;background:#05070d;color:#dce9fa;font:15px Segoe UI,system-ui,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh}";
+    // Ladebild in den Farben der Vorgabe (Deep Sea): Rhombus mit Lichthof, darunter ein wandernder Balken
+    private const string Style = "body{margin:0;background:radial-gradient(60% 50% at 50% 40%,#0d1830,#05070d 70%);color:#dce9fa;font:15px Segoe UI,system-ui,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;text-align:center}"
+        + ".logo{font-size:44px;color:#6cb8ff;text-shadow:0 0 24px #6cb8ffaa;animation:p 1.6s ease-in-out infinite;display:inline-block}"
+        + ".name{letter-spacing:.18em;font-weight:600;margin-top:10px}.name b{color:#6cb8ff}"
+        + ".load{width:160px;height:3px;margin:16px auto 0;border-radius:3px;background:#96beff18;overflow:hidden}"
+        + ".load i{display:block;width:40%;height:100%;background:linear-gradient(90deg,transparent,#6cb8ff,transparent);animation:m 1.2s ease-in-out infinite}"
+        + "@keyframes p{50%{transform:scale(1.15) rotate(45deg);text-shadow:0 0 40px #6cb8ff}}@keyframes m{from{transform:translateX(-100%)}to{transform:translateX(250%)}}";
 
     public static string Adopt(string baseUrl, string token, string page) => $$"""
         <!doctype html><html><head><meta charset="utf-8"><style>{{Style}}</style></head><body>
         <form id="f" method="post" action="{{Esc(baseUrl)}}/pair/adopt">
         <input type="hidden" name="token" value="{{Esc(token)}}"><input type="hidden" name="next" value="{{Esc(page)}}"></form>
-        <div>STYKKER LLM …</div><script>document.getElementById('f').submit();</script></body></html>
+        <div><div class="logo">◆</div><div class="name">STYKKER <b>LLM</b></div><div class="load"><i></i></div></div>
+        <script>document.getElementById('f').submit();</script></body></html>
         """;
 
     public static string Message(string title, string text) => $$"""
@@ -195,7 +225,15 @@ internal static class Html
         """;
 
     // Nachrichten der Rückfrage-Seite an den Prozess (window.external.sendMessage, die Brücke der Fenster-Hülle)
-    public const string MsgTray = "shell.tray", MsgQuit = "shell.quit";
+    public const string MsgTray = "shell.tray", MsgQuit = "shell.quit", MsgCancel = "shell.cancel", MsgAck = "shell.ack";
+
+    // Die Frage als Nachricht an die Seite: ui.js zeichnet daraus den Dialog über der aktuellen Seite (Texte von hier,
+    // weil die Seite Strings nicht kennt)
+    public static string AskMessage() => JsonSerializer.Serialize(new Dictionary<string, string>
+    {
+        ["t"] = "ask", ["text"] = Strings.ShellCloseText, ["tray"] = Strings.ShellCloseTray, ["quit"] = Strings.ShellCloseQuit,
+        ["cancel"] = Strings.ShellCloseCancel, ["remember"] = Strings.ShellCloseRemember,
+    });
 
     // Die Rückfrage beim Schließen – eine Seite im Fenster in den Farben des Themas (dieselben CSS-Variablen wie die
     // Weboberfläche), damit sie genauso aussieht wie der Rest und keine zweite Oberfläche gebraucht wird.
@@ -205,17 +243,19 @@ internal static class Html
         body{margin:0;background:linear-gradient(180deg,var(--bg-top),var(--bg-bottom) 1200px);color:var(--ink);font:15px/1.6 var(--font);display:flex;align-items:center;justify-content:center;min-height:100vh}
         .box{background:linear-gradient(180deg,var(--card-top),var(--card-bottom));border:1px solid var(--card-border);border-radius:var(--radius);padding:24px 22px;max-width:440px;margin:16px;box-shadow:inset 0 1px 0 var(--top-line),0 18px 48px rgb(0 0 0/.5)}
         h1{font-size:16px;margin:0 0 10px;letter-spacing:.06em}.acc{color:var(--acc)}
-        p{color:var(--muted);margin:0 0 18px}
+        p{color:var(--muted);margin:0 0 12px}label{display:block;color:var(--muted);font-size:13px;margin:0 0 16px;cursor:pointer}
         .row{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap}
         button{background:color-mix(in srgb,var(--bg) 88%,var(--acc));color:var(--ink);border:1px solid color-mix(in srgb,var(--bg) 45%,var(--acc));border-radius:999px;padding:8px 18px;font:inherit;cursor:pointer}
         button:hover{background:color-mix(in srgb,var(--bg) 70%,var(--acc))}button.ghost{background:transparent;color:var(--muted);border-color:var(--line)}
         </style></head><body><div class="box">
         <h1>◆ STYKKER <span class="acc">LLM</span></h1>
         <p>{{{Esc(Strings.ShellCloseText)}}}</p>
+        <label><input type="checkbox" id="rem"> {{{Esc(Strings.ShellCloseRemember)}}}</label>
         <div class="row">
-        <button class="ghost" onclick="tell('{{{MsgQuit}}}')">{{{Esc(Strings.ShellCloseQuit)}}}</button>
-        <button onclick="tell('{{{MsgTray}}}')">{{{Esc(Strings.ShellCloseTray)}}}</button>
+        <button class="ghost" onclick="tell('{{{MsgCancel}}}',false)">{{{Esc(Strings.ShellCloseCancel)}}}</button>
+        <button class="ghost" onclick="tell('{{{MsgQuit}}}',true)">{{{Esc(Strings.ShellCloseQuit)}}}</button>
+        <button onclick="tell('{{{MsgTray}}}',true)">{{{Esc(Strings.ShellCloseTray)}}}</button>
         </div></div>
-        <script>function tell(m){try{window.external.sendMessage(m)}catch(e){/* kein Fenster: nichts zu melden */}}</script></body></html>
+        <script>function tell(m,r){if(r&&document.getElementById('rem').checked)m+='!';try{window.external.sendMessage(m)}catch(e){/* kein Fenster: nichts zu melden */}}</script></body></html>
         """;
 }

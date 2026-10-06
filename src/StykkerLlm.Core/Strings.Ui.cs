@@ -376,7 +376,7 @@ public static partial class Strings
     public const string RemoteHint = "Switch on Home/VPN to reach the web interface from your phone or another computer in the network. Windows asks once for the firewall.";
     public const string RemoteCodeLabel = "Access code";
     public const string RemoteScan = "Scan this with the phone camera to sign in";
-    public const string RemoteThisBrowser = "Continue in this browser", RemoteEnterCode = "Enter the six digits shown on the PC (window ☰ → Phone access, or “stykker qr”).";
+    public const string RemoteThisBrowser = "Continue in this browser", RemoteEnterCode = "Enter the six digits shown on the PC (☰ → Phone access, or “stykker qr”).";
     public const string RemoteCodeWrong = "That code does not fit or has expired. Check the window or “stykker qr”.";
     public const string RemotePaired = "Signed in. This device appears in the list below.";
     public const string RemoteNewCode = "New code";

@@ -213,7 +213,7 @@ public class R3_ProxyServeRemoteTests
         Assert.AreEqual("remote-model", seen);
     }
 
-    // PLAN-nodes N4: ein gekoppelter Node kommt ohne Eintrag in den Einstellungen dazu – seine Modelle stehen im Proxy
+    // docs/nodes.md N4: ein gekoppelter Node kommt ohne Eintrag in den Einstellungen dazu – seine Modelle stehen im Proxy
     [TestMethod]
     public async Task NodeRemotes_OfferTheModelsOfPairedNodes_WithoutTouchingTheSettings()
     {

@@ -18,6 +18,7 @@ if (args.Contains("--help") || args.Contains("-h"))
           --port <number>       web port (default 8078; the Stykker-Proxy uses 17500)
           --no-browser          do not open a browser on start
           --no-tray             no tray icon (the window starts the server this way: it has an icon itself)
+          --sim                 simulated servers instead of real ones (demo, screenshots; nothing real is touched)
           --platform basic      no system access (like Linux): no auto-detection, no GPU/system values.
                                 Useful to try that mode on Windows.
           --help                this text
@@ -41,7 +42,9 @@ var platformName = args.SkipWhile(a => a != "--platform").Skip(1).FirstOrDefault
 var platform = EngineHost.CreatePlatform(platformName);
 string url = $"http://127.0.0.1:{port}";
 
-using var serverLock = new System.Threading.Mutex(true, "StykkerLLM-Server-" + SingleInstance.NameFor(paths.Root).GetHashCode().ToString("x8"), out bool first);
+// Name aus dem Datenordner (stabiler SHA-256-Kürzel). Früher stand hier zusätzlich string.GetHashCode() – das ist in
+// .NET je Prozess zufällig, der Schutz gegen einen zweiten Server griff also nie.
+using var serverLock = new System.Threading.Mutex(true, "Local\\" + SingleInstance.NameFor(paths.Root) + "-server", out bool first);
 if (!first)
 {
     ServerUi.OpenBrowser(PairUrl(paths, port, platform));
@@ -56,7 +59,10 @@ builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
 if (!Directory.Exists(Path.Combine(AppContext.BaseDirectory, "wwwroot"))) builder.WebHost.UseStaticWebAssets();
 builder.Logging.SetMinimumLevel(LogLevel.Warning);
 builder.Services.AddSingleton(paths);
-builder.Services.AddSingleton<EngineHost>(sp => new EngineHost(paths, platform));
+// --sim: simulierte Server (eigene Welt, gleicher Datenordner); sonst die echte Plattform
+var sim = args.Contains("--sim") ? new SimHost(SimServerSpec.Defaults(), dataDir: paths.Root) : null;
+sim?.World.Start();
+builder.Services.AddSingleton<EngineHost>(sp => new EngineHost(paths, platform, sim));
 builder.Services.AddSingleton(sp => new EvalQueue(paths));
 builder.Services.AddSingleton(sp => new ActionContext
 {
@@ -208,13 +214,21 @@ app.MapStaticAssets();
 app.MapRazorComponents<App>().AddInteractiveServerRenderMode();
 
 engineHost.Start();
-await app.StartAsync();
+try { await app.StartAsync(); }
+catch (IOException ex)
+{
+    // Port belegt (ein anderer Server mit anderem Datenordner, oder ein fremdes Programm): sagen statt abstürzen
+    Console.Error.WriteLine(Strings.ServerPortBusy(port, ex.Message));
+    sim?.Dispose();
+    Environment.ExitCode = 1;
+    return;
+}
 // Antwort auf die Suche anderer Stykker (Nodes koppeln, docs/nodes.md) – nur solange Home/VPN an ist
 using var discovery = new DiscoveryResponder(() => engineHost.Access.RemoteEnabled, () => NodeDiscovery.Reply(port, engineHost.Access.RemoteEnabled));
 discovery.Start();
 if (!noBrowser) ServerUi.OpenBrowser(PairUrl(paths, port, platform));
 
-// Tray-Symbol (PLAN-server, offen seit 2026-10-02): ohne Fenster bleibt der Server sonst nur über die Prozessliste
+// Tray-Symbol (seit 2026-10-02): ohne Fenster bleibt der Server sonst nur über die Prozessliste
 // erreichbar. Das Fenster startet den Server mit --no-tray, weil es selbst ein Symbol hat. Fehler sind kein Grund
 // für einen Abbruch – dann läuft der Server eben ohne Symbol (unter Linux gibt es keins).
 TrayIcon? tray = null;
@@ -241,6 +255,7 @@ app.Services.GetRequiredService<EvalQueue>().Dispose();
 await app.StopAsync();
 tray?.Dispose();
 engineHost.Dispose();
+sim?.Dispose();
 
 // Der Browser startet mit dem Zugangscode, damit er ohne Umweg angemeldet ist (der Schlüssel bleibt für Fenster und TUI)
 static string PairUrl(AppPaths paths, int port, IPlatform platform)

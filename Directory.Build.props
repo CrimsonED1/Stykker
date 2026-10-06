@@ -4,12 +4,12 @@
        (/p:Version=…), lokal gilt die Vorgabe unten. Nur Metadaten: kein Verhalten. -->
 
   <PropertyGroup>
-    <Version Condition="'$(Version)' == ''">0.1.0</Version>
+    <Version Condition="'$(Version)' == ''">0.3.0</Version>
     <Authors>CrimsonED1</Authors>
     <Company>CrimsonED1</Company>
     <Product>StykkerLLM</Product>
     <Copyright>Copyright (c) CrimsonED1</Copyright>
-    <Description>Windows monitor for local LLM servers (llama.cpp, Ollama, LM Studio): discovery, tokens/s, VRAM, request log, proxy and benchmarks.</Description>
+    <Description>Monitor and control center for local LLM servers (llama.cpp, Ollama, LM Studio, vLLM): web interface, app window, TUI, proxy, benchmarks and model tests.</Description>
     <PackageLicenseExpression>BUSL-1.1</PackageLicenseExpression>
     <RepositoryUrl>https://github.com/CrimsonED1/Stykker-LLM</RepositoryUrl>
     <RepositoryType>git</RepositoryType>

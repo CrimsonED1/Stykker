@@ -32,7 +32,7 @@
 | Program | Notes |
 |---|---|
 | `StykkerLLM-Server.exe` | `net10.0`, `OutputType Exe` (WinExe would drop `blazor.web.js`). Tray icon on Windows (`--no-tray` to skip). |
-| `StykkerUI.exe` | Photino window. Starts the server if needed, gets its own device via `/pair/local` (needs the data-folder key), sets the cookie through `/pair/adopt`. No GPU by default (`--gpu` to enable). Close → keep in tray or quit. |
+| `StykkerUI.exe` | Photino window. Starts the server if needed, gets its own device via `/pair/local` (needs the data-folder key), sets the cookie through `/pair/adopt`. No GPU by default (`--gpu` to enable). One window per data folder (a second start brings it to the front). Close → a dialog over the current page (`ui.js`, message from the shell): keep in tray, quit or cancel, optionally remembered in `web-shell-close.txt`. Log: `logs/web-shell.log`. |
 | `stykker.exe` | One-shot commands and the TUI. Uses the server when it runs; some commands can measure locally (`--local`). |
 
 ## Data and files

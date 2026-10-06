@@ -150,9 +150,9 @@
 }
 @foreach (var s in e.Registry.Servers)
 {
-    <div class="card">
+    <div class="card server @(s.Current > 0 ? "busy" : "")">
         <div class="row">
-            <span style="color:@(s.Online ? "var(--good)" : "var(--warn)")">●</span>
+            <span class="dot @(s.Online ? "on" : "off")">●</span>
             <b style="font-size:16px">@s.Name</b><span class="muted small">@(s.Model != "–" && s.Model != s.Name ? s.Model + " · " : "")@s.Url.Replace("http://", "")</span>
             @if (px.IsServed(s.Key)) { <span class="pill ok">@Strings.BtnProxyServed</span> }
             else if (px.Running) { <button class="pill" title="@Strings.ProxyServeLabel" disabled="@ro" @onclick="() => Serve(s)">@Strings.BtnProxyCard</button> }
@@ -173,7 +173,7 @@
                     </span>
                 }
             </div>
-            <svg class="spark" viewBox="0 0 300 70" preserveAspectRatio="none"><polyline fill="none" stroke="var(--acc)" stroke-width="1.6" points="@Spark(s)" /></svg>
+            <svg class="spark" viewBox="0 0 300 70" preserveAspectRatio="none"><polygon class="area" points="@SparkArea(s)" /><polyline fill="none" stroke="var(--acc)" stroke-width="1.6" points="@Spark(s)" /></svg>
             <div class="muted small">@Strings.Stats(s.Peak, s.AverageActive(), s.GeneratedTotal, s.Slots.Count(v => v.Busy), s.Slots.Count)</div>
             <div style="margin:6px 0">
                 <span class="chip">@Strings.ChipGpuVram<b>@Gb(s.VramGb)</b></span><span class="chip">@Strings.ChipRam<b>@Gb(s.RamGb)</b></span>
@@ -358,6 +358,15 @@
         if (ServerWatcher.SpillGb(new[] { m }, null) is double spill) parts.Add(Strings.SharedMemoryNote(spill));
         if (Strings.Until(m.ExpiresAt) is { Length: > 0 } un) parts.Add(un);
         return string.Join("  ·  ", parts);
+    }
+
+    // Die Fläche unter der Linie: dieselben Punkte, unten geschlossen
+    private static string SparkArea(ServerWatcher s)
+    {
+        int n = s.HistoryCount;
+        if (n < 2) return "";
+        double x0 = 300.0 * (ServerWatcher.HistoryLength - n) / (ServerWatcher.HistoryLength - 1);
+        return $"{x0.ToString("0.0", CultureInfo.InvariantCulture)},70 {Spark(s)}300,70";
     }
 
     private static string Spark(ServerWatcher s)

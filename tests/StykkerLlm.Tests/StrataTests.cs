@@ -64,7 +64,7 @@ public class StrataTests
     [TestMethod]
     public void ProxyOfAnotherMonitorInstance_IsNotProbed()
     {
-        foreach (var image in new[] { @"C:\x\StykkerLLM.exe", @"C:\x\stykker.exe", @"C:\x\StykkerLLM-Maui.exe" })
+        foreach (var image in new[] { @"C:\x\StykkerLLM.exe", @"C:\x\stykker.exe", @"C:\x\StykkerLLM-Server.exe" })
         {
             var e = new ServerDiscovery.ProcEntry { Details = new ProcessDetails(99, 1, 4, image, null, null, new Dictionary<string, string>()), ExeName = ProcPath.Stem(image) };
             Assert.IsTrue(ServerDiscovery.IsExcludedFromProbe(e), image);
