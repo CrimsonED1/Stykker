@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- StykkerUI: das Fenster um die Weboberfläche des Servers (Photino: unter Windows WebView2, unter
+       macOS WKWebView, unter Linux WebKitGTK). Kein eigener Oberflächen-Code – Fenster, Handy und andere PCs sehen
+       dieselben Seiten. Zeichnet standardmäßig ohne GPU (0 MB VRAM), mit dem Schalter gpu über die Grafikkarte. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>WinExe</OutputType>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>StykkerUI</AssemblyName>
+    <RootNamespace>StykkerLlm.UI</RootNamespace>
+    <ApplicationIcon>../../assets/app.ico</ApplicationIcon>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Photino.NET" Version="4.0.16" />
+    <ProjectReference Include="..\StykkerLlm.Core\StykkerLlm.Core.csproj" />
+    <ProjectReference Include="..\StykkerLlm.Platform.Windows\StykkerLlm.Platform.Windows.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="../../assets/app.ico" Link="app.ico" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

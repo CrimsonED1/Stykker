@@ -1,0 +1,14 @@
+# Default behavior: normalize line endings to LF on commit
+* text=auto
+
+# Explicitly set for specific extensions
+*.cs         text eol=lf
+*.md         text eol=lf
+*.yml        text eol=lf
+*.yaml       text eol=lf
+*.json       text eol=lf
+*.ps1        text eol=lf
+
+# Ignore binary diffs
+*.png binary
+*.ico binary

@@ -1,0 +1,4 @@
+# Der App-Ordner wird beim Packen von build/pack-npm.ps1 hierher kopiert, nie committed
+app/
+*.tgz
+node_modules/

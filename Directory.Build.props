@@ -1,0 +1,22 @@
+<Project>
+
+  <!-- Gemeinsame Versions- und Paket-Metadaten für alle Projekte. Die Version kommt im Release aus dem Tag
+       (/p:Version=…), lokal gilt die Vorgabe unten. Nur Metadaten: kein Verhalten. -->
+
+  <PropertyGroup>
+    <Version Condition="'$(Version)' == ''">0.1.0</Version>
+    <Authors>CrimsonED1</Authors>
+    <Company>CrimsonED1</Company>
+    <Product>StykkerLLM</Product>
+    <Copyright>Copyright (c) CrimsonED1</Copyright>
+    <Description>Windows monitor for local LLM servers (llama.cpp, Ollama, LM Studio): discovery, tokens/s, VRAM, request log, proxy and benchmarks.</Description>
+    <PackageLicenseExpression>BUSL-1.1</PackageLicenseExpression>
+    <RepositoryUrl>https://github.com/CrimsonED1/Stykker-LLM</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageProjectUrl>https://github.com/CrimsonED1/Stykker-LLM</PackageProjectUrl>
+    <Deterministic>true</Deterministic>
+    <!-- keine Commit-Kennung in der Produktversion (0.1.0 statt 0.1.0+hash) -->
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+  </PropertyGroup>
+
+</Project>

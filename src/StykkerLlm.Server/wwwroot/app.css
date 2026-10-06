@@ -1,0 +1,104 @@
+/* Farben und Ecken kommen aus dem Theme des Fensters: der Server schreibt sie bei jedem Takt als <style> in den
+   Kopf (ThemeInfo.CssVariables in MainLayout). Dieser Block ist nur der Rückfall für den ersten Takt und für ein
+   Stylesheet ohne Server – er ist die Vorgabe des Fensters (Deep Sea) und wird vom Theme-Block danach überschrieben. */
+:root{--bg:#05070d;--bg-top:#070b15;--bg-bottom:#05070d;--card:#0c1320;--card-top:#0c1320ee;--card-bottom:#0a0f19ee;--card-border:#223350;--top-line:#aad2ff1a;--track:#96beff18;--line:#1b2b40;--radius:12px;--ink:#dce9fa;--muted:#6f86a6;--acc:#6cb8ff;--second:#7c9cd6;--good:#6ce8c0;--warn:#ffc16c;--bad:#ff6f8a;--bg-rgb:5 7 13;--ink-rgb:220 233 250;--muted-rgb:111 134 166;--acc-rgb:108 184 255;--second-rgb:124 156 214;--good-rgb:108 232 192;--warn-rgb:255 193 108;--bad-rgb:255 111 138;--font:Segoe UI,system-ui,sans-serif;--font-num:Cascadia Mono,Consolas,monospace;--card2:color-mix(in srgb,var(--bg) 92%,var(--ink));color-scheme:dark}
+*{box-sizing:border-box}
+/* alle Themen sind dunkel: Bildlaufleisten und Formularfelder des Browsers (auch in der WebView der Fenster-Hülle) ebenso */
+:root{color-scheme:dark}
+body{margin:0;background:var(--bg-bottom);color:var(--ink);font:14px/1.5 var(--font,Segoe UI,system-ui,sans-serif)}
+/* Seitenhintergrund wie im Fenster: Verlauf, Lichtschein und Muster des Themas (data-bg an .page) */
+.page{position:relative;min-height:100vh}
+.page::before{content:"";position:fixed;inset:0;z-index:-1;background:var(--bg-bottom)}
+.page[data-bg=space]::before{background-image:radial-gradient(circle,rgb(220 230 255/.55) 1px,transparent 1.4px),radial-gradient(circle,rgb(190 210 255/.4) 1px,transparent 1.3px),radial-gradient(62% 44% at 85% 6%,rgb(var(--second-rgb)/.17),transparent 70%),radial-gradient(56% 40% at 8% 44%,rgb(var(--acc-rgb)/.12),transparent 72%),radial-gradient(60% 46% at 72% 76%,rgb(255 95 210/.1),transparent 70%),linear-gradient(180deg,var(--bg-top),var(--bg-bottom) 1200px);background-size:311px 311px,193px 193px,auto,auto,auto,auto;background-position:23px 47px,101px 13px,0 0,0 0,0 0,0 0;background-attachment:fixed}
+.page[data-bg=deep]::before{background-image:radial-gradient(circle,rgb(200 220 255/.4) 1px,transparent 1.3px),radial-gradient(58% 40% at 80% 10%,rgb(var(--acc-rgb)/.1),transparent 72%),radial-gradient(50% 36% at 12% 62%,rgb(var(--acc-rgb)/.06),transparent 74%),linear-gradient(180deg,var(--bg-top),var(--bg-bottom) 1100px);background-size:521px 521px,auto,auto,auto;background-position:67px 29px,0 0,0 0,0 0;background-attachment:fixed}
+.page[data-bg=cyber]::before{background-image:linear-gradient(rgb(224 69 90/.18),rgb(224 69 90/.18)),radial-gradient(circle,rgb(43 184 214/.42) 1px,transparent 1.4px),radial-gradient(circle,rgb(224 69 90/.3) 1px,transparent 1.4px),linear-gradient(180deg,var(--bg-top),var(--bg-bottom) 1400px);background-size:auto,5px 5px,5px 5px,auto;background-position:0 58%,0 0,2px 1px,0 0;background-attachment:fixed}
+.page[data-bg=phosphor]::before{background-image:repeating-linear-gradient(0deg,rgb(92 255 154/.035) 0 1px,transparent 1px 3px),radial-gradient(70% 26% at 50% 0%,rgb(92 255 154/.07),transparent 72%)}
+.page[data-bg=phosphor] .sec,.page[data-bg=phosphor] th,.page[data-bg=phosphor] label{text-transform:lowercase}
+a{color:var(--acc);text-decoration:none}
+.top{display:flex;flex-wrap:wrap;align-items:center;gap:12px 24px;padding:12px 20px;border-bottom:1px solid var(--line);position:sticky;top:0;background:rgb(var(--bg-rgb)/.86);backdrop-filter:blur(10px);z-index:5}
+.brand{font-weight:600;letter-spacing:.06em}.logo,.acc{color:var(--acc)}.dim{color:var(--muted)}
+nav{display:flex;gap:6px}nav a{padding:5px 14px;border-radius:999px;color:var(--muted);border:1px solid transparent}
+nav a.active{color:var(--ink);border-color:rgb(var(--acc-rgb)/.55);background:rgb(var(--acc-rgb)/.12)}
+/* Zurück/Vor: nur in der Fenster-Hülle (StykkerLLM-Web) sichtbar – ein Browser hat eigene Knöpfe */
+.navback{display:flex;gap:4px}button.icon{padding:3px 10px;font-size:15px;line-height:1.3}
+/* „Sie sind hier“: im Kompakt-Modus neben der Marke, wenn die Seite im ☰ liegt (dort ist kein Reiter aktiv) */
+.here{display:none}
+/* das ☰ leuchtet, wenn die aktuelle Seite darin liegt */
+details.menu.more.on>summary{border-color:rgb(var(--acc-rgb)/.55);color:var(--ink);background:rgb(var(--acc-rgb)/.12)}
+/* Gruppen im ☰ (EVAL / TOOLS / VIEW) */
+details.menu>div>.grp{color:var(--muted);font-size:11px;letter-spacing:.08em;padding:7px 8px 2px;text-transform:uppercase}
+details.menu>div>.seg{margin:6px 2px 2px}
+.status{margin-left:auto;display:flex;gap:14px;color:var(--muted);font-size:13px;align-items:center}
+main{padding:18px 20px;max-width:1280px;margin:0 auto}
+/* Karte wie im Fenster: Verlauf, Ecken des Themas, heller Strich an der Oberkante, weicher Schatten */
+.card{background:linear-gradient(180deg,var(--card-top),var(--card-bottom));border:1px solid var(--card-border);border-radius:var(--radius);padding:14px 16px;margin-bottom:16px;box-shadow:inset 0 1px 0 var(--top-line),0 10px 26px rgb(0 0 0/.32)}
+.card h2{margin:0 0 10px;font-size:15px;font-weight:600}
+.row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.grid2{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:16px}
+@media(max-width:860px){.grid2{grid-template-columns:1fr}.status{margin-left:0}}
+/* Kompakt-Ansicht (schmales Fenster oder Schalter im ☰; data-view setzt ui.js): der Kopf bricht um statt zu
+   scrollen, die Reiter laufen in einer umbrechenden Zeile weiter, breite Tabellen scrollen in ihrem Block
+   statt die ganze Seite zu schieben, und Klappmenüs in Zeilen klappen auf, statt zu schweben. */
+[data-view=small] .top{gap:6px 10px;padding:8px 10px}
+[data-view=small] .here{display:inline;font-size:12px}
+[data-view=small] nav{order:4;flex:1 1 100%;flex-wrap:wrap;gap:4px;margin:0}
+[data-view=small] nav a{padding:4px 10px;font-size:13px}
+[data-view=small] .status{gap:8px;font-size:12px}
+[data-view=small] .status button{padding:3px 10px}
+[data-view=small] main{padding:12px 10px}
+[data-view=small] .card{padding:12px}
+[data-view=small] .kpis{grid-template-columns:repeat(auto-fit,minmax(110px,1fr))}
+[data-view=small] table{display:block;overflow-x:auto;max-width:100%}
+[data-view=small] th,[data-view=small] td{padding:5px 6px}
+[data-view=small] details.menu>div{position:static;margin-top:4px}
+[data-view=small] .log,[data-view=small] .answer,[data-view=small] .turn .msg{overflow-wrap:anywhere}
+/* Pillen wie im Fenster (UiKit.PillButton): die Akzentfarbe kommt zu 12 % über den Grund, der Rand zu 55 % */
+button,.btn{background:color-mix(in srgb,var(--bg) 88%,var(--acc));color:var(--ink);border:1px solid color-mix(in srgb,var(--bg) 45%,var(--acc));border-radius:999px;padding:5px 14px;cursor:pointer;font:inherit}
+button:hover,.btn:hover{background:color-mix(in srgb,var(--bg) 70%,var(--acc))}button:active{background:color-mix(in srgb,var(--bg) 55%,var(--acc))}
+button.bad{border-color:rgb(var(--bad-rgb)/.6);background:rgb(var(--bad-rgb)/.1)}button.good{border-color:rgb(var(--good-rgb)/.6);background:rgb(var(--good-rgb)/.1)}
+button:disabled{opacity:.45;cursor:default}
+/* Knopf, der wie ein Link aussieht (z. B. „+n more“): kein Pillen-Rahmen, nur die Akzentfarbe */
+button.link{background:none;border:0;padding:0;color:var(--acc);cursor:pointer;font:inherit}
+button.link:hover{background:none;text-decoration:underline}
+details.menu{display:inline-block;position:relative;vertical-align:middle}
+details.menu>summary{list-style:none;cursor:pointer;padding:5px 10px;border-radius:999px;border:1px solid color-mix(in srgb,var(--bg) 45%,var(--acc));color:var(--ink)}
+details.menu>summary::-webkit-details-marker{display:none}
+details.menu>div{position:absolute;right:0;top:30px;z-index:20;display:flex;flex-direction:column;gap:4px;background:var(--card);border:1px solid var(--card-border);border-radius:var(--radius);padding:6px;min-width:110px;box-shadow:0 8px 24px rgba(0,0,0,.45)}
+details.menu>div>a,details.menu>div>button{text-align:center}
+input,select,textarea{background:var(--card2);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:5px 8px;font:inherit}
+input:focus,select:focus,textarea:focus{outline:1px solid rgb(var(--acc-rgb)/.6)}
+textarea{width:100%;min-height:90px;font-family:var(--font-num);font-size:13px}
+table{width:100%;border-collapse:collapse}th{color:var(--muted);font-weight:400;text-align:left;font-size:12px;background:rgb(var(--ink-rgb)/.05)}
+th,td{padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:middle}tr:nth-child(even) td{background:rgb(var(--ink-rgb)/.025)}
+.num{text-align:right;font-variant-numeric:tabular-nums;font-family:var(--font-num)}
+.pill{display:inline-block;font-size:12px;padding:1px 10px;border-radius:999px;border:1px solid var(--line)}
+.ok{color:var(--good);border-color:rgb(var(--good-rgb)/.5)}.run{color:var(--acc);border-color:rgb(var(--acc-rgb)/.5)}.wait{color:var(--muted)}.fail{color:var(--bad);border-color:rgb(var(--bad-rgb)/.5)}.half{color:var(--warn);border-color:rgb(var(--warn-rgb)/.5)}
+.bar{height:8px;background:var(--track);border-radius:4px;overflow:hidden;min-width:80px}.bar>div{height:8px;background:linear-gradient(90deg,rgb(var(--acc-rgb)/.66),var(--acc))}
+.muted{color:var(--muted)}.small{font-size:12px}
+.kpi .good{color:var(--good)}.kpi .warn{color:var(--warn)}p.warn{color:var(--warn)}
+td.actions{text-align:right;white-space:nowrap}td.actions button+button{margin-left:6px}
+.qr.off{opacity:.3;filter:grayscale(1)}
+.nodes{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px}.node.off{opacity:.7}.node .dot{font-size:10px}
+.pairbox{margin-top:12px;padding:12px 14px;border:1px dashed rgb(var(--acc-rgb)/.5);border-radius:var(--radius)}.pairbox .code{font:30px var(--font-num);letter-spacing:.18em;color:var(--acc);margin:4px 0}
+.chat{max-height:56vh;overflow:auto;margin-bottom:10px}.turn{margin:0 0 10px}.turn .who{font-size:12px;color:var(--muted)}
+.turn .msg{white-space:pre-wrap;line-height:1.5}.turn.user .msg{color:var(--acc)}.msg.think{color:var(--muted);font-size:13px;border-left:2px solid var(--line);padding-left:8px;margin:4px 0}
+.msg.tool-call{font-family:var(--font-num);font-size:13px;color:var(--warn)}.msg.tool-out{font-family:var(--font-num);font-size:12px;color:var(--muted);max-height:180px;overflow:auto;border-left:2px solid var(--line);padding-left:8px}
+.approve{border:1px solid rgb(var(--warn-rgb)/.6);border-radius:var(--radius);padding:10px 12px;margin:8px 0}.approve pre{white-space:pre-wrap;max-height:200px;overflow:auto;margin:6px 0}
+.opts input:not([type=checkbox]):not([type=number]),.opts select,.opts textarea{width:100%;box-sizing:border-box}
+textarea.prompt-in{width:100%;box-sizing:border-box;font:inherit}
+input.digits::placeholder{letter-spacing:normal;font:13px var(--font)}input.digits{font:18px var(--font-num);letter-spacing:.18em;width:9.5em}p.good{color:var(--good)}.qr-info{flex:1 1 200px;min-width:0;overflow-wrap:anywhere}
+/* Umschalter aus zwei Hälften: die gewählte leuchtet, die andere bleibt klickbar */
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:999px;padding:2px;gap:2px}.seg button{border-color:transparent;background:transparent;color:var(--muted)}
+.seg button.on{color:var(--ink);border-color:rgb(var(--acc-rgb)/.55);background:rgb(var(--acc-rgb)/.16)}
+.log{font-family:var(--font-num);font-size:12px;line-height:1.7;max-height:260px;overflow:auto}
+.cell{cursor:pointer;text-align:center}.cell:hover{outline:1px solid var(--acc)}
+.answer{white-space:pre-wrap;font-family:var(--font-num);font-size:12px;background:var(--card2);border-radius:8px;padding:10px;max-height:420px;overflow:auto}
+.list div{padding:4px 8px;border-radius:8px;cursor:pointer}.list div:hover{background:var(--card2)}.list .sel{background:rgb(var(--acc-rgb)/.15);color:var(--ink)}
+label{color:var(--muted);font-size:12px;display:block;margin:8px 0 3px}
+.modal-back{position:fixed;inset:0;background:rgb(var(--bg-rgb)/.72);backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;z-index:50}
+.modal{background:linear-gradient(180deg,var(--card-top),var(--card-bottom));border:1px solid var(--card-border);border-radius:var(--radius);padding:18px;max-width:560px;width:92%;box-shadow:inset 0 1px 0 var(--top-line),0 18px 48px rgb(0 0 0/.5)}
+.big{font-size:34px;font-weight:600;line-height:1}.spark{width:100%;height:70px;background:rgb(var(--ink-rgb)/.03);border-radius:8px}
+.stack{display:flex;height:14px;border-radius:5px;overflow:hidden;background:var(--track)}.stack>div{height:14px;border-right:1px solid var(--bg)}
+.chip{display:inline-block;border:1px solid var(--line);border-radius:999px;padding:1px 10px;font-size:12px;margin:2px 4px 2px 0}.chip b{font-weight:600;margin-left:4px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}.kpi .muted{font-size:12px}
+.sec{color:var(--muted);font-size:12px;font-weight:400;letter-spacing:.08em;margin:18px 2px 8px;text-transform:uppercase}

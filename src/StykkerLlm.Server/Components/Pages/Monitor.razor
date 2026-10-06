@@ -1,0 +1,500 @@
+@page "/"
+@implements IDisposable
+@inject EngineHost Host
+@inject LaunchCoordinator Launcher
+@inject WebActions Web
+@inject WebPrompt Prompt
+@inject NavigationManager Nav
+
+@* Monitor wie im Fenster (docs/ui.md, Bereiche 2–8): Proxy, Saved, Running, GPU, System, Recent requests, History *@
+
+@{ var e = Host.Engine; var px = e.Proxies; bool ro = Host.ReadOnly; }
+
+<div class="row" style="margin-bottom:12px">
+    <button class="@(px.Running ? "good" : "")" disabled="@ro" title="@RoTip" @onclick="ToggleProxy">@(px.Running ? Strings.BtnProxySwitchOn(px.Port) : Strings.BtnProxySwitchOff)</button>
+    <span class="small" style="color:@(px.Running ? "var(--good)" : "var(--muted)")">@Strings.ProxyBar(px.Running, px.Port, px.TargetName(), px.BindLan)</span>
+    @if (_flash.Length > 0) { <span class="small" style="margin-left:auto;color:var(--good)">@_flash</span> }
+</div>
+
+<details class="card" style="margin-bottom:12px">
+    <summary class="small">@Strings.BtnProxySettings</summary>
+    <div class="row" style="margin:8px 0">
+        <span class="small muted">@Strings.ProxyServeLabel</span>
+        <select disabled="@ro" value="@ServeValue" @onchange="OnServeChanged">
+            <option value="">@Strings.ProxyTargetAuto</option>
+            @foreach (var c in px.Choices()) { <option value="@c.Value">@c.Display</option> }
+        </select>
+    </div>
+    <div class="small muted">@Strings.ProxySwitchHint</div>
+    <label class="row" style="margin:8px 0"><input type="checkbox" checked="@px.BindLan" disabled="@ro" @onchange="OnLanChanged" /> <span class="small">@Strings.ProxyLanLabel</span></label>
+    <div class="small muted">@Strings.ProxyLanHint</div>
+    <div class="row" style="margin:8px 0">
+        <span class="small muted">@Strings.ProxyRemoteLabel</span>
+        <input placeholder="@Strings.ProxyRemoteNameLabel" @bind="_rName" @bind:event="oninput" disabled="@ro" />
+        <input placeholder="@Strings.ProxyRemoteUrlLabel" @bind="_rUrl" @bind:event="oninput" disabled="@ro" />
+        <button class="good" disabled="@ro" @onclick="AddRemote">@Strings.BtnProxyAddRemote</button>
+    </div>
+    @if (px.Remotes.Count == 0) { <span class="muted small">@Strings.ProxyRemoteEmpty</span> }
+    else
+    {
+        <table>
+            @foreach (var r in px.Remotes)
+            {
+                <tr><td>@r.Name</td><td class="muted small">@r.Url</td><td class="num"><button class="bad" disabled="@ro" @onclick="() => RemoveRemote(r.Url)">@Strings.BtnProxyRemoveRemote</button></td></tr>
+            }
+        </table>
+    }
+    <div class="small muted">@Strings.ProxyRemoteHint</div>
+
+    @* Cloud-Anbieter: erst mit Name, Basis-URL und Schlüssel – erst dann fragt der Proxy den Anbieter ab (Nr. 46) *@
+    <div class="row" style="margin:8px 0">
+        <span class="small muted">@Strings.ProxyProviderLabel</span>
+        <input placeholder="@Strings.ProxyProviderNameLabel" @bind="_pName" @bind:event="oninput" disabled="@ro" />
+        <input placeholder="@Strings.ProxyProviderUrlLabel" @bind="_pUrl" @bind:event="oninput" disabled="@ro" />
+        <input type="password" placeholder="@Strings.ProxyProviderKeyLabel" @bind="_pKey" @bind:event="oninput" disabled="@ro" />
+        <button class="good" disabled="@ro" @onclick="AddProvider">@Strings.BtnProxyAddProvider</button>
+    </div>
+    @if (Providers.Count == 0) { <span class="muted small">@Strings.ProxyProviderEmpty</span> }
+    else
+    {
+        <table>
+            @foreach (var p in Providers)
+            {
+                <tr>
+                    <td>@p.Name<span class="muted small">@p.Url</span></td>
+                    <td class="small">@(p.Ready ? Strings.ProxyProviderModels(p.Models.Length) : Strings.ProxyProviderModelsNone)
+                        @if (p.Models.Length > 0) { <div class="muted small">@string.Join(", ", p.Models)</div> }
+                        @if (p.Error.Length > 0) { <div class="small" style="color:var(--bad)">@p.Error</div> }
+                    </td>
+                    <td class="small">@(p.HasKey ? Strings.ProxyProviderKeyStored : Strings.ProxyProviderKeyMissingShort)</td>
+                    <td class="num" style="white-space:nowrap">
+                        <input type="password" placeholder="@Strings.ProxyProviderKeyLabel" value="@KeyFor(p.Url)" @oninput="e => OnKeyInput(p.Url, e)" disabled="@ro" />
+                        <button disabled="@ro" @onclick="() => SaveKey(p.Url)">@Strings.BtnProxyProviderKey</button>
+                        <button class="bad" disabled="@ro" @onclick="() => RemoveProvider(p.Url)">@Strings.BtnProxyRemoveRemote</button>
+                    </td>
+                </tr>
+            }
+        </table>
+    }
+    <div class="small muted">@Strings.ProxyProviderHint</div>
+</details>
+
+@if (Host.Engine.CurrentNotice is { } nn)
+{
+    <div class="card" style="margin-bottom:12px">
+        <div class="row">
+            <span class="pill @(nn.Alarm ? "" : "ok")">@(nn.Alarm ? Strings.NoticeAlarm : Strings.NoticeHint)</span>
+            <span style="margin-left:auto;white-space:nowrap">
+                @if (nn.LogFile is { Length: > 0 })
+                {
+                    <a class="btn" href="@($"log?path={Uri.EscapeDataString(nn.LogFile)}")">@Strings.BtnOpenLog</a>
+                }
+                <button disabled="@ro" @onclick='() => Act("notice.dismiss")'>@Strings.BtnDismiss</button>
+            </span>
+        </div>
+        <div style="margin-top:6px">@nn.Text</div>
+        @if (nn.LogFile is { Length: > 0 })
+        {
+            <div class="muted small">@Strings.ColLogFile: @nn.LogFile</div>
+        }
+    </div>
+}
+
+<h3 class="sec">@Strings.SectionSaved</h3>
+<div class="card">
+    @if (e.Library.Profiles.Count == 0) { <span class="muted small">@Strings.SavedEmpty</span> }
+    <table>
+        @foreach (var p in e.Library.Profiles)
+        {
+            var a = LlamaServerArgs.Parse(p.Args);
+            var running = Launcher.RunningFor(p); var starting = Launcher.StartingFor(p);
+            var hist = e.Library.FindHistory(p.Key);
+            <tr>
+                <td style="width:22px"><span style="color:@(running != null ? "var(--good)" : starting != null ? "var(--warn)" : "var(--muted)")">●</span></td>
+                <td><b>@p.Name</b> <span class="muted small">@(a.Model != null ? ServerInfo.ModelName(a.Model) : "?") · @(a.Ctx is int c ? $"ctx {c / 1024}k" : "") · :@p.Port</span>
+                    <div class="muted small">@(hist is { BestTps: > 0 } ? $"best {hist.BestTps:0.0} t/s" : "") @(hist is { MaxVramGb: > 0 } ? $"· {hist.MaxVramGb:0.0} GB VRAM" : "")</div></td>
+                <td style="text-align:right;white-space:nowrap">
+                    @if (running != null) { <span class="pill ok">@Strings.RunningTag</span> }
+                    else if (starting != null) { <span class="pill run">@Strings.StartingShort</span> }
+                    else { <button class="good" disabled="@ro" title="@StartTip(p)" @onclick="() => Start(p)">@Strings.BtnStart</button> }
+                    <details class="menu">
+                        <summary title="@Strings.BtnMore">☰</summary>
+                        <div>
+                            <a href="@($"bench?target={p.Id:N}")">@Strings.BtnBench</a>
+                            <button disabled="@ro" @onclick="() => Edit(p)">@Strings.BtnEdit</button>
+                            <button class="bad" disabled="@ro" @onclick="() => Remove(p)">@Strings.BtnRemove</button>
+                        </div>
+                    </details>
+                </td>
+            </tr>
+        }
+    </table>
+    @if (_edit != null)
+    {
+        <div style="margin-top:12px;border-top:1px solid var(--line);padding-top:10px">
+            <div class="row"><b>@Strings.BtnEdit</b> <span class="muted small">@_edit.Name</span>
+                <span style="margin-left:auto"><button class="good" disabled="@ro" @onclick="SaveEdit">@Strings.BtnSaved</button> <button @onclick="() => _edit = null">@Strings.Close</button></span></div>
+            <div class="row" style="margin-top:8px">
+                <input placeholder="@Strings.FieldName" @bind="_editName" @bind:event="oninput" style="flex:1" />
+                <input placeholder="@Strings.FieldNote" @bind="_editNote" @bind:event="oninput" style="flex:1" />
+            </div>
+            <textarea @bind="_editArgs" @bind:event="oninput" rows="3" style="width:100%;margin-top:8px;font-family:Consolas,monospace"></textarea>
+        </div>
+    }
+</div>
+
+<h3 class="sec">@Strings.SectionRunning</h3>
+@if (e.Registry.Servers.Count == 0)
+{
+    <div class="card"><b>@Strings.NoServersTitle</b><div class="muted small">@Strings.NoServersHint</div></div>
+}
+@foreach (var s in e.Registry.Servers)
+{
+    <div class="card">
+        <div class="row">
+            <span style="color:@(s.Online ? "var(--good)" : "var(--warn)")">●</span>
+            <b style="font-size:16px">@s.Name</b><span class="muted small">@(s.Model != "–" && s.Model != s.Name ? s.Model + " · " : "")@s.Url.Replace("http://", "")</span>
+            @if (px.IsServed(s.Key)) { <span class="pill ok">@Strings.BtnProxyServed</span> }
+            else if (px.Running) { <button class="pill" title="@Strings.ProxyServeLabel" disabled="@ro" @onclick="() => Serve(s)">@Strings.BtnProxyCard</button> }
+            @if (s.Online && Web.CanWrite) { <a class="btn" href="@($"prompt?server={Uri.EscapeDataString(s.Key)}")" title="@Strings.PromptTitle">@Strings.BtnPrompt</a> }
+            <span style="margin-left:auto" class="big">@s.Current.ToString("0.0", CultureInfo.InvariantCulture)</span><span class="muted small">@Strings.ColTps</span>
+        </div>
+        @if (s.Kind == BackendKind.LlamaCpp && s.Online)
+        {
+            <div class="row" style="margin:6px 0">
+                <span class="muted small">@Strings.Clients @(s.Clients.Length == 0 ? Strings.None : string.Join(", ", s.Clients))</span>
+                @if (!s.Info.Manual)
+                {
+                    <span style="margin-left:auto">
+                        <button disabled="@ro" @onclick='() => Act("record.start", s.Key)'>@Strings.BtnRecord</button>
+                        <button disabled="@ro" @onclick='() => Act("save", s.Key, s.Name)'>@Strings.BtnSave</button>
+                        <a class="btn" href="@($"serverdetail/{Uri.EscapeDataString(s.Key)}")">@Strings.BtnDetails</a>
+                        <button class="bad" disabled="@ro" title="@RoTip" @onclick='() => Act("stop", s.Key)'>@Strings.Stop</button>
+                    </span>
+                }
+            </div>
+            <svg class="spark" viewBox="0 0 300 70" preserveAspectRatio="none"><polyline fill="none" stroke="var(--acc)" stroke-width="1.6" points="@Spark(s)" /></svg>
+            <div class="muted small">@Strings.Stats(s.Peak, s.AverageActive(), s.GeneratedTotal, s.Slots.Count(v => v.Busy), s.Slots.Count)</div>
+            <div style="margin:6px 0">
+                <span class="chip">@Strings.ChipGpuVram<b>@Gb(s.VramGb)</b></span><span class="chip">@Strings.ChipRam<b>@Gb(s.RamGb)</b></span>
+                <span class="chip">@Strings.ChipCpu<b>@(s.CpuPercent is double cp ? cp.ToString("0.0", CultureInfo.InvariantCulture) + " %" : "–")</b></span><span class="chip">@Strings.ChipModelFile<b>@Gb(s.ModelFileGb)</b></span>
+                @if (s.QueueCount is int q && q > 0) { <span class="chip" style="color:var(--warn)">@Strings.ChipQueue<b>@q</b></span> }
+                @if (s.SpecActive)
+                {
+                    <span class="chip" title="@Strings.DraftHint">@Strings.ChipDraft<b>@Strings.DraftRate(s.Spec.Accepted, s.Spec.Drafted)</b></span>
+                }
+                @if (ServerWatcher.SpillGb(s.Models, s.SharedGb) is double spill) { <span class="chip" style="color:var(--warn)">@Strings.ChipSharedRam<b>@Gb(spill)</b></span> }
+            </div>
+            <table>
+                <tr><th>@Strings.ColSlot</th><th>@Strings.ColStatus</th><th class="num">@Strings.ColTps</th><th class="num">@Strings.ColGenerated</th><th style="width:30%">@Strings.ColContext</th><th class="num"></th></tr>
+                @foreach (var v in s.Slots)
+                {
+                    double f = v.Busy && v.CtxMax > 0 ? (double)v.CtxUsed / v.CtxMax : 0;
+                    bool ctxFull = CtxPressure.IsNearlyFull(v);
+                    <tr>
+                        <td>@v.Id</td>
+                        <td><span class="pill @(!v.Busy ? "wait" : v.ReadingPrompt ? "half" : "ok")">@(!v.Busy ? Strings.SlotIdle : v.ReadingPrompt ? Strings.SlotReading : Strings.SlotWriting)</span></td>
+                        <td class="num">@(v.Busy && v.Tps > 0 ? v.Tps.ToString("0.0", CultureInfo.InvariantCulture) : "–")</td>
+                        <td class="num">@(v.Busy ? v.Generated.ToString("N0", CultureInfo.InvariantCulture) : "–")</td>
+                        <td><div class="bar"><div style="width:@((int)(f * 100))%;@(ctxFull ? "background:var(--bad)" : "")"></div></div></td>
+                        <td class="num small">
+                            @if (ctxFull)
+                            {
+                                <span style="color:var(--bad)" title="@Strings.CtxAlmostFull">@Strings.CtxAlmostFullOf(v.CtxUsed, v.CtxMax)</span>
+                            }
+                            else
+                            {
+                                @(v.Busy ? $"{v.CtxUsed:N0} / {v.CtxMax / 1024}k" : $"– / {v.CtxMax / 1024}k")
+                            }
+                        </td>
+                    </tr>
+                }
+            </table>
+        }
+        else if (s.Kind != BackendKind.LlamaCpp)
+        {
+            <div class="muted small">@(s.Models.Count == 0 ? Strings.RunningNothingLoaded : string.Join("  ·  ", s.Models.Select(ModelLine)))</div>
+        }
+        else
+        {
+            <div class="muted small">@(s.Loading ? Strings.Loading : Strings.Offline)</div>
+        }
+    </div>
+}
+
+@if (e.Gpu is { } g)
+{
+    <div class="card">
+        <div class="row"><h2>@Strings.Gpu <span class="muted small">@g.Name</span></h2></div>
+        <div class="kpis">
+            <div class="kpi"><div class="muted">@Strings.GpuLoad</div>@g.Util.ToString("0") %<div class="bar"><div style="width:@((int)g.Util)%"></div></div></div>
+            <div class="kpi"><div class="muted">@Strings.GpuVram</div>@g.MemUsedGb.ToString("0.0", CultureInfo.InvariantCulture) / @g.MemTotalGb.ToString("0") GB<div class="bar"><div style="width:@((int)(100 * g.MemUsedGb / Math.Max(1, g.MemTotalGb)))%"></div></div></div>
+            <div class="kpi"><div class="muted">@Strings.GpuPower</div>@g.PowerW.ToString("0") / @g.PowerLimitW.ToString("0") W<div class="bar"><div style="width:@((int)(100 * g.PowerW / Math.Max(1, g.PowerLimitW)))%"></div></div></div>
+            <div class="kpi"><div class="muted">@Strings.GpuTemp</div>@g.TempC.ToString("0") °C<div class="small @(g.Throttled ? "warn" : "good")" title="@g.ThrottleText()">@(g.Throttled ? Strings.GpuClocksLimited + ": " + g.ThrottleText() : Strings.GpuClocksFree)</div></div>
+        </div>
+        <div class="muted small" style="margin:12px 0 4px">@Strings.GpuConsumers</div>
+        <StackBar Items="e.VramTop" UsedGb="g.MemUsedGb" TotalGb="g.MemTotalGb" MoreHref="gpu" />
+    </div>
+}
+
+@if (e.Sys is { } sy)
+{
+    <div class="card">
+        <h2>@Strings.SystemCard <span class="muted small">@Strings.LogicalCores(sy.Cores)</span></h2>
+        <div class="kpis">
+            <div class="kpi"><div class="muted">@Strings.CpuLoad</div>@sy.CpuPercent.ToString("0") %<div class="bar"><div style="width:@((int)sy.CpuPercent)%"></div></div></div>
+            <div class="kpi"><div class="muted">@Strings.Memory</div>@sy.RamUsedGb.ToString("0.0", CultureInfo.InvariantCulture) / @sy.RamTotalGb.ToString("0.0", CultureInfo.InvariantCulture) GB<div class="bar"><div style="width:@((int)(100 * sy.RamFrac))%"></div></div></div>
+        </div>
+        @if (e.RamTop.Count > 0)
+        {
+            <div class="muted small" style="margin:12px 0 4px">@Strings.RamConsumers</div>
+            <StackBar Items="e.RamTop" UsedGb="sy.RamUsedGb" TotalGb="sy.RamTotalGb" />
+        }
+    </div>
+}
+
+<div class="card">
+    <h2>@Strings.RecentRequests</h2>
+    @{ var fin = e.Registry.Servers.SelectMany(x => x.Finished).OrderByDescending(f => f.Seen ?? DateTime.MinValue).Take(8).ToList(); }
+    @if (fin.Count == 0) { <span class="muted small">@Strings.NoneYet</span> }
+    else
+    {
+        <table>
+            <tr><th>@Strings.ColServer</th><th>@Strings.ColTime</th><th>@Strings.ColTask</th><th class="num">@Strings.ColReqPrompt</th><th class="num">@Strings.ColReqGeneration</th><th class="num">@Strings.ColReqTokens</th><th class="num">@Strings.ColReqTime</th><th>@Strings.ColStatus</th></tr>
+            @foreach (var f in fin)
+            {
+                <tr><td>@f.Server</td><td class="muted">@(f.Seen?.ToString("HH:mm:ss") ?? Strings.FromLog)</td>
+                    <td class="muted small">@Strings.TaskName(f.Task)</td>
+                    <td class="num muted">@f.PromptTps.ToString("0") t/s</td><td class="num">@f.GenTps.ToString("0.0", CultureInfo.InvariantCulture) t/s</td>
+                    <td class="num">@f.GenTokens</td><td class="num muted">@(f.Seconds > 0 ? f.Seconds.ToString("0") + " s" : "–")</td>
+                    <td><span class="pill @(f.Status == ReqStatus.Done ? "ok" : f.Status == ReqStatus.Truncated ? "half" : "fail")">@f.Status.ToString().ToLowerInvariant()</span></td></tr>
+            }
+        </table>
+    }
+</div>
+
+<div class="card">
+    <div class="row"><h2 style="margin:0">@Strings.SectionHistory</h2><input placeholder="@Strings.HistorySearch" @bind="_q" @bind:event="oninput" style="margin-left:12px;flex:1;max-width:260px" /></div>
+    <table style="margin-top:8px">
+        <tr><th>@Strings.ColModel</th><th class="num">@Strings.ColCtx</th><th>@Strings.ColLastSeen</th><th class="num">@Strings.ColRuns</th><th class="num">@Strings.ColBest</th><th class="num">@Strings.ColVram</th><th></th></tr>
+        @foreach (var h in e.Library.History.Where(Match).Take(30))
+        {
+            <tr><td>@(h.Name.Length > 0 ? h.Name : h.ModelPath != null ? ServerInfo.ModelName(h.ModelPath) : "?")</td>
+                <td class="num">@(h.Ctx is int c ? $"{c / 1024}k" : "–")</td><td class="muted">@h.LastSeen.ToString("yyyy-MM-dd HH:mm")</td>
+                <td class="num">@h.Runs</td><td class="num">@(h.BestTps > 0 ? h.BestTps.ToString("0.0", CultureInfo.InvariantCulture) : "–")</td>
+                <td class="num">@(h.MaxVramGb > 0 ? h.MaxVramGb.ToString("0.0", CultureInfo.InvariantCulture) + " GB" : "–")</td>
+                <td style="white-space:nowrap">
+                    <button disabled="@ro" title="@RoTip" @onclick="() => OpenDetails(h)">@Strings.BtnDetails</button>
+                    <button disabled="@ro" title="@RoTip" @onclick="() => StartHistory(h)">@Strings.BtnStartAgain</button>
+                    <button disabled="@ro" title="@Strings.BtnSave" @onclick='() => Act("profile.add-history", h.Key, h.Name)'>@Strings.BtnSave</button>
+                    <button class="bad" disabled="@ro" @onclick="() => Forget(h)">@Strings.BtnForget</button>
+                </td></tr>
+        }
+    </table>
+</div>
+
+@code {
+    private Timer? _t;
+    private string _q = "", _flash = "";
+    private string _rName = "", _rUrl = "";
+    private string _pName = "", _pUrl = "", _pKey = "";
+    private readonly Dictionary<string, string> _pKeys = new();
+    private Profile? _edit;
+    private string _editName = "", _editNote = "", _editArgs = "";
+    private const string RoTip = "The monitor window owns the data folder – use the window for this (the server becomes the core in a later step).";
+
+    // Startknopf-Tooltip wie im Fenster: die Vorprüfung (Port, Modelldatei, VRAM, RAM) läuft im Hintergrund,
+    // das Ergebnis wird kurz (10 s) zwischengespeichert, damit die Seite nicht bei jedem Takt neu prüft
+    private readonly Dictionary<string, (DateTime At, string Text)> _startTips = new();
+    private readonly HashSet<string> _startTipBusy = new();
+
+    protected override void OnInitialized() => _t = new Timer(_ => InvokeAsync(StateHasChanged), null, 1000, 1000);
+    public void Dispose() => _t?.Dispose();
+
+    private string StartTip(Profile p)
+    {
+        if (_startTips.TryGetValue(p.Key, out var cached) && (DateTime.Now - cached.At).TotalSeconds < 10) return cached.Text;
+        if (_startTipBusy.Add(p.Key))
+        {
+            var hist = Host.Engine.Library.FindHistory(p.Key);
+            var spec = new LaunchSpec(p.Name, p.Program, p.Args, p.WorkingDir, p.Id, hist is { MaxVramGb: > 0 } ? hist.MaxVramGb : null, p.Env);
+            var running = Host.Engine.Registry.Servers.Select(s => s.Info).ToList();
+            var gpu = Host.Engine.Gpu;
+            _ = Task.Run(async () =>
+            {
+                string text;
+                try
+                {
+                    var issues = (await ServerLauncher.CheckAsync(spec, Host.Engine.Platform, gpu, running)).Where(i => i.Code != "secret").ToList();
+                    var errors = issues.Where(i => i.Severity == LaunchSeverity.Error).ToList();
+                    var warns = issues.Where(i => i.Severity == LaunchSeverity.Warning).ToList();
+                    text = errors.Count > 0 ? Strings.StartTipBlocked(IssueLines(errors))
+                        : warns.Count > 0 ? Strings.StartTipWarn(IssueLines(warns))
+                        : Strings.StartTipReady;
+                }
+                catch { text = Strings.StartTipReady; }
+                await InvokeAsync(() =>
+                {
+                    _startTips[p.Key] = (DateTime.Now, text);
+                    _startTipBusy.Remove(p.Key);
+                    StateHasChanged();
+                });
+            });
+        }
+        return _startTips.TryGetValue(p.Key, out var old) ? old.Text : Strings.StartTipChecking;
+    }
+
+    private static string IssueLines(IEnumerable<LaunchIssue> issues) => string.Join("\n", issues.Select(i => "• " + i.Message));
+
+    private static string Gb(double? v) => v == null ? "–" : v.Value.ToString("0.0", CultureInfo.InvariantCulture) + " GB";
+
+    // Ollama/LM Studio: Modellname plus, was das Backend selbst meldet (VRAM, Kontext, Entladezeit, Shared Memory)
+    private static string ModelLine(LoadedModel m)
+    {
+        var parts = new List<string> { m.Name };
+        if (m.VramBytes > 0 && m.SizeBytes > 0) parts.Add($"{Gb(m.VramBytes / 1073741824.0)} VRAM of {Gb(m.SizeBytes / 1073741824.0)}");
+        else if (m.SizeBytes > 0) parts.Add(Gb(m.SizeBytes / 1073741824.0));
+        if (m.ContextLength is int c) parts.Add("ctx " + c.ToString("N0", CultureInfo.InvariantCulture));
+        if (ServerWatcher.SpillGb(new[] { m }, null) is double spill) parts.Add(Strings.SharedMemoryNote(spill));
+        if (Strings.Until(m.ExpiresAt) is { Length: > 0 } un) parts.Add(un);
+        return string.Join("  ·  ", parts);
+    }
+
+    private static string Spark(ServerWatcher s)
+    {
+        int n = s.HistoryCount;
+        if (n < 2) return "";
+        double max = Math.Max(10, Math.Ceiling(s.Peak / 10) * 10);
+        var sb = new System.Text.StringBuilder();
+        for (int i = 0; i < n; i++)
+        {
+            double x = 300.0 * (ServerWatcher.HistoryLength - n + i) / (ServerWatcher.HistoryLength - 1);
+            double y = 68 - 64 * Math.Min(max, s.HistoryAt(i)) / max;
+            sb.Append(x.ToString("0.0", CultureInfo.InvariantCulture)).Append(',').Append(y.ToString("0.0", CultureInfo.InvariantCulture)).Append(' ');
+        }
+        return sb.ToString();
+    }
+
+    private bool Match(HistoryEntry h) => Library.Matches(h, _q);
+
+    // Alles, was hier direkt an Engine, Proxy oder Library geht (nicht über die Aktionen), braucht dieselbe
+    // Rollenprüfung wie WebActions – sonst könnte ein Viewer über die Weboberfläche doch etwas bedienen.
+    private bool CanWrite => Web.CanWrite;
+
+    private void ToggleProxy()
+    {
+        if (!CanWrite) return;
+        if (!Host.Engine.Proxies.Toggle(out var error) && error != null) _flash = error;
+    }
+
+    // Kennung des servierten Modells: „<ServerKey>|<Modell>" oder eine Cloud-Zielkennung, leer = Auto
+    private string ServeValue => Host.Engine.Proxies.ChoiceValue();
+
+    private void OnServeChanged(ChangeEventArgs a) { if (CanWrite) Host.Engine.Proxies.SetChoiceValue(a.Value?.ToString() ?? ""); }
+
+    private void OnLanChanged(ChangeEventArgs a) { if (CanWrite) Host.Engine.Proxies.SetBindLan(a.Value?.ToString() == "true"); }
+
+    private void AddRemote()
+    {
+        if (!CanWrite) return;
+        Host.Engine.Proxies.AddRemote(_rName, _rUrl);
+        _rName = _rUrl = "";
+    }
+
+    private void RemoveRemote(string url) { if (CanWrite) Host.Engine.Proxies.RemoveRemote(url); }
+
+    // ── Cloud-Anbieter: der Schlüssel geht nur an den Proxy (dort DPAPI-geschützt) und wird nie wieder angezeigt *─
+    private IReadOnlyList<(string Name, string Url, bool HasKey, bool Ready, string[] Models, string Error)> Providers
+        => Host.Engine.Proxies.ProviderStates();
+
+    private string KeyFor(string url) => _pKeys.TryGetValue(url, out var k) ? k : "";
+
+    private void OnKeyInput(string url, ChangeEventArgs a) => _pKeys[url] = a.Value?.ToString() ?? "";
+
+    private void AddProvider()
+    {
+        if (!CanWrite) return;
+        Host.Engine.Proxies.AddProvider(_pName, _pUrl, _pKey, out var error);
+        if (error != null) { _flash = error; return; }
+        _pName = _pUrl = _pKey = "";
+    }
+
+    private void SaveKey(string url)
+    {
+        if (!CanWrite) return;
+        Host.Engine.Proxies.SetProviderKey(url, KeyFor(url), out var error);
+        if (error != null) { _flash = error; return; }
+        _pKeys.Remove(url);
+    }
+
+    private void RemoveProvider(string url)
+    {
+        if (!CanWrite) return;
+        Host.Engine.Proxies.RemoveProvider(url);
+        _pKeys.Remove(url);
+    }
+
+    // Diesen Server als Ziel des Proxys (Knopf „→ Proxy" auf der Karte)
+    private void Serve(ServerWatcher s)
+    {
+        if (!CanWrite) return;
+        var choice = Host.Engine.Proxies.ServeChoices().FirstOrDefault(c => c.ServerKey == s.Key);
+        Host.Engine.Proxies.SetTarget(choice.ServerKey ?? s.Key, choice.Model);
+    }
+
+    private void Edit(Profile p)
+    {
+        _edit = p;
+        _editName = p.Name;
+        _editNote = p.Note ?? "";
+        _editArgs = string.Join(' ', p.Args);
+    }
+
+    private async Task SaveEdit()
+    {
+        if (_edit == null) return;
+        var id = _edit.Id.ToString("N");
+        if (_editName.Length > 0 && _editName != _edit.Name) await Act("profile.rename", id, _editName);
+        if (_editNote != (_edit.Note ?? "")) await Act("profile.note", id, _editNote);
+        var args = CmdLine.Split(_editArgs);
+        if (!args.SequenceEqual(_edit.Args)) await ActWith("profile.args", id, ("args", _editArgs));
+        _edit = null;
+        _flash = Strings.SetSaved;
+    }
+
+    private async Task Remove(Profile p)
+    {
+        if (!await Prompt.ConfirmAsync(Strings.BtnRemove, Strings.RemoveProfileConfirm(p.Name), warning: true)) return;
+        await Act("profile.remove", p.Id.ToString("N"));
+        _edit = null;
+    }
+
+    private async Task Forget(HistoryEntry h)
+    {
+        var name = h.Name.Length > 0 ? h.Name : Strings.SectionHistory;
+        if (!await Prompt.ConfirmAsync(Strings.BtnForget, Strings.ForgetConfirm(name), warning: true)) return;
+        await Act("history.forget", h.Key);
+    }
+
+    private async Task Start(Profile p) { if (CanWrite && await Launcher.StartProfileAsync(p)) _flash = Strings.StartingShort; }
+    private async Task StartHistory(HistoryEntry h) { if (CanWrite) await Launcher.StartHistoryAsync(h); }
+
+    // Die Details des Eintrags wie im Fenster (Bereich 8): eigene Seite, damit der Knopf im Telefon auch passt
+    private void OpenDetails(HistoryEntry h) => Nav.NavigateTo("history/" + Uri.EscapeDataString(h.Key));
+
+    // Alles, was den Server anfasst, läuft über die Aktionen (eine Engine im System, Fenster und TUI machen es genauso)
+    private async Task Act(string action, string? arg = null, string? name = null)
+    {
+        var result = await Web.RunAsync(new ActionRequest { Action = action, Arg = arg, Name = name });
+        if (!result.Ok) await Prompt.InformAsync(Strings.ActionFailed, result.Message, warning: true);
+        else _flash = result.Message == "ok" ? "" : result.Message;
+    }
+
+    private async Task ActWith(string action, string arg, params (string Key, string Value)[] values)
+    {
+        var req = new ActionRequest { Action = action, Arg = arg };
+        foreach (var (k, v) in values) req.Values[k] = v;
+        var result = await Web.RunAsync(req);
+        if (!result.Ok) await Prompt.InformAsync(Strings.ActionFailed, result.Message, warning: true);
+    }
+}

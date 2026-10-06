@@ -1,0 +1,85 @@
+@page "/models"
+@inject EvalQueue Queue
+@inject EngineHost Host
+@inject WebActions Web
+
+<div class="card">
+    <div class="row">
+        <h2 style="margin:0">@Strings.EvalModelsForTests</h2>
+        @if (Web.CanWrite)
+        {
+            <button @onclick="Discover">@Strings.EvalFindModels</button>
+            <button @onclick="AddManual">@Strings.EvalAddManual</button>
+        }
+        <span class="muted small" style="margin-left:auto">@_msg</span>
+    </div>
+    <label>@Strings.EvalLlamaServer</label>
+    <input style="width:100%" @bind="LlamaServer" disabled="@(!Web.CanWrite)" />
+    <label>@Strings.EvalModelRoots</label>
+    <textarea style="min-height:56px" @bind="Roots" disabled="@(!Web.CanWrite)"></textarea>
+</div>
+
+<div class="card">
+    @if (Queue.Models.Count == 0)
+    {
+        <p class="muted">@Strings.EvalNoModels</p>
+    }
+    else
+    {
+        <table>
+            <tr><th>@Strings.EvalTest</th><th>@Strings.ColName</th><th>@Strings.EvalSource</th><th class="num">@Strings.EvalSize</th><th class="num">@Strings.EvalPort</th><th></th></tr>
+            @foreach (var m in Queue.Models)
+            {
+                var w = Web.CanWrite;
+                <tr>
+                    <td><input type="checkbox" checked="@m.Enabled" disabled="@(!w)" @onchange="e => Change(() => { m.Enabled = e.Value is true; Queue.SaveModels(); })" /></td>
+                    <td><input style="width:100%" value="@m.Name" disabled="@(!w)" @onchange="e => Change(() => { m.Name = e.Value?.ToString() ?? m.Name; Queue.SaveModels(); })" /></td>
+                    <td class="muted small">@m.Source</td>
+                    <td class="num">@m.SizeGb.ToString("0.0", CultureInfo.InvariantCulture) GB</td>
+                    <td class="num"><input type="number" style="width:80px" value="@m.Port" disabled="@(!w)" @onchange="e => Change(() => { if (int.TryParse(e.Value?.ToString(), out var p)) { m.Port = p; Queue.SaveModels(); } })" /></td>
+                    <td style="white-space:nowrap">
+                        @if (w)
+                        {
+                            <button @onclick="() => _edit = _edit == m.Id ? null : m.Id">@Strings.BtnEdit</button>
+                            <button class="bad" @onclick="() => Change(() => { Queue.Models.Remove(m); Queue.SaveModels(); })" title="@Strings.BtnRemove">✕</button>
+                        }
+                    </td>
+                </tr>
+                @if (_edit == m.Id)
+                {
+                    <tr><td colspan="6">
+                        <label>@Strings.EvalProgram</label><input style="width:100%" value="@m.Exe" @onchange="e => Change(() => { m.Exe = e.Value?.ToString() ?? m.Exe; Queue.SaveModels(); })" />
+                        <label>@Strings.EvalArgsHint</label>
+                        <textarea @onchange="e => Change(() => { m.Args = e.Value?.ToString() ?? m.Args; Queue.SaveModels(); })">@m.Args</textarea>
+                        <div class="muted small">@Strings.EvalModelFile(m.ModelFile)</div>
+                    </td></tr>
+                }
+            }
+        </table>
+    }
+</div>
+
+@code {
+    private string? _edit;
+    private string _msg = "";
+    private string LlamaServer { get => Queue.Settings.LlamaServer; set { if (Web.CanWrite) { Queue.Settings.LlamaServer = value; Queue.SaveSettings(); } } }
+    private string Roots { get => string.Join("\n", Queue.Settings.ModelRoots); set { if (Web.CanWrite) { Queue.Settings.ModelRoots = value.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList(); Queue.SaveSettings(); } } }
+
+    // Die Seite schreibt direkt in die Warteschlange (nicht über die Aktionen) – die Rolle entscheidet mit
+    private void Change(Action a) { if (Web.CanWrite) a(); }
+
+    private async Task Discover()
+    {
+        if (!Web.CanWrite) return;
+        _msg = Strings.EvalSearching;
+        int n = await Task.Run(() => Queue.Discover(Host.Engine.Library, Queue.Settings.ModelRoots, Queue.Settings.LlamaServer));
+        _msg = n == 0 ? Strings.EvalNoNewModels : Strings.EvalNewModels(n);
+    }
+
+    private void AddManual()
+    {
+        if (!Web.CanWrite) return;
+        var m = new EvalModelDef { Name = "new-model", Exe = Queue.Settings.LlamaServer, Port = 8120, Args = "-m \"C:\\path\\model.gguf\" --host 127.0.0.1 --port 8120 --fit on -c 65536 -fa on --jinja", Enabled = false };
+        Queue.Models.Add(m); Queue.SaveModels(); _edit = m.Id;
+    }
+}

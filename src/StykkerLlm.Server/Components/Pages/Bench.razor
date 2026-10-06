@@ -1,0 +1,155 @@
+@page "/bench"
+@implements IDisposable
+@inject EngineHost Host
+@inject WebActions Web
+@inject WebPrompt Prompt
+
+@* Benchmark wie im Fenster (docs/ui.md, Bereich 5): Ziel, Umfang, Lauf mit Fortschritt, Ergebnisse *@
+
+@{ var e = Host.Engine; var bench = Host.Benchmarks; bool ro = Host.ReadOnly; }
+
+<h2>@Strings.BenchTitle</h2>
+<p class="muted small">@Strings.BenchHint</p>
+
+<div class="card">
+    <div class="row">
+        <span class="muted small">@Strings.BenchTarget</span>
+        <select @bind="_target" style="max-width:440px">
+            <option value="">@Strings.BenchNoTarget</option>
+            @foreach (var s in e.Servers)
+            {
+                <option value="@s.Key">@s.Name · :@s.Info.Port · @s.Current.ToString("0.0", CultureInfo.InvariantCulture) t/s</option>
+            }
+            @if (e.Library.Profiles.Count > 0)
+            {
+                <optgroup label="@Strings.SectionSaved">
+                    @foreach (var p in e.Library.Profiles)
+                    {
+                        <option value="@p.Id.ToString("N")">@p.Name @Strings.BenchWillStart</option>
+                    }
+                </optgroup>
+            }
+        </select>
+    </div>
+    <div class="row" style="margin-top:10px">
+        <span><input type="checkbox" @bind="_chat" /> @Strings.BenchChat</span>
+        <span><input type="checkbox" @bind="_tool" /> @Strings.BenchTool</span>
+        <span><input type="checkbox" @bind="_parallel" /> @Strings.BenchParallel</span>
+        <label style="margin:0">@Strings.BenchRepeats <input type="number" min="1" max="10" @bind="_repeats" style="width:64px" /></label>
+        <label style="margin:0">@Strings.BenchGenTokens <input type="number" min="16" max="4096" step="16" @bind="_gen" style="width:80px" /></label>
+    </div>
+    <div class="row" style="margin-top:8px">
+        <span class="muted small">@Strings.BenchContexts</span>
+        @foreach (var size in BenchOptions.Ladder)
+        {
+            bool on = _sizes.Contains(size);
+            <button class="@(on ? "good" : "")" @onclick="() => ToggleSize(size)">@SizeLabel(size)</button>
+        }
+    </div>
+    <div class="row" style="margin-top:12px">
+        <button class="good" disabled="@(ro || bench.Running || string.IsNullOrEmpty(_target))" @onclick="Run">@Strings.BenchRun</button>
+        @if (bench.Running)
+        {
+            <button class="bad" @onclick="() => bench.Cancel()">@Strings.Stop</button>
+            <span class="muted small">@bench.Status</span>
+            <span class="muted small">@(bench.Current?.Steps.Count.ToString(CultureInfo.InvariantCulture) ?? "0") @Strings.BenchStepsDone</span>
+        }
+        else if (_last.Length > 0)
+        {
+            <span class="muted small">@_last</span>
+        }
+    </div>
+</div>
+
+<h3 class="sec">@Strings.BenchResults</h3>
+@if (e.Library.Benchmarks.Count == 0)
+{
+    <div class="card"><span class="muted small">@Strings.BenchNoResults</span></div>
+}
+@foreach (var b in e.Library.Benchmarks.OrderByDescending(x => x.Started).Take(20))
+{
+    <div class="card">
+        <div class="row">
+            <b>@b.Title</b>
+            <span class="muted small">@b.Started.ToString("yyyy-MM-dd HH:mm") · @Fmt.Dur(b.DurationSec) · @b.Model</span>
+            @if (b.Cancelled) { <span class="pill wait">@Strings.BenchCancelled</span> }
+            <span style="margin-left:auto;white-space:nowrap">
+                <a href="/api/bench/@b.Id.ToString("N")" target="_blank">@Strings.BtnCopyMarkdown</a>
+                <a href="/api/bench/@b.Id.ToString("N")/csv" target="_blank">CSV</a>
+            </span>
+        </div>
+        <div class="muted small">@b.Gpu · ctx @b.ContextPerSlot · @b.Slots @Strings.ColSlots · @b.Quant @b.Build</div>
+        @if (b.Regression is { } rg)
+        {
+            <div class="pill half" style="margin-top:8px;white-space:normal">@Strings.BenchRegressionAlert(rg.DropPct, rg.Previous, rg.Current)</div>
+        }
+        <table style="margin-top:8px">
+            <tr><th>@Strings.ColTest</th><th class="num">@Strings.ColReqPrompt</th><th class="num">@Strings.ColBestPrompt</th><th class="num">@Strings.ColChatTps</th><th class="num">@Strings.ColReqTime</th><th>@Strings.ColResult</th></tr>
+            @foreach (var st in b.Steps)
+            {
+                <tr>
+                    <td>@st.Name</td>
+                    <td class="num">@st.PromptTokens.ToString("N0", CultureInfo.InvariantCulture)</td>
+                    <td class="num">@(st.PromptTps > 0 ? st.PromptTps.ToString("N0", CultureInfo.InvariantCulture) : "–")</td>
+                    <td class="num">@(st.GenTps > 0 ? st.GenTps.ToString("0.0", CultureInfo.InvariantCulture) : "–")</td>
+                    <td class="num">@st.TotalSec.ToString("0.0", CultureInfo.InvariantCulture) s</td>
+                    <td><span class="pill @(st.Ok ? "ok" : "fail")">@(st.Ok ? "ok" : st.Note.Length > 0 ? st.Note : "failed")</span></td>
+                </tr>
+            }
+        </table>
+    </div>
+}
+
+@code {
+    private Timer? _t;
+    private string _target = "", _last = "";
+    private bool _chat = true, _tool, _parallel;
+    private int _repeats = 1, _gen = 128;
+    private readonly List<int> _sizes = new();
+
+    // Aus dem Menü „Bench“ eines Profils: /bench?target=<Profil-ID> – das Ziel steht dann schon drin
+    [SupplyParameterFromQuery(Name = "target")] public string? Target { get; set; }
+
+    protected override void OnInitialized()
+    {
+        if (!string.IsNullOrEmpty(Target)) _target = Target;
+        _t = new Timer(_ => InvokeAsync(StateHasChanged), null, 800, 800);
+        Host.Benchmarks.Progress += OnProgress;
+    }
+
+    public void Dispose()
+    {
+        _t?.Dispose();
+        Host.Benchmarks.Progress -= OnProgress;
+    }
+
+    private void OnProgress(string message, BenchStep? step) => _ = InvokeAsync(StateHasChanged);
+
+    private void ToggleSize(int size)
+    {
+        if (!_sizes.Remove(size)) { _sizes.Add(size); _sizes.Sort(); }
+    }
+
+    private static string SizeLabel(int size) => size >= 1024 ? (size / 1024) + "k" : size.ToString(CultureInfo.InvariantCulture);
+
+    private async Task Run()
+    {
+        _last = "";
+        var req = new ActionRequest
+        {
+            Action = "bench.run",
+            Arg = _target,
+            Values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["chat"] = _chat ? "1" : "",
+                ["tool"] = _tool ? "1" : "",
+                ["parallel"] = _parallel ? "1" : "",
+                ["repeats"] = _repeats.ToString(CultureInfo.InvariantCulture),
+                ["genTokens"] = _gen.ToString(CultureInfo.InvariantCulture),
+                ["contextSizes"] = string.Join(",", _sizes),
+            },
+        };
+        var result = await Web.RunAsync(req);
+        _last = result.Message;
+    }
+}

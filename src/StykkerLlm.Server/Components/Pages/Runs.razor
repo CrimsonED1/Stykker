@@ -1,0 +1,211 @@
+@page "/runs"
+@implements IDisposable
+@inject EvalQueue Queue
+@inject AppPaths Paths
+@inject WebActions Web
+@inject EngineHost Host
+@inject ActionContext Actions
+
+<div class="grid2">
+    <div class="card">
+        <h2>@Strings.EvalQueueTitle</h2>
+        <div class="row" style="margin-bottom:10px">
+            @if (CanWrite)
+            {
+                @if (Queue.Running)
+                {
+                    <button class="bad" @onclick="StopQueue">@Strings.EvalStopQueue</button>
+                }
+                else
+                {
+                    <button class="good" @onclick="StartQueue" disabled="@(!Queue.Jobs.Any(j => j.State == EvalJobState.Queued))">@Strings.EvalStartQueue</button>
+                }
+                <button @onclick="ClearFinished">@Strings.EvalClearFinished</button>
+            }
+            <span class="muted small" style="margin-left:auto">@Summary()</span>
+        </div>
+        @if (Queue.Jobs.Count == 0)
+        {
+            <p class="muted">@Strings.EvalNoJobs</p>
+        }
+        else
+        {
+            <table>
+                <tr><th>@Strings.ColModel</th><th>@Strings.EvalSuite</th><th>@Strings.ColStatus</th><th style="width:28%">@Strings.EvalProgress</th><th class="num">@Strings.EvalScore</th><th></th></tr>
+                @foreach (var j in Queue.Jobs)
+                {
+                    <tr>
+                        <td>@j.Model.Name</td>
+                        <td>@j.Suite@(j.Repeat > 1 ? $" ×{j.Repeat}" : "")</td>
+                        <td><span class="pill @StateClass(j.State)" title="@j.Note">@StateText(j)</span></td>
+                        <td>
+                            <div class="bar"><div style="width:@(j.Total > 0 ? 100 * j.Done / j.Total : 0)%"></div></div>
+                            <div class="muted small">@(j.State == EvalJobState.Running ? (j.Current.Length > 0 ? j.Current : $"{j.Done}/{j.Total}") : j.Note)</div>
+                        </td>
+                        <td class="num">@(j.Done > 0 || j.Runs.Count > 0 ? j.Score.ToString("0", CultureInfo.InvariantCulture) + " %" : Strings.EvalMarkNone)</td>
+                        <td>@if (j.State != EvalJobState.Running && j.State != EvalJobState.Starting) { <button @onclick="() => RemoveJob(j.Id)" title="@Strings.BtnRemove">✕</button> }</td>
+                    </tr>
+                }
+            </table>
+        }
+    </div>
+
+    <div class="card">
+        <h2>@Strings.EvalAddToQueue</h2>
+        @* Mit gekoppelten Nodes: wo der Test läuft – hier, auf einem Node, oder automatisch dort, wo das Modell liegt (N3) *@
+        @if (_nodes.Count > 0)
+        {
+            <label>@Strings.NodeTarget</label>
+            <select @bind="Target">
+                <option value="">@Strings.NodeTargetHere</option>
+                <option value="auto">@Strings.NodeTargetAuto</option>
+                @foreach (var n in _nodes.Where(n => n.Online)) { <option value="@n.Id">@n.Name</option> }
+            </select>
+        }
+        <label>@Strings.EvalModels</label>
+        @if (Choices.Count == 0)
+        {
+            <p class="muted small">@Strings.EvalNoModelsRuns</p>
+        }
+        @foreach (var m in Choices)
+        {
+            <div><label style="display:inline;color:var(--ink);font-size:14px"><input type="checkbox" checked="@_models.Contains(m.Id)" @onchange="e => Toggle(_models, m.Id, e)" /> @m.Name <span class="muted small">@m.Extra</span></label></div>
+        }
+        <label>@Strings.EvalSuites</label>
+        @foreach (var s in _suites)
+        {
+            <label style="display:inline-block;color:var(--ink);font-size:14px;margin-right:14px"><input type="checkbox" checked="@_pick.Contains(s.Name)" @onchange="e => Toggle(_pick, s.Name, e)" /> @s.Name <span class="muted small">(@s.Tasks.Count)</span></label>
+        }
+        <div class="row" style="margin-top:10px">
+            <label style="margin:0">@Strings.EvalRepeat</label><input type="number" min="1" max="10" style="width:70px" @bind="_repeat" disabled="@(!CanWrite)" />
+            <label style="margin:0;color:var(--ink)"><input type="checkbox" @bind="AllowCode" disabled="@(!CanWrite)" /> @Strings.EvalAllowCode</label>
+        </div>
+        @if (AllowCode && Queue.Python == null)
+        {
+            <p class="small" style="color:var(--warn)">@Strings.EvalNoPython</p>
+        }
+        @if (CanWrite)
+        {
+            <div class="row" style="margin-top:12px">
+                <button @onclick="Add" disabled="@(_models.Count == 0 || _pick.Count == 0)">@Strings.EvalAddToQueue</button>
+                <span class="muted small">@Strings.EvalModelsTimesSuites(_models.Count, _pick.Count)</span>
+            </div>
+            @if (_msg.Length > 0) { <p class="muted small">@_msg</p> }
+        }
+    </div>
+</div>
+
+@if (Queue.Jobs.FirstOrDefault(j => j.State == EvalJobState.Running) is { } cur)
+{
+    <div class="card">
+        <h2>@Strings.EvalLive · @cur.Model.Name · @cur.Suite</h2>
+        <div class="log">
+            @foreach (var r in Live(cur))
+            {
+                <div><span class="@(r.Skipped ? "wait" : r.Error ? "fail" : r.Passed ? "ok" : r.Score > 0 ? "half" : "fail")">@(r.Skipped ? Strings.EvalMarkSkip : r.Error ? Strings.EvalMarkErr : r.Passed ? Strings.EvalMarkPass : r.Score > 0 ? Strings.EvalMarkHalf : Strings.EvalMarkFail)</span>
+                    @r.Category · @r.Title <span class="muted">@Strings.EvalSeconds1(r.Seconds) · @r.GenTokens tok · @r.GenTps.ToString("0", CultureInfo.InvariantCulture) t/s</span>
+                    @if (!r.Passed && r.Note.Length > 0) { <span class="muted"> – @r.Note</span> }</div>
+            }
+            @if (cur.Current.Length > 0) { <div class="muted">… @cur.Current</div> }
+        </div>
+    </div>
+}
+
+@code {
+    private List<EvalSuite> _suites = new();
+    private readonly HashSet<string> _models = new(), _pick = new() { "basic" };
+    private int _repeat = 1;
+    private string _target = "", _msg = "";
+    private List<RemoteNode> _nodes = new();
+
+    // Ziel wechseln heißt: andere Modelle zur Auswahl, die alte Auswahl gilt nicht mehr
+    private string Target { get => _target; set { _target = value; _models.Clear(); _msg = ""; } }
+
+    private sealed record Choice(string Id, string Name, string Extra);
+
+    // Hier: die eigenen Modelle; Node: dessen Modelle; automatisch: jede Datei, die irgendwo liegt
+    private List<Choice> Choices
+    {
+        get
+        {
+            if (_target.Length == 0)
+                return Queue.Models.Where(m => m.Enabled).Select(m => new Choice(m.Id, m.Name, m.SizeGb.ToString("0.0", CultureInfo.InvariantCulture) + " GB")).ToList();
+            if (_target == "auto")
+            {
+                var self = Self();
+                return NodeScheduler.Files(self, _nodes).Select(f => new Choice(f, f,
+                    string.Join(", ", new[] { self }.Concat(_nodes.Where(n => n.Online)).Where(n => n.Models.Any(m => m.Enabled && m.File.Equals(f, StringComparison.OrdinalIgnoreCase))).Select(n => n.Name)))).ToList();
+            }
+            var node = _nodes.FirstOrDefault(n => n.Id == _target);
+            return node?.Models.Where(m => m.Enabled).Select(m => new Choice(m.Id, m.Name, m.SizeGb.ToString("0.0", CultureInfo.InvariantCulture) + " GB")).ToList() ?? new();
+        }
+    }
+
+    private RemoteNode Self() =>
+        NodeStateJson.Self(StateSnapshot.Parse(StateJson.WriteText(Host.Engine, null, Queue, Actions.ServerPort, DateTimeOffset.Now, withHistory: false)),
+            NetAddr.Url("127.0.0.1", Actions.ServerPort));
+    private Timer? _t;
+    private volatile bool _dirty;
+    private int _ticks;
+    private bool AllowCode { get => Queue.AllowCode; set { if (Web.CanWrite) Queue.AllowCode = value; } }
+
+    // Die Warteschlange bedienen die Web-Seiten direkt (nicht über die Aktionen) – die Rolle entscheidet mit
+    private bool CanWrite => Web.CanWrite;
+    private void StartQueue() { if (CanWrite) Queue.Start(); }
+    private void StopQueue() { if (CanWrite) Queue.Stop(); }
+    private void ClearFinished() { if (CanWrite) Queue.ClearFinished(); }
+    private void RemoveJob(Guid id) { if (CanWrite) Queue.Remove(id); }
+
+    protected override void OnInitialized()
+    {
+        _suites = EvalSuites.All(Paths.EvalSuitesDir);
+        Queue.Changed += OnChanged;
+        _nodes = NodeStateJson.FromRegistry(Host.Nodes).List;
+        _t = new Timer(_ =>
+        {
+            // Nodes ändern sich ohne Ereignis der Warteschlange (online, neue Modelle): alle zwei Sekunden neu lesen
+            if (++_ticks % 4 == 0) { _nodes = NodeStateJson.FromRegistry(Host.Nodes).List; _dirty = true; }
+            if (_dirty) { _dirty = false; InvokeAsync(StateHasChanged); }
+        }, null, 500, 500);
+    }
+
+    private void OnChanged() => _dirty = true;
+    public void Dispose() { Queue.Changed -= OnChanged; _t?.Dispose(); }
+
+    private static void Toggle(HashSet<string> set, string id, ChangeEventArgs e) { if (e.Value is true) set.Add(id); else set.Remove(id); }
+
+    private async Task Add()
+    {
+        if (!CanWrite) return;
+        if (_target.Length == 0) { Queue.Enqueue(Queue.Models.Where(m => _models.Contains(m.Id)), _pick, _repeat); return; }
+        var req = _target == "auto"
+            ? new ActionRequest { Action = "eval.distribute", Ids = _models.ToList(), Number = _repeat, Flag = AllowCode }
+            : new ActionRequest { Action = "node.do", Arg = _target, Name = "eval.enqueue", Ids = _models.ToList(), Number = _repeat, Flag = AllowCode };
+        req.Values["suites"] = string.Join(',', _pick);
+        var r = await Web.RunAsync(req);
+        _msg = _target == "auto" || !r.Ok ? r.Message : Strings.NodeQueued(_nodes.FirstOrDefault(n => n.Id == _target)?.Name ?? "");
+    }
+
+    private static IEnumerable<EvalTaskResult> Live(EvalJob j) { lock (j.Live) return j.Live.TakeLast(14).ToList(); }
+
+    // Wie viele Aufträge noch warten oder laufen – dieselbe Zahl wie in der Kopfzeile der TUI
+    private string Summary()
+    {
+        var jobs = Queue.Jobs;
+        int left = jobs.Count(j => j.State is EvalJobState.Queued or EvalJobState.Running or EvalJobState.Starting);
+        return left == 0 ? Strings.EvalJobs(jobs.Count) : Strings.EvalJobsLeft(left, jobs.Count);
+    }
+
+    private static string StateClass(EvalJobState s) => s switch
+    {
+        EvalJobState.Done => "ok", EvalJobState.Running or EvalJobState.Starting => "run",
+        EvalJobState.Failed or EvalJobState.Skipped => "fail", _ => "wait",
+    };
+
+    // Die Zustandsnamen selbst kommen aus dem Auftrag (sie stehen auch in gespeicherten Läufen), nur die
+    // Sonderfälle mit Zahl und Wort sind Texte der Oberfläche
+    private static string StateText(EvalJob j) => j.State switch
+    {
+        EvalJobState.Running => $"{j.Done}/{j.Total}", _ => j.State.ToString().ToLowerInvariant(),
+    };
+}

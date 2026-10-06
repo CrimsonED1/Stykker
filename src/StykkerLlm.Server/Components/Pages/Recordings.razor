@@ -1,0 +1,135 @@
+@page "/recordings"
+@implements IDisposable
+@inject EngineHost Host
+@inject WebActions Web
+@inject WebPrompt Prompt
+@inject NavigationManager Nav
+
+@* Aufnahmen wie im Fenster (docs/ui.md, Bereich 6): laufende Aufnahme, Liste, Details, löschen *@
+
+@{ var e = Host.Engine; var recs = RecordingStore.List(e.Paths.RecordingsDir); bool ro = Host.ReadOnly; var px = e.Proxies; }
+
+<div class="row" style="margin-bottom:12px">
+    <button class="@(e.Recorder.IsRecordingGlobal ? "bad" : "good")" disabled="@ro" @onclick="ToggleAll">
+        @(e.Recorder.IsRecordingGlobal ? Strings.MenuStopRecording : Strings.MenuRecordAll)
+    </button>
+    <span class="muted small">@(px.Running ? Strings.ModeProxy : Strings.ModeLogOnly)</span>
+    <span style="margin-left:auto;white-space:nowrap">
+        <button disabled="@(_sel.Count != 2)" title="@Strings.ComparePickTwo(_sel.Count)" @onclick="Compare">@Strings.BtnCompare</button>
+        @if (_sel.Count > 0) { <button @onclick="() => _sel.Clear()">@Strings.BtnUnselectAll</button> }
+    </span>
+    @if (_flash.Length > 0) { <span class="small" style="color:var(--good)">@_flash</span> }
+</div>
+
+@if (e.Recorder.Sessions.Count > 0)
+{
+    <div class="card">
+        <h2>@Strings.NoActiveRecording</h2>
+        <table>
+            <tr><th>@Strings.ColServer</th><th>@Strings.ColStarted</th><th class="num">@Strings.ColReqTime</th><th class="num">@Strings.ColTps</th><th class="num">MB</th><th></th></tr>
+            @foreach (var sess in e.Recorder.Sessions)
+            {
+                var name = sess.Target == "all" ? Strings.AllServers : e.Servers.FirstOrDefault(s => s.Key == sess.Target)?.Name ?? sess.Target;
+                <tr>
+                    <td>@name</td>
+                    <td class="muted">@sess.Started.ToString("HH:mm:ss")</td>
+                    <td class="num">@Fmt.Dur(sess.ElapsedSec)</td>
+                    <td class="num">@sess.LastTps.ToString("0.0", CultureInfo.InvariantCulture)</td>
+                    <td class="num">@(sess.Bytes / 1048576.0)</td>
+                    <td class="num"><button class="bad" disabled="@ro" @onclick="() => Stop(sess.Target)">@Strings.Stop</button></td>
+                </tr>
+            }
+        </table>
+    </div>
+}
+
+<h3 class="sec">@Strings.RecordingsTitle</h3>
+@if (recs.Count == 0)
+{
+    <div class="card"><span class="muted small">@Strings.NoActiveRecording</span></div>
+}
+@foreach (var r in recs.Take(40))
+{
+    <div class="card">
+        <div class="row">
+            <input type="checkbox" checked="@_sel.Contains(r.File)" @onchange='() => Pick(r.File)' />
+            <b>@(r.Target.Length > 0 ? r.Target : "–")</b>
+            <span class="muted small">@r.Started.ToString("yyyy-MM-dd HH:mm") · @Fmt.Dur(r.DurationSec) · @r.Model</span>
+            <span class="pill @(r.Proxy ? "ok" : "wait")" title="@(r.Proxy ? Strings.ModeProxy : Strings.ModeLogOnly)">@(r.Proxy ? Strings.ModeProxyShort : Strings.ModeLogShort)</span>
+            @if (r.Truncated > 0) { <span class="pill half">@Strings.StatusTruncated</span> }
+            @if (r.Cancelled > 0) { <span class="pill wait">@Strings.StatusCancelled</span> }
+            <span style="margin-left:auto;white-space:nowrap">
+                <button @onclick="() => Toggle(r.File)">@Strings.BtnDetails</button>
+                <button class="bad" disabled="@ro" @onclick="() => Delete(r.File)">@Strings.BtnDelete</button>
+            </span>
+        </div>
+        <div class="kpis" style="margin-top:10px">
+            <div class="kpi"><div class="muted">@Strings.TileRequests</div>@r.Requests.ToString("N0", CultureInfo.InvariantCulture)</div>
+            <div class="kpi"><div class="muted">@Strings.TileBusy</div>@r.BusyPct.ToString("0", CultureInfo.InvariantCulture) %</div>
+            <div class="kpi"><div class="muted">@Strings.TileTps</div>@r.AvgTps.ToString("0.0", CultureInfo.InvariantCulture) / @r.PeakTps.ToString("0.0", CultureInfo.InvariantCulture)</div>
+            <div class="kpi"><div class="muted">@Strings.TileTokens</div>@r.TokensIn.ToString("N0", CultureInfo.InvariantCulture) → @r.TokensOut.ToString("N0", CultureInfo.InvariantCulture)</div>
+            <div class="kpi"><div class="muted">@Strings.TileCache</div>@r.CachePct.ToString("0", CultureInfo.InvariantCulture) %</div>
+            <div class="kpi"><div class="muted">TTFT</div>@r.TtftP50.ToString("0.00", CultureInfo.InvariantCulture) / @r.TtftP95.ToString("0.00", CultureInfo.InvariantCulture) s</div>
+            <div class="kpi"><div class="muted">@Strings.ChipGpuVram</div>@r.MaxVramGb.ToString("0.0", CultureInfo.InvariantCulture) GB</div>
+            <div class="kpi"><div class="muted">@Strings.TileEnergy</div>@r.EnergyWh.ToString("0.0", CultureInfo.InvariantCulture) Wh</div>
+        </div>
+        @if (_open == r.File)
+        {
+            var data = RecordingStore.Load(r.File);
+            @if (data == null) { <p class="muted small">@Strings.NoSamples</p> }
+            else
+            {
+                <table style="margin-top:10px">
+                    <tr><th>@Strings.ColTime</th><th>@Strings.ColServer</th><th>@Strings.ColModel</th><th class="num">@Strings.ColReqPrompt</th><th class="num">@Strings.ColReqGeneration</th><th class="num">@Strings.ColReqTokens</th><th>@Strings.ColStatus</th></tr>
+                    @foreach (var q in data.Requests.OrderByDescending(x => x.Start).Take(60))
+                    {
+                        <tr>
+                            <td class="muted">@q.Start.ToString("HH:mm:ss")</td>
+                            <td>@q.ServerName</td>
+                            <td class="muted">@q.Model</td>
+                            <td class="num">@(q.PromptTps > 0 ? q.PromptTps.ToString("0", CultureInfo.InvariantCulture) : "–")</td>
+                            <td class="num">@(q.GenTps > 0 ? q.GenTps.ToString("0.0", CultureInfo.InvariantCulture) : "–")</td>
+                            <td class="num">@q.GenTokens.ToString("N0", CultureInfo.InvariantCulture)</td>
+                            <td>@q.Status</td>
+                        </tr>
+                    }
+                </table>
+            }
+        }
+    </div>
+}
+
+@code {
+    private Timer? _t;
+    private string _flash = "", _open = "";
+    private readonly List<string> _sel = new();
+
+    protected override void OnInitialized() => _t = new Timer(_ => InvokeAsync(StateHasChanged), null, 2000, 2000);
+    public void Dispose() => _t?.Dispose();
+
+    private void Toggle(string file) => _open = _open == file ? string.Empty : file;
+
+    // Zwei Aufnahmen ankreuzen, dann vergleichen (im Fenster: zwei Zeilen markieren und „Compare")
+    private void Pick(string file)
+    {
+        if (!_sel.Remove(file)) _sel.Add(file);
+        if (_sel.Count > 2) _sel.RemoveAt(0);
+    }
+
+    private void Compare() => Nav.NavigateTo($"compare?a={Uri.EscapeDataString(_sel[0])}&b={Uri.EscapeDataString(_sel[1])}");
+
+    private Task ToggleAll() =>
+        e0().Recorder.IsRecordingGlobal ? Stop("all") : Act("record.start", "all");
+
+    private MonitorEngine e0() => Host.Engine;
+
+    private Task Stop(string key) => Act("record.stop", key);
+
+    private Task Delete(string file) => Act("record.delete", file);
+
+    private async Task Act(string action, string arg)
+    {
+        var result = await Web.RunAsync(new ActionRequest { Action = action, Arg = arg });
+        _flash = result.Message;
+    }
+}

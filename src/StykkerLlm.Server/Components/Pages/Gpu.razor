@@ -1,0 +1,84 @@
+@page "/gpu"
+@implements IDisposable
+@inject EngineHost Host
+
+@* GPU-Details wie im Fenster (docs/ui.md, Bereich 5): Auslastung, Takte, VRAM je Prozess. *@
+
+@{ var e = Host.Engine; var g = e.Gpu; }
+
+<div class="row" style="margin-bottom:12px">
+    <b style="font-size:17px">@Strings.GpuDetails</b>
+    <span style="margin-left:auto"><a href="">@Strings.BackToMonitor</a></span>
+</div>
+
+@if (g == null)
+{
+    <div class="card"><span class="muted small">@Strings.NvmlMissing</span></div>
+}
+else
+{
+    <div class="card">
+        <h2>@g.Name</h2>
+        <div class="kpis">
+            <div class="kpi"><div class="muted">@Strings.GpuLoad</div>@g.Util.ToString("0") %<div class="bar"><div style="width:@((int)g.Util)%"></div></div></div>
+            <div class="kpi"><div class="muted">@Strings.GpuVram</div>@g.MemUsedGb.ToString("0.0", CultureInfo.InvariantCulture) / @g.MemTotalGb.ToString("0") GB<div class="bar"><div style="width:@((int)(100 * g.MemUsedGb / Math.Max(1, g.MemTotalGb)))%"></div></div></div>
+            <div class="kpi"><div class="muted">@Strings.GpuPower</div>@g.PowerW.ToString("0") / @g.PowerLimitW.ToString("0") W<div class="bar"><div style="width:@((int)(100 * g.PowerW / Math.Max(1, g.PowerLimitW)))%"></div></div></div>
+            <div class="kpi"><div class="muted">@Strings.GpuTemp</div>@g.TempC.ToString("0") °C<div class="small @(g.Throttled ? "warn" : "good")" title="@g.ThrottleText()">@(g.Throttled ? Strings.GpuClocksLimited + ": " + g.ThrottleText() : Strings.GpuClocksFree)</div></div>
+        </div>
+        <table style="margin-top:12px">
+            <tr><td>@Strings.ColProperty</td><td class="num muted">@Strings.ColValue</td></tr>
+            <tr><td>@Strings.GpuGfxClock</td><td class="num muted">@Mhz(g.GfxMhz) / @Mhz(g.GfxMaxMhz)</td></tr>
+            <tr><td>@Strings.GpuMemClock</td><td class="num muted">@Mhz(g.MemMhz) / @Mhz(g.MemMaxMhz)</td></tr>
+            <tr><td>@Strings.GpuVram</td><td class="num muted">@g.MemUtil.ToString("0") % · @Strings.VramFree @g.MemFreeGb.ToString("0.0", CultureInfo.InvariantCulture) GB</td></tr>
+            <tr><td>@Strings.GpuThrottling</td><td class="num muted">@g.ThrottleText()</td></tr>
+        </table>
+    </div>
+
+    <div class="card">
+        <h2>@Strings.GpuConsumers</h2>
+        <p class="muted small">@Strings.GpuDetailsHint</p>
+        @if (_rows.Count == 0) { <span class="muted small">@Strings.GpuDetailsNoData</span> }
+        else
+        {
+            <table>
+                <tr><th>@Strings.ColProcess</th><th class="num">@Strings.ColGpuUtil</th><th class="num">@Strings.ColVramUsed</th></tr>
+                @foreach (var (name, gb, pct) in _rows)
+                {
+                    <tr>
+                        <td>@name</td>
+                        <td class="num @(pct >= 50 ? "good-text" : "muted")">@(pct > 0 ? pct.ToString("0", CultureInfo.InvariantCulture) + " %" : "–")</td>
+                        <td class="num">@gb.ToString("0.0", CultureInfo.InvariantCulture) GB</td>
+                    </tr>
+                }
+            </table>
+        }
+    </div>
+}
+
+@code {
+    private Timer? _t;
+    private List<(string Name, double Gb, double Pct)> _rows = new();
+
+    protected override void OnInitialized()
+    {
+        Read();
+        _t = new Timer(_ => InvokeAsync(() => { Read(); StateHasChanged(); }), null, 1000, 1000);
+    }
+
+    public void Dispose() => _t?.Dispose();
+
+    // Alle Programme, nicht nur die gemessenen Server (wie im Fenster)
+    private void Read()
+    {
+        var mem = Host.Engine.Platform.ReadGpuTop(64) ?? Array.Empty<(string Name, double Gb)>();
+        var util = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (n, pct) in Host.Engine.Platform.ReadGpuUtilTop(64)) util[n] = pct;
+        var byName = new Dictionary<string, (double Gb, double Pct)>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (n, gb) in mem) byName[n] = (gb, util.TryGetValue(n, out var p) ? p : 0);
+        foreach (var (n, pct) in util) if (!byName.ContainsKey(n)) byName[n] = (0, pct);
+        _rows = byName.Select(kv => (kv.Key, kv.Value.Gb, kv.Value.Pct))
+                      .OrderByDescending(x => x.Gb).ThenByDescending(x => x.Pct).ToList();
+    }
+
+    private static string Mhz(double mhz) => mhz > 0 ? mhz.ToString("N0", CultureInfo.InvariantCulture) + " MHz" : "–";
+}

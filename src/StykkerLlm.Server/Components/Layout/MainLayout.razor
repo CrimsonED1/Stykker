@@ -1,0 +1,202 @@
+@inherits LayoutComponentBase
+@implements IDisposable
+@inject EngineHost Host
+@inject IHostApplicationLifetime Life
+@inject WebPrompt Prompt
+@inject ViewerSession Viewer
+@inject WebActions Web
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+@* Das Theme kommt aus dem Fenster (ThemeCatalog) und steht als CSS-Variablen im Kopf: ein Wechsel über
+   /settings, das Fenster oder die TUI ist ohne Neuladen sichtbar, weil die Kopfzeile jeden Takt neu gezeichnet wird. *@
+@{ var theme = ThemeCatalog.Find(Host.Engine.Settings.Theme); }
+
+<HeadContent>
+    <style>@theme.CssVariables()</style>
+</HeadContent>
+
+<div class="page" data-bg="@theme.Kind">
+@* Kopfzeile: wenige Hauptpunkte stehen sichtbar, alles andere liegt gruppiert im ☰ (wie das ☰-Panel des Fensters).
+   Liegt die aktuelle Seite im ☰, bekommt das ☰ einen Punkt. Im Kompakt-Modus tritt der Name der Seite neben die
+   Marke – man weiß trotzdem, wo man ist. *@
+<header class="top">
+    @if (_shell)
+    {
+        <div class="navback">
+            <button class="icon" title="@Strings.BtnBack" aria-label="@Strings.BtnBack" @onclick="GoBack">←</button>
+            <button class="icon" title="@Strings.BtnForward" aria-label="@Strings.BtnForward" @onclick="GoForward">→</button>
+        </div>
+    }
+    <div class="brand"><span class="logo">◆</span> STYKKER <span class="acc">LLM</span></div>
+    @if (InMore)
+    {
+        <span class="here muted">@PageName()</span>
+    }
+    <nav>
+        <NavLink href="" Match="NavLinkMatch.All">@Strings.NavMonitor</NavLink>
+        <NavLink href="results">@Strings.NavEval</NavLink>
+        <NavLink href="bench">@Strings.NavBenchmarks</NavLink>
+        <NavLink href="recordings">@Strings.NavRecordings</NavLink>
+    </nav>
+    <div class="status">
+        @if (Host.Engine.Gpu is { } g)
+        {
+            <span>@Strings.GpuHeadline(g.MemUsedGb, g.MemTotalGb)</span>
+        }
+        @if (Host.Engine.Sys is { } s)
+        {
+            <span>@Strings.RamFreeGb(s.RamTotalGb - s.RamUsedGb)</span>
+        }
+        @if (Host.ReadOnly)
+        {
+            <span class="pill wait" title="@Strings.ServerReadOnlyHint">@Strings.ServerReadOnly</span>
+        }
+        @if (Viewer.Known && Viewer.IsViewer)
+        {
+            <span class="pill wait" title="@Strings.RemoteRoleHint">@Strings.RoleViewer</span>
+        }
+        <button @onclick="FreeVram" disabled="@(Host.ReadOnly || Viewer.IsViewer)" title="@Strings.FreeVramTitle">@Strings.BtnFreeVram</button>
+        @if (_confirm)
+        {
+            <button class="bad" @onclick="() => Life.StopApplication()">@Strings.AboutStopReally</button><button @onclick="() => _confirm = false">@Strings.AboutStopCancel</button>
+        }
+        else
+        {
+            <button @onclick="() => _confirm = true" disabled="@Viewer.IsViewer" title="@Strings.ServerStopHint">⏻</button>
+        }
+    </div>
+    <details class="menu more @(InMore ? "on" : "")">
+        <summary title="@Strings.NavMore">☰</summary>
+        <div>
+            <span class="grp">@Strings.NavGroupEval</span>
+            <NavLink href="runs">@Strings.EvalRuns</NavLink>
+            <NavLink href="catalog">@Strings.EvalCatalog</NavLink>
+            <NavLink href="models">@Strings.EvalModels</NavLink>
+            <span class="grp">@Strings.GroupTools</span>
+            <NavLink href="gpu">@Strings.GpuDetails</NavLink>
+            <NavLink href="prompt">@Strings.BtnPrompt</NavLink>
+            <NavLink href="compare">@Strings.BtnCompare</NavLink>
+            <span class="grp">@Strings.GroupView</span>
+            <NavLink href="nodes">@Strings.NavNodes</NavLink>
+            <NavLink href="phone">@Strings.RemoteTitle</NavLink>
+            <NavLink href="settings">@Strings.SettingsTitle</NavLink>
+            <div class="seg">
+                <button class="@(_density == DensityAuto ? "on" : "")" @onclick="() => SetDensity(DensityAuto)">@Strings.ViewAuto</button>
+                <button class="@(_density == DensitySmall ? "on" : "")" @onclick="() => SetDensity(DensitySmall)">@Strings.ViewSmall</button>
+                <button class="@(_density == DensityFull ? "on" : "")" @onclick="() => SetDensity(DensityFull)">@Strings.ViewFull</button>
+            </div>
+        </div>
+    </details>
+</header>
+@if (Viewer.Known && Viewer.IsViewer)
+{
+    <p class="muted small">@Strings.ViewerOnly</p>
+}
+@if (Host.LastLost is { } lost)
+{
+    <div class="modal-back" style="align-items:flex-start;padding-top:40px">
+        <div class="modal">
+            <h2 style="margin-top:0">@Strings.LostTitle</h2>
+            <p><b>@lost.Name</b> <span class="muted small">@lost.Url @(lost.Pid is int pid ? $"· PID {pid}" : "") · @lost.When.ToString("g")</span></p>
+            @if (!string.IsNullOrEmpty(lost.Cause))
+            {
+                <p>@lost.Cause</p>
+            }
+            @if (lost.LogFile is { Length: > 0 } log)
+            {
+                <p class="muted small">@log <a class="btn" href="@($"log?path={Uri.EscapeDataString(log)}")">@Strings.BtnOpenLog</a></p>
+            }
+            <div class="log">@foreach (var line in lost.LogTail) { <div>@line</div> }</div>
+            <div class="row" style="margin-top:10px">
+                <button @onclick="DismissLost">@Strings.Ok</button>
+            </div>
+        </div>
+    </div>
+}
+<main>@Body</main>
+<PromptDialog />
+</div>
+
+@code {
+    private const string DensityAuto = "auto", DensitySmall = "small", DensityFull = "full";
+    private Timer? _t;
+    private bool _confirm;
+    private bool _shell;                 // in der Fenster-Hülle: dort die Zurück/Vor-Knöpfe zeigen
+    private string _density = DensityAuto;   // auto = nach Fensterbreite (der Umschalter im ☰ überstimmt sie)
+    // Seiten, die nicht als Hauptpunkt in der Kopfzeile stehen, sondern im ☰
+    private static readonly string[] MorePages = { "runs", "catalog", "models", "gpu", "prompt", "compare", "nodes", "phone", "settings", "serverdetail" };
+
+    protected override void OnInitialized() => _t = new Timer(_ => InvokeAsync(StateHasChanged), null, 2000, 2000);
+
+    // Rolle, Hülle und Ansicht einmal beim Browser erfragen (geht erst nach dem ersten Zeichnen)
+    protected override async Task OnAfterRenderAsync(bool first)
+    {
+        if (!first) return;
+        await Viewer.LoadAsync();
+        _shell = await Safe<bool>("stykkerUi.shell");
+        _density = await Safe<string>("stykkerUi.density") ?? "auto";
+        StateHasChanged();
+    }
+
+    // Fehlt das Skript (alte Seite im Cache), bleibt die Oberfläche einfach ohne Hüllen-Knöpfe und in „auto“
+    private async Task<T> Safe<T>(string what)
+    {
+        try { return await JS.InvokeAsync<T>(what); }
+        catch (Exception ex) when (ex is JSException or InvalidOperationException or NotSupportedException) { return default!; }
+    }
+
+    private async Task GoBack() => await JS.InvokeVoidAsync("stykkerUi.back");
+    private async Task GoForward() => await JS.InvokeVoidAsync("stykkerUi.forward");
+
+    private async Task SetDensity(string density)
+    {
+        _density = density;
+        await JS.InvokeVoidAsync("stykkerUi.set", density);
+    }
+
+    // Der Weg dieser Seite ohne führenden/abschließenden Schrägstrich und ohne Abfrage („/runs?a=1“ → „runs“)
+    private string RelPath()
+    {
+        var path = Nav.ToBaseRelativePath(Nav.Uri);
+        var cut = path.IndexOfAny(new[] { '?', '#' });
+        return (cut >= 0 ? path[..cut] : path).Trim('/');
+    }
+
+    private string PageName() => RelPath() switch
+    {
+        "" => Strings.NavMonitor,
+        "results" => Strings.NavEval,
+        "bench" => Strings.NavBenchmarks,
+        "recordings" => Strings.NavRecordings,
+        "runs" => Strings.EvalRuns,
+        "catalog" => Strings.EvalCatalog,
+        "models" => Strings.EvalModels,
+        "gpu" => Strings.GpuDetails,
+        "prompt" => Strings.BtnPrompt,
+        "compare" => Strings.BtnCompare,
+        "nodes" => Strings.NavNodes,
+        "phone" => Strings.RemoteTitle,
+        "settings" => Strings.SettingsTitle,
+        _ => RelPath().StartsWith("serverdetail", StringComparison.Ordinal) ? Strings.NavMonitor : RelPath(),
+    };
+
+    private bool InMore
+    {
+        get
+        {
+            var path = RelPath();
+            return Array.Exists(MorePages, p => path == p || path.StartsWith(p + "/", StringComparison.Ordinal));
+        }
+    }
+
+    // „Free VRAM“ wie im Fenster: lokale Server stoppen und Ollama-Modelle entladen (eine Bestätigung des Servers)
+    private async Task FreeVram()
+    {
+        var result = await Web.RunAsync(new ActionRequest { Action = "freevram" });
+        if (!result.Ok) await Prompt.InformAsync(Strings.BtnFreeVram, result.Message, warning: true);
+    }
+
+    private void DismissLost() => Host.ClearLost();
+    public void Dispose() => _t?.Dispose();
+}
