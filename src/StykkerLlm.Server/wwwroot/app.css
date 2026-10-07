@@ -320,3 +320,11 @@ html[data-theme=titan] ::selection{background:rgb(var(--acc-rgb)/.25);color:var(
 html[data-theme=titan] *{scrollbar-color:var(--card-border) transparent}
 /* Fenster ohne GPU: auch in Titan keine Lichthöfe in den Displays */
 html.shell[data-theme=titan] .big,html.shell[data-theme=titan] .spark-tip{text-shadow:none;box-shadow:none}
+
+/* Symbole (U2): Strichzeichnungen aus IconSprite, Farbe vom Text */
+.ic{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;vertical-align:-3px}
+.ic.sm{width:14px;height:14px}
+.ic.lg{width:20px;height:20px}
+@keyframes ic-spin{to{transform:rotate(360deg)}}
+.ic.spin{animation:ic-spin 1.4s linear infinite}
+html.shell .ic.spin{animation:none}

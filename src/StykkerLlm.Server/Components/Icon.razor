@@ -1,0 +1,21 @@
+@* Ein Symbol aus dem Sprite (IconSprite). Name ohne Vorsilbe „i-“ für Kennzahlen/Aktionen („vram“), mit Vorsilbe für die
+   anderen Gruppen („s-gen“, „b-llama“). Title: Text für Tooltip und Screenreader; ohne Title ist das Symbol Schmuck
+   (aria-hidden), dann muss das Wort daneben stehen. *@
+@if (Title is { Length: > 0 })
+{
+    <svg class="ic @Class" role="img" aria-label="@Title"><title>@Title</title><use href="#@Id" /></svg>
+}
+else
+{
+    <svg class="ic @Class" aria-hidden="true" focusable="false"><use href="#@Id" /></svg>
+}
+
+@code {
+    [Parameter, EditorRequired] public string Name { get; set; } = "";
+    [Parameter] public string? Title { get; set; }
+    [Parameter] public string? Class { get; set; }
+
+    // „vram“ → i-vram; „s-gen“, „b-llama“ … bleiben
+    public static string IdOf(string name) => name.Length > 2 && name[1] == '-' ? name : "i-" + name;
+    private string Id => IdOf(Name);
+}
