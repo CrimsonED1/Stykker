@@ -31,9 +31,24 @@
 
 | Program | Notes |
 |---|---|
-| `StykkerLLM-Server.exe` | `net10.0`, `OutputType Exe` (WinExe would drop `blazor.web.js`). Tray icon on Windows (`--no-tray` to skip). |
-| `StykkerUI.exe` | Photino window. Starts the server if needed, gets its own device via `/pair/local` (needs the data-folder key), sets the cookie through `/pair/adopt`. No GPU by default (`--gpu` to enable). One window per data folder (a second start brings it to the front). Close → a dialog over the current page (`ui.js`, message from the shell): keep in tray, quit or cancel, optionally remembered in `web-shell-close.txt`. Log: `logs/web-shell.log`. |
+| `StykkerLLM-Server.exe` | `net10.0`, `OutputType Exe` (WinExe would drop `blazor.web.js`). Tray icon on Windows (`--no-tray` to skip). Ends by itself when nobody needs it (see below); `--stay` or the setting *Keep the server running* keep it up. |
+| `StykkerUI.exe` | Photino window. Starts the server if needed, gets its own device via `/pair/local` (needs the data-folder key), sets the cookie through `/pair/adopt`. No GPU by default (`--gpu` to enable). One window per data folder (a second start brings it to the front). Close → a dialog over the current page (`ui.js`, message from the shell): keep in tray, quit or cancel, optionally remembered in `web-shell-close.txt`. Shows a start screen with a status line while the server starts. Holds the server (`/api/hold`) while open, also in the tray. |
 | `stykker.exe` | One-shot commands and the TUI. Uses the server when it runs; some commands can measure locally (`--local`). |
+
+## Lifetime of the server
+
+`ServerHolds` (Core) counts who needs the server: StykkerUI windows and interactive `stykker` sessions renew a lease every
+5 s (`POST /api/hold`, 20 s lease, `DELETE` on exit), web pages count while their Blazor connection is up (`HoldCircuits`),
+and a hub's requests count for that hub. With nobody left and no model test or benchmark running, the server stops after
+15 s (3 s after the last client signed off; a fresh server waits 60 s for its first client). `stykker server start` and
+starts without a browser pass `--stay` (scripts, node PCs).
+
+## Logs and bug reports
+
+One log per program (`AppLog`): `StykkerLLM-Server.log`, `StykkerUI.log`, `stykker.log` in `logs/` next to the exe if
+writable, else in the data folder. The server also writes ASP.NET Core warnings, engine notices and unhandled exceptions.
+`BugReport` zips the description, environment, the tails of all logs, `settings.json` and the state (no access code) into
+`bug-reports/`, with secrets blacked out; it never reads `access.dat`, `server.key`, `nodes.dat`, providers or tokens.
 
 ## Data and files
 

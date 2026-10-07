@@ -18,6 +18,7 @@ if (args.Contains("--help") || args.Contains("-h"))
           --port <number>       web port (default 8078; the Stykker-Proxy uses 17500)
           --no-browser          do not open a browser on start
           --no-tray             no tray icon (the window starts the server this way: it has an icon itself)
+          --stay                keep running when no window, terminal or web page is open (also a setting)
           --sim                 simulated servers instead of real ones (demo, screenshots; nothing real is touched)
           --platform basic      no system access (like Linux): no auto-detection, no GPU/system values.
                                 Useful to try that mode on Windows.
@@ -36,6 +37,9 @@ var paths = dataDir != null ? new AppPaths(Path.GetFullPath(dataDir)) : AppPaths
 Directory.CreateDirectory(paths.Root);
 int port = int.TryParse(args.SkipWhile(a => a != "--port").Skip(1).FirstOrDefault(), out var pp) ? pp : 8078;
 bool noBrowser = args.Contains("--no-browser");
+AppLog.Init("StykkerLLM-Server", paths);
+AppLog.CatchUnhandled();
+AppLog.Write($"start: port {port}, args {string.Join(' ', args.Where(a => a.StartsWith("--", StringComparison.Ordinal)))}");
 // „--platform basic“ nimmt die Umsetzung ohne Betriebssystem-Zugriff (der Weg, auf dem der Server unter Linux
 // läuft). Ohne den Schalter entscheidet das System selbst; siehe EngineHost.CreatePlatform.
 var platformName = args.SkipWhile(a => a != "--platform").Skip(1).FirstOrDefault();
@@ -47,7 +51,8 @@ string url = $"http://127.0.0.1:{port}";
 using var serverLock = new System.Threading.Mutex(true, "Local\\" + SingleInstance.NameFor(paths.Root) + "-server", out bool first);
 if (!first)
 {
-    ServerUi.OpenBrowser(PairUrl(paths, port, platform));
+    AppLog.Write("start: a server for this data folder already runs");
+    if (!noBrowser) ServerUi.OpenBrowser(PairUrl(paths, port, platform));
     return;
 }
 
@@ -58,6 +63,7 @@ builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
 // Aus dem Build-Ordner (nicht veröffentlicht): CSS und blazor.web.js aus den Quellen/Paketen statt aus wwwroot
 if (!Directory.Exists(Path.Combine(AppContext.BaseDirectory, "wwwroot"))) builder.WebHost.UseStaticWebAssets();
 builder.Logging.SetMinimumLevel(LogLevel.Warning);
+builder.Logging.AddProvider(new AppLogProvider());
 builder.Services.AddSingleton(paths);
 // --sim: simulierte Server (eigene Welt, gleicher Datenordner); sonst die echte Plattform
 var sim = args.Contains("--sim") ? new SimHost(SimServerSpec.Defaults(), dataDir: paths.Root) : null;
@@ -82,6 +88,7 @@ builder.Services.AddScoped<ViewerSession>();
 builder.Services.AddScoped<WebActions>();
 builder.Services.AddHttpContextAccessor();   // für die Rolle beim Vorab-Rendern (ViewerSession)
 builder.Services.AddRazorComponents().AddInteractiveServerComponents();
+builder.Services.AddScoped<Microsoft.AspNetCore.Components.Server.Circuits.CircuitHandler, HoldCircuits>();
 
 var app = builder.Build();
 var engineHost = app.Services.GetRequiredService<EngineHost>();
@@ -96,7 +103,34 @@ var gate = new AccessGate(engineHost.Access, engineHost.Key, port, () => ThemeCa
 // ── Zugang: Schlüssel (Fenster/TUI) oder Gerätecookie (Browser); von außen nur mit Home/VPN ──
 app.Use(async (ctx, next) =>
 {
-    if (!await gate.TryHandleAsync(ctx)) await next();
+    if (await gate.TryHandleAsync(ctx)) return;
+    // Ein Hub, der diesen PC als Node abfragt, hält den Server am Leben (seine Anfragen kommen regelmäßig)
+    if (AccessGate.RoleOf(ctx) == AccessRole.Hub)
+        engineHost.Holds.Touch("hub:" + ctx.Connection.RemoteIpAddress, DateTime.Now);
+    await next();
+});
+
+// ── Lebensdauer: Fenster und TUI melden sich alle paar Sekunden (ServerHolds), beim Beenden ab ──
+app.MapPost("/api/hold", (string? id) =>
+{
+    engineHost.Holds.Touch(id ?? "", DateTime.Now);
+    return Results.Text("{\"ok\":true}", "application/json");
+});
+app.MapDelete("/api/hold", (string? id) =>
+{
+    engineHost.Holds.Release(id ?? "");
+    AppLog.Write($"hold released: {id}");
+    return Results.Text("{\"ok\":true}", "application/json");
+});
+
+// Fehlerbericht herunterladen (nur Dateien aus bug-reports\, nur Admin)
+app.MapGet("/api/bugreport", (string? file, HttpContext ctx) =>
+{
+    if (!AccessRole.CanWrite(AccessGate.RoleOf(ctx)) || string.IsNullOrEmpty(file)) return Results.NotFound();
+    var dir = Path.GetFullPath(Path.Combine(paths.Root, "bug-reports"));
+    var full = Path.GetFullPath(Path.Combine(dir, Path.GetFileName(file)));
+    return full.StartsWith(dir, StringComparison.OrdinalIgnoreCase) && File.Exists(full)
+        ? Results.File(full, "application/zip", Path.GetFileName(full)) : Results.NotFound();
 });
 
 // ── Steuer-API für Fenster, TUI, Telefon und Skripte (S3) ──
@@ -219,6 +253,7 @@ catch (IOException ex)
 {
     // Port belegt (ein anderer Server mit anderem Datenordner, oder ein fremdes Programm): sagen statt abstürzen
     Console.Error.WriteLine(Strings.ServerPortBusy(port, ex.Message));
+    AppLog.Write(Strings.ServerPortBusy(port, ex.Message));
     sim?.Dispose();
     Environment.ExitCode = 1;
     return;
@@ -249,8 +284,29 @@ if (!args.Contains("--no-tray") && TrayIcon.Possible)
     if (!tray.TryShow(Strings.TrayServerTip(url), out var trayError)) Console.Error.WriteLine($"[tray] {trayError}");
 }
 
-// Läuft, bis jemand „Shut down“ drückt (Web, Telefon, API) oder der Prozess beendet wird
+// Gebunden an Fenster/TUI/Webseite: ist niemand mehr da und läuft keine Arbeit, beendet sich der Server.
+// Ausnahme: --stay oder die Einstellung „Keep the server running“ (ein Node-PC ohne Bildschirm).
+var life = app.Services.GetRequiredService<IHostApplicationLifetime>();
+bool stayArg = args.Contains("--stay");
+using var lifeTimer = new Timer(_ =>
+{
+    try
+    {
+        if (stayArg || engineHost.Engine.Settings.KeepServerRunning) return;
+        var now = DateTime.Now;
+        bool busy = engineHost.Queue?.Running == true || engineHost.Benchmarks.Running;
+        if (engineHost.Holds.ShouldStop(now, busy))
+        {
+            AppLog.Write(Strings.ServerAutoStop(engineHost.Holds.Describe(now)));
+            life.StopApplication();
+        }
+    }
+    catch (Exception ex) { AppLog.Error("life check", ex); }
+}, null, 2000, 2000);
+
+// Läuft, bis jemand „Shut down“ drückt (Web, Telefon, API), niemand den Server mehr braucht oder der Prozess endet
 await app.WaitForShutdownAsync();
+AppLog.Write("stop");
 app.Services.GetRequiredService<EvalQueue>().Dispose();
 await app.StopAsync();
 tray?.Dispose();

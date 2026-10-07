@@ -21,7 +21,8 @@ order. A new feature lands in both, or this file says why not.
 | 11 | Phone access: Home/VPN switch, six-digit code + QR, approve a device that shows a code, devices and roles | `/phone`, `/approve` | `/remote`, `/qr`, `/approve`, `/devices`, `/role` |
 | 12 | Nodes: search, pair, per-node cards, actions, model comparison | `/nodes` | `/nodes` |
 | 13 | Prompt tester with tools (read, list, write, edit, cmd/PowerShell; approve per call) | `/prompt` | `/prompt`, `/prompt tools`, `/prompt auto` |
-| 14 | Settings, theme, about | `/settings` | `/theme`, `/about` |
+| 14 | Settings, theme, about, keep server running | `/settings` | `/theme`, `/about`, `/server keep on\|off` |
+| 15 | Bug report: zip with logs, settings, state (no secrets) + GitHub issue link | `/bugreport` (☰) | `/bugreport <text>` |
 
 ## Known differences
 

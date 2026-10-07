@@ -4,6 +4,29 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## 0.3.1
+
+### Added
+- **The server lives as long as you use it.** StykkerUI windows and the interactive `stykker` sign in every few seconds,
+  open web pages and hubs count too. When nobody is left (and no model test or benchmark runs), the server ends by itself
+  – about 3 seconds after the last window or terminal closes. *Keep the server running* in the settings,
+  `stykker server keep on`, `--stay` or `stykker server start` keep it up (node PCs, scripts).
+- **Start screen in StykkerUI**: the window opens at once with a status line ("Starting the server …", "Signing in …") and
+  a *Try again* button if something fails – including a clear message when the port is taken by another program.
+- **One log per program** (`StykkerLLM-Server.log`, `StykkerUI.log`, `stykker.log`) next to the program when it may write
+  there, otherwise in the data folder. The server also logs ASP.NET Core warnings, notices and unhandled exceptions.
+- **Bug report**: ☰ → *Report a bug*, `/bugreport` in the TUI or `stykker bugreport <text>` – a zip with logs, settings and
+  state (no keys, access code, devices; API keys, tokens, user and PC name blacked out) plus a prefilled GitHub issue.
+
+### Changed
+- Quitting StykkerUI no longer stops the server outright: it signs off, and the server ends when nobody else (a terminal,
+  a web page) still needs it.
+
+### Fixed
+- StykkerUI could crash right after opening (access violation in Photino) when it sent a message before the page was
+  ready.
+- A second server start no longer opens a browser when `--no-browser` was given.
+
 ## 0.3.0
 
 A new start in a new repository: the server with its web interface is the core, and every interface is a view on it.

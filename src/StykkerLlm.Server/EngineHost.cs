@@ -27,6 +27,8 @@ public sealed class EngineHost : IDisposable
     // Die gekoppelten Nodes (dieser Server als Hub, docs/nodes.md)
     public NodeRegistry Nodes { get; }
     public SimHost? Sim { get; }
+    // Wer den Server gerade braucht (Fenster, TUI, Webseiten, Hubs) – ist niemand mehr da, beendet er sich
+    public ServerHolds Holds { get; } = new(DateTime.Now);
 
     // sim != null: simulierte Server statt der echten (--sim, für Vorführung und Bilder der Dokumentation)
     public EngineHost(AppPaths paths, IPlatform? platform = null, SimHost? sim = null)
@@ -40,10 +42,11 @@ public sealed class EngineHost : IDisposable
         // Ein zweiter Serverprozess wird schon in Program.cs über einen eigenen Mutex abgewiesen.
         var settings = AppSettings.Load(paths.SettingsFile);
         Engine = sim?.Engine ?? new MonitorEngine(_platform, paths, settings, readOnly: false);
-        Engine.Notice += text => StateJson.Notice(text);
+        Engine.Notice += text => { StateJson.Notice(text); AppLog.Write("notice: " + text); };
         Engine.ServerLost += lost =>
         {
             LastLost = lost;
+            AppLog.Write($"server lost: {lost.Name} {lost.Url} {lost.Cause}");
             StateJson.Notice(Strings.LostBalloon(lost.Name));
             TryRestartAfterCrash(lost);
         };

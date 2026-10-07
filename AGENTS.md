@@ -34,7 +34,13 @@ dotnet test tests/StykkerLlm.Tests -c Release  # all green (2 tray tests skip wi
 - Look at the UI without real model servers: `StykkerLLM-Server.exe --sim --no-browser --port 8090 --data-dir <temp folder>`
   (simulated llama.cpp/Ollama/LM Studio servers; pair a browser with the code from `stykker qr --data-dir <same> --port 8090`).
   `stykker sim` does the same in the TUI.
-- The window writes `logs/web-shell.log` in the data folder (start, close question, tray, messages from the page).
+- Logs: one per program (`StykkerLLM-Server.log`, `StykkerUI.log`, `stykker.log`) in `logs/` next to the exe when that folder
+  is writable, otherwise in the data folder's `logs/` (`Core/AppLog.cs`). Write important events with `AppLog.Write`.
+- Server lifetime: the server runs only while a StykkerUI window, an interactive `stykker`, a web page or a hub needs it
+  (`Core/Server/ServerHolds.cs`, `POST/DELETE /api/hold`). `--stay` or the setting *Keep the server running* keep it up.
+  When you start a server by hand for testing, pass `--stay`, or it ends about 75 s after start without a client.
+- Bug report: `Core/BugReport.cs` (zip in `bug-reports/`, secrets never included, redaction), action `bugreport.create`,
+  web `/bugreport`, `stykker bugreport <text>`.
 - A running server **locks its build output**. Stop it (tray icon, ⏻ in the web UI, `stykker server stop`) before building.
 - Use a separate data folder for experiments: `--data-dir <folder>` (server, UI and CLI all accept it).
 - Release zip: `powershell -ExecutionPolicy Bypass -File build/make-release.ps1 -Version x.y.z` (publishes nothing).
@@ -85,4 +91,5 @@ Tracked as GitHub issues. Larger known gaps: Linux platform (`Core/LinuxPlatform
 real two-PC test of nodes, big-model runs of the eval suites. The web UI runs inside StykkerUI without GPU: keep
 endless animations, blur and large shadows out of `html.shell` (see the end of `app.css`), they cost CPU on every tick.
 StykkerUI crashed twice in Photino's native window setup (`Photino_ctor`, heap corruption) during testing and could
-not be reproduced since; `logs/web-shell.log` and the dumps in `%LOCALAPPDATA%\CrashDumps` help if it shows up again.
+not be reproduced since; `StykkerUI.log` and the dumps in `%LOCALAPPDATA%\CrashDumps` help if it shows up again. Never call
+`SendWebMessage` before the page reported `shell.ready` – that crashed Photino with an access violation (0xc0000005).

@@ -100,7 +100,7 @@ public static class ActionApi
     public static bool ViewerAllowed(string? action) => action != null && ViewerMayRun.Contains(action);
 
     public static bool HubForbidden(string? action) =>
-        action is "code.rotate" or "device.remove" or "device.role" or "remote.set" or "pair.approve" or "pair.deny" or "shutdown"
+        action is "code.rotate" or "device.remove" or "device.role" or "remote.set" or "pair.approve" or "pair.deny" or "shutdown" or "bugreport.create"
         || (action?.StartsWith("node.", StringComparison.Ordinal) ?? false);
 
     /// <param name="role">Rolle des Aufrufers (AccessRole). null = Admin (Schlüssel aus dem Datenordner, also Fenster/TUI).</param>
@@ -486,8 +486,19 @@ public static class ActionApi
                     if (req.Get("gpuTopCount") is { } gt && int.TryParse(gt, out var gtn)) e.Settings.GpuTopCount = Math.Clamp(gtn, 0, 32);
                     // 0 schaltet die Regressions-Meldung ab, 100 meldet jeden Rückgang
                     if (req.Get("benchRegressionPct") is { } br && int.TryParse(br, out var brn)) e.Settings.BenchRegressionPct = Math.Clamp(brn, 0, 100);
+                    if (req.Get("keepServer") is { } ks && bool.TryParse(ks, out var ksb)) e.Settings.KeepServerRunning = ksb;
                     e.Settings.Save();
                     return Ok();
+                }
+
+                // ── Fehlerbericht: Zip im Datenordner, Daten = Pfad und GitHub-Adresse (durch Zeilenumbruch getrennt) ──
+                case "bugreport.create":
+                {
+                    if (string.IsNullOrWhiteSpace(req.Arg)) return ActionResult.Fail(Strings.BugReportEmpty);
+                    var state = StateJson.WriteText(e, ctx.Access, ctx.Queue, ctx.ServerPort, DateTimeOffset.Now, withHistory: false, withCode: false, nodes: ctx.Nodes);
+                    var report = BugReport.Create(e.Paths, req.Arg, state, DateTime.Now, gpu: e.Gpu?.Name);
+                    AppLog.Write($"bug report: {report.ZipPath}");
+                    return Ok(report.Summary, report.ZipPath + "\n" + report.IssueUrl + "\n" + string.Join("|", report.Entries));
                 }
 
                 // ── Heimnetz und Geräte ──

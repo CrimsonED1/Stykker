@@ -74,6 +74,9 @@ public static partial class ServerCommand
         psi.ArgumentList.Add(a.Port.ToString(Strings.Inv));
         if (a.Words.Contains("no-browser")) psi.ArgumentList.Add("--no-browser");
         if (a.Words.Contains("no-tray")) psi.ArgumentList.Add("--no-tray");   // Skripte und Server ohne Fenster
+        // Der Server endet sonst mit dem letzten Fenster/TUI/Browser. "stykker server start" und ein Start ohne Browser
+        // sind für Skripte und Node-PCs gedacht: dort bleibt er, bis "stykker server stop" kommt.
+        if (a.Command == "server" || a.NoBrowser || a.Words.Contains("no-browser") || a.Words.Contains("stay")) psi.ArgumentList.Add("--stay");
         var proc = Process.Start(psi);
         if (proc == null) { Out.Error("the server could not be started"); return Commands.Error; }
 

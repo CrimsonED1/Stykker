@@ -1,3 +1,4 @@
+using StykkerLlm.Core;
 using System.Reflection;
 using StykkerLlm.Cli.Tui;
 
@@ -31,12 +32,13 @@ internal static class Program
           eval results [N]       compare the last N eval runs      eval suites   list suites (own: <data>\eval\*.json)
           eval models            one line per model: score per category (mean ± spread over runs), speed   [--md file]
           web                    start the web interface (the server does the measuring)
-          server [status|start|stop|restart]   the Stykker server as a process
+          server [status|start|stop|restart|keep on|off]   the Stykker server as a process (keep on: also without any window)
           qr                     QR code and access code for the phone
           remote [on|off]        reach the web interface from the network (Home/VPN)
           devices [id]           signed-in devices; with an id: remove it
           role <id> viewer|admin what a signed-in device may do (viewer only looks, admin operates)
           approve <code> [viewer] let in a device that shows six digits (phone, tablet, a hub)
+          bugreport <text>       report a bug: zip with logs, settings and state (no secrets) + GitHub issue link
           nodes                  other PCs paired with this one: list, search, pair <url> [code], remove <id>
 
         Options
@@ -62,6 +64,13 @@ internal static class Program
         if (a.Help || a.Command == "help") { Console.Out.WriteLine(HelpText); return Commands.Ok; }
         if (a.Version) { Console.Out.WriteLine("stykker " + Version()); return Commands.Ok; }
 
+        // Protokoll der TUI/CLI (stykker.log bei der App, sonst im Datenordner); der Simulator schreibt keins
+        if (!a.Sim && a.Command != "sim" && a.Snapshot == null)
+        {
+            AppLog.Init("stykker", a.DataDir != null ? new AppPaths(Path.GetFullPath(a.DataDir)) : AppPaths.Default());
+            AppLog.CatchUnhandled();
+            AppLog.Write($"command: {(a.Command.Length == 0 ? "(interactive)" : a.Command)}");
+        }
         using var cts = new CancellationTokenSource();
         Console.CancelKeyPress += (_, e) => { e.Cancel = true; cts.Cancel(); };   // Strg+C: sauber beenden (Engine entsorgen)
         try
@@ -104,6 +113,8 @@ internal static class Program
                     return await ServerCommand.RoleAsync(a, cts.Token);
                 case "approve":
                     return await ServerCommand.ApproveAsync(a, cts.Token);
+                case "bugreport" or "bug":
+                    return await BugReportCommand.RunAsync(a, cts.Token);
                 case "nodes" or "node":
                     return await NodeCommand.RunAsync(a, cts.Token);
                 default:
@@ -112,8 +123,8 @@ internal static class Program
             }
         }
         catch (OperationCanceledException) { return Commands.Cancelled; }
-        catch (CliException ex) { Out.Error(ex.Message); return ex.ExitCode; }
-        catch (Exception ex) { Out.Error(ex.Message); return Commands.Error; }
+        catch (CliException ex) { Out.Error(ex.Message); AppLog.Write($"error: {ex.Message}"); return ex.ExitCode; }
+        catch (Exception ex) { Out.Error(ex.Message); AppLog.Error(a.Command, ex); return Commands.Error; }
     }
 
     private static async Task<int> RunInteractiveAsync(CliArgs a, CancellationToken ct)

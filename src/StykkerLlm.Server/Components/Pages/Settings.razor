@@ -37,6 +37,13 @@
 </div>
 
 <div class="card">
+    <h2>@Strings.ServerName</h2>
+    <label class="check"><input type="checkbox" checked="@e.Settings.KeepServerRunning" disabled="@ro" @onchange="ToggleKeep" /> @Strings.KeepServerLabel</label>
+    <p class="muted small">@Strings.KeepServerHint</p>
+    <p class="muted small">@Strings.ServerHolders(Host.Holds.Describe(DateTime.Now))</p>
+</div>
+
+<div class="card">
     <h2>@Strings.SetLimitsTitle</h2>
     <div class="grid2">
         <div>
@@ -154,6 +161,13 @@
     {
         try { return NetAddr.Key(new Uri(url).DnsSafeHost, new Uri(url).Port); }
         catch { return url; }
+    }
+
+    private Task ToggleKeep(ChangeEventArgs ev)
+    {
+        var req = new ActionRequest { Action = "settings.set" };
+        req.Values["keepServer"] = (ev.Value is bool b && b).ToString();
+        return Act(req);
     }
 
     private Task SetTheme(string name) => Act(new ActionRequest { Action = "theme.set", Arg = name });

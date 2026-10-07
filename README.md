@@ -56,6 +56,9 @@ on your phone or in the terminal. Nothing leaves your machine.
 </tr><tr><td>Phone (compact view)</td><td>Terminal: <code>stykker</code></td></tr></table>
 
 All three act on the same server: one process measures, every interface shows the same state and the same buttons.
+The server runs only while you use it: it ends by itself a few seconds after the last window, terminal or web page closes
+(unless a model test is running). For a PC that other PCs use as a node, turn on *Keep the server running* in the
+settings or start it with `stykker server start`.
 
 ## Install
 
@@ -71,7 +74,7 @@ The program is not code-signed. Windows SmartScreen may say "Windows protected y
 *Run anyway*. Check the download against `SHA256SUMS.txt` from the release:
 
 ```powershell
-(Get-FileHash .\StykkerLLM-0.3.0-win-x64.zip -Algorithm SHA256).Hash.ToLower()
+(Get-FileHash .\StykkerLLM-0.3.1-win-x64.zip -Algorithm SHA256).Hash.ToLower()
 ```
 
 ## Quick start
@@ -118,6 +121,14 @@ against tests in a temporary folder, after asking; not a sandbox), **reasoning**
 **creative**, and **agent** (multi-step tasks with real file and shell tools). Results are saved in the data folder and
 ranked per model; runs can be spread over paired nodes. Own suites: JSON files under `eval\` in the data folder.
 
+## Logs and bug reports
+
+Each program writes its own log (`StykkerLLM-Server.log`, `StykkerUI.log`, `stykker.log`) to `logs` next to the program,
+or to the data folder when the program folder is read-only. **☰ → Report a bug** (or `stykker bugreport <text>`) packs
+your description, the logs, settings and current state into a zip – keys, the access code, devices and provider keys are
+never included; API keys, tokens, your Windows user name and the PC name are blacked out – and opens a prefilled GitHub
+issue. Nothing is uploaded automatically: you attach the zip yourself.
+
 ## Data and privacy
 
 - Everything lives in `%APPDATA%\StykkerLLM\` (settings, profiles, history, recordings, logs, results). Nothing leaves the
@@ -136,7 +147,7 @@ dotnet build StykkerLlm.slnx
 dotnet test tests/StykkerLlm.Tests
 ```
 
-Release zip: `powershell -ExecutionPolicy Bypass -File build\make-release.ps1 -Version 0.3.0`.
+Release zip: `powershell -ExecutionPolicy Bypass -File build\make-release.ps1 -Version 0.3.1`.
 Layout and rules for contributors (and coding agents): [AGENTS.md](AGENTS.md), [docs/architecture.md](docs/architecture.md),
 [docs/ui.md](docs/ui.md).
 

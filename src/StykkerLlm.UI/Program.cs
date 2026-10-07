@@ -9,14 +9,20 @@ using StykkerLlm.Platform.Windows;
 namespace StykkerLlm.UI;
 
 // StykkerUI: das Fenster um die Weboberfläche. Ablauf:
-//  1. Läuft der Server? Sonst starten (wie "stykker web") und warten, bis er antwortet.
-//  2. Ein eigenes Gerätetoken holen (einmal, mit dem Schlüssel des Datenordners; danach aus web-shell.dat).
-//  3. Im Fenster eine kleine Seite laden, die das Token an /pair/adopt schickt – der Server setzt das Cookie und leitet
-//     auf die Startseite. Ab da ist es die normale Weboberfläche.
+//  1. Sofort ein Fenster mit Startbild (Statuszeile), damit man sieht, dass etwas passiert.
+//  2. Im Hintergrund: läuft der Server? Sonst starten (wie "stykker web") und warten, bis er antwortet.
+//  3. Ein eigenes Gerätetoken holen (einmal, mit dem Schlüssel des Datenordners; danach aus web-shell.dat).
+//  4. Eine kleine Seite laden, die das Token an /pair/adopt schickt – der Server setzt das Cookie und leitet auf die
+//     Startseite. Ab da ist es die normale Weboberfläche.
+//  5. Solange das Fenster offen ist (auch im Tray), meldet es sich alle paar Sekunden beim Server (ServerHolds). Ist
+//     kein Fenster, keine TUI und keine Webseite mehr offen, beendet sich der Server von selbst.
 // Ohne GPU: unter Windows bekommt WebView2 --disable-gpu, unter Linux WebKitGTK WEBKIT_DISABLE_COMPOSITING_MODE=1.
 internal static class Program
 {
     public const string TokenFile = "web-shell.dat";
+    // Die Seite im Fenster meldet sich (shell.ready), sobald ihr Skript läuft. Vorher darf nichts an die WebView
+    // gehen: SendWebMessage vor dem Bereitsein der WebView2 endet in Photino mit einer Zugriffsverletzung (0xc0000005).
+    private static readonly ManualResetEventSlim PageReady = new(false);
 
     [STAThread]
     private static int Main(string[] args)
@@ -24,6 +30,8 @@ internal static class Program
         var opt = ShellArgs.Parse(args);
         var paths = opt.DataDir != null ? new AppPaths(Path.GetFullPath(opt.DataDir)) : AppPaths.Default();
         IPlatform platform = OperatingSystem.IsWindows() ? new WindowsPlatform() : new BasicPlatform();
+        AppLog.Init("StykkerUI", paths);
+        AppLog.CatchUnhandled();
 
         if (!opt.Gpu && OperatingSystem.IsLinux())
         {
@@ -37,24 +45,10 @@ internal static class Program
         if (!single.IsFirst)
         {
             single.SignalFirst();
-            ShellLog.Write(paths, "start: already open, brought to front");
+            AppLog.Write("start: already open, brought to front");
             return 0;
         }
-        ShellLog.Write(paths, $"start: port {opt.Port}, gpu {opt.Gpu}");
-        string page = "", adopt = "";
-        bool startedServer = false;
-        try
-        {
-            var start = StartPage(paths, platform, opt).GetAwaiter().GetResult();
-            page = start.Page;
-            adopt = start.AdoptPage;       // dieselbe Seite holt das Fenster aus dem Tray zurück
-            startedServer = start.StartedServer;
-        }
-        catch (Exception ex) when (ex is HttpRequestException or IOException or InvalidOperationException or TaskCanceledException)
-        {
-            page = Html.Message(Strings.ShellFailed, ex.Message);
-            ShellLog.Write(paths, $"start failed: {ex.GetType().Name}: {ex.Message}");
-        }
+        AppLog.Write($"start: port {opt.Port}, gpu {opt.Gpu}");
 
         var window = new PhotinoWindow()
             .SetTitle("StykkerLLM")
@@ -66,21 +60,58 @@ internal static class Program
         if (File.Exists(icon)) window.SetIconFile(icon);
         if (!opt.Gpu && OperatingSystem.IsWindows()) window.SetBrowserControlInitParameters("--disable-gpu --disable-gpu-compositing");
 
+        using var hold = new ServerHold();
         // „Beim Schließen fragen, ob in den Tray": Tray-Symbol und Verstecken gibt es nur unter Windows.
-        // Gefragt wird, sobald die Oberfläche steht – auch wenn den Server ein anderer gestartet hat.
-        if (adopt.Length > 0 && OperatingSystem.IsWindows())
+        CloseToTray? closeToTray = OperatingSystem.IsWindows() ? new CloseToTray(window, paths, hold.Release) : null;
+        if (closeToTray != null && OperatingSystem.IsWindows())
         {
-            var closeToTray = new CloseToTray(window, paths, platform, opt.Port, adopt, startedServer);
             window.RegisterWindowClosingHandler(closeToTray.OnClosing);
-            window.RegisterWebMessageReceivedHandler(closeToTray.OnMessage);
-            single.ActivationRequested += () => Try(() => window.Invoke(closeToTray.Activate));
+            single.ActivationRequested += () => Try(() => window.Invoke(() => { if (OperatingSystem.IsWindows()) closeToTray.Activate(); }));
         }
+        window.RegisterWebMessageReceivedHandler((s, m) =>
+        {
+            if (m == Html.MsgReady) { PageReady.Set(); return; }
+            if (m == Html.MsgRetry) Boot(window, paths, platform, opt, hold, closeToTray);
+            else if (OperatingSystem.IsWindows()) closeToTray?.OnMessage(s, m);
+        });
+        // Der Start läuft erst, wenn das Fenster steht – sonst gäbe es niemanden, der das Startbild weiterschaltet
+        window.RegisterWindowCreatedHandler((_, _) => Boot(window, paths, platform, opt, hold, closeToTray));
 
-        window.LoadRawString(page);
-        ShellLog.Write(paths, "window: open");
+        window.LoadRawString(Html.Splash(Strings.ShellConnecting));
+        AppLog.Write("window: open");
         window.WaitForClose();
-        ShellLog.Write(paths, "window: closed");
+        hold.Release();
+        AppLog.Write("window: closed");
         return 0;
+    }
+
+    // Server finden oder starten, anmelden, Oberfläche laden – im Hintergrund, das Startbild zeigt den Schritt
+    private static void Boot(PhotinoWindow window, AppPaths paths, IPlatform platform, ShellArgs opt, ServerHold hold, CloseToTray? closeToTray)
+    {
+        void Status(string text)
+        {
+            if (PageReady.IsSet) Try(() => window.Invoke(() => window.SendWebMessage(Html.StatusMessage(text))));
+        }
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var start = await StartPage(paths, platform, opt, Status).ConfigureAwait(false);
+                hold.Start(NetAddr.Url("127.0.0.1", opt.Port), start.Token);
+                if (!PageReady.Wait(TimeSpan.FromSeconds(20))) AppLog.Write("window: page did not report ready, loading anyway");
+                window.Invoke(() =>
+                {
+                    if (OperatingSystem.IsWindows()) closeToTray?.Ready(start.AdoptPage);
+                    window.LoadRawString(start.AdoptPage);
+                });
+            }
+            catch (Exception ex) when (ex is HttpRequestException or IOException or InvalidOperationException or TaskCanceledException or JsonException)
+            {
+                AppLog.Write($"start failed: {ex.GetType().Name}: {ex.Message}");
+                PageReady.Wait(TimeSpan.FromSeconds(20));
+                Try(() => window.Invoke(() => window.LoadRawString(Html.Message(Strings.ShellFailed, ex.Message))));
+            }
+        });
     }
 
     // Kommt eine Aktivierung, bevor das Fenster steht, gibt es noch nichts nach vorn zu holen
@@ -90,32 +121,34 @@ internal static class Program
         catch (Exception ex) when (ex is InvalidOperationException or NullReferenceException) { Debug.WriteLine(ex.Message); }
     }
 
-    // Die erste Seite im Fenster: ein Formular, das sich selbst an /pair/adopt schickt (Token als Cookie setzen)
-    private static async Task<StartPageResult> StartPage(AppPaths paths, IPlatform platform, ShellArgs opt)
+    // Die erste Seite der Oberfläche: ein Formular, das sich selbst an /pair/adopt schickt (Token als Cookie setzen)
+    private static async Task<StartPageResult> StartPage(AppPaths paths, IPlatform platform, ShellArgs opt, Action<string> status)
     {
         var baseUrl = NetAddr.Url("127.0.0.1", opt.Port);
         using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
-        bool started = false;
         if (!await ServerClient.IsRunningAsync(opt.Port).ConfigureAwait(false))
         {
-            ShellLog.Write(paths, "server: not answering, starting it");
-            StartServer(paths, opt.Port);
-            started = true;
+            status(Strings.ShellStarting);
+            AppLog.Write("server: not answering, starting it");
+            using var proc = StartServer(paths, opt.Port);
             var end = DateTime.Now.AddSeconds(30);
             while (!await ServerClient.IsRunningAsync(opt.Port).ConfigureAwait(false))
             {
                 if (DateTime.Now > end) throw new InvalidOperationException(Strings.ServerNotRunning);
-                await Task.Delay(500).ConfigureAwait(false);
+                // Der Server hat aufgegeben (Port belegt …): gleich sagen, statt 30 s zu warten
+                if (proc?.HasExited == true)
+                    throw new InvalidOperationException(proc.ExitCode == 1 ? Strings.ServerPortBusy(opt.Port, Strings.ShellSeeServerLog) : Strings.ServerNotRunning);
+                await Task.Delay(300).ConfigureAwait(false);
             }
         }
-        ShellLog.Write(paths, "server: running");
+        AppLog.Write("server: running");
+        status(Strings.ShellSigningIn);
         var token = await Token(http, baseUrl, paths, platform).ConfigureAwait(false);
-        ShellLog.Write(paths, "token: ok");
-        var adopt = Html.Adopt(baseUrl, token, opt.Page);
-        return new StartPageResult(adopt, adopt, started);
+        AppLog.Write("token: ok");
+        return new StartPageResult(Html.Adopt(baseUrl, token, opt.Page), token);
     }
 
-    private static void StartServer(AppPaths paths, int port)
+    private static Process? StartServer(AppPaths paths, int port)
     {
         var exe = ServerLocator.Find() ?? throw new InvalidOperationException(Strings.ShellNoServer);
         var psi = new ProcessStartInfo(exe)
@@ -124,7 +157,7 @@ internal static class Program
             WorkingDirectory = Path.GetDirectoryName(exe) ?? AppContext.BaseDirectory,
         };
         foreach (var a in new[] { "--data-dir", paths.Root, "--port", port.ToString(Strings.Inv), "--no-browser", "--no-tray" }) psi.ArgumentList.Add(a);
-        Process.Start(psi);
+        return Process.Start(psi);
     }
 
     // Gespeichertes Token prüfen (gilt es noch?), sonst ein neues holen und gebunden an den Benutzer ablegen
@@ -195,9 +228,39 @@ internal sealed record ShellArgs(int Port, string? DataDir, bool Gpu, string Pag
     }
 }
 
-// Was der Start ergeben hat: die Seite fürs Fenster (und dieselbe Seite noch einmal, um das Fenster aus dem Tray
-// zurückzuholen) und ob diese Hülle den Server dabei selbst gestartet hat – dann beendet sie ihn auch wieder.
-internal sealed record StartPageResult(string Page, string AdoptPage, bool StartedServer);
+// Was der Start ergeben hat: die Anmeldeseite (holt das Fenster auch nach einer Notfall-Seite zurück) und das Token
+internal sealed record StartPageResult(string AdoptPage, string Token);
+
+// Das Fenster hält den Server am Leben (POST /api/hold alle 5 s, mit dem Gerätetoken), beim Beenden meldet es sich ab
+internal sealed class ServerHold : IDisposable
+{
+    private readonly string _id = "ui:" + Environment.ProcessId;
+    private ServerClient? _client;
+    private Timer? _timer;
+    private int _released;
+
+    public void Start(string baseUrl, string token)
+    {
+        if (_client != null) return;
+        _client = ServerClient.ForDevice(baseUrl, token);
+        _timer = new Timer(_ => { _ = _client.HoldAsync(_id); }, null, 0, 5000);
+    }
+
+    // einmal; danach beendet sich der Server nach wenigen Sekunden, wenn ihn sonst niemand braucht
+    public void Release()
+    {
+        if (Interlocked.Exchange(ref _released, 1) == 1 || _client == null) return;
+        _timer?.Dispose();
+        try { _client.ReleaseAsync(_id).Wait(TimeSpan.FromSeconds(2)); } catch (AggregateException) { }
+        AppLog.Write("hold released");
+    }
+
+    public void Dispose()
+    {
+        Release();
+        _client?.Dispose();
+    }
+}
 
 internal static class Html
 {
@@ -219,13 +282,24 @@ internal static class Html
         <script>document.getElementById('f').submit();</script></body></html>
         """;
 
+    // Startbild: sofort da, die Statuszeile schaltet der Start per Nachricht weiter (StatusMessage)
+    public static string Splash(string status) => $$$"""
+        <!doctype html><html><head><meta charset="utf-8"><style>{{{Style}}}.st{color:#6f86a6;font-size:13px;margin-top:14px;min-height:1.4em}</style></head><body>
+        <div><div class="logo">◆</div><div class="name">STYKKER <b>LLM</b></div><div class="load"><i></i></div><div class="st" id="st">{{{Esc(status)}}}</div></div>
+        <script>try{window.external.sendMessage('shell.ready')}catch(e){}try{window.external.receiveMessage(function(m){try{var o=JSON.parse(m);if(o.t==='status')document.getElementById('st').textContent=o.text}catch(e){}})}catch(e){}</script>
+        </body></html>
+        """;
+
+    public static string StatusMessage(string text) => JsonSerializer.Serialize(new Dictionary<string, string> { ["t"] = "status", ["text"] = text });
+
     public static string Message(string title, string text) => $$"""
-        <!doctype html><html><head><meta charset="utf-8"><style>{{Style}}</style></head><body>
-        <div><h2 style="font-weight:600">{{Esc(title)}}</h2><p style="color:#6f86a6">{{Esc(text)}}</p></div></body></html>
+        <!doctype html><html><head><meta charset="utf-8"><style>{{Style}}button{margin-top:10px;background:#0f1a2c;color:#dce9fa;border:1px solid #2a4a74;border-radius:999px;padding:8px 20px;font:inherit;cursor:pointer}button:hover{background:#16263f}</style></head><body>
+        <div><div class="logo" style="animation:none">◆</div><h2 style="font-weight:600">{{Esc(title)}}</h2><p style="color:#6f86a6;max-width:520px">{{Esc(text)}}</p>
+        <button onclick="try{window.external.sendMessage('{{MsgRetry}}')}catch(e){}">{{Esc(Strings.ShellRetry)}}</button></div></body></html>
         """;
 
     // Nachrichten der Rückfrage-Seite an den Prozess (window.external.sendMessage, die Brücke der Fenster-Hülle)
-    public const string MsgTray = "shell.tray", MsgQuit = "shell.quit", MsgCancel = "shell.cancel", MsgAck = "shell.ack";
+    public const string MsgTray = "shell.tray", MsgQuit = "shell.quit", MsgCancel = "shell.cancel", MsgAck = "shell.ack", MsgRetry = "shell.retry", MsgReady = "shell.ready";
 
     // Die Frage als Nachricht an die Seite: ui.js zeichnet daraus den Dialog über der aktuellen Seite (Texte von hier,
     // weil die Seite Strings nicht kennt)

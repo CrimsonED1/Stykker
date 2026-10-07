@@ -145,6 +145,35 @@ public sealed class ServerClient : IDisposable
         }
     }
 
+    // Der Server lebt, solange ihn ein Fenster oder eine TUI hält (ServerHolds): alle paar Sekunden melden, beim
+    // Beenden abmelden. Fehler sind egal – beim nächsten Mal wieder.
+    public async Task<bool> HoldAsync(string id, CancellationToken ct = default)
+    {
+        try
+        {
+            using var resp = await _http.PostAsync("/api/hold?id=" + Uri.EscapeDataString(id), null, ct);
+            return resp.IsSuccessStatusCode;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or OperationCanceledException) { return false; }
+    }
+
+    public async Task ReleaseAsync(string id, CancellationToken ct = default)
+    {
+        try { using var _ = await _http.DeleteAsync("/api/hold?id=" + Uri.EscapeDataString(id), ct); }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or OperationCanceledException) { }
+    }
+
+    // Der Zustand als JSON-Text (für den Fehlerbericht der TUI), null ohne Server
+    public async Task<string?> GetStateTextAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            using var resp = await _http.GetAsync("/api/state", ct);
+            return resp.IsSuccessStatusCode ? await resp.Content.ReadAsStringAsync(ct) : null;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or OperationCanceledException) { return null; }
+    }
+
     public Task<ActionResult> SendAsync(string action, string? arg = null, string? arg2 = null, bool flag = false, int number = 0,
         IEnumerable<string>? ids = null, string? secret = null, CancellationToken ct = default) =>
         SendAsync(new ActionRequest

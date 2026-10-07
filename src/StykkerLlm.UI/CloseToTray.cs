@@ -18,33 +18,32 @@ internal sealed class CloseToTray
     private const int SwHide = 0, SwShow = 9;
     private readonly PhotinoWindow _window;
     private readonly AppPaths _paths;
-    private readonly IPlatform _platform;
-    private readonly int _port;
-    private readonly string _adoptPage;     // die Startseite der Hülle: setzt das Gerätecookie und lädt die Oberfläche
-    private readonly bool _startedServer;   // nur dann beendet sich der Server mit dem Fenster
+    private readonly Action _release;       // beim Beenden beim Server abmelden (er endet, wenn ihn sonst niemand braucht)
+    private string? _adoptPage;             // die Anmeldeseite der Hülle: setzt das Gerätecookie und lädt die Oberfläche
     private readonly ThemeInfo _theme;
     private TrayIcon? _tray;
     private Timer? _fallback;
     // Nur auf dem Fenster-Thread: Rückfrage und Schließen kommen von dort, die Tray-Klicks werden dorthin geholt
     private bool _quit, _hidden, _acked, _fallbackShown;
 
-    public CloseToTray(PhotinoWindow window, AppPaths paths, IPlatform platform, int port, string adoptPage, bool startedServer)
+    public CloseToTray(PhotinoWindow window, AppPaths paths, Action release)
     {
         _window = window;
         _paths = paths;
-        _platform = platform;
-        _port = port;
-        _adoptPage = adoptPage;
-        _startedServer = startedServer;
+        _release = release;
         _theme = ThemeCatalog.Find(AppSettings.Load(paths.SettingsFile).Theme);
     }
+
+    // Die Oberfläche steht: ab jetzt wird beim Schließen gefragt (vorher – Startbild, Fehlerseite – schließt das X sofort)
+    public void Ready(string adoptPage) => _adoptPage = adoptPage;
 
     // true = nicht schließen; false = wirklich schließen. Achtung, die Richtung ist die Gegenrichtung der naheliegenden
     // Lesart: Photino.NET setzt in OnWindowClosing bei true „noClose = 1“ (gegen Photino.NET 4.0.16 geprüft, 2026-10-06).
     public bool OnClosing(object? sender, EventArgs e)
     {
         if (_quit || _hidden) return false;
-        if (!EnsureTray()) return false;          // kein Symbol möglich: dann wie bisher schließen
+        if (_adoptPage == null) { Leave(); return false; }   // noch keine Oberfläche: nichts zu fragen
+        if (!EnsureTray()) { Leave(); return false; }          // kein Symbol möglich: dann wie bisher schließen
         var choice = ShellChoice.Load(_paths);
         Log($"close: choice {choice}");
         switch (choice)
@@ -131,7 +130,7 @@ internal sealed class CloseToTray
     // die Seite noch, wie sie war – nichts neu laden, man landet genau dort, wo man war.
     private void Restore()
     {
-        if (!_fallbackShown) return;
+        if (!_fallbackShown || _adoptPage == null) return;
         _fallbackShown = false;
         _window.LoadRawString(_adoptPage);
     }
@@ -168,29 +167,10 @@ internal sealed class CloseToTray
         _fallback?.Dispose();
         _tray?.Dispose();
         _tray = null;
-        StopServer();
+        _release();
     }
 
-    // Den Server beenden, den diese Hülle gestartet hat – sonst läuft er ohne Fenster und ohne Symbol weiter.
-    // Lief er schon vorher (Fenster, „stykker web“), bleibt er: er gehört dann nicht uns.
-    private void StopServer()
-    {
-        if (!_startedServer) return;
-        var key = ServerClient.ReadKey(_paths, _platform);
-        if (key == null) return;
-        try
-        {
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(3));
-            using var client = new ServerClient(ServerClient.DefaultUrl(_port), key);
-            client.SendAsync("shutdown", ct: cts.Token).GetAwaiter().GetResult();
-        }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or OperationCanceledException or IOException)
-        {
-            Debug.WriteLine($"[quit] server not stopped: {ex.Message}");
-        }
-    }
-
-    private void Log(string line) => ShellLog.Write(_paths, line);
+    private static void Log(string line) => AppLog.Write(line);
 
     [DllImport("user32.dll")]
     private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
@@ -220,19 +200,5 @@ internal static class ShellChoice
     {
         try { AtomicFile.WriteAllText(Path.Combine(paths.Root, FileName), choice); }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { Debug.WriteLine($"[close] {ex.Message}"); }
-    }
-}
-
-// Kurzes Protokoll der Hülle (logs/web-shell.log): Start, Schließen, Tray, Nachrichten der Seite
-internal static class ShellLog
-{
-    public static void Write(AppPaths paths, string line)
-    {
-        try
-        {
-            Directory.CreateDirectory(paths.LogsDir);
-            File.AppendAllText(Path.Combine(paths.LogsDir, "web-shell.log"), $"{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff} {line}{Environment.NewLine}");
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { Debug.WriteLine(line); }
     }
 }

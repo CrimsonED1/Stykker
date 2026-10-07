@@ -29,7 +29,7 @@ public sealed class TuiApp
         new("gpu", "", Strings.TuiGpu),
         new("freevram", "", Strings.TuiFreeVram),
         new("eval", "[runs|results|models|catalog]", Strings.TuiEval, "tests"),
-        new("server", "[status|start|stop]", Strings.TuiServer),
+        new("server", "[status|start|stop|keep on|off]", Strings.TuiServer),
         new("web", "", Strings.TuiWeb),
         new("remote", "[on|off]", Strings.TuiRemote),
         new("qr", "", Strings.TuiQr),
@@ -38,6 +38,7 @@ public sealed class TuiApp
         new("approve", "<code> [viewer]", Strings.TuiApprove),
         new("prompt", "<server> <text> | clear | system <text>", Strings.TuiPrompt, "chat"),
         new("nodes", "[search|pair <address> [code]|remove <id>|run <node> <action>]", Strings.TuiNodes),
+        new("bugreport", "<what happened>", Strings.TuiBugReport, "bug"),
         new("about", "", Strings.TuiAbout),
         new("theme", "[name]", "switch colors: " + string.Join(", ", TuiTheme.All.Select(t => t.Name))),
         new("clear", "", Strings.TuiClear),
@@ -308,6 +309,7 @@ public sealed class TuiApp
             "nodes" => await NodeCommand.RunAsync(a, CancellationToken.None, waitForApproval: false).ConfigureAwait(false),
             "eval" => await EvalCommands.RunAsync(_s, a).ConfigureAwait(false),
             "server" => await ServerCommand.ServerAsync(a, CancellationToken.None, _s.Prompt).ConfigureAwait(false),
+            "bugreport" => await BugReportCommand.RunAsync(a, CancellationToken.None).ConfigureAwait(false),
             _ => Commands.Usage,
         };
         if (code == Commands.Cancelled) _log.Line(_p.Muted("cancelled"));

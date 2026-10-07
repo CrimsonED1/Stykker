@@ -14,6 +14,7 @@ public static partial class ServerCommand
             case "start": return await WebAsync(a, ct).ConfigureAwait(false);
             case "stop": return await StopAsync(a, ct, prompt).ConfigureAwait(false);
             case "status": return await StatusAsync(a, ct).ConfigureAwait(false);
+            case "keep": return await KeepAsync(a, ct).ConfigureAwait(false);
             case "restart":
             {
                 await StopAsync(a, ct, prompt).ConfigureAwait(false);
@@ -25,9 +26,29 @@ public static partial class ServerCommand
                 return await WebAsync(a, ct).ConfigureAwait(false);
             }
             default:
-                Out.Error("usage: stykker server [status|start|stop|restart]");
+                Out.Error("usage: stykker server [status|start|stop|restart|keep on|off]");
                 return Commands.Usage;
         }
+    }
+
+    // stykker server keep on|off – weiterlaufen, auch wenn kein Fenster, keine TUI und keine Webseite offen ist
+    private static async Task<int> KeepAsync(CliArgs a, CancellationToken ct)
+    {
+        var word = a.Words.Skip(1).FirstOrDefault()?.ToLowerInvariant();
+        using var client = TryConnect(a);
+        if (client?.State == null) { Out.Error(Strings.ServerNotRunning); return Commands.Error; }
+        if (word is not ("on" or "off"))
+        {
+            Console.Out.WriteLine(Strings.KeepServerHint);
+            Out.Error("usage: stykker server keep on|off");
+            return Commands.Usage;
+        }
+        var req = new ActionRequest { Action = "settings.set" };
+        req.Values["keepServer"] = (word == "on").ToString();
+        var r = await client.SendAsync(req, ct).ConfigureAwait(false);
+        if (!r.Ok) { Out.Error(r.Message); return Commands.Error; }
+        Console.Out.WriteLine($"{Strings.KeepServerLabel}: {Out.Green(word)}");
+        return Commands.Ok;
     }
 
     private static async Task<int> StatusAsync(CliArgs a, CancellationToken ct)

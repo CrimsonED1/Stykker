@@ -31,6 +31,9 @@ public sealed class Session : IDisposable
     private readonly SimHost? _sim;
     private readonly IPlatform? _platform;
     private SingleInstance? _single;
+    // Die interaktive TUI hält den Server am Leben (ServerHolds), solange sie offen ist
+    private Timer? _hold;
+    private readonly string _holdId = "tui:" + Environment.ProcessId;
 
     public Session(CliArgs a, bool write) : this(a, write ? SessionMode.Write : SessionMode.Read) { }
 
@@ -70,6 +73,8 @@ public sealed class Session : IDisposable
             else { _platform = new BasicPlatform(); Limited = true; }
             // Mit Server keine eigene Engine zum Schreiben – nur lesend mitmessen, wenn ausdrücklich gewünscht (--local)
             Engine = new MonitorEngine(_platform, paths, settings, readOnly: !write || UsesServer);
+            if (Remote != null && mode == SessionMode.Auto)
+                _hold = new Timer(_ => { _ = Remote.HoldAsync(_holdId); }, null, 0, 5000);
         }
         Launcher = new LaunchCoordinator(Engine, Prompt);
     }
@@ -102,6 +107,11 @@ public sealed class Session : IDisposable
         {
             try { Engine.Dispose(); } catch { }
             _platform?.Dispose();
+        }
+        if (_hold != null)
+        {
+            _hold.Dispose();
+            try { Remote?.ReleaseAsync(_holdId).Wait(TimeSpan.FromSeconds(2)); } catch (AggregateException) { }
         }
         Remote?.Dispose();
         _single?.Dispose();

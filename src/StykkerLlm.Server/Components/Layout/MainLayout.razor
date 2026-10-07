@@ -81,6 +81,7 @@
             <NavLink href="nodes">@Strings.NavNodes</NavLink>
             <NavLink href="phone">@Strings.RemoteTitle</NavLink>
             <NavLink href="settings">@Strings.SettingsTitle</NavLink>
+            <NavLink href="bugreport">@Strings.BugReportTitle</NavLink>
             <div class="seg">
                 <button class="@(_density == DensityAuto ? "on" : "")" @onclick="() => SetDensity(DensityAuto)">@Strings.ViewAuto</button>
                 <button class="@(_density == DensitySmall ? "on" : "")" @onclick="() => SetDensity(DensitySmall)">@Strings.ViewSmall</button>
@@ -125,7 +126,7 @@
     private bool _shell;                 // in der Fenster-Hülle: dort die Zurück/Vor-Knöpfe zeigen
     private string _density = DensityAuto;   // auto = nach Fensterbreite (der Umschalter im ☰ überstimmt sie)
     // Seiten, die nicht als Hauptpunkt in der Kopfzeile stehen, sondern im ☰
-    private static readonly string[] MorePages = { "runs", "catalog", "models", "gpu", "prompt", "compare", "nodes", "phone", "settings", "serverdetail" };
+    private static readonly string[] MorePages = { "runs", "catalog", "models", "gpu", "prompt", "compare", "nodes", "phone", "settings", "bugreport", "serverdetail" };
 
     protected override void OnInitialized() => _t = new Timer(_ => InvokeAsync(StateHasChanged), null, 2000, 2000);
 
@@ -178,6 +179,7 @@
         "nodes" => Strings.NavNodes,
         "phone" => Strings.RemoteTitle,
         "settings" => Strings.SettingsTitle,
+        "bugreport" => Strings.BugReportTitle,
         _ => RelPath().StartsWith("serverdetail", StringComparison.Ordinal) ? Strings.NavMonitor : RelPath(),
     };
 
