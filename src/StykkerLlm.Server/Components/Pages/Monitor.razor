@@ -134,9 +134,9 @@
         }
         @if (e.Sys is { } sy)
         {
-            <h2 class="@(e.Gpu != null ? "hw-sep" : "")">@Strings.SystemCard <small class="muted">@Strings.LogicalCores(sy.Cores)</small></h2>
+            <h2 class="@(e.Gpu != null ? "hw-sep" : "")">@Strings.SystemCard</h2>
             <div class="meters">
-                @Meter(Strings.CpuLoad, sy.CpuPercent.ToString("0", CultureInfo.InvariantCulture), "%", sy.CpuPercent / 100, null)
+                @Meter(Strings.CpuLoad, sy.CpuPercent.ToString("0", CultureInfo.InvariantCulture), "%", sy.CpuPercent / 100, Strings.LogicalCores(sy.Cores))
                 @Meter(Strings.Memory, sy.RamUsedGb.ToString("0.0", CultureInfo.InvariantCulture), "/ " + sy.RamTotalGb.ToString("0", CultureInfo.InvariantCulture) + " GB", sy.RamFrac, Strings.HwFree(Math.Max(0, sy.RamTotalGb - sy.RamUsedGb)))
             </div>
             @if (e.RamTop.Count > 0)
@@ -149,34 +149,80 @@
 }
 
 <h3 class="sec">@Strings.SectionSaved</h3>
-<div class="card">
+@* Profile als Kacheln (U6): Backend-Streifen, sechs feste Symbole, laufend = leuchtet mit Live-t/s, darunter die
+   VRAM-Vorhersage (gemessen oder aus dem GGUF-Kopf geschätzt) gegen den freien Grafikspeicher *@
+<div class="card pf-card">
     @if (e.Library.Profiles.Count == 0) { <span class="muted small">@Strings.SavedEmpty</span> }
-    <table>
+    <div class="pfs">
         @foreach (var p in e.Library.Profiles)
         {
+            var pr = p;
             var a = LlamaServerArgs.Parse(p.Args);
             var running = Launcher.RunningFor(p); var starting = Launcher.StartingFor(p);
             var hist = e.Library.FindHistory(p.Key);
-            <tr>
-                <td style="width:22px"><span style="color:@(running != null ? "var(--good)" : starting != null ? "var(--warn)" : "var(--muted)")">●</span></td>
-                <td><b>@p.Name</b> <span class="muted small">@(a.Model != null ? ServerInfo.ModelName(a.Model) : "?") · @(a.Ctx is int c ? $"ctx {c / 1024}k" : "") · :@p.Port</span>
-                    <div class="muted small">@(hist is { BestTps: > 0 } ? $"best {hist.BestTps:0.0} t/s" : "") @(hist is { MaxVramGb: > 0 } ? $"· {hist.MaxVramGb:0.0} GB VRAM" : "")</div></td>
-                <td style="text-align:right;white-space:nowrap">
-                    @if (running != null) { <span class="pill ok">@Strings.RunningTag</span> }
-                    else if (starting != null) { <span class="pill run">@Strings.StartingShort</span> }
-                    else { <button class="good" disabled="@ro" title="@StartTip(p)" @onclick="() => Start(p)">@Strings.BtnStart</button> }
-                    <details class="menu">
-                        <summary title="@Strings.BtnMore">☰</summary>
+            var need = VramNeed(p, hist);
+            double? free = e.Gpu is { } fg && fg.MemTotalGb > 0 ? Math.Max(0, fg.MemTotalGb - fg.MemUsedGb) : null;
+            bool tight = running == null && need is double nd && free is double fr && nd > fr;
+            bool draft = p.Args.Any(x => x is "-md" or "--model-draft" or "--hf-repo-draft" or "-hfd");
+            <div class="pf @(running != null ? "on" : "") @(starting != null ? "starting" : "") @(tight ? "tight" : "")" style="--b:var(--b-llama)">
+                <div class="pf-hd">
+                    <span class="bk" title="llama.cpp"><Icon Name="b-llama" Title="llama.cpp" /></span>
+                    <span class="name" title="@(a.Model ?? p.Name)">@p.Name</span>
+                    <span class="st" data-s="@(running != null ? (running.Current > 0 ? "gen" : "idle") : starting != null ? "load" : "off")" title="@(running != null ? Strings.RunningTag : starting != null ? Strings.StartingShort : Strings.CardStateOff)">
+                        <Icon Name="@(running != null ? (running.Current > 0 ? "s-gen" : "s-idle") : starting != null ? "s-load" : "s-off")" Class="@(starting != null ? "spin" : null)" />
+                    </span>
+                    <span class="pf-tps @(running == null ? "na" : "")" title="@Strings.ColTps"><b>@(running != null ? running.Current.ToString("0.0", CultureInfo.InvariantCulture) : hist is { BestTps: > 0 } ? hist.BestTps.ToString("0.0", CultureInfo.InvariantCulture) : "–")</b><small>@(running != null ? "t/s" : "best")</small></span>
+                </div>
+                <div class="pf-grid">
+                    <span class="mc @(a.Ctx == null ? "na" : "")" title="@Strings.CardCtx"><Icon Name="ctx" Title="@Strings.CardCtx" /><b>@(a.Ctx is int c ? (c / 1024).ToString(CultureInfo.InvariantCulture) : "–")</b>@if (a.Ctx != null) { <small>k</small> }</span>
+                    <span class="mc @(a.NglRaw == null ? "na" : "")" title="@Strings.PfNgl"><Icon Name="layers" Title="@Strings.PfNgl" /><b>@(a.NglRaw ?? "–")</b></span>
+                    <span class="mc @(p.Port == null ? "na" : "")" title="@Strings.CardPort(p.Port ?? 0)"><Icon Name="port" Title="Port" /><b>@(p.Port?.ToString(CultureInfo.InvariantCulture) ?? "–")</b></span>
+                    <span class="mc @(p.UnloadAfterIdleMin == 0 ? "na off" : "")" title="@(p.UnloadAfterIdleMin == 0 ? Strings.IdleUnloadOff : Strings.IdleUnloadSet(p.UnloadAfterIdleMin))"><Icon Name="timer" Title="@Strings.PfIdle" /><b>@(p.UnloadAfterIdleMin == 0 ? "–" : p.UnloadAfterIdleMin + "m")</b></span>
+                    <span class="mc @(draft ? "" : "na off")" title="@(draft ? Strings.PfDraftOn : Strings.PfDraftOff)"><Icon Name="draft" Title="@Strings.CardDraft" /><b>@(draft ? Strings.PfOn : "–")</b></span>
+                    <span class="mc @(p.RestartOnCrash ? "" : "na off")" title="@(p.RestartOnCrash ? Strings.PfRestartOn : Strings.PfRestartOff)"><Icon Name="restart" Title="@Strings.PfRestart" /><b>@(p.RestartOnCrash ? Strings.PfOn : "–")</b></span>
+                </div>
+                @if (running == null && need is double needGb && free is double freeGb)
+                {
+                    <div class="pf-fc" title="@Strings.PfForecastTip(needGb, freeGb, hist is { MaxVramGb: > 0 })">
+                        <Icon Name="vram" />
+                        <span class="fc-bar"><i class="free" style="width:@Pct(freeGb, Math.Max(needGb, freeGb))"></i><i class="need" style="width:@Pct(needGb, Math.Max(needGb, freeGb))"></i></span>
+                        <b>@needGb.ToString("0.0", CultureInfo.InvariantCulture)</b><small>/ @freeGb.ToString("0.0", CultureInfo.InvariantCulture) G</small>
+                    </div>
+                }
+                <div class="pf-act">
+                    @if (running != null)
+                    {
+                        <a class="btn ib" href="@($"prompt?server={Uri.EscapeDataString(running.Key)}")" title="@Strings.PromptTitle" aria-label="@Strings.PromptTitle"><Icon Name="chat" /></a>
+                        <button class="ib danger" disabled="@ro" title="@Strings.CardStop" aria-label="@Strings.CardStop" @onclick='() => Act("stop", running.Key)'><Icon Name="stop" /></button>
+                    }
+                    else if (starting == null)
+                    {
+                        <button class="ib txt primary" disabled="@ro" title="@StartTip(p)" @onclick="() => Start(pr)"><Icon Name="play" />@Strings.BtnStart</button>
+                    }
+                    <details class="pf-cmd">
+                        <summary title="@Strings.PfCmdLine">@Strings.PfCmdLine</summary>
+                        <code>@p.Program @string.Join(" ", p.Args)</code>
+                    </details>
+                    <details class="menu" style="margin-left:auto">
+                        <summary title="@Strings.BtnMore" aria-label="@Strings.BtnMore"><Icon Name="more" /></summary>
                         <div>
                             <a href="@($"bench?target={p.Id:N}")">@Strings.BtnBench</a>
-                            <button disabled="@ro" @onclick="() => Edit(p)">@Strings.BtnEdit</button>
-                            <button class="bad" disabled="@ro" @onclick="() => Remove(p)">@Strings.BtnRemove</button>
+                            <button disabled="@ro" @onclick="() => Edit(pr)">@Strings.BtnEdit</button>
+                            <span class="grp">@Strings.PfIdle</span>
+                            <div class="seg">
+                                @foreach (var min in new[] { 0, 15, 30, 60 })
+                                {
+                                    var mm = min;
+                                    <button class="@(p.UnloadAfterIdleMin == mm ? "on" : "")" disabled="@ro" @onclick="() => SetIdle(pr, mm)">@(mm == 0 ? Strings.PfOff : mm + "m")</button>
+                                }
+                            </div>
+                            <button class="bad" disabled="@ro" @onclick="() => Remove(pr)">@Strings.BtnRemove</button>
                         </div>
                     </details>
-                </td>
-            </tr>
+                </div>
+            </div>
         }
-    </table>
+    </div>
     @if (_edit != null)
     {
         <div style="margin-top:12px;border-top:1px solid var(--line);padding-top:10px">
@@ -385,6 +431,42 @@
             <div class="bar"><div style="width:@((int)(frac * 100))%"></div></div>
         </div>
     };
+
+    // VRAM-Vorhersage eines Profils (U6): gemessen beim letzten Lauf, sonst aus dem GGUF-Kopf geschätzt (einmal je
+    // Profil im Hintergrund gelesen und gemerkt), sonst null
+    private readonly Dictionary<string, double?> _need = new();
+    private readonly HashSet<string> _needBusy = new();
+    private double? VramNeed(Profile p, HistoryEntry? hist)
+    {
+        if (hist is { MaxVramGb: > 0 }) return hist.MaxVramGb;
+        if (_need.TryGetValue(p.Key, out var known)) return known;
+        if (_needBusy.Add(p.Key))
+        {
+            var args = LlamaServerArgs.Parse(p.Args, p.Env);
+            var path = ServerLauncher.ResolveModel(args.Model ?? p.ModelPath, p.WorkingDir);
+            _ = Task.Run(async () =>
+            {
+                double? gb = null;
+                try
+                {
+                    if (path != null && Gguf.TryRead(path) is { } g)
+                    {
+                        int ctx = args.Ctx is > 0 ? args.Ctx.Value : (int)Math.Min(g.ContextLength ?? 4096, 131072);
+                        gb = VramEstimate.Estimate(g, ctx, args.CacheTypeK, args.CacheTypeV, args.Ngl).TotalGb;
+                    }
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException) { }
+                await InvokeAsync(() => { _need[p.Key] = gb; _needBusy.Remove(p.Key); StateHasChanged(); });
+            });
+        }
+        return null;
+    }
+
+    private static string Pct(double part, double whole) =>
+        (whole > 0 ? Math.Clamp(100 * part / whole, 0, 100) : 0).ToString("0.#", CultureInfo.InvariantCulture) + "%";
+
+    private Task SetIdle(Profile p, int minutes) =>
+        Web.RunAsync(new ActionRequest { Action = "profile.idleunload", Arg = p.Id.ToString("N"), Number = minutes });
 
     private bool Match(HistoryEntry h) => Library.Matches(h, _q);
 

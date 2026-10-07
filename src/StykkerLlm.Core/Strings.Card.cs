@@ -24,6 +24,14 @@ public static partial class Strings
     // Hardware-Karte (U5)
     public const string SectionHardware = "Hardware", HwDetails = "details";
     public static string HwFree(double gb) => $"{N1(gb)} free";
+    // Profil-Kacheln (U6)
+    public const string PfNgl = "GPU layers (-ngl)", PfIdle = "Unload when idle", PfDraft = "Draft model", PfRestart = "Restart after a crash";
+    public const string PfDraftOn = "Speculative decoding with a draft model", PfDraftOff = "No draft model";
+    public const string PfRestartOn = "Restarts after a crash", PfRestartOff = "No restart after a crash";
+    public const string PfOn = "on", PfOff = "off", PfCmdLine = "command line";
+    public static string PfForecastTip(double need, double free, bool measured) =>
+        $"Needs about {N1(need)} GB VRAM ({(measured ? "measured last run" : "estimated from the model file")}), {N1(free)} GB free now" +
+        (need > free ? " – it may not fit, or spill into shared RAM." : ".");
     public static string StateText(string state) => state switch
     {
         "gen" => CardStateGen, "read" => CardStateRead, "load" => CardStateLoad, "off" => CardStateOff, _ => CardStateIdle,
