@@ -13,6 +13,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   The monitor lists the servers of all hosts with a host badge.
 - **Proxy on hosts**: models running on a host are offered and reached through the host connection. A requested model
   that is not running but lies on a host starts there (most free VRAM wins; a clear error when no host has room).
+- **StykkerHost as a Windows service**: `StykkerHost install-service`, `pair-service <server> <code>`, `unpair-service`,
+  `uninstall-service` (as administrator). Starts with Windows, restarts after a crash, data in `%ProgramData%`.
 
 ### Removed
 - **Nodes** (pairing whole Stykker servers as nodes of a hub, spreading model tests, `/api/eval/runs`). Model hosts

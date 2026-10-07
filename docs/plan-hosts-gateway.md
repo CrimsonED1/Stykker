@@ -1,6 +1,6 @@
 # Plan: model hosts (private) and gateway (business)
 
-Status: **P1–P7 done** (StykkerHost with tray; dial-in; pairing; commands and HTTP tunnel; Hosts page with cards, host servers on the monitor; proxy routes to hosts and starts missing models on a fitting host, old nodes removed, 2026-10-07); P8 (Windows service) open, needs a NuGet package. Moved from P5 to P6: profiles *Run on*, model picker per host, host line in `stykker`.
+Status: **P1–P8 done** (StykkerHost with tray; dial-in; pairing; commands and HTTP tunnel; Hosts page with cards, host servers on the monitor; proxy routes to hosts and starts missing models on a fitting host, old nodes removed, 2026-10-07); Windows service (P8) with install/uninstall/pair commands; installing on a real PC is still to be tried. Moved from P5 to P6: profiles *Run on*, model picker per host, host line in `stykker`.
 
 ## Decisions
 
@@ -37,7 +37,7 @@ Status: **P1–P7 done** (StykkerHost with tray; dial-in; pairing; commands and 
 | P5 ✓ | Server UI | Page **Hosts** replaces Nodes; monitor shows servers of all hosts with a host badge, GPU card per host; profiles get **Run on: this PC / host …**; model picker per host | web, phone; display in `stykker` (read-only) |
 | P6 ✓ | Automatic placement | Proxy: running → route; else file + free VRAM → start there, wait until ready; idle unload as today; clear errors (no host has the model, no VRAM) | scheduler unit tests, start-on-demand in the simulator |
 | P7 ✓ | Clean-up | Remove hub/node code and pages (role hub, result sync `/api/eval/runs`, node web pages), keep discovery/scheduler; docs, README | build, all tests, no dead strings |
-| P8 | Host as service (optional) | `StykkerHost install-service` / `uninstall-service` (needs admin); tray companion talks to the service locally | install/uninstall on a test VM |
+| P8 ✓ | Host as service (optional) | `StykkerHost install-service` / `uninstall-service` (needs admin); tray companion talks to the service locally | install/uninstall on a test VM |
 
 Order: P1 → P2 → P3 → P4 → P5 → P6 → P7, P8 any time after P4.
 

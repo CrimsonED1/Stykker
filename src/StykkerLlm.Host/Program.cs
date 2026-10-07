@@ -11,14 +11,21 @@ internal static class Program
 {
     private static int Main(string[] args)
     {
-        var paths = HostStatus.DefaultPaths();
+#if WINSERVICE
+        // Windows-Dienst (P8): Einrichten per Befehl; Windows startet den Dienst mit --service
+        if (args.Length > 0 && OperatingSystem.IsWindows() && ServiceSetup.IsCommand(args[0])) return ServiceSetup.RunCommand(args);
+        bool service = args.Contains("--service");
+#else
+        const bool service = false;
+#endif
+        var paths = service ? HostServiceFiles.ServicePaths() : HostStatus.DefaultPaths();
 #if DEBUG
         // Entwickler-Schalter (nur Debug): anderer Datenordner
         int i = Array.IndexOf(args, "--data-dir");
         if (i >= 0 && i + 1 < args.Length) paths = new AppPaths(Path.GetFullPath(args[i + 1]));
 #endif
         Directory.CreateDirectory(paths.Root);
-        AppLog.Init("StykkerHost", paths);
+        AppLog.Init(service ? "StykkerHost-service" : "StykkerHost", paths);
         AppLog.CatchUnhandled();
 
         using var single = new SingleInstance(SingleInstance.NameFor(paths.Root));
@@ -27,6 +34,13 @@ internal static class Program
             AppLog.Write(Strings.HostAlreadyRunning);
             return 0;
         }
+#if WINSERVICE
+        if (service && OperatingSystem.IsWindows())
+        {
+            ServiceSetup.RunService(paths);
+            return 0;
+        }
+#endif
         using var app = new HostApp(paths);
         app.Run();
         return 0;
@@ -38,6 +52,7 @@ internal sealed class HostApp : IDisposable
     private const int MenuPair = 20, MenuUnpair = 21, MenuAutostart = 10, MenuLog = 11, MenuQuit = 12;
 
     private readonly AppPaths _paths;
+    private readonly bool _service;   // als Windows-Dienst: kein Tray, Kopplung über Anfragedateien (HostServiceFiles)
     private readonly IPlatform _platform;
     private readonly AppSettings _settings;
     private readonly MonitorEngine _engine;
@@ -51,9 +66,10 @@ internal sealed class HostApp : IDisposable
     private HostPairPage? _pairPage;
     private TrayIcon? _tray;
 
-    public HostApp(AppPaths paths)
+    public HostApp(AppPaths paths, bool service = false)
     {
         _paths = paths;
+        _service = service;
         _platform = OperatingSystem.IsWindows() ? new WindowsPlatform() : new BasicPlatform();
         _settings = AppSettings.Load(paths.SettingsFile);
         _engine = new MonitorEngine(_platform, paths, _settings, readOnly: false);
@@ -62,11 +78,12 @@ internal sealed class HostApp : IDisposable
         _link = NewLink(_config);
     }
 
-    public void Run()
+    public void Run(CancellationToken stop = default)
     {
         AppDomain.CurrentDomain.ProcessExit += (_, _) => _quit.Set();
+        using var stopping = stop.Register(() => _quit.Set());
         StartLink(_config);
-        if (OperatingSystem.IsWindows()) _tray = Tray();
+        if (OperatingSystem.IsWindows() && !_service) _tray = Tray();
 
         var lastServers = new List<string>();
         bool first = true;
@@ -76,6 +93,7 @@ internal sealed class HostApp : IDisposable
             {
                 try
                 {
+                    if (_service) await ServiceRequestAsync().ConfigureAwait(false);
                     await _engine.TickAsync().ConfigureAwait(false);
                     if (first) { first = false; AppLog.Write($"host: running, GPU {_engine.Gpu?.Name ?? Strings.HostNoGpu}"); }
                     if (OperatingSystem.IsWindows()) _tray?.SetTip(HostStatus.Tip(_engine.Servers, _engine.Gpu));
@@ -138,6 +156,21 @@ internal sealed class HostApp : IDisposable
         config.Save(_paths, _platform);
         StartLink(config);
         return result;
+    }
+
+    // Dienst: eine Anfrage von „StykkerHost pair-service / unpair-service“ ausführen und das Ergebnis hinlegen
+    private async Task ServiceRequestAsync()
+    {
+        var req = HostServiceFiles.TakeRequest(_paths);
+        if (req == null) return;
+        if (req.Unpair)
+        {
+            Unpair();
+            HostServiceFiles.WriteResult(_paths, new HostServiceFiles.Result(true, Strings.HostServiceUnpaired));
+            return;
+        }
+        var r = await PairAsync(req.Server, req.Code).ConfigureAwait(false);
+        HostServiceFiles.WriteResult(_paths, new HostServiceFiles.Result(r.Ok, r.Ok ? Strings.HostPairDone(req.Server) : r.Message));
     }
 
     private void Unpair()

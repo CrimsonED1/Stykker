@@ -50,6 +50,25 @@ to the server, all commands and requests travel over that one connection.
 The host only starts model servers and only forwards requests to its own PC (`localhost`). The tray menu also has
 **Start with Windows**, **Open log** and **Unpair**.
 
+## As a Windows service
+
+Without anybody signed in, e.g. on a PC in a cupboard: run StykkerHost as a Windows service. In a terminal **as
+administrator**, in the folder where `StykkerHost.exe` should stay:
+
+```
+StykkerHost install-service
+StykkerHost pair-service http://server:8078 123456
+```
+
+- The service starts with Windows (delayed) and restarts after a crash. It has no tray icon; the server shows it in
+  ☰ → Hosts as usual.
+- Its data folder is `%ProgramData%\StykkerLLM\host` (only administrators and the service may write there). The model
+  folders are taken from your own `host-settings.json` when the service is installed.
+- `StykkerHost unpair-service` drops the pairing, `StykkerHost uninstall-service` removes the service (the data folder
+  stays).
+- Quit the tray icon and turn off its *Start with Windows*, otherwise the PC shows up twice on the server.
+- The service runs as LocalSystem; model servers it starts run under that account too.
+
 ## Security notes
 
 - The token is a long random value, stored hashed on the server and protected with DPAPI on the host.

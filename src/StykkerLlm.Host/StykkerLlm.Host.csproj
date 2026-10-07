@@ -15,6 +15,14 @@
     <InvariantGlobalization>true</InvariantGlobalization>
   </PropertyGroup>
 
+  <!-- Windows-Dienst (P8): das Paket nur beim Bauen unter Windows; auf Linux fehlt es samt Dienst-Code (WINSERVICE) -->
+  <PropertyGroup Condition="$([MSBuild]::IsOSPlatform('Windows'))">
+    <DefineConstants>$(DefineConstants);WINSERVICE</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup Condition="$([MSBuild]::IsOSPlatform('Windows'))">
+    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.0.12" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\StykkerLlm.Core\StykkerLlm.Core.csproj" />
     <ProjectReference Include="..\StykkerLlm.Platform.Windows\StykkerLlm.Platform.Windows.csproj" />

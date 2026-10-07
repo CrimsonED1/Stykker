@@ -35,6 +35,16 @@ public static partial class Strings
     public static string HostStartTimeout(string model, string host) => $"{model} was started on {host} but is not ready yet. Try again in a moment.";
     public const string HostTunnelOnlyLocal = "The host only forwards requests to model servers on its own PC.";
     public static string HostProgramNotAllowed(string program) => $"The host does not start '{program}' (not a model server; allow it in the host settings).";
+    // Windows-Dienst (P8)
+    public const string HostServiceDescription = "Runs local model servers for a StykkerLLM server (model host, no window).";
+    public const string HostServiceNeedsAdmin = "This needs administrator rights: open a terminal as administrator and run the command again.";
+    public const string HostServiceUsage = "StykkerHost install-service | uninstall-service | pair-service <server> <code> | unpair-service";
+    public const string HostServiceInstalled = "StykkerHost runs as a Windows service now (starts with Windows, restarts after a crash). Pair it with: StykkerHost pair-service <server> <code>";
+    public const string HostServiceTrayHint = "Quit the StykkerHost tray icon and turn off its \"Start with Windows\" – otherwise this PC shows up twice on the server.";
+    public const string HostServiceRemoved = "The StykkerHost service is removed. Its data folder stays: ";
+    public static string HostServiceStepFailed(string step, int code, string output) => $"sc {step} failed ({code}): {output}";
+    public const string HostServiceNoAnswer = "The service did not answer. Is it installed and running? (services.msc → StykkerHost)";
+    public const string HostServiceUnpaired = "The service is unpaired.";
     // Kopplung (Host-Seite)
     public const string HostPairMenu = "Pair with a server …", HostUnpairMenu = "Unpair";
     public const string HostPairTitle = "Pair StykkerHost";
@@ -51,7 +61,7 @@ public static partial class Strings
     public const string HostPairClose = "You can close this page.", HostPairAgain = "Try again";
     // Kopplung (Server-Seite, Seite Hosts)
     public const string HostsTitle = "Hosts";
-    public const string HostsHint = "Model hosts are PCs that only run models for this server (StykkerHost). On the host: tray icon → Pair with a server …, then enter this code.";
+    public const string HostsHint = "Model hosts are PCs that only run models for this server (StykkerHost). On the host: tray icon → Pair with a server …, then enter this code (as a Windows service: StykkerHost pair-service <server> <code>).";
     public const string HostsCodeLabel = "Code for a new host", HostsNewCode = "New code";
     public const string HostsNone = "No host paired yet.", HostsThisPc = "(this PC)";
     public const string HostsRemoteHint = "Hosts in the network need Home/VPN on (☰ → Phone access).";
