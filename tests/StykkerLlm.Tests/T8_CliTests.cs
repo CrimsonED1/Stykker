@@ -73,7 +73,7 @@ public class T8_AnsiTests
         var c = new Rgb(255, 0, 0);
         Assert.AreEqual(196, Paint.To256(c));
         Assert.AreEqual(31, Paint.To16(c));
-        Assert.AreEqual("", new Paint(TuiTheme.DeepSea, ColorMode.None).Fg(c));
+        Assert.AreEqual("", new Paint(TuiTheme.Dark, ColorMode.None).Fg(c));
     }
 }
 

@@ -13,7 +13,7 @@ public class T6_MigrationTests
         Directory.CreateDirectory(Path.Combine(appData, "StykkerSLM"));
         try
         {
-            File.WriteAllText(Path.Combine(appData, "StykkerSLM", "settings.json"), "{\"Theme\":\"Obsidian\"}");
+            File.WriteAllText(Path.Combine(appData, "StykkerSLM", "settings.json"), "{\"Theme\":\"Spacepunk Titan\"}");
             File.WriteAllText(Path.Combine(appData, "StykkerSLM", "library.json"), "{\"Version\":1}");
 
             var root = LibraryAccess.Migrate(appData);
@@ -21,7 +21,7 @@ public class T6_MigrationTests
             Assert.AreEqual(Path.Combine(appData, "StykkerLLM"), root);
             Assert.IsTrue(Directory.Exists(root));
             Assert.IsFalse(Directory.Exists(Path.Combine(appData, "StykkerSLM")));
-            Assert.AreEqual("Obsidian", AppSettings.Load(Path.Combine(root, "settings.json")).Theme);
+            Assert.AreEqual("Spacepunk Titan", AppSettings.Load(Path.Combine(root, "settings.json")).Theme);
         }
         finally { Directory.Delete(appData, true); }
     }
@@ -34,14 +34,14 @@ public class T6_MigrationTests
         Directory.CreateDirectory(Path.Combine(appData, "StykkerLLM"));
         try
         {
-            File.WriteAllText(Path.Combine(appData, "StykkerSLM", "settings.json"), "{\"Theme\":\"Obsidian\"}");
-            File.WriteAllText(Path.Combine(appData, "StykkerLLM", "settings.json"), "{\"Theme\":\"Deep Sea\"}");
+            File.WriteAllText(Path.Combine(appData, "StykkerSLM", "settings.json"), "{\"Theme\":\"Spacepunk Titan\"}");
+            File.WriteAllText(Path.Combine(appData, "StykkerLLM", "settings.json"), "{\"Theme\":\"Dark\"}");
 
             var root = LibraryAccess.Migrate(appData);
 
             Assert.AreEqual(Path.Combine(appData, "StykkerLLM"), root);
             Assert.IsTrue(Directory.Exists(Path.Combine(appData, "StykkerSLM")));   // alt bleibt unangetastet
-            Assert.AreEqual("Deep Sea", AppSettings.Load(Path.Combine(root, "settings.json")).Theme);
+            Assert.AreEqual("Dark", AppSettings.Load(Path.Combine(root, "settings.json")).Theme);
         }
         finally { Directory.Delete(appData, true); }
     }

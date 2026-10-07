@@ -1,19 +1,13 @@
-/* Farben und Ecken kommen aus dem Theme des Fensters: der Server schreibt sie bei jedem Takt als <style> in den
-   Kopf (ThemeInfo.CssVariables in MainLayout). Dieser Block ist nur der Rückfall für den ersten Takt und für ein
-   Stylesheet ohne Server – er ist die Vorgabe des Fensters (Deep Sea) und wird vom Theme-Block danach überschrieben. */
-:root{--bg:#05070d;--bg-top:#070b15;--bg-bottom:#05070d;--card:#0c1320;--card-top:#0c1320ee;--card-bottom:#0a0f19ee;--card-border:#223350;--top-line:#aad2ff1a;--track:#96beff18;--line:#1b2b40;--radius:12px;--ink:#dce9fa;--muted:#6f86a6;--acc:#6cb8ff;--second:#7c9cd6;--good:#6ce8c0;--warn:#ffc16c;--bad:#ff6f8a;--bg-rgb:5 7 13;--ink-rgb:220 233 250;--muted-rgb:111 134 166;--acc-rgb:108 184 255;--second-rgb:124 156 214;--good-rgb:108 232 192;--warn-rgb:255 193 108;--bad-rgb:255 111 138;--font:Segoe UI,system-ui,sans-serif;--font-num:Cascadia Mono,Consolas,monospace;--card2:color-mix(in srgb,var(--bg) 92%,var(--ink));color-scheme:dark}
+/* Farben und Ecken kommen aus ThemeCatalog (Dark, Spacepunk Titan): der Server schreibt beide Sätze als <style> in den
+   Kopf (MainLayout), ui.js wählt über html[data-theme]. Dieser Block ist nur der Rückfall für ein Stylesheet ohne Server
+   (Dark). Titan ändert weiter unten auch Formen und Leuchten (Abschnitt „Spacepunk Titan“). */
+:root{color-scheme:dark;--bg:#060916;--bg-top:#0e1430;--bg-bottom:#060916;--card:#111a33;--card-top:#96b4ff22;--card-bottom:#0e785a0e;--card2:#0e0f26;--card-border:#4fe3ff40;--top-line:#ffffff3c;--track:#ffffff1c;--line:#24325a;--radius:12px;--ink:#e8eeff;--muted:#8292b8;--acc:#4fe3ff;--signal:#4fe3ff;--second:#a77bff;--good:#6cffb0;--warn:#ffc857;--bad:#ff5c7a;--bg-rgb:6 9 22;--ink-rgb:232 238 255;--muted-rgb:130 146 184;--acc-rgb:79 227 255;--second-rgb:167 123 255;--good-rgb:108 255 176;--warn-rgb:255 200 87;--bad-rgb:255 92 122;--font:Segoe UI Variable Text,Segoe UI,system-ui,sans-serif;--font-num:Cascadia Mono,Consolas,monospace}
 *{box-sizing:border-box}
-/* alle Themen sind dunkel: Bildlaufleisten und Formularfelder des Browsers (auch in der WebView der Fenster-Hülle) ebenso */
-:root{color-scheme:dark}
-body{margin:0;background:var(--bg-bottom);color:var(--ink);font:14px/1.5 var(--font,Segoe UI,system-ui,sans-serif)}
-/* Seitenhintergrund wie im Fenster: Verlauf, Lichtschein und Muster des Themas (data-bg an .page) */
+body{margin:0;background:var(--bg-bottom);color:var(--ink);font:14px/1.5 var(--font,Segoe UI,system-ui,sans-serif);transition:background-color .3s,color .3s}
+/* Seitenhintergrund: Dark mit Sternen und Lichtschein, Titan matt ohne Muster */
 .page{position:relative;min-height:100vh}
 .page::before{content:"";position:fixed;inset:0;z-index:-1;background:var(--bg-bottom)}
-.page[data-bg=space]::before{background-image:radial-gradient(circle,rgb(220 230 255/.55) 1px,transparent 1.4px),radial-gradient(circle,rgb(190 210 255/.4) 1px,transparent 1.3px),radial-gradient(62% 44% at 85% 6%,rgb(var(--second-rgb)/.17),transparent 70%),radial-gradient(56% 40% at 8% 44%,rgb(var(--acc-rgb)/.12),transparent 72%),radial-gradient(60% 46% at 72% 76%,rgb(255 95 210/.1),transparent 70%),linear-gradient(180deg,var(--bg-top),var(--bg-bottom) 1200px);background-size:311px 311px,193px 193px,auto,auto,auto,auto;background-position:23px 47px,101px 13px,0 0,0 0,0 0,0 0;background-attachment:fixed}
-.page[data-bg=deep]::before{background-image:radial-gradient(circle,rgb(200 220 255/.4) 1px,transparent 1.3px),radial-gradient(58% 40% at 80% 10%,rgb(var(--acc-rgb)/.1),transparent 72%),radial-gradient(50% 36% at 12% 62%,rgb(var(--acc-rgb)/.06),transparent 74%),linear-gradient(180deg,var(--bg-top),var(--bg-bottom) 1100px);background-size:521px 521px,auto,auto,auto;background-position:67px 29px,0 0,0 0,0 0;background-attachment:fixed}
-.page[data-bg=cyber]::before{background-image:linear-gradient(rgb(224 69 90/.18),rgb(224 69 90/.18)),radial-gradient(circle,rgb(43 184 214/.42) 1px,transparent 1.4px),radial-gradient(circle,rgb(224 69 90/.3) 1px,transparent 1.4px),linear-gradient(180deg,var(--bg-top),var(--bg-bottom) 1400px);background-size:auto,5px 5px,5px 5px,auto;background-position:0 58%,0 0,2px 1px,0 0;background-attachment:fixed}
-.page[data-bg=phosphor]::before{background-image:repeating-linear-gradient(0deg,rgb(92 255 154/.035) 0 1px,transparent 1px 3px),radial-gradient(70% 26% at 50% 0%,rgb(92 255 154/.07),transparent 72%)}
-.page[data-bg=phosphor] .sec,.page[data-bg=phosphor] th,.page[data-bg=phosphor] label{text-transform:lowercase}
+html:not([data-theme=titan]) .page::before{background-image:radial-gradient(circle,rgb(220 230 255/.55) 1px,transparent 1.4px),radial-gradient(circle,rgb(190 210 255/.4) 1px,transparent 1.3px),radial-gradient(62% 44% at 85% 6%,rgb(var(--second-rgb)/.17),transparent 70%),radial-gradient(56% 40% at 8% 44%,rgb(var(--acc-rgb)/.12),transparent 72%),radial-gradient(60% 46% at 72% 76%,rgb(255 95 210/.1),transparent 70%),linear-gradient(180deg,var(--bg-top),var(--bg-bottom) 1200px);background-size:311px 311px,193px 193px,auto,auto,auto,auto;background-position:23px 47px,101px 13px,0 0,0 0,0 0,0 0;background-attachment:fixed}
 a{color:var(--acc);text-decoration:none}
 .top{display:flex;flex-wrap:wrap;align-items:center;gap:12px 24px;padding:12px 20px;border-bottom:1px solid var(--line);position:sticky;top:0;background:rgb(var(--bg-rgb)/.86);backdrop-filter:blur(10px);z-index:5}
 .brand{font-weight:600;letter-spacing:.06em}.logo,.acc{color:var(--acc)}.dim{color:var(--muted)}
@@ -264,3 +258,65 @@ nav a.active{text-shadow:0 0 10px rgb(var(--acc-rgb)/calc(1.2*var(--glow)))}
 .kpi{color:var(--ink)}.kpi>div:not(.muted):not(.bar),.kpi{text-shadow:0 0 10px rgb(var(--acc-rgb)/calc(.45*var(--glow)))}
 .kpi .muted{text-shadow:none}
 td.num b,.chip b{text-shadow:0 0 8px rgb(var(--acc-rgb)/calc(.5*var(--glow)))}
+
+/* ── Spacepunk Titan (docs/plan-ui-redesign.md): Raumschiff-Innenraum bei Arbeitslicht. Matte Paneele mit Fuge statt
+   Verlauf und Schatten, harte Ecken, Signal-Orange. Leuchten nur in den dunklen Display-Fenstern (große Zahlen, Kurve);
+   sonst kein Lichthof – auf Hell wirkt er schmutzig statt hell. ── */
+html[data-theme=titan] *{text-shadow:none}
+html[data-theme=titan] .top{background:var(--bg);backdrop-filter:none;box-shadow:none;border-bottom:1px solid var(--card-border)}
+html[data-theme=titan] .top::after{background:var(--signal);opacity:1;height:2px;bottom:-2px}
+html[data-theme=titan] .brand .logo,html[data-theme=titan] .brand .acc{color:var(--signal);animation:none}
+html[data-theme=titan] .card,html[data-theme=titan] .modal,html[data-theme=titan] details.menu>div{background:var(--card);border:1px solid var(--card-border);box-shadow:none;backdrop-filter:none}
+html[data-theme=titan] .card::before{display:none}
+html[data-theme=titan] .card:hover{border-color:var(--ink);box-shadow:none}
+html[data-theme=titan] .card.server.busy{border-color:var(--card-border);box-shadow:inset 4px 0 0 var(--signal)}
+html[data-theme=titan] .kpi{background:var(--card2);border:1px solid var(--line);border-radius:var(--radius)}
+html[data-theme=titan] .kpi:hover{background:var(--card2);border-color:var(--card-border)}
+html[data-theme=titan] .sec{color:var(--ink);letter-spacing:.14em;font-family:var(--font-num);font-size:11px}
+html[data-theme=titan] .sec::before{width:8px;height:8px;border-radius:0;background:var(--signal);box-shadow:none}
+html[data-theme=titan] .sec::after{background:var(--card-border)}
+/* Knöpfe: Paneel-Schalter mit Fuge; der Hauptknopf in Orange (dunklere Stufe, damit Weiß darauf AA hat) */
+html[data-theme=titan] button,html[data-theme=titan] .btn,html[data-theme=titan] details.menu>summary{background:var(--card2);color:var(--ink);border:1px solid var(--card-border);border-radius:var(--radius)}
+html[data-theme=titan] button:not(:disabled):hover,html[data-theme=titan] .btn:hover,html[data-theme=titan] details.menu>summary:hover{background:color-mix(in srgb,var(--card2) 80%,var(--signal));box-shadow:none;transform:none}
+html[data-theme=titan] button.primary{background:var(--acc);color:#fff;border-color:var(--acc);box-shadow:none}
+html[data-theme=titan] button.primary:not(:disabled):hover{background:color-mix(in srgb,var(--acc) 85%,black);box-shadow:none}
+html[data-theme=titan] button.good{color:var(--good);background:var(--card2)}html[data-theme=titan] button.bad{color:var(--bad);background:var(--card2)}
+html[data-theme=titan] button.good:not(:disabled):hover,html[data-theme=titan] button.bad:not(:disabled):hover{box-shadow:none}
+html[data-theme=titan] button:focus-visible,html[data-theme=titan] .btn:focus-visible,html[data-theme=titan] a:focus-visible,html[data-theme=titan] summary:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+html[data-theme=titan] nav a{border-radius:var(--radius);font-family:var(--font-num);letter-spacing:.06em}
+html[data-theme=titan] nav a.active{color:var(--ink);background:var(--card);border-color:var(--card-border);box-shadow:inset 0 -2px 0 var(--signal)}
+html[data-theme=titan] details.menu.more.on>summary{background:var(--card);box-shadow:inset 0 -2px 0 var(--signal)}
+html[data-theme=titan] .seg{border-radius:var(--radius);border-color:var(--card-border)}
+html[data-theme=titan] .seg button{border-radius:var(--radius);background:transparent;border-color:transparent}
+html[data-theme=titan] .seg button.on{background:var(--card);border-color:var(--card-border);box-shadow:inset 0 -2px 0 var(--signal)}
+/* Plaketten: Pillen und Chips in Versalien der Konsolenschrift */
+html[data-theme=titan] .pill,html[data-theme=titan] .chip{border-radius:0;font-family:var(--font-num);letter-spacing:.08em;text-transform:uppercase;font-size:11px;background:var(--card2);border-color:var(--card-border)}
+html[data-theme=titan] .pill.ok::before,html[data-theme=titan] .pill.run::before,html[data-theme=titan] .pill.half::before{box-shadow:0 0 0 1px var(--card-border)}
+html[data-theme=titan] th{background:var(--card2);color:var(--ink);font-family:var(--font-num)}
+html[data-theme=titan] tr:nth-child(even) td{background:rgb(var(--ink-rgb)/.03)}
+html[data-theme=titan] tr:hover td{background:rgb(var(--ink-rgb)/.06)}
+html[data-theme=titan] input,html[data-theme=titan] select,html[data-theme=titan] textarea{background:var(--card2);border-color:var(--card-border);border-radius:var(--radius)}
+html[data-theme=titan] input:focus,html[data-theme=titan] select:focus,html[data-theme=titan] textarea:focus{border-color:var(--acc);box-shadow:0 0 0 2px rgb(var(--acc-rgb)/.25)}
+/* Balken: flach, ohne Glanz und Lichthof */
+html[data-theme=titan] .bar{border-radius:0;box-shadow:inset 0 0 0 1px var(--line)}
+html[data-theme=titan] .bar>div{background:var(--signal);box-shadow:none;border-radius:0}
+html[data-theme=titan] .bar>div::after,html[data-theme=titan] .bar>div::before{display:none}
+html[data-theme=titan] .stack{border-radius:0}
+/* Lampen: Punkt mit Ring, kein Pulsieren */
+html[data-theme=titan] .dot{animation:none;text-shadow:none}
+/* Display-Fenster: die großen Zahlen und die Kurve auf dunklem Einsatz, dort leuchtet Phosphor-Grün */
+html[data-theme=titan] .big{display:inline-block;background:var(--disp);color:var(--disp-ink);padding:4px 10px;border:1px solid var(--card-border);
+  text-shadow:0 0 6px rgb(var(--disp-ink-rgb)/calc(.6*var(--glow))),0 0 16px rgb(var(--disp-ink-rgb)/calc(.3*var(--glow)))}
+html[data-theme=titan] .card.server.busy .big,html.shell[data-theme=titan] .card.server.busy .big{background:var(--disp);color:var(--disp-ink);text-shadow:0 0 6px rgb(var(--disp-ink-rgb)/calc(.8*var(--glow))),0 0 18px rgb(var(--disp-ink-rgb)/calc(.45*var(--glow)))}
+html[data-theme=titan] .big+.muted{color:var(--muted)}
+html[data-theme=titan] .spark{background:var(--disp);border:1px solid var(--card-border);border-radius:0}
+html[data-theme=titan] .spark polyline,html[data-theme=titan] .spark polyline.glow1,html[data-theme=titan] .spark polyline.glow2,
+html[data-theme=titan] .card.server.busy .spark polyline{stroke:var(--disp-ink)}
+html[data-theme=titan] .spark .area,html[data-theme=titan] .card.server.busy .spark .area{fill:rgb(var(--disp-ink-rgb)/.12)}
+html[data-theme=titan] .spark-tip{background:var(--disp-ink);box-shadow:0 0 8px 2px rgb(var(--disp-ink-rgb)/calc(.5*var(--glow)))}
+html[data-theme=titan] .pairbox{border-color:var(--card-border);border-radius:var(--radius)}
+html[data-theme=titan] .pairbox .code{color:var(--ink)}
+html[data-theme=titan] ::selection{background:rgb(var(--acc-rgb)/.25);color:var(--ink)}
+html[data-theme=titan] *{scrollbar-color:var(--card-border) transparent}
+/* Fenster ohne GPU: auch in Titan keine Lichthöfe in den Displays */
+html.shell[data-theme=titan] .big,html.shell[data-theme=titan] .spark-tip{text-shadow:none;box-shadow:none}

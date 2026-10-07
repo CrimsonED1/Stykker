@@ -16,7 +16,7 @@
     <div class="card">
         <h2>@Strings.MenuTheme</h2>
         <div class="row">
-            @foreach (var t in ThemeCatalog.Names)
+            @foreach (var t in ThemeCatalog.Choices)
             {
                 <button class="@(e.Settings.Theme == t ? "good" : "")" disabled="@ro" @onclick="() => SetTheme(t)">@t</button>
             }

@@ -1,3 +1,5 @@
+using StykkerLlm.Core;
+
 namespace StykkerLlm.Cli.Tui;
 
 public readonly record struct Rgb(byte R, byte G, byte B)
@@ -5,27 +7,23 @@ public readonly record struct Rgb(byte R, byte G, byte B)
     public static Rgb Hex(string h) => new(Convert.ToByte(h[..2], 16), Convert.ToByte(h[2..4], 16), Convert.ToByte(h[4..6], 16));
 }
 
-// Die 5 Themes der App als Terminal-Farben (dieselben Werte wie ThemeCatalog im Core). Der Hintergrund bleibt der des Terminals.
-// Frame ist heller als in der App: auf beliebigem Terminal-Hintergrund müssen Rahmen und Trennlinien sichtbar bleiben.
+// Die Themes der App als Terminal-Farben (dieselben Werte wie ThemeCatalog im Core). Der Hintergrund bleibt der des Terminals:
+// Dark für dunkle Terminals, Titan (dunkle Schrift) für helle. „System“ kann das Terminal nicht verraten – dann Dark.
+// Frame ist kräftiger als in der App: auf beliebigem Terminal-Hintergrund müssen Rahmen und Trennlinien sichtbar bleiben.
 public sealed record TuiTheme(string Name, Rgb Ink, Rgb Muted, Rgb Accent, Rgb Second, Rgb Good, Rgb Warn, Rgb Bad, Rgb Frame)
 {
-    public static readonly TuiTheme DeepSea = new("Deep Sea", Rgb.Hex("DCE9FA"), Rgb.Hex("6F86A6"), Rgb.Hex("6CB8FF"), Rgb.Hex("7C9CD6"),
-        Rgb.Hex("6CE8C0"), Rgb.Hex("FFC16C"), Rgb.Hex("FF6F8A"), Rgb.Hex("4A5F80"));
-    public static readonly TuiTheme CyberGrid = new("Cyber Grid", Rgb.Hex("E8FBFF"), Rgb.Hex("5F8792"), Rgb.Hex("4FE3FF"), Rgb.Hex("FF5C74"),
-        Rgb.Hex("5BFFB0"), Rgb.Hex("FFC857"), Rgb.Hex("FF5C74"), Rgb.Hex("2E6573"));
-    public static readonly TuiTheme SpaceGlass = new("Space Glass", Rgb.Hex("E8EEFF"), Rgb.Hex("8292B8"), Rgb.Hex("4FE3FF"), Rgb.Hex("A77BFF"),
+    public static readonly TuiTheme Dark = new("Dark", Rgb.Hex("E8EEFF"), Rgb.Hex("8292B8"), Rgb.Hex("4FE3FF"), Rgb.Hex("A77BFF"),
         Rgb.Hex("6CFFB0"), Rgb.Hex("FFC857"), Rgb.Hex("FF5C7A"), Rgb.Hex("534C8A"));
-    public static readonly TuiTheme Obsidian = new("Obsidian", Rgb.Hex("E6EAF0"), Rgb.Hex("7C8696"), Rgb.Hex("4FD1E8"), Rgb.Hex("7C8696"),
-        Rgb.Hex("5CDCA0"), Rgb.Hex("E8B44A"), Rgb.Hex("E5596B"), Rgb.Hex("555D6A"));
-    public static readonly TuiTheme Phosphor = new("Phosphor", Rgb.Hex("B8FFD0"), Rgb.Hex("4C8A62"), Rgb.Hex("5CFF9A"), Rgb.Hex("2FBF6E"),
-        Rgb.Hex("5CFF9A"), Rgb.Hex("FFB000"), Rgb.Hex("FF5C5C"), Rgb.Hex("2F6B45"));
-    public static readonly TuiTheme[] All = { CyberGrid, SpaceGlass, Obsidian, DeepSea, Phosphor };
+    public static readonly TuiTheme Titan = new("Spacepunk Titan", Rgb.Hex("1A1E20"), Rgb.Hex("484F52"), Rgb.Hex("BD5017"), Rgb.Hex("1F6E73"),
+        Rgb.Hex("256030"), Rgb.Hex("734F08"), Rgb.Hex("962817"), Rgb.Hex("7E8789"));
+    public static readonly TuiTheme[] All = { Dark, Titan };
 
+    // Wie ThemeCatalog.Find: frühere Themen und „System“ werden zu Dark
     public static TuiTheme? Find(string? name)
     {
         if (string.IsNullOrWhiteSpace(name)) return null;
-        string Norm(string x) => x.Replace(" ", "").Replace("-", "").ToLowerInvariant();
-        return All.FirstOrDefault(t => Norm(t.Name) == Norm(name)) ?? All.FirstOrDefault(t => Norm(t.Name).StartsWith(Norm(name)));
+        var web = ThemeCatalog.Find(name);
+        return All.FirstOrDefault(t => t.Name == web.Name) ?? Dark;
     }
 }
 

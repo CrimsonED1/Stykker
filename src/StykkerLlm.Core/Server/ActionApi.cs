@@ -431,7 +431,7 @@ public static class ActionApi
 
                 // ── Einstellungen ──
                 case "theme.set":
-                    e.Settings.Theme = req.Arg ?? e.Settings.Theme;
+                    e.Settings.Theme = ThemeCatalog.Normalize(req.Arg ?? e.Settings.Theme);
                     e.Settings.Save();
                     return Ok(e.Settings.Theme);
                 case "settings.set":

@@ -8,15 +8,15 @@
 @inject NavigationManager Nav
 @inject IJSRuntime JS
 
-@* Das Theme kommt aus dem Fenster (ThemeCatalog) und steht als CSS-Variablen im Kopf: ein Wechsel über
-   /settings, das Fenster oder die TUI ist ohne Neuladen sichtbar, weil die Kopfzeile jeden Takt neu gezeichnet wird. *@
-@{ var theme = ThemeCatalog.Find(Host.Engine.Settings.Theme); }
-
+@* Die Themen (ThemeCatalog: Dark, Spacepunk Titan) stehen als CSS-Variablen im Kopf, die Wahl als Meta-Angabe:
+   ui.js setzt daraus html[data-theme] – bei „System“ nach dem Hell/Dunkel des Systems. Ein Wechsel über /settings
+   ist ohne Neuladen sichtbar, weil der Kopf jeden Takt neu gezeichnet wird. *@
 <HeadContent>
-    <style>@theme.CssVariables()</style>
+    <style>@ThemeCatalog.Css()</style>
+    <meta name="stykker-theme" content="@ThemeCatalog.Mode(Host.Engine.Settings.Theme)" />
 </HeadContent>
 
-<div class="page" data-bg="@theme.Kind">
+<div class="page">
 @* Kopfzeile: wenige Hauptpunkte stehen sichtbar, alles andere liegt gruppiert im ☰ (wie das ☰-Panel des Fensters).
    Liegt die aktuelle Seite im ☰, bekommt das ☰ einen Punkt. Im Kompakt-Modus tritt der Name der Seite neben die
    Marke – man weiß trotzdem, wo man ist. *@
