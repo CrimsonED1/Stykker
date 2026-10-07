@@ -42,83 +42,15 @@
 }
 @foreach (var s in e.Registry.Servers)
 {
-    <div class="card server @(s.Current > 0 ? "busy" : "")">
-        <div class="row">
-            <span class="dot @(s.Online ? "on" : "off")">●</span>
-            <b style="font-size:16px">@s.Name</b><span class="muted small">@(s.Model != "–" && s.Model != s.Name ? s.Model + " · " : "")@s.Url.Replace("http://", "")</span>
-            @if (px.IsServed(s.Key)) { <span class="pill ok">@Strings.BtnProxyServed</span> }
-            else if (px.Running) { <button class="pill" title="@Strings.ProxyServeLabel" disabled="@ro" @onclick="() => Serve(s)">@Strings.BtnProxyCard</button> }
-            @if (s.Online && Web.CanWrite) { <a class="btn" href="@($"prompt?server={Uri.EscapeDataString(s.Key)}")" title="@Strings.PromptTitle">@Strings.BtnPrompt</a> }
-            <span style="margin-left:auto" class="big">@s.Current.ToString("0.0", CultureInfo.InvariantCulture)</span><span class="muted small">@Strings.ColTps</span>
-        </div>
-        @if (s.Kind == BackendKind.LlamaCpp && s.Online)
-        {
-            <div class="row" style="margin:6px 0">
-                <span class="muted small">@Strings.Clients @(s.Clients.Length == 0 ? Strings.None : string.Join(", ", s.Clients))</span>
-                @if (!s.Info.Manual)
-                {
-                    <span style="margin-left:auto">
-                        <button disabled="@ro" @onclick='() => Act("record.start", s.Key)'>@Strings.BtnRecord</button>
-                        <button disabled="@ro" @onclick='() => Act("save", s.Key, s.Name)'>@Strings.BtnSave</button>
-                        <a class="btn" href="@($"serverdetail/{Uri.EscapeDataString(s.Key)}")">@Strings.BtnDetails</a>
-                        <button class="bad" disabled="@ro" title="@RoTip" @onclick='() => Act("stop", s.Key)'>@Strings.Stop</button>
-                    </span>
-                }
-            </div>
-            var sparkPts = Spark(s);
-            <div class="spark-wrap">
-                <svg class="spark" viewBox="0 0 300 70" preserveAspectRatio="none"><polygon class="area" points="@SparkArea(s)" /><polyline class="glow1" points="@sparkPts" /><polyline class="glow2" points="@sparkPts" /><polyline class="line" fill="none" stroke="var(--acc)" stroke-width="1.6" points="@sparkPts" /></svg>
-                @if (s.Current > 0 && SparkTip(s) is { } tip) { <span class="spark-tip" style="top:@(tip)%"></span> }
-            </div>
-            <div class="muted small">@Strings.Stats(s.Peak, s.AverageActive(), s.GeneratedTotal, s.Slots.Count(v => v.Busy), s.Slots.Count)</div>
-            <div style="margin:6px 0">
-                <span class="chip">@Strings.ChipGpuVram<b>@Gb(s.VramGb)</b></span><span class="chip">@Strings.ChipRam<b>@Gb(s.RamGb)</b></span>
-                <span class="chip">@Strings.ChipCpu<b>@(s.CpuPercent is double cp ? cp.ToString("0.0", CultureInfo.InvariantCulture) + " %" : "–")</b></span><span class="chip">@Strings.ChipModelFile<b>@Gb(s.ModelFileGb)</b></span>
-                @if (s.QueueCount is int q && q > 0) { <span class="chip" style="color:var(--warn)">@Strings.ChipQueue<b>@q</b></span> }
-                @if (s.SpecActive)
-                {
-                    <span class="chip" title="@Strings.DraftHint">@Strings.ChipDraft<b>@Strings.DraftRate(s.Spec.Accepted, s.Spec.Drafted)</b></span>
-                }
-                @if (ServerWatcher.SpillGb(s.Models, s.SharedGb) is double spill) { <span class="chip" style="color:var(--warn)">@Strings.ChipSharedRam<b>@Gb(spill)</b></span> }
-            </div>
-            <table>
-                <tr><th>@Strings.ColSlot</th><th>@Strings.ColStatus</th><th class="num">@Strings.ColTps</th><th class="num">@Strings.ColGenerated</th><th style="width:30%">@Strings.ColContext</th><th class="num"></th></tr>
-                @foreach (var v in s.Slots)
-                {
-                    double f = v.Busy && v.CtxMax > 0 ? (double)v.CtxUsed / v.CtxMax : 0;
-                    bool ctxFull = CtxPressure.IsNearlyFull(v);
-                    <tr>
-                        <td>@v.Id</td>
-                        <td><span class="pill @(!v.Busy ? "wait" : v.ReadingPrompt ? "half" : "ok")">@(!v.Busy ? Strings.SlotIdle : v.ReadingPrompt ? Strings.SlotReading : Strings.SlotWriting)</span></td>
-                        <td class="num">@(v.Busy && v.Tps > 0 ? v.Tps.ToString("0.0", CultureInfo.InvariantCulture) : "–")</td>
-                        <td class="num">@(v.Busy ? v.Generated.ToString("N0", CultureInfo.InvariantCulture) : "–")</td>
-                        <td><div class="bar"><div style="width:@((int)(f * 100))%;@(ctxFull ? "background:var(--bad)" : "")"></div></div></td>
-                        <td class="num small">
-                            @if (ctxFull)
-                            {
-                                <span style="color:var(--bad)" title="@Strings.CtxAlmostFull">@Strings.CtxAlmostFullOf(v.CtxUsed, v.CtxMax)</span>
-                            }
-                            else
-                            {
-                                @(v.Busy ? $"{v.CtxUsed:N0} / {v.CtxMax / 1024}k" : $"– / {v.CtxMax / 1024}k")
-                            }
-                        </td>
-                    </tr>
-                }
-            </table>
-        }
-        else if (s.Kind != BackendKind.LlamaCpp)
-        {
-            <div class="muted small">@(s.Models.Count == 0 ? Strings.RunningNothingLoaded : string.Join("  ·  ", s.Models.Select(ModelLine)))</div>
-        }
-        else
-        {
-            <div class="muted small">@(s.Loading ? Strings.Loading : Strings.Offline)</div>
-        }
-    </div>
+    var sv = s;
+    <ServerCard Model="ServerCardModel.From(sv, e.Recorder.Sessions.FirstOrDefault(r => r.Target == sv.Key))" CanWrite="CanWrite && !ro"
+                Served="px.IsServed(sv.Key)" ProxyRunning="px.Running" SparkAgo="@SparkAgo"
+                OnServe="() => Serve(sv)" OnSave='() => Act("save", sv.Key, sv.Name)'
+                OnRecord='() => Act(e.Recorder.Sessions.Any(r => r.Target == sv.Key) ? "record.stop" : "record.start", sv.Key)'
+                OnStop='() => Act("stop", sv.Key)' />
 }
 
-@* Server auf den Model-Hosts (docs/plan-hosts-gateway.md, P5): kurz, mit Host-Badge; Bedienung auf der Seite Hosts *@
+@* Server auf den Model-Hosts (docs/plan-hosts-gateway.md): dieselbe Karte mit Host-Badge; Stop geht an den Host *@
 @{ var onHosts = Host.Hosts.List().Where(h => h.Connected && h.State != null).ToList(); }
 @if (onHosts.Count > 0)
 {
@@ -126,27 +58,18 @@
     @foreach (var h in onHosts)
     {
         var hn = h.Name.Length > 0 ? h.Name : h.Entry.Name;
+        var hid = h.Entry.Id;
         @if (h.State!.Servers.Count == 0)
         {
-            <div class="card"><div class="row"><span class="pill">@hn</span><span class="muted small">@Strings.HostsNothingRunning</span>
-                @if (h.State.Gpu is { } hg) { <span style="margin-left:auto" class="chip">@hg.Name<b>@hg.MemUsedGb.ToString("0.0", CultureInfo.InvariantCulture) / @hg.MemTotalGb.ToString("0") GB</b></span> }
+            <div class="card hostidle"><div class="hd5"><span class="chipi host"><Icon Name="host" />@hn</span><span class="muted small">@Strings.HostsNothingRunning</span>
+                @if (h.State.Gpu is { } hg) { <span class="mc" style="margin-left:auto" title="@hg.Name"><Icon Name="vram" Title="@Strings.CardVram" /><b>@hg.MemUsedGb.ToString("0.0", CultureInfo.InvariantCulture)</b><small>/@hg.MemTotalGb.ToString("0", CultureInfo.InvariantCulture) G</small></span> }
             </div></div>
         }
         @foreach (var rs in h.State.Servers)
         {
-            <div class="card server @(rs.Current > 0 ? "busy" : "")">
-                <div class="row">
-                    <span class="dot @(rs.Online ? "on" : "off")">●</span>
-                    <b style="font-size:16px">@rs.Name</b><span class="pill" title="@Strings.HostBadgeTip">@hn</span>
-                    <span class="muted small">@(rs.Model != "–" && ServerInfo.ModelName(rs.Model) != rs.Name ? ServerInfo.ModelName(rs.Model) + " · " : "")@rs.Backend · :@rs.Port</span>
-                    <a class="btn" href="hosts">@Strings.HostsTitle</a>
-                    <span style="margin-left:auto" class="big">@rs.Current.ToString("0.0", CultureInfo.InvariantCulture)</span><span class="muted small">@Strings.ColTps</span>
-                </div>
-                <div style="margin:6px 0">
-                    <span class="chip">@Strings.ChipGpuVram<b>@Gb(rs.VramGb)</b></span>
-                    @if (rs.Slots.Count > 0) { <span class="chip">@Strings.ColSlot<b>@rs.Slots.Count(v => v.Busy) / @rs.Slots.Count</b></span> }
-                </div>
-            </div>
+            var r = rs;
+            <ServerCard Model="ServerCardModel.From(r, hid, hn)" CanWrite="CanWrite && !ro" SparkAgo="@SparkAgo"
+                        OnStop="() => HostStop(hid, r.Key)" />
         }
     }
 }
@@ -438,6 +361,16 @@
             sb.Append(x.ToString("0.0", CultureInfo.InvariantCulture)).Append(',').Append(y.ToString("0.0", CultureInfo.InvariantCulture)).Append(' ');
         }
         return sb.ToString();
+    }
+
+    // Beschriftung unten links an der Kurve: wie weit sie zurückreicht (300 Takte)
+    private string SparkAgo => Strings.CardSparkAgo(Math.Max(1, (int)Math.Round(ServerWatcher.HistoryLength * Math.Max(500, Host.Engine.Settings.IntervalMs) / 60000.0)));
+
+    private async Task HostStop(string hostId, string key)
+    {
+        if (!CanWrite) return;
+        var r = await Web.RunAsync(new ActionRequest { Action = "host.stop", Arg = hostId, Arg2 = key });
+        if (!r.Ok) await Prompt.InformAsync(Strings.ActionFailed, r.Message, warning: true);
     }
 
     private bool Match(HistoryEntry h) => Library.Matches(h, _q);
