@@ -1,6 +1,6 @@
 # Plan: model hosts (private) and gateway (business)
 
-Status: **P1 and P2 done** (StykkerHost with tray; host dials in, state every second, reconnect, 2026-10-07); P3 (pairing) next. Until P3 a host is created with the debug-only action `host.add` and `host.json` written by hand. Replaces the hub/node design in [nodes.md](nodes.md).
+Status: **P1–P3 done** (StykkerHost with tray; host dials in; pairing with a six-digit code from ☰ → Hosts, 2026-10-07); P4 next.
 
 ## Decisions
 
@@ -32,7 +32,7 @@ Status: **P1 and P2 done** (StykkerHost with tray; host dials in, state every se
 |---|---|---|---|
 | P1 ✓ | StykkerHost skeleton | New project `src/StykkerLlm.Host`, Core engine without Blazor, tray (status, pairing, quit, start with Windows), log `StykkerHost.log` | starts, measures, tray appears, no web port open |
 | P2 ✓ | Host link | WebSocket client in the host, `/hosts/connect` on the server, reconnect with backoff, state push every second | simulated host ↔ server in-process, reconnect after drop |
-| P3 | Pairing | Server shows **add host**: code + address/QR. Host: tray **Pair…** opens a small local page (127.0.0.1 only) with the servers found in the LAN and the code field. Token stored on both sides (DPAPI), revocable | wrong code, expired code, revoke token |
+| P3 ✓ | Pairing | Server shows **add host**: code + address/QR. Host: tray **Pair…** opens a small local page (127.0.0.1 only) with the servers found in the LAN and the code field. Token stored on both sides (DPAPI), revocable | wrong code, expired code, revoke token |
 | P4 | Commands + tunnel | start/stop/unload on host, model file list per host, inference tunnel with streaming (OpenAI + Anthropic), cancel on disconnect | streaming through the tunnel with the simulator, byte-exact |
 | P5 | Server UI | Page **Hosts** replaces Nodes; monitor shows servers of all hosts with a host badge, GPU card per host; profiles get **Run on: this PC / host …**; model picker per host | web, phone; display in `stykker` (read-only) |
 | P6 | Automatic placement | Proxy: running → route; else file + free VRAM → start there, wait until ready; idle unload as today; clear errors (no host has the model, no VRAM) | scheduler unit tests, start-on-demand in the simulator |

@@ -1,0 +1,90 @@
+@page "/hosts"
+@rendermode InteractiveServer
+@inject EngineHost Host
+@inject WebActions Web
+@inject ActionContext Actions
+@inject ViewerSession Viewer
+@implements IDisposable
+
+@* Model-Hosts (docs/plan-hosts-gateway.md): PCs, die nur Modelle laufen lassen und sich hier einwählen.
+   Oben der Code für einen neuen Host und die Adressen dieses Servers, darunter die gekoppelten Hosts. *@
+<h2>@Strings.HostsTitle</h2>
+<p class="muted small">@Strings.HostsHint</p>
+
+@{ var hosts = Host.Hosts.List(); }
+
+@if (Viewer.Known && Viewer.CanWrite)
+{
+    <div class="card">
+        <div class="row" style="align-items:flex-start;gap:24px">
+            <div>
+                <label>@Strings.HostsCodeLabel</label>
+                <div class="pairbox" style="margin-top:4px">
+                    <div class="code">@AccessControl.Pretty(Host.Hosts.Pairing.Code)</div>
+                    <div class="muted small">@Strings.CodeValidFor(Host.Hosts.Pairing.Expires - DateTime.Now)</div>
+                </div>
+                <button style="margin-top:8px" @onclick="NewCode">@Strings.HostsNewCode</button>
+            </div>
+            <div style="flex:1 1 260px">
+                <label>@Strings.HostPairServer</label>
+                @foreach (var url in Addresses())
+                {
+                    <div class="num" style="text-align:left">@url</div>
+                }
+                @if (!Host.Access.RemoteEnabled)
+                {
+                    <p class="warn small">@Strings.HostsRemoteHint</p>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+<h3 class="sec">@Strings.HostsTitle · @hosts.Count</h3>
+<div class="card">
+    @if (hosts.Count == 0)
+    {
+        <span class="muted small">@Strings.HostsNone</span>
+    }
+    else
+    {
+        <table>
+            @foreach (var h in hosts)
+            {
+                <tr>
+                    <td><span class="dot @(h.Connected ? "on" : "off")">●</span> <b>@(h.Name.Length > 0 ? h.Name : h.Entry.Name)</b>
+                        <span class="muted small">@h.Address @(h.Version.Length > 0 ? "· " + h.Version : "")</span></td>
+                    <td class="small">@(h.Connected ? Strings.HostOnline : Strings.HostOffline)</td>
+                    <td class="small">@(h.State?.Gpu is { } g ? $"{g.Name} · {g.MemUsedGb:0.0}/{g.MemTotalGb:0} GB" : "")</td>
+                    <td class="small">@Strings.HostServers(h.State?.Servers.Count ?? 0)</td>
+                    <td class="actions">
+                        @if (Viewer.CanWrite)
+                        {
+                            <button class="bad" @onclick="() => Remove(h.Entry.Id)">@Strings.BtnRemove</button>
+                        }
+                    </td>
+                </tr>
+            }
+        </table>
+    }
+    @if (_flash.Length > 0) { <p class="muted small">@_flash</p> }
+</div>
+
+@code {
+    private Timer? _t;
+    private string _flash = "";
+
+    protected override void OnInitialized() => _t = new Timer(_ => InvokeAsync(StateHasChanged), null, 1000, 1000);
+    public void Dispose() => _t?.Dispose();
+
+    // Wo ein Host diesen Server findet: dieser PC und jede Netzadresse (LAN, Tailscale …)
+    private IEnumerable<string> Addresses()
+    {
+        int port = Actions.ServerPort;
+        yield return NetAddr.Url("127.0.0.1", port) + "  " + Strings.HostsThisPc;
+        foreach (var ip in NetInfo.Ipv4Addresses()) yield return NetAddr.Url(ip, port);
+    }
+
+    private async Task NewCode() => _flash = (await Web.RunAsync(new ActionRequest { Action = "host.code" })).Message;
+    private async Task Remove(string id) => _flash = (await Web.RunAsync(new ActionRequest { Action = "host.remove", Arg = id })).Message;
+}

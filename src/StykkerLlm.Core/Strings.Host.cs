@@ -16,4 +16,26 @@ public static partial class Strings
     public static string HostConnecting(string server) => $"Connecting to {server} …";
     public static string HostWaiting(string error) => $"No connection: {error}";
     public const string HostNotFound = "No such host.";
+    // Kopplung (Host-Seite)
+    public const string HostPairMenu = "Pair with a server …", HostUnpairMenu = "Unpair";
+    public const string HostPairTitle = "Pair StykkerHost";
+    public const string HostPairHint = "On the server open ☰ → Hosts. It shows a six-digit code. Pick the server (or type its address) and enter the code.";
+    public const string HostPairFound = "Servers in this network", HostPairSearching = "Searching …";
+    public const string HostPairNoneFound = "None found – type the address (Home/VPN must be on at the server).";
+    public const string HostPairRemoteOff = "Home/VPN off";
+    public const string HostPairServer = "Server address", HostPairCode = "Code from the server", HostPairButton = "Pair";
+    public const string HostPairBadUrl = "That is not a server address (http://name:8078).";
+    public static string HostPairDone(string server) => $"Paired with {server}. The host connects now.";
+    public static string HostPairFailed(string status) => $"Pairing failed ({status}).";
+    public static string HostPairUnreachable(string detail) => $"The server is not reachable: {detail}";
+    public const string HostPairWrongCode = "That code does not fit or has expired. Look at ☰ → Hosts on the server.";
+    public const string HostPairClose = "You can close this page.", HostPairAgain = "Try again";
+    // Kopplung (Server-Seite, Seite Hosts)
+    public const string HostsTitle = "Hosts";
+    public const string HostsHint = "Model hosts are PCs that only run models for this server (StykkerHost). On the host: tray icon → Pair with a server …, then enter this code.";
+    public const string HostsCodeLabel = "Code for a new host", HostsNewCode = "New code";
+    public const string HostsNone = "No host paired yet.", HostsThisPc = "(this PC)";
+    public const string HostsRemoteHint = "Hosts in the network need Home/VPN on (☰ → Phone access).";
+    public const string HostOnline = "connected", HostOffline = "not connected";
+    public static string HostServers(int n) => n == 1 ? "1 server" : $"{n} servers";
 }

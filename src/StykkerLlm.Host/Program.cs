@@ -4,13 +4,11 @@ using StykkerLlm.Platform.Windows;
 
 namespace StykkerLlm.Host;
 
-// StykkerHost: ein PC, der nur Modelle laufen lässt (docs/plan-hosts-gateway.md, P1). Er misst GPU, System und die
+// StykkerHost: ein PC, der nur Modelle laufen lässt (docs/plan-hosts-gateway.md). Er misst GPU, System und die
 // Modellserver dieses PCs mit derselben Engine wie der Server, zeigt den Stand im Tray und schreibt StykkerHost.log.
-// Er öffnet keinen Port: später (P2) verbindet er sich selbst mit dem Server.
+// Er öffnet keinen Port nach außen: er verbindet sich selbst mit dem Server, bei dem er gekoppelt ist (host.json).
 internal static class Program
 {
-    private const int MenuAutostart = 10, MenuLog = 11, MenuQuit = 12;
-
     private static int Main(string[] args)
     {
         var paths = HostStatus.DefaultPaths();
@@ -29,69 +27,152 @@ internal static class Program
             AppLog.Write(Strings.HostAlreadyRunning);
             return 0;
         }
+        using var app = new HostApp(paths);
+        app.Run();
+        return 0;
+    }
+}
 
-        IPlatform platform = OperatingSystem.IsWindows() ? new WindowsPlatform() : new BasicPlatform();
-        var settings = AppSettings.Load(paths.SettingsFile);
-        using var engine = new MonitorEngine(platform, paths, settings, readOnly: false);
-        using var quit = new ManualResetEventSlim(false);
-        AppDomain.CurrentDomain.ProcessExit += (_, _) => quit.Set();
+internal sealed class HostApp : IDisposable
+{
+    private const int MenuPair = 20, MenuUnpair = 21, MenuAutostart = 10, MenuLog = 11, MenuQuit = 12;
 
-        // Verbindung zum Server (P2): Adresse und Token aus host.json (die Kopplung, P3, schreibt sie)
-        var config = HostConfig.Load(paths, platform);
-        var link = new HostLinkClient(config,
-            () => StateJson.WriteText(engine, null, null, 0, DateTimeOffset.Now, withHistory: false),
-            Environment.MachineName, AppLog.Version());
-        link.Log += AppLog.Write;
-        using var linkStop = new CancellationTokenSource();
-        var linkTask = link.RunAsync(linkStop.Token);
-        if (!config.Paired) AppLog.Write("link: not paired yet (no host.json)");
+    private readonly AppPaths _paths;
+    private readonly IPlatform _platform;
+    private readonly AppSettings _settings;
+    private readonly MonitorEngine _engine;
+    private readonly ManualResetEventSlim _quit = new(false);
+    private readonly object _linkGate = new();
+    private HostConfig _config;
+    private HostLinkClient _link;
+    private CancellationTokenSource _linkStop = new();
+    private Task _linkTask = Task.CompletedTask;
+    private HostPairPage? _pairPage;
+    private TrayIcon? _tray;
 
-        TrayIcon? tray = null;
-        if (OperatingSystem.IsWindows()) tray = Tray(engine, link, config, quit);
+    public HostApp(AppPaths paths)
+    {
+        _paths = paths;
+        _platform = OperatingSystem.IsWindows() ? new WindowsPlatform() : new BasicPlatform();
+        _settings = AppSettings.Load(paths.SettingsFile);
+        _engine = new MonitorEngine(_platform, paths, _settings, readOnly: false);
+        _config = HostConfig.Load(paths, _platform);
+        _link = NewLink(_config);
+    }
+
+    public void Run()
+    {
+        AppDomain.CurrentDomain.ProcessExit += (_, _) => _quit.Set();
+        StartLink(_config);
+        if (OperatingSystem.IsWindows()) _tray = Tray();
 
         var lastServers = new List<string>();
         bool first = true;
         var loop = Task.Run(async () =>
         {
-            while (!quit.IsSet)
+            while (!_quit.IsSet)
             {
                 try
                 {
-                    await engine.TickAsync().ConfigureAwait(false);
-                    if (first) { first = false; AppLog.Write($"host: running, GPU {engine.Gpu?.Name ?? Strings.HostNoGpu}"); }
-                    if (OperatingSystem.IsWindows()) tray?.SetTip(HostStatus.Tip(engine.Servers, engine.Gpu));
-                    var now = engine.Servers.Select(s => $"{s.Name}:{s.Info.Port}").ToList();
+                    await _engine.TickAsync().ConfigureAwait(false);
+                    if (first) { first = false; AppLog.Write($"host: running, GPU {_engine.Gpu?.Name ?? Strings.HostNoGpu}"); }
+                    if (OperatingSystem.IsWindows()) _tray?.SetTip(HostStatus.Tip(_engine.Servers, _engine.Gpu));
+                    var now = _engine.Servers.Select(s => $"{s.Name}:{s.Info.Port}").ToList();
                     var change = HostStatus.Change(lastServers, now);
                     if (change.Length > 0) AppLog.Write(change);
                     lastServers = now;
                 }
                 catch (Exception ex) when (ex is not OutOfMemoryException) { AppLog.Error("tick", ex); }
-                quit.Wait(Math.Max(500, settings.IntervalMs));
+                _quit.Wait(Math.Max(500, _settings.IntervalMs));
             }
         });
 
-        quit.Wait();
+        _quit.Wait();
         loop.Wait(TimeSpan.FromSeconds(3));
-        linkStop.Cancel();
-        try { linkTask.Wait(TimeSpan.FromSeconds(3)); } catch (AggregateException) { }
-        if (OperatingSystem.IsWindows()) tray?.Dispose();
-        platform.Dispose();
+        StopLink();
         AppLog.Write("host: stopped");
-        return 0;
     }
 
-    // Tray: Stand (grau), Kopplung (kommt mit P3), Mit Windows starten, Protokoll, Beenden
+    // ── Verbindung zum Server ──
+
+    private HostLinkClient NewLink(HostConfig config)
+    {
+        var link = new HostLinkClient(config,
+            () => StateJson.WriteText(_engine, null, null, 0, DateTimeOffset.Now, withHistory: false),
+            Environment.MachineName, AppLog.Version());
+        link.Log += AppLog.Write;
+        return link;
+    }
+
+    private void StartLink(HostConfig config)
+    {
+        lock (_linkGate)
+        {
+            StopLinkLocked();
+            _config = config;
+            _link = NewLink(config);
+            _linkStop = new CancellationTokenSource();
+            _linkTask = _link.RunAsync(_linkStop.Token);
+        }
+        if (!config.Paired) AppLog.Write("link: not paired yet");
+    }
+
+    private void StopLink() { lock (_linkGate) StopLinkLocked(); }
+
+    private void StopLinkLocked()
+    {
+        _linkStop.Cancel();
+        try { _linkTask.Wait(TimeSpan.FromSeconds(3)); } catch (AggregateException) { }
+        _linkStop.Dispose();
+    }
+
+    // Koppeln über die kleine Seite: Code an den Server, Token speichern, neu verbinden
+    private async Task<HostPairClient.Result> PairAsync(string server, string code)
+    {
+        var result = await HostPairClient.PairAsync(server, code, Environment.MachineName).ConfigureAwait(false);
+        AppLog.Write($"pairing with {server}: {(result.Ok ? "ok" : result.Message)}");
+        if (!result.Ok) return result;
+        var config = new HostConfig { Server = server.Trim().TrimEnd('/'), Token = result.Token, ServerName = result.ServerName };
+        config.Save(_paths, _platform);
+        StartLink(config);
+        return result;
+    }
+
+    private void Unpair()
+    {
+        try { File.Delete(Path.Combine(_paths.Root, HostConfig.FileName)); } catch (IOException) { }
+        AppLog.Write("unpaired");
+        StartLink(new HostConfig());
+    }
+
+    private void OpenPairPage()
+    {
+        try
+        {
+            if (_pairPage == null)
+            {
+                _pairPage = new HostPairPage(PairAsync);
+                _pairPage.Start();
+            }
+            Open(_pairPage.Url);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or System.Net.HttpListenerException) { AppLog.Write("pair page: " + ex.Message); }
+    }
+
+    // ── Tray ──
+
     [System.Runtime.Versioning.SupportedOSPlatform("windows")]
-    private static TrayIcon? Tray(MonitorEngine engine, HostLinkClient link, HostConfig config, ManualResetEventSlim quit)
+    private TrayIcon? Tray()
     {
         var exe = Environment.ProcessPath ?? "";
         IReadOnlyList<TrayIcon.Item> Items()
         {
             var items = new List<TrayIcon.Item>();
             int id = 100;
-            foreach (var line in HostStatus.Lines(engine.Servers, engine.Gpu)) items.Add(new TrayIcon.Item(id++, line, Disabled: true));
+            foreach (var line in HostStatus.Lines(_engine.Servers, _engine.Gpu)) items.Add(new TrayIcon.Item(id++, line, Disabled: true));
             items.Add(new TrayIcon.Item(0, "", Separator: true));
-            items.Add(new TrayIcon.Item(1, LinkText(link, config), Disabled: true));
+            items.Add(new TrayIcon.Item(1, LinkText(), Disabled: true));
+            items.Add(_config.Paired ? new TrayIcon.Item(MenuUnpair, Strings.HostUnpairMenu) : new TrayIcon.Item(MenuPair, Strings.HostPairMenu));
             items.Add(new TrayIcon.Item(0, "", Separator: true));
             items.Add(new TrayIcon.Item(MenuAutostart, Autostart.IsOn(Strings.HostName, exe) ? Strings.HostAutostartOn : Strings.HostAutostart));
             items.Add(new TrayIcon.Item(MenuLog, Strings.HostOpenLog));
@@ -102,6 +183,8 @@ internal static class Program
         {
             switch (id)
             {
+                case MenuPair: OpenPairPage(); break;
+                case MenuUnpair: Unpair(); break;
                 case MenuAutostart:
                     bool on = !Autostart.IsOn(Strings.HostName, exe);
                     AppLog.Write($"autostart: {(Autostart.Set(Strings.HostName, exe, on) ? (on ? "on" : "off") : "could not change")}");
@@ -111,27 +194,36 @@ internal static class Program
                     break;
                 case MenuQuit:
                     AppLog.Write("host: quit from tray");
-                    quit.Set();
+                    _quit.Set();
                     break;
             }
-        }, () => { if (AppLog.File is { } log) Open(log); });
+        }, () => { if (!_config.Paired) OpenPairPage(); else if (AppLog.File is { } log) Open(log); });
         if (tray.TryShow(Strings.HostName, out var error)) return tray;
         AppLog.Write($"{Strings.HostTrayFailed}: {error}");
         tray.Dispose();
         return null;
     }
 
-    private static string LinkText(HostLinkClient link, HostConfig config) => link.State switch
+    private string LinkText() => _link.State switch
     {
         HostLinkState.NotPaired => Strings.HostNotPaired,
-        HostLinkState.Connected => Strings.HostConnected(config.ServerName.Length > 0 ? config.ServerName : config.Server),
-        HostLinkState.Connecting => Strings.HostConnecting(config.Server),
-        _ => Strings.HostWaiting(link.LastError),
+        HostLinkState.Connected => Strings.HostConnected(_config.ServerName.Length > 0 ? _config.ServerName : _config.Server),
+        HostLinkState.Connecting => Strings.HostConnecting(_config.Server),
+        _ => Strings.HostWaiting(_link.LastError),
     };
 
-    private static void Open(string file)
+    private static void Open(string target)
     {
-        try { Process.Start(new ProcessStartInfo(file) { UseShellExecute = true }); }
-        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException) { AppLog.Write("open log: " + ex.Message); }
+        try { Process.Start(new ProcessStartInfo(target) { UseShellExecute = true }); }
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException) { AppLog.Write("open: " + ex.Message); }
+    }
+
+    public void Dispose()
+    {
+        _pairPage?.Dispose();
+        if (OperatingSystem.IsWindows()) _tray?.Dispose();
+        _engine.Dispose();
+        _platform.Dispose();
+        _quit.Dispose();
     }
 }

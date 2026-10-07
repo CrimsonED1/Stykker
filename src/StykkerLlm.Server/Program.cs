@@ -124,6 +124,21 @@ app.Map(HostProtocol.Path, async (HttpContext ctx) =>
     using var ws = await ctx.WebSockets.AcceptWebSocketAsync();
     await engineHost.Hosts.HandleAsync(ws, host, ctx.Connection.RemoteIpAddress?.ToString() ?? "", ctx.RequestAborted);
 });
+// Kopplung: der Host schickt den Code der Seite Hosts und bekommt sein Token (einmal). Fehlversuche verbrauchen den Code.
+app.MapPost("/hosts/pair", async (HttpContext ctx) =>
+{
+    Dictionary<string, string>? body = null;
+    try { body = await ctx.Request.ReadFromJsonAsync<Dictionary<string, string>>(ctx.RequestAborted); }
+    catch (System.Text.Json.JsonException) { }
+    var paired = engineHost.Hosts.Pairing.TryPair(body?.GetValueOrDefault("code"), body?.GetValueOrDefault("name"));
+    if (paired is not { } p)
+    {
+        AppLog.Write($"host pairing refused from {ctx.Connection.RemoteIpAddress}");
+        return Results.Json(new Dictionary<string, object> { ["ok"] = false, ["message"] = Strings.HostPairWrongCode }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+    AppLog.Write($"host paired: {p.Entry.Name} ({ctx.Connection.RemoteIpAddress})");
+    return Results.Json(new Dictionary<string, object> { ["ok"] = true, ["token"] = p.Token, ["id"] = p.Entry.Id, ["serverName"] = Environment.MachineName });
+});
 app.MapGet("/api/hosts", (HttpContext ctx) =>
     Results.Text(HostStateJson.Write(engineHost.Hosts.List(), DateTime.Now), "application/json"));
 

@@ -78,6 +78,7 @@
             <NavLink href="prompt">@Strings.BtnPrompt</NavLink>
             <NavLink href="compare">@Strings.BtnCompare</NavLink>
             <span class="grp">@Strings.GroupView</span>
+            <NavLink href="hosts">@Strings.HostsTitle</NavLink>
             <NavLink href="nodes">@Strings.NavNodes</NavLink>
             <NavLink href="phone">@Strings.RemoteTitle</NavLink>
             <NavLink href="settings">@Strings.SettingsTitle</NavLink>
@@ -126,7 +127,7 @@
     private bool _shell;                 // in der Fenster-Hülle: dort die Zurück/Vor-Knöpfe zeigen
     private string _density = DensityAuto;   // auto = nach Fensterbreite (der Umschalter im ☰ überstimmt sie)
     // Seiten, die nicht als Hauptpunkt in der Kopfzeile stehen, sondern im ☰
-    private static readonly string[] MorePages = { "runs", "catalog", "models", "gpu", "prompt", "compare", "nodes", "phone", "settings", "bugreport", "serverdetail" };
+    private static readonly string[] MorePages = { "runs", "catalog", "models", "gpu", "prompt", "compare", "hosts", "nodes", "phone", "settings", "bugreport", "serverdetail" };
 
     protected override void OnInitialized() => _t = new Timer(_ => InvokeAsync(StateHasChanged), null, 2000, 2000);
 
@@ -176,6 +177,7 @@
         "gpu" => Strings.GpuDetails,
         "prompt" => Strings.BtnPrompt,
         "compare" => Strings.BtnCompare,
+        "hosts" => Strings.HostsTitle,
         "nodes" => Strings.NavNodes,
         "phone" => Strings.RemoteTitle,
         "settings" => Strings.SettingsTitle,

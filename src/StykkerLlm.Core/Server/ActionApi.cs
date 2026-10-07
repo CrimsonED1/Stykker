@@ -495,15 +495,10 @@ public static class ActionApi
                 }
 
                 // ── Model-Hosts ──
-#if DEBUG
-                // Bis zur Kopplung (P3) nur im Debug-Build: Host anlegen, Daten = Token (einmal)
-                case "host.add":
-                {
+                case "host.code":
                     if (ctx.Hosts == null) return ActionResult.Fail("not available");
-                    var (entry, token) = ctx.Hosts.Registry.Add(req.Arg ?? "host", DateTime.Now);
-                    return Ok(entry.Id, token);
-                }
-#endif
+                    ctx.Hosts.Pairing.Rotate();
+                    return Ok();
                 case "host.remove":
                     if (ctx.Hosts == null) return ActionResult.Fail("not available");
                     return await ctx.Hosts.RemoveAsync(req.Arg ?? "").ConfigureAwait(false) ? Ok() : ActionResult.Fail(Strings.HostNotFound);

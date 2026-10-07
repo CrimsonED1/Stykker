@@ -30,9 +30,12 @@ public sealed class HostHub
     {
         _registry = registry;
         _now = now ?? (() => DateTime.Now);
+        Pairing = new HostPairing(registry, _now);
     }
 
     public HostRegistry Registry => _registry;
+    // Der Code, mit dem sich ein neuer Host koppelt (Seite Hosts)
+    public HostPairing Pairing { get; }
     public event Action<string>? Log;
 
     // Alle gekoppelten Hosts, verbunden oder nicht
