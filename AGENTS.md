@@ -64,7 +64,7 @@ dotnet test tests/StykkerLlm.Tests -c Release  # all green (2 tray tests skip wi
 | proxy (one URL for all models) | `Core/ProxyManager.cs`, `Core/RequestProxy.cs`, `Core/ProxyRouter.cs` |
 | fake servers for tests and screenshots | `Core/Simulation/` (`SimWorld`, `SimHandler`) |
 
-Architecture notes: `docs/architecture.md`. UI rules: `docs/ui.md`. Nodes: `docs/nodes.md`.
+Architecture notes: `docs/architecture.md`. UI rules: `docs/ui.md`. Nodes today: `docs/nodes.md`; the next step (model hosts, gateway): `docs/plan-hosts-gateway.md`.
 
 ## Rules
 

@@ -4,6 +4,8 @@ Every installation is a **node** (a server). One of them can act as **hub**: it 
 The window, the browser, the phone and coding tools talk only to the hub. Every node stays fully usable on its own; if the
 hub is gone, the nodes keep running.
 
+**Note:** this design is being replaced by [plan-hosts-gateway.md](plan-hosts-gateway.md) (one server, model hosts that dial in).
+
 **Status:** pairing (both directions, six digits + QR), node list with live state, search on the LAN (UDP 17501),
 actions on nodes, distributed model tests with result sync, proxy across nodes and the per-node model comparison are
 implemented. Not yet tested with a real second PC. Open: node registers itself at the hub (NAT), HTTPS with a pinned
