@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- StykkerHost: Model-Host ohne Oberfläche (docs/plan-hosts-gateway.md). Misst GPU und Modellserver dieses PCs,
+       startet sie später auf Befehl des Servers. Kein Web, kein WebView2, nur ein Tray-Symbol (Windows). -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>StykkerHost</AssemblyName>
+    <RootNamespace>StykkerLlm.Host</RootNamespace>
+    <ApplicationIcon>../../assets/app.ico</ApplicationIcon>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <SupportedOSPlatformVersion>10.0.17763.0</SupportedOSPlatformVersion>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\StykkerLlm.Core\StykkerLlm.Core.csproj" />
+    <ProjectReference Include="..\StykkerLlm.Platform.Windows\StykkerLlm.Platform.Windows.csproj" />
+  </ItemGroup>
+
+</Project>

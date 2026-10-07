@@ -1,6 +1,6 @@
 # Plan: model hosts (private) and gateway (business)
 
-Status: **concept agreed, nothing built yet** (2026-10-07). Replaces the hub/node design in [nodes.md](nodes.md).
+Status: **P1 done** (StykkerHost skeleton with tray, 2026-10-07); P2 next. Replaces the hub/node design in [nodes.md](nodes.md).
 
 ## Decisions
 
@@ -30,7 +30,7 @@ Status: **concept agreed, nothing built yet** (2026-10-07). Replaces the hub/nod
 
 | # | Package | Content | Test |
 |---|---|---|---|
-| P1 | StykkerHost skeleton | New project `src/StykkerLlm.Host`, Core engine without Blazor, tray (status, pairing, quit, start with Windows), log `StykkerHost.log` | starts, measures, tray appears, no web port open |
+| P1 ✓ | StykkerHost skeleton | New project `src/StykkerLlm.Host`, Core engine without Blazor, tray (status, pairing, quit, start with Windows), log `StykkerHost.log` | starts, measures, tray appears, no web port open |
 | P2 | Host link | WebSocket client in the host, `/hosts/connect` on the server, reconnect with backoff, state push every second | simulated host ↔ server in-process, reconnect after drop |
 | P3 | Pairing | Server shows **add host**: code + address/QR. Host: tray **Pair…** opens a small local page (127.0.0.1 only) with the servers found in the LAN and the code field. Token stored on both sides (DPAPI), revocable | wrong code, expired code, revoke token |
 | P4 | Commands + tunnel | start/stop/unload on host, model file list per host, inference tunnel with streaming (OpenAI + Anthropic), cancel on disconnect | streaming through the tunnel with the simulator, byte-exact |

@@ -13,6 +13,7 @@ as nodes. **The server is the core.** Every user interface is a client of it:
 |---|---|---|
 | `StykkerLLM-Server.exe` | `src/StykkerLlm.Server` | ASP.NET Core + Blazor Server. Measures, starts/stops, runs tests, serves the web UI on **:8078** |
 | `StykkerUI.exe` | `src/StykkerLlm.UI` | A window around the web UI (Photino: WebView2 / WKWebView / WebKitGTK), draws without GPU by default |
+| `StykkerHost.exe` | `src/StykkerLlm.Host` | Model host without UI (tray only): measures this PC, later runs models for a server (`docs/plan-hosts-gateway.md`) |
 | `stykker.exe` | `src/StykkerLlm.Cli` | Terminal **display** (read-only, keys only) and `status`, `web`, `stop`, `bugreport` |
 | – | `src/StykkerLlm.Core` | All logic, UI-free and platform-free. Strings, state JSON, actions, eval, proxy, nodes |
 | – | `src/StykkerLlm.Platform.Windows` | `IPlatform` for Windows (processes, ports, NVML, DPAPI, tray icon) |

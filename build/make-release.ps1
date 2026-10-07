@@ -8,7 +8,7 @@
 #   powershell -ExecutionPolicy Bypass -File build\make-release.ps1 -Version 0.1.0
 #
 # Ergebnis in <OutDir> (Standard build\out):
-#   publish\app\                                  StykkerUI.exe, stykker.exe, StykkerLLM-Server.exe (je eine Datei) plus LICENSE
+#   publish\app\                                  StykkerUI.exe, stykker.exe, StykkerLLM-Server.exe, StykkerHost.exe (je eine Datei) plus LICENSE
 #   StykkerLLM-<Version>-win-x64.zip     Ordner "StykkerLLM" mit dem Inhalt von publish\app
 #   SHA256SUMS.txt
 
@@ -34,7 +34,7 @@ if (Test-Path $publishDir) { Remove-Item $publishDir -Recurse -Force }
 New-Item -ItemType Directory -Path $publishDir -Force | Out-Null
 $single = @("-c", "Release", "-r", "win-x64", "--self-contained", "true", "-p:PublishSingleFile=true", "-p:EnableCompressionInSingleFile=true",
     "-p:IncludeNativeLibrariesForSelfExtract=true", "-p:Version=$Version", "-p:DebugType=none", "-p:DebugSymbols=false")
-foreach ($proj in @("StykkerLlm.UI", "StykkerLlm.Cli", "StykkerLlm.Server"))
+foreach ($proj in @("StykkerLlm.UI", "StykkerLlm.Cli", "StykkerLlm.Server", "StykkerLlm.Host"))
 {
     Write-Host "dotnet publish src/$proj ($Version) -> $publishDir"
     dotnet publish (Join-Path $root "src\$proj\$proj.csproj") @single -o $publishDir
@@ -49,7 +49,7 @@ foreach ($f in @($exe, $cli, $server)) { if (-not (Test-Path $f)) { throw "exe w
 Get-ChildItem $publishDir -File -Filter *.pdb | Remove-Item -Force
 # Der Server bringt zwei Dateien mit, die zu ihm gehören (statische Dateien, IIS-Konfiguration)
 $serverExtra = @("StykkerLLM-Server.staticwebassets.endpoints.json", "web.config")
-$extra = Get-ChildItem $publishDir -File | Where-Object { $_.Name -notin (@("StykkerUI.exe", "stykker.exe", "StykkerLLM-Server.exe", "app.ico", "LICENSE") + $serverExtra) }
+$extra = Get-ChildItem $publishDir -File | Where-Object { $_.Name -notin (@("StykkerUI.exe", "stykker.exe", "StykkerLLM-Server.exe", "StykkerHost.exe", "app.ico", "LICENSE") + $serverExtra) }
 if ($extra) { Write-Warning ("Zusätzliche Dateien im App-Ordner: " + (($extra | ForEach-Object Name) -join ", ")) }
 $mb = [math]::Round(((Get-ChildItem $publishDir -Recurse -File | Measure-Object Length -Sum).Sum) / 1MB, 1)
 Write-Host "App-Ordner: $mb MB, StykkerUI.exe $([math]::Round((Get-Item $exe).Length / 1MB, 1)) MB, stykker.exe $([math]::Round((Get-Item $cli).Length / 1MB, 1)) MB, StykkerLLM-Server.exe $([math]::Round((Get-Item $server).Length / 1MB, 1)) MB"
