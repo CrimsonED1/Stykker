@@ -21,6 +21,12 @@ as nodes. **The server is the core.** Every user interface is a client of it:
 There is **one UI codebase for the window, the phone and other PCs: the Razor pages** in
 `src/StykkerLlm.Server/Components`. The web UI is the only interface that controls anything; `stykker` only displays (see `docs/ui.md`).
 
+## Branches
+
+- **`dev`**: all ongoing work happens here (commit to `dev` or to a short-lived branch merged into `dev`).
+- **`main`**: stable; only receives tested merges from `dev` for a release (tag `v*` starts the release workflow).
+- Never push to `main` or create tags/releases without the owner's approval.
+
 ## Build, test, run
 
 ```
