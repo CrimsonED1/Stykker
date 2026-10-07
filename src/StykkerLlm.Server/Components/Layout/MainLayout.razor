@@ -40,15 +40,25 @@
         <NavLink href="bench">@Strings.NavBenchmarks</NavLink>
         <NavLink href="recordings">@Strings.NavRecordings</NavLink>
     </nav>
+    @* Statusleiste (U3): Proxy, Grafikspeicher mit Minibalken, freier Arbeitsspeicher, Server – je ein Chip *@
+    @{ var px = Host.Engine.Proxies; var srv = Host.Engine.Servers; int busy = srv.Count(x => x.Current > 0); }
     <div class="status">
+        <a class="hchip @(px.Running ? "on" : "")" href="./#proxy" title="@Strings.HdrProxyTip">
+            <span class="lamp"></span>@Strings.HdrProxy <b>@(px.Running ? ":" + px.Port.ToString(CultureInfo.InvariantCulture) : Strings.HdrProxyOff)</b>
+        </a>
         @if (Host.Engine.Gpu is { } g)
         {
-            <span>@Strings.GpuHeadline(g.MemUsedGb, g.MemTotalGb)</span>
+            var frac = g.MemTotalGb > 0 ? Math.Clamp(g.MemUsedGb / g.MemTotalGb, 0, 1) : 0;
+            <a class="hchip @(frac > .92 ? "warn" : "")" href="gpu" title="@g.Name · @Strings.GpuHeadline(g.MemUsedGb, g.MemTotalGb)">
+                <Icon Name="vram" /><span class="mini"><i style="width:@((int)(frac * 100))%"></i></span>
+                <b>@g.MemUsedGb.ToString("0.0", CultureInfo.InvariantCulture)</b><span class="muted">/@g.MemTotalGb.ToString("0", CultureInfo.InvariantCulture) GB</span>
+            </a>
         }
         @if (Host.Engine.Sys is { } s)
         {
-            <span>@Strings.RamFreeGb(s.RamTotalGb - s.RamUsedGb)</span>
+            <span class="hchip" title="@Strings.RamFreeGb(s.RamTotalGb - s.RamUsedGb)"><Icon Name="ram" /><b>@((s.RamTotalGb - s.RamUsedGb).ToString("0.0", CultureInfo.InvariantCulture))</b><span class="muted">GB free</span></span>
         }
+        <span class="hchip @(busy > 0 ? "busy" : "")" title="@Strings.HdrServersTip"><Icon Name="slots" /><b>@Strings.HdrServers(srv.Count, busy)</b></span>
         @if (Host.ReadOnly)
         {
             <span class="pill wait" title="@Strings.ServerReadOnlyHint">@Strings.ServerReadOnly</span>

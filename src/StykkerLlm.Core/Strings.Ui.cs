@@ -3,6 +3,10 @@ namespace StykkerLlm.Core;
 // Texte für Saved/Running/History, Bearbeiten-Fenster und Start (AP4)
 public static partial class Strings
 {
+    // Statusleiste im Kopf (U3)
+    public const string HdrProxy = "Proxy", HdrProxyOff = "off";
+    public static string HdrServers(int n, int busy) => busy > 0 ? $"{n} · {busy} busy" : n.ToString(Inv);
+    public const string HdrServersTip = "Model servers running · busy right now", HdrProxyTip = "Stykker-Proxy: one address for all models";
     public const string Ok = "OK", Cancel = "Cancel", Close = "Close", Back = "Back";
     public const string Cancelled = "cancelled";
 

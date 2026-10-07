@@ -262,7 +262,7 @@ td.num b,.chip b{text-shadow:0 0 8px rgb(var(--acc-rgb)/calc(.5*var(--glow)))}
 /* ── Spacepunk Titan (docs/plan-ui-redesign.md): Raumschiff-Innenraum bei Arbeitslicht. Matte Paneele mit Fuge statt
    Verlauf und Schatten, harte Ecken, Signal-Orange. Leuchten nur in den dunklen Display-Fenstern (große Zahlen, Kurve);
    sonst kein Lichthof – auf Hell wirkt er schmutzig statt hell. ── */
-html[data-theme=titan] *{text-shadow:none}
+html[data-theme=titan] *{text-shadow:none!important}   /* gegen die spezifischeren Glow-Regeln von Dark */
 html[data-theme=titan] .top{background:var(--bg);backdrop-filter:none;box-shadow:none;border-bottom:1px solid var(--card-border)}
 html[data-theme=titan] .top::after{background:var(--signal);opacity:1;height:2px;bottom:-2px}
 html[data-theme=titan] .brand .logo,html[data-theme=titan] .brand .acc{color:var(--signal);animation:none}
@@ -306,8 +306,8 @@ html[data-theme=titan] .stack{border-radius:0}
 html[data-theme=titan] .dot{animation:none;text-shadow:none}
 /* Display-Fenster: die großen Zahlen und die Kurve auf dunklem Einsatz, dort leuchtet Phosphor-Grün */
 html[data-theme=titan] .big{display:inline-block;background:var(--disp);color:var(--disp-ink);padding:4px 10px;border:1px solid var(--card-border);
-  text-shadow:0 0 6px rgb(var(--disp-ink-rgb)/calc(.6*var(--glow))),0 0 16px rgb(var(--disp-ink-rgb)/calc(.3*var(--glow)))}
-html[data-theme=titan] .card.server.busy .big,html.shell[data-theme=titan] .card.server.busy .big{background:var(--disp);color:var(--disp-ink);text-shadow:0 0 6px rgb(var(--disp-ink-rgb)/calc(.8*var(--glow))),0 0 18px rgb(var(--disp-ink-rgb)/calc(.45*var(--glow)))}
+  text-shadow:0 0 6px rgb(var(--disp-ink-rgb)/calc(.6*var(--glow))),0 0 16px rgb(var(--disp-ink-rgb)/calc(.3*var(--glow)))!important}
+html[data-theme=titan] .card.server.busy .big,html.shell[data-theme=titan] .card.server.busy .big{background:var(--disp);color:var(--disp-ink);text-shadow:0 0 6px rgb(var(--disp-ink-rgb)/calc(.8*var(--glow))),0 0 18px rgb(var(--disp-ink-rgb)/calc(.45*var(--glow)))!important}
 html[data-theme=titan] .big+.muted{color:var(--muted)}
 html[data-theme=titan] .spark{background:var(--disp);border:1px solid var(--card-border);border-radius:0}
 html[data-theme=titan] .spark polyline,html[data-theme=titan] .spark polyline.glow1,html[data-theme=titan] .spark polyline.glow2,
@@ -319,7 +319,7 @@ html[data-theme=titan] .pairbox .code{color:var(--ink)}
 html[data-theme=titan] ::selection{background:rgb(var(--acc-rgb)/.25);color:var(--ink)}
 html[data-theme=titan] *{scrollbar-color:var(--card-border) transparent}
 /* Fenster ohne GPU: auch in Titan keine Lichthöfe in den Displays */
-html.shell[data-theme=titan] .big,html.shell[data-theme=titan] .spark-tip{text-shadow:none;box-shadow:none}
+html.shell[data-theme=titan] .big,html.shell[data-theme=titan] .card.server.busy .big,html.shell[data-theme=titan] .spark-tip{text-shadow:none!important;box-shadow:none}
 
 /* Symbole (U2): Strichzeichnungen aus IconSprite, Farbe vom Text */
 .ic{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;vertical-align:-3px}
@@ -328,3 +328,33 @@ html.shell[data-theme=titan] .big,html.shell[data-theme=titan] .spark-tip{text-s
 @keyframes ic-spin{to{transform:rotate(360deg)}}
 .ic.spin{animation:ic-spin 1.4s linear infinite}
 html.shell .ic.spin{animation:none}
+
+/* Rahmen (U3): Statusleiste im Kopf und zwei Spalten im Monitor */
+main{max-width:1480px}
+.status{gap:8px}
+.hchip{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border:1px solid var(--line);border-radius:999px;color:var(--muted);font-size:12px;white-space:nowrap;background:rgb(var(--ink-rgb)/.03)}
+a.hchip:hover{color:var(--ink);border-color:rgb(var(--acc-rgb)/.5)}
+.hchip b{color:var(--ink);font-weight:600;font-family:var(--font-num);font-variant-numeric:tabular-nums}
+.hchip .lamp{width:7px;height:7px;border-radius:50%;background:var(--st-idle)}
+.hchip.on .lamp{background:var(--good);box-shadow:0 0 6px rgb(var(--good-rgb)/calc(.8*var(--glow)))}
+.hchip.busy .ic{color:var(--good)}.hchip.warn b{color:var(--warn)}
+.hchip .mini{display:inline-block;width:42px;height:5px;border-radius:3px;background:var(--track);overflow:hidden}
+.hchip .mini i{display:block;height:100%;background:var(--acc);box-shadow:0 0 6px rgb(var(--acc-rgb)/calc(.7*var(--glow)));transition:width .6s}
+.hchip.warn .mini i{background:var(--warn)}
+.mon{display:grid;grid-template-columns:minmax(0,1fr) minmax(300px,380px);gap:16px;align-items:start}
+.mon-main,.mon-side{min-width:0}
+.mon-side>.sec:first-child,.mon-main>.sec:first-child{margin-top:0}
+@media(max-width:1100px){.mon{grid-template-columns:minmax(0,1fr)}}
+/* schmal (< 640 px): breite Tabellen werden zu Zeilen-Blöcken statt seitlich zu scrollen */
+@media(max-width:640px){
+  .status{width:100%;flex-wrap:wrap}
+  table.rows,table.rows tbody,table.rows tr,table.rows td{display:block;width:100%}
+  table.rows tr:first-child{display:none}
+  table.rows tr{border-bottom:1px solid var(--line);padding:6px 0}
+  table.rows td{border:0;padding:2px 4px}
+}
+html[data-theme=titan] .hchip{border-radius:var(--radius);border-color:var(--card-border);background:var(--card2);font-family:var(--font-num)}
+html[data-theme=titan] .hchip .mini{border-radius:0;background:var(--disp)}
+html[data-theme=titan] .hchip .mini i{background:var(--disp-ink);box-shadow:none}
+html[data-theme=titan] .hchip.on .lamp{box-shadow:0 0 0 1px var(--card-border)}
+html.shell .hchip .mini i{transition:none;box-shadow:none}

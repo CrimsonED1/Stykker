@@ -10,75 +10,6 @@
 
 @{ var e = Host.Engine; var px = e.Proxies; bool ro = Host.ReadOnly; }
 
-<div class="row" style="margin-bottom:12px">
-    <button class="@(px.Running ? "good" : "")" disabled="@ro" title="@RoTip" @onclick="ToggleProxy">@(px.Running ? Strings.BtnProxySwitchOn(px.Port) : Strings.BtnProxySwitchOff)</button>
-    <span class="small" style="color:@(px.Running ? "var(--good)" : "var(--muted)")">@Strings.ProxyBar(px.Running, px.Port, px.TargetName(), px.BindLan)</span>
-    @if (_flash.Length > 0) { <span class="small" style="margin-left:auto;color:var(--good)">@_flash</span> }
-</div>
-
-<details class="card" style="margin-bottom:12px">
-    <summary class="small">@Strings.BtnProxySettings</summary>
-    <div class="row" style="margin:8px 0">
-        <span class="small muted">@Strings.ProxyServeLabel</span>
-        <select disabled="@ro" value="@ServeValue" @onchange="OnServeChanged">
-            <option value="">@Strings.ProxyTargetAuto</option>
-            @foreach (var c in px.Choices()) { <option value="@c.Value">@c.Display</option> }
-        </select>
-    </div>
-    <div class="small muted">@Strings.ProxySwitchHint</div>
-    <label class="row" style="margin:8px 0"><input type="checkbox" checked="@px.BindLan" disabled="@ro" @onchange="OnLanChanged" /> <span class="small">@Strings.ProxyLanLabel</span></label>
-    <div class="small muted">@Strings.ProxyLanHint</div>
-    <div class="row" style="margin:8px 0">
-        <span class="small muted">@Strings.ProxyRemoteLabel</span>
-        <input placeholder="@Strings.ProxyRemoteNameLabel" @bind="_rName" @bind:event="oninput" disabled="@ro" />
-        <input placeholder="@Strings.ProxyRemoteUrlLabel" @bind="_rUrl" @bind:event="oninput" disabled="@ro" />
-        <button class="good" disabled="@ro" @onclick="AddRemote">@Strings.BtnProxyAddRemote</button>
-    </div>
-    @if (px.Remotes.Count == 0) { <span class="muted small">@Strings.ProxyRemoteEmpty</span> }
-    else
-    {
-        <table>
-            @foreach (var r in px.Remotes)
-            {
-                <tr><td>@r.Name</td><td class="muted small">@r.Url</td><td class="num"><button class="bad" disabled="@ro" @onclick="() => RemoveRemote(r.Url)">@Strings.BtnProxyRemoveRemote</button></td></tr>
-            }
-        </table>
-    }
-    <div class="small muted">@Strings.ProxyRemoteHint</div>
-
-    @* Cloud-Anbieter: erst mit Name, Basis-URL und Schlüssel – erst dann fragt der Proxy den Anbieter ab (Nr. 46) *@
-    <div class="row" style="margin:8px 0">
-        <span class="small muted">@Strings.ProxyProviderLabel</span>
-        <input placeholder="@Strings.ProxyProviderNameLabel" @bind="_pName" @bind:event="oninput" disabled="@ro" />
-        <input placeholder="@Strings.ProxyProviderUrlLabel" @bind="_pUrl" @bind:event="oninput" disabled="@ro" />
-        <input type="password" placeholder="@Strings.ProxyProviderKeyLabel" @bind="_pKey" @bind:event="oninput" disabled="@ro" />
-        <button class="good" disabled="@ro" @onclick="AddProvider">@Strings.BtnProxyAddProvider</button>
-    </div>
-    @if (Providers.Count == 0) { <span class="muted small">@Strings.ProxyProviderEmpty</span> }
-    else
-    {
-        <table>
-            @foreach (var p in Providers)
-            {
-                <tr>
-                    <td>@p.Name<span class="muted small">@p.Url</span></td>
-                    <td class="small">@(p.Ready ? Strings.ProxyProviderModels(p.Models.Length) : Strings.ProxyProviderModelsNone)
-                        @if (p.Models.Length > 0) { <div class="muted small">@string.Join(", ", p.Models)</div> }
-                        @if (p.Error.Length > 0) { <div class="small" style="color:var(--bad)">@p.Error</div> }
-                    </td>
-                    <td class="small">@(p.HasKey ? Strings.ProxyProviderKeyStored : Strings.ProxyProviderKeyMissingShort)</td>
-                    <td class="num" style="white-space:nowrap">
-                        <input type="password" placeholder="@Strings.ProxyProviderKeyLabel" value="@KeyFor(p.Url)" @oninput="e => OnKeyInput(p.Url, e)" disabled="@ro" />
-                        <button disabled="@ro" @onclick="() => SaveKey(p.Url)">@Strings.BtnProxyProviderKey</button>
-                        <button class="bad" disabled="@ro" @onclick="() => RemoveProvider(p.Url)">@Strings.BtnProxyRemoveRemote</button>
-                    </td>
-                </tr>
-            }
-        </table>
-    }
-    <div class="small muted">@Strings.ProxyProviderHint</div>
-</details>
-
 @if (Host.Engine.CurrentNotice is { } nn)
 {
     <div class="card" style="margin-bottom:12px">
@@ -100,49 +31,10 @@
     </div>
 }
 
-<h3 class="sec">@Strings.SectionSaved</h3>
-<div class="card">
-    @if (e.Library.Profiles.Count == 0) { <span class="muted small">@Strings.SavedEmpty</span> }
-    <table>
-        @foreach (var p in e.Library.Profiles)
-        {
-            var a = LlamaServerArgs.Parse(p.Args);
-            var running = Launcher.RunningFor(p); var starting = Launcher.StartingFor(p);
-            var hist = e.Library.FindHistory(p.Key);
-            <tr>
-                <td style="width:22px"><span style="color:@(running != null ? "var(--good)" : starting != null ? "var(--warn)" : "var(--muted)")">●</span></td>
-                <td><b>@p.Name</b> <span class="muted small">@(a.Model != null ? ServerInfo.ModelName(a.Model) : "?") · @(a.Ctx is int c ? $"ctx {c / 1024}k" : "") · :@p.Port</span>
-                    <div class="muted small">@(hist is { BestTps: > 0 } ? $"best {hist.BestTps:0.0} t/s" : "") @(hist is { MaxVramGb: > 0 } ? $"· {hist.MaxVramGb:0.0} GB VRAM" : "")</div></td>
-                <td style="text-align:right;white-space:nowrap">
-                    @if (running != null) { <span class="pill ok">@Strings.RunningTag</span> }
-                    else if (starting != null) { <span class="pill run">@Strings.StartingShort</span> }
-                    else { <button class="good" disabled="@ro" title="@StartTip(p)" @onclick="() => Start(p)">@Strings.BtnStart</button> }
-                    <details class="menu">
-                        <summary title="@Strings.BtnMore">☰</summary>
-                        <div>
-                            <a href="@($"bench?target={p.Id:N}")">@Strings.BtnBench</a>
-                            <button disabled="@ro" @onclick="() => Edit(p)">@Strings.BtnEdit</button>
-                            <button class="bad" disabled="@ro" @onclick="() => Remove(p)">@Strings.BtnRemove</button>
-                        </div>
-                    </details>
-                </td>
-            </tr>
-        }
-    </table>
-    @if (_edit != null)
-    {
-        <div style="margin-top:12px;border-top:1px solid var(--line);padding-top:10px">
-            <div class="row"><b>@Strings.BtnEdit</b> <span class="muted small">@_edit.Name</span>
-                <span style="margin-left:auto"><button class="good" disabled="@ro" @onclick="SaveEdit">@Strings.BtnSaved</button> <button @onclick="() => _edit = null">@Strings.Close</button></span></div>
-            <div class="row" style="margin-top:8px">
-                <input placeholder="@Strings.FieldName" @bind="_editName" @bind:event="oninput" style="flex:1" />
-                <input placeholder="@Strings.FieldNote" @bind="_editNote" @bind:event="oninput" style="flex:1" />
-            </div>
-            <textarea @bind="_editArgs" @bind:event="oninput" rows="3" style="width:100%;margin-top:8px;font-family:Consolas,monospace"></textarea>
-        </div>
-    }
-</div>
-
+@* Zwei Spalten (docs/plan-ui-redesign.md, U3): links was läuft und was passiert ist, rechts Hardware, Profile und Proxy.
+   Schmal untereinander. *@
+<div class="mon">
+<div class="mon-main">
 <h3 class="sec">@Strings.SectionRunning</h3>
 @if (e.Registry.Servers.Count == 0)
 {
@@ -259,37 +151,6 @@
     }
 }
 
-@if (e.Gpu is { } g)
-{
-    <div class="card">
-        <div class="row"><h2>@Strings.Gpu <span class="muted small">@g.Name</span></h2></div>
-        <div class="kpis">
-            <div class="kpi"><div class="muted">@Strings.GpuLoad</div>@g.Util.ToString("0") %<div class="bar"><div style="width:@((int)g.Util)%"></div></div></div>
-            <div class="kpi"><div class="muted">@Strings.GpuVram</div>@g.MemUsedGb.ToString("0.0", CultureInfo.InvariantCulture) / @g.MemTotalGb.ToString("0") GB<div class="bar"><div style="width:@((int)(100 * g.MemUsedGb / Math.Max(1, g.MemTotalGb)))%"></div></div></div>
-            <div class="kpi"><div class="muted">@Strings.GpuPower</div>@g.PowerW.ToString("0") / @g.PowerLimitW.ToString("0") W<div class="bar"><div style="width:@((int)(100 * g.PowerW / Math.Max(1, g.PowerLimitW)))%"></div></div></div>
-            <div class="kpi"><div class="muted">@Strings.GpuTemp</div>@g.TempC.ToString("0") °C<div class="small @(g.Throttled ? "warn" : "good")" title="@g.ThrottleText()">@(g.Throttled ? Strings.GpuClocksLimited + ": " + g.ThrottleText() : Strings.GpuClocksFree)</div></div>
-        </div>
-        <div class="muted small" style="margin:12px 0 4px">@Strings.GpuConsumers</div>
-        <StackBar Items="e.VramTop" UsedGb="g.MemUsedGb" TotalGb="g.MemTotalGb" MoreHref="gpu" />
-    </div>
-}
-
-@if (e.Sys is { } sy)
-{
-    <div class="card">
-        <h2>@Strings.SystemCard <span class="muted small">@Strings.LogicalCores(sy.Cores)</span></h2>
-        <div class="kpis">
-            <div class="kpi"><div class="muted">@Strings.CpuLoad</div>@sy.CpuPercent.ToString("0") %<div class="bar"><div style="width:@((int)sy.CpuPercent)%"></div></div></div>
-            <div class="kpi"><div class="muted">@Strings.Memory</div>@sy.RamUsedGb.ToString("0.0", CultureInfo.InvariantCulture) / @sy.RamTotalGb.ToString("0.0", CultureInfo.InvariantCulture) GB<div class="bar"><div style="width:@((int)(100 * sy.RamFrac))%"></div></div></div>
-        </div>
-        @if (e.RamTop.Count > 0)
-        {
-            <div class="muted small" style="margin:12px 0 4px">@Strings.RamConsumers</div>
-            <StackBar Items="e.RamTop" UsedGb="sy.RamUsedGb" TotalGb="sy.RamTotalGb" />
-        }
-    </div>
-}
-
 <div class="card">
     <h2>@Strings.RecentRequests</h2>
     @{ var fin = e.Registry.Servers.SelectMany(x => x.Finished).OrderByDescending(f => f.Seen ?? DateTime.MinValue).Take(8).ToList(); }
@@ -328,6 +189,154 @@
                 </td></tr>
         }
     </table>
+</div>
+</div>
+<aside class="mon-side">
+@if (e.Gpu is { } g)
+{
+    <div class="card">
+        <div class="row"><h2>@Strings.Gpu <span class="muted small">@g.Name</span></h2></div>
+        <div class="kpis">
+            <div class="kpi"><div class="muted">@Strings.GpuLoad</div>@g.Util.ToString("0") %<div class="bar"><div style="width:@((int)g.Util)%"></div></div></div>
+            <div class="kpi"><div class="muted">@Strings.GpuVram</div>@g.MemUsedGb.ToString("0.0", CultureInfo.InvariantCulture) / @g.MemTotalGb.ToString("0") GB<div class="bar"><div style="width:@((int)(100 * g.MemUsedGb / Math.Max(1, g.MemTotalGb)))%"></div></div></div>
+            <div class="kpi"><div class="muted">@Strings.GpuPower</div>@g.PowerW.ToString("0") / @g.PowerLimitW.ToString("0") W<div class="bar"><div style="width:@((int)(100 * g.PowerW / Math.Max(1, g.PowerLimitW)))%"></div></div></div>
+            <div class="kpi"><div class="muted">@Strings.GpuTemp</div>@g.TempC.ToString("0") °C<div class="small @(g.Throttled ? "warn" : "good")" title="@g.ThrottleText()">@(g.Throttled ? Strings.GpuClocksLimited + ": " + g.ThrottleText() : Strings.GpuClocksFree)</div></div>
+        </div>
+        <div class="muted small" style="margin:12px 0 4px">@Strings.GpuConsumers</div>
+        <StackBar Items="e.VramTop" UsedGb="g.MemUsedGb" TotalGb="g.MemTotalGb" MoreHref="gpu" />
+    </div>
+}
+
+@if (e.Sys is { } sy)
+{
+    <div class="card">
+        <h2>@Strings.SystemCard <span class="muted small">@Strings.LogicalCores(sy.Cores)</span></h2>
+        <div class="kpis">
+            <div class="kpi"><div class="muted">@Strings.CpuLoad</div>@sy.CpuPercent.ToString("0") %<div class="bar"><div style="width:@((int)sy.CpuPercent)%"></div></div></div>
+            <div class="kpi"><div class="muted">@Strings.Memory</div>@sy.RamUsedGb.ToString("0.0", CultureInfo.InvariantCulture) / @sy.RamTotalGb.ToString("0.0", CultureInfo.InvariantCulture) GB<div class="bar"><div style="width:@((int)(100 * sy.RamFrac))%"></div></div></div>
+        </div>
+        @if (e.RamTop.Count > 0)
+        {
+            <div class="muted small" style="margin:12px 0 4px">@Strings.RamConsumers</div>
+            <StackBar Items="e.RamTop" UsedGb="sy.RamUsedGb" TotalGb="sy.RamTotalGb" />
+        }
+    </div>
+}
+
+<h3 class="sec">@Strings.SectionSaved</h3>
+<div class="card">
+    @if (e.Library.Profiles.Count == 0) { <span class="muted small">@Strings.SavedEmpty</span> }
+    <table>
+        @foreach (var p in e.Library.Profiles)
+        {
+            var a = LlamaServerArgs.Parse(p.Args);
+            var running = Launcher.RunningFor(p); var starting = Launcher.StartingFor(p);
+            var hist = e.Library.FindHistory(p.Key);
+            <tr>
+                <td style="width:22px"><span style="color:@(running != null ? "var(--good)" : starting != null ? "var(--warn)" : "var(--muted)")">●</span></td>
+                <td><b>@p.Name</b> <span class="muted small">@(a.Model != null ? ServerInfo.ModelName(a.Model) : "?") · @(a.Ctx is int c ? $"ctx {c / 1024}k" : "") · :@p.Port</span>
+                    <div class="muted small">@(hist is { BestTps: > 0 } ? $"best {hist.BestTps:0.0} t/s" : "") @(hist is { MaxVramGb: > 0 } ? $"· {hist.MaxVramGb:0.0} GB VRAM" : "")</div></td>
+                <td style="text-align:right;white-space:nowrap">
+                    @if (running != null) { <span class="pill ok">@Strings.RunningTag</span> }
+                    else if (starting != null) { <span class="pill run">@Strings.StartingShort</span> }
+                    else { <button class="good" disabled="@ro" title="@StartTip(p)" @onclick="() => Start(p)">@Strings.BtnStart</button> }
+                    <details class="menu">
+                        <summary title="@Strings.BtnMore">☰</summary>
+                        <div>
+                            <a href="@($"bench?target={p.Id:N}")">@Strings.BtnBench</a>
+                            <button disabled="@ro" @onclick="() => Edit(p)">@Strings.BtnEdit</button>
+                            <button class="bad" disabled="@ro" @onclick="() => Remove(p)">@Strings.BtnRemove</button>
+                        </div>
+                    </details>
+                </td>
+            </tr>
+        }
+    </table>
+    @if (_edit != null)
+    {
+        <div style="margin-top:12px;border-top:1px solid var(--line);padding-top:10px">
+            <div class="row"><b>@Strings.BtnEdit</b> <span class="muted small">@_edit.Name</span>
+                <span style="margin-left:auto"><button class="good" disabled="@ro" @onclick="SaveEdit">@Strings.BtnSaved</button> <button @onclick="() => _edit = null">@Strings.Close</button></span></div>
+            <div class="row" style="margin-top:8px">
+                <input placeholder="@Strings.FieldName" @bind="_editName" @bind:event="oninput" style="flex:1" />
+                <input placeholder="@Strings.FieldNote" @bind="_editNote" @bind:event="oninput" style="flex:1" />
+            </div>
+            <textarea @bind="_editArgs" @bind:event="oninput" rows="3" style="width:100%;margin-top:8px;font-family:Consolas,monospace"></textarea>
+        </div>
+    }
+</div>
+
+<div id="proxy" class="mon-proxy">
+<div class="row" style="margin-bottom:12px">
+    <button class="@(px.Running ? "good" : "")" disabled="@ro" title="@RoTip" @onclick="ToggleProxy">@(px.Running ? Strings.BtnProxySwitchOn(px.Port) : Strings.BtnProxySwitchOff)</button>
+    <span class="small" style="color:@(px.Running ? "var(--good)" : "var(--muted)")">@Strings.ProxyBar(px.Running, px.Port, px.TargetName(), px.BindLan)</span>
+    @if (_flash.Length > 0) { <span class="small" style="margin-left:auto;color:var(--good)">@_flash</span> }
+</div>
+
+<details class="card" style="margin-bottom:12px">
+    <summary class="small">@Strings.BtnProxySettings</summary>
+    <div class="row" style="margin:8px 0">
+        <span class="small muted">@Strings.ProxyServeLabel</span>
+        <select disabled="@ro" value="@ServeValue" @onchange="OnServeChanged">
+            <option value="">@Strings.ProxyTargetAuto</option>
+            @foreach (var c in px.Choices()) { <option value="@c.Value">@c.Display</option> }
+        </select>
+    </div>
+    <div class="small muted">@Strings.ProxySwitchHint</div>
+    <label class="row" style="margin:8px 0"><input type="checkbox" checked="@px.BindLan" disabled="@ro" @onchange="OnLanChanged" /> <span class="small">@Strings.ProxyLanLabel</span></label>
+    <div class="small muted">@Strings.ProxyLanHint</div>
+    <div class="row" style="margin:8px 0">
+        <span class="small muted">@Strings.ProxyRemoteLabel</span>
+        <input placeholder="@Strings.ProxyRemoteNameLabel" @bind="_rName" @bind:event="oninput" disabled="@ro" />
+        <input placeholder="@Strings.ProxyRemoteUrlLabel" @bind="_rUrl" @bind:event="oninput" disabled="@ro" />
+        <button class="good" disabled="@ro" @onclick="AddRemote">@Strings.BtnProxyAddRemote</button>
+    </div>
+    @if (px.Remotes.Count == 0) { <span class="muted small">@Strings.ProxyRemoteEmpty</span> }
+    else
+    {
+        <table>
+            @foreach (var r in px.Remotes)
+            {
+                <tr><td>@r.Name</td><td class="muted small">@r.Url</td><td class="num"><button class="bad" disabled="@ro" @onclick="() => RemoveRemote(r.Url)">@Strings.BtnProxyRemoveRemote</button></td></tr>
+            }
+        </table>
+    }
+    <div class="small muted">@Strings.ProxyRemoteHint</div>
+
+    @* Cloud-Anbieter: erst mit Name, Basis-URL und Schlüssel – erst dann fragt der Proxy den Anbieter ab (Nr. 46) *@
+    <div class="row" style="margin:8px 0">
+        <span class="small muted">@Strings.ProxyProviderLabel</span>
+        <input placeholder="@Strings.ProxyProviderNameLabel" @bind="_pName" @bind:event="oninput" disabled="@ro" />
+        <input placeholder="@Strings.ProxyProviderUrlLabel" @bind="_pUrl" @bind:event="oninput" disabled="@ro" />
+        <input type="password" placeholder="@Strings.ProxyProviderKeyLabel" @bind="_pKey" @bind:event="oninput" disabled="@ro" />
+        <button class="good" disabled="@ro" @onclick="AddProvider">@Strings.BtnProxyAddProvider</button>
+    </div>
+    @if (Providers.Count == 0) { <span class="muted small">@Strings.ProxyProviderEmpty</span> }
+    else
+    {
+        <table>
+            @foreach (var p in Providers)
+            {
+                <tr>
+                    <td>@p.Name<span class="muted small">@p.Url</span></td>
+                    <td class="small">@(p.Ready ? Strings.ProxyProviderModels(p.Models.Length) : Strings.ProxyProviderModelsNone)
+                        @if (p.Models.Length > 0) { <div class="muted small">@string.Join(", ", p.Models)</div> }
+                        @if (p.Error.Length > 0) { <div class="small" style="color:var(--bad)">@p.Error</div> }
+                    </td>
+                    <td class="small">@(p.HasKey ? Strings.ProxyProviderKeyStored : Strings.ProxyProviderKeyMissingShort)</td>
+                    <td class="num" style="white-space:nowrap">
+                        <input type="password" placeholder="@Strings.ProxyProviderKeyLabel" value="@KeyFor(p.Url)" @oninput="e => OnKeyInput(p.Url, e)" disabled="@ro" />
+                        <button disabled="@ro" @onclick="() => SaveKey(p.Url)">@Strings.BtnProxyProviderKey</button>
+                        <button class="bad" disabled="@ro" @onclick="() => RemoveProvider(p.Url)">@Strings.BtnProxyRemoveRemote</button>
+                    </td>
+                </tr>
+            }
+        </table>
+    }
+    <div class="small muted">@Strings.ProxyProviderHint</div>
+</details>
+</div>
+</aside>
 </div>
 
 @code {
