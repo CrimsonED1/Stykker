@@ -1,0 +1,574 @@
+<!doctype html>
+<html lang="en" data-theme="deep">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>StykkerLLM Monitor Mockup</title>
+<style>
+/* ── Themes: same colors as ThemeCatalog.cs; only a subset is needed for the mockup ── */
+:root,[data-theme=deep]{--bg:#05070d;--bg-top:#070b15;--card:#0c1320;--card-2:#0a0f19;--border:#223350;--line:#1b2b40;--track:#96beff18;
+  --ink:#dce9fa;--muted:#6f86a6;--acc:#6cb8ff;--second:#7c9cd6;--good:#6ce8c0;--warn:#ffc16c;--bad:#ff6f8a;--radius:12px;--glow:.6;--sheen:.04}
+[data-theme=obsidian]{--bg:#0a0c0f;--bg-top:#0a0c0f;--card:#13161b;--card-2:#12151a;--border:#22272e;--line:#242932;--track:#ffffff14;
+  --ink:#e6eaf0;--muted:#7c8696;--acc:#4fd1e8;--second:#7c8696;--good:#5cdca0;--warn:#e8b44a;--bad:#e5596b;--radius:8px;--glow:.12;--sheen:0}
+[data-theme=cyber]{--bg:#030608;--bg-top:#030608;--card:#0a1620;--card-2:#040809;--border:#1fb5d48c;--line:#16303d;--track:#2bb8d622;
+  --ink:#e8fbff;--muted:#5f8792;--acc:#4fe3ff;--second:#ff5c74;--good:#5bffb0;--warn:#ffc857;--bad:#ff5c74;--radius:8px;--glow:.8;--sheen:.05}
+[data-theme=phosphor]{--bg:#040605;--bg-top:#040605;--card:#08100a;--card-2:#08100a;--border:#173020;--line:#12301c;--track:#5cff9a18;
+  --ink:#b8ffd0;--muted:#4c8a62;--acc:#5cff9a;--second:#2fbf6e;--good:#5cff9a;--warn:#ffb000;--bad:#ff5c5c;--radius:3px;--glow:.5;--sheen:0}
+[data-theme=phosphor] body{font-family:var(--mono)}
+
+:root{color-scheme:dark;
+  /* [1] type scale: five steps instead of ad-hoc 11/12/13/14/15/16/34px */
+  --t-xs:11px;--t-sm:12px;--t-md:13px;--t-lg:15px;--t-xl:26px;
+  --mono:"Cascadia Mono","Cascadia Code",Consolas,ui-monospace,monospace;
+  --sans:"Segoe UI Variable Text","Segoe UI",system-ui,sans-serif;
+  --gap:12px}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:linear-gradient(180deg,var(--bg-top),var(--bg) 900px) fixed,var(--bg);color:var(--ink);font:var(--t-md)/1.45 var(--sans);
+  font-variant-numeric:tabular-nums}   /* [1] tabular digits everywhere: columns stop jittering on each tick */
+a{color:var(--acc);text-decoration:none}a:hover{text-decoration:underline}
+.mono{font-family:var(--mono)}
+.muted{color:var(--muted)}
+.glow{text-shadow:0 0 10px color-mix(in srgb,var(--acc) calc(var(--glow)*70%),transparent)}
+
+/* ── header ── */
+.top{position:sticky;top:0;z-index:10;display:flex;align-items:center;gap:10px 18px;flex-wrap:wrap;padding:8px 16px;
+  background:color-mix(in srgb,var(--bg) 96%,transparent);border-bottom:1px solid var(--line)}
+.brand{font-weight:600;letter-spacing:.06em;white-space:nowrap}.brand .acc{color:var(--acc)}
+.brand .logo{color:var(--acc);text-shadow:0 0 8px color-mix(in srgb,var(--acc) calc(var(--glow)*100%),transparent)}
+nav{display:flex;gap:2px}
+nav a{padding:5px 10px;border-radius:6px;color:var(--muted);font-size:var(--t-md);position:relative}
+nav a:hover{color:var(--ink);background:color-mix(in srgb,var(--ink) 5%,transparent);text-decoration:none}
+nav a.active{color:var(--ink)}
+nav a.active::after{content:"";position:absolute;left:10px;right:10px;bottom:-9px;height:2px;border-radius:2px;background:var(--acc);
+  box-shadow:0 0 8px color-mix(in srgb,var(--acc) calc(var(--glow)*100%),transparent)}
+.strip{display:flex;align-items:center;gap:6px;margin-left:auto;flex-wrap:wrap}
+.stat{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 9px;border:1px solid var(--line);border-radius:6px;font-size:var(--t-sm);color:var(--muted);white-space:nowrap;background:color-mix(in srgb,var(--ink) 2%,transparent)}
+.stat b{color:var(--ink);font-weight:600;font-family:var(--mono);font-size:var(--t-sm)}
+.stat .mini{width:42px;height:4px;border-radius:2px;background:var(--track);overflow:hidden}.stat .mini i{display:block;height:100%;background:var(--acc)}
+.stat.on{border-color:color-mix(in srgb,var(--good) 45%,transparent);color:var(--good)}
+.kbd{font:var(--t-xs) var(--mono);padding:1px 5px;border:1px solid var(--line);border-bottom-width:2px;border-radius:4px;color:var(--muted)}
+
+/* ── buttons: [5] three clear levels, square-ish so they never look like status badges ── */
+button,.btn{font:inherit;font-size:var(--t-sm);height:28px;padding:0 11px;border-radius:6px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;
+  color:var(--ink);background:color-mix(in srgb,var(--ink) 4%,transparent);border:1px solid var(--line);transition:background .12s,border-color .12s}
+button:hover,.btn:hover{background:color-mix(in srgb,var(--ink) 9%,transparent);border-color:color-mix(in srgb,var(--line) 50%,var(--muted));text-decoration:none}
+button.primary{background:color-mix(in srgb,var(--acc) 16%,transparent);border-color:color-mix(in srgb,var(--acc) 55%,transparent);color:var(--ink)}
+button.primary:hover{background:color-mix(in srgb,var(--acc) 26%,transparent)}
+button.danger{color:var(--bad);border-color:color-mix(in srgb,var(--bad) 35%,transparent);background:transparent}
+button.danger:hover{background:color-mix(in srgb,var(--bad) 12%,transparent)}
+button.quiet{background:transparent;border-color:transparent;color:var(--muted)}button.quiet:hover{color:var(--ink);background:color-mix(in srgb,var(--ink) 6%,transparent)}
+button.sq{width:28px;padding:0;justify-content:center}
+button[aria-busy=true]{opacity:.7;cursor:progress}
+:focus-visible{outline:2px solid var(--acc);outline-offset:2px}   /* [11] one visible focus ring for everything */
+
+/* status badges: dot + text, no border-radius 999 so they read as state, not as a button */
+.badge{display:inline-flex;align-items:center;gap:5px;font-size:var(--t-xs);padding:1px 7px;border-radius:4px;background:color-mix(in srgb,var(--ink) 5%,transparent);color:var(--muted);white-space:nowrap;letter-spacing:.02em}
+.badge::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+.badge.good{color:var(--good);background:color-mix(in srgb,var(--good) 10%,transparent)}
+.badge.acc{color:var(--acc);background:color-mix(in srgb,var(--acc) 10%,transparent)}
+.badge.warn{color:var(--warn);background:color-mix(in srgb,var(--warn) 10%,transparent)}
+.badge.bad{color:var(--bad);background:color-mix(in srgb,var(--bad) 10%,transparent)}
+.badge.plain::before{display:none}
+.tag{font:var(--t-xs) var(--mono);padding:1px 6px;border:1px solid var(--line);border-radius:4px;color:var(--muted)}
+
+/* ── layout ── */
+main{max-width:1360px;margin:0 auto;padding:14px 16px 40px}
+.layout{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:var(--gap);align-items:start}
+@media(max-width:1020px){.layout{grid-template-columns:minmax(0,1fr)}}
+.col{display:flex;flex-direction:column;gap:var(--gap);min-width:0}
+.sec{display:flex;align-items:center;gap:8px;margin:6px 2px -2px;font-size:var(--t-xs);letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}
+.sec .n{font-family:var(--mono);color:var(--ink)}
+.sec::after{content:"";flex:1;height:1px;background:var(--line)}
+.sec .right{order:3;text-transform:none;letter-spacing:0}
+
+/* [2] card: one flat surface, one border, sheen at the top; no rise animation, no hover lift */
+.card{background:linear-gradient(180deg,rgb(255 255 255/var(--sheen)),transparent 40px),linear-gradient(180deg,var(--card),var(--card-2));
+  border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px;min-width:0}
+.card.busy{border-color:color-mix(in srgb,var(--good) 45%,var(--border))}
+.card.busy .hd .dot{box-shadow:0 0 0 3px color-mix(in srgb,var(--good) 20%,transparent)}
+.card h2{font-size:var(--t-lg);font-weight:600;margin:0;display:flex;align-items:baseline;gap:8px}
+.card h2 small{font-weight:400;font-size:var(--t-sm);color:var(--muted)}
+
+/* notice line */
+.notice{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:8px 12px;border:1px solid color-mix(in srgb,var(--warn) 40%,transparent);
+  border-left-width:3px;border-radius:var(--radius);background:color-mix(in srgb,var(--warn) 6%,var(--card));font-size:var(--t-md)}
+.notice .txt{flex:1 1 300px;min-width:0}
+.notice .acts{display:flex;gap:6px;margin-left:auto}
+
+/* ── server card ── */
+.hd{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--good);flex:none}
+.dot.off{background:var(--warn)}
+.name{font-size:var(--t-lg);font-weight:600}
+.sub{font:var(--t-sm) var(--mono);color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:0 1 auto}
+.tps{margin-left:auto;display:flex;align-items:baseline;gap:5px}
+.tps b{font:600 var(--t-xl)/1 var(--mono);color:color-mix(in srgb,var(--ink) 88%,white);
+  text-shadow:0 0 4px color-mix(in srgb,var(--acc) calc(var(--glow)*90%),transparent),0 0 14px color-mix(in srgb,var(--acc) calc(var(--glow)*55%),transparent)}
+.tps span{font-size:var(--t-sm);color:var(--muted)}
+.card.idle .tps b{color:var(--muted);text-shadow:none}
+.acts{display:flex;gap:6px;flex-wrap:wrap}
+.toolbar{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:8px}
+.toolbar .clients{font-size:var(--t-sm);color:var(--muted);margin-right:auto}
+
+/* [3] key figures as a labelled grid instead of a sentence + chips */
+.figs{display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:1px;margin:10px 0 8px;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--line)}
+.figs div{background:var(--card-2);padding:5px 9px;min-width:0}
+.figs dt{font-size:var(--t-xs);color:var(--muted);letter-spacing:.04em;text-transform:uppercase;white-space:nowrap}
+.figs dd{margin:0;font:var(--t-md) var(--mono);color:var(--ink);white-space:nowrap}
+.figs dd.warn{color:var(--warn)}
+.figs dd small{color:var(--muted);font-size:var(--t-xs)}
+
+/* sparkline with scale and time axis */
+.spark{position:relative;height:64px;border-radius:6px;background:linear-gradient(180deg,color-mix(in srgb,var(--acc) 6%,transparent),transparent);border:1px solid color-mix(in srgb,var(--ink) 5%,transparent)}
+.spark svg{position:absolute;inset:0;width:100%;height:100%}
+.spark .area{fill:color-mix(in srgb,var(--acc) 14%,transparent)}
+.spark .g1{fill:none;stroke:var(--acc);stroke-width:8px;opacity:calc(.2*var(--glow));vector-effect:non-scaling-stroke;stroke-linejoin:round}
+.spark .ln{fill:none;stroke:var(--acc);stroke-width:1.6px;vector-effect:non-scaling-stroke;stroke-linejoin:round}
+.spark .ref{stroke:color-mix(in srgb,var(--ink) 12%,transparent);stroke-dasharray:3 3;vector-effect:non-scaling-stroke}
+.spark .lbl{position:absolute;font:var(--t-xs) var(--mono);color:var(--muted);padding:0 4px}
+.spark .lbl.tl{left:2px;top:1px}.spark .lbl.bl{left:2px;bottom:1px}.spark .lbl.br{right:2px;bottom:1px}
+
+/* ── tables [6] ── */
+table{width:100%;border-collapse:collapse;font-size:var(--t-md)}
+th{font-size:var(--t-xs);font-weight:500;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);text-align:left;padding:5px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
+th small{text-transform:none;letter-spacing:0;opacity:.8}
+td{padding:5px 8px;border-bottom:1px solid color-mix(in srgb,var(--line) 60%,transparent);vertical-align:middle}
+tr:last-child td{border-bottom:0}
+tbody tr:hover td{background:color-mix(in srgb,var(--acc) 5%,transparent)}
+.num{text-align:right;font-family:var(--mono);white-space:nowrap}
+td.dim,.num.dim{color:var(--muted)}
+.ctx{display:flex;align-items:center;gap:8px}
+.bar{flex:1;height:6px;min-width:60px;border-radius:3px;background:var(--track);overflow:hidden}
+.bar i{display:block;height:100%;border-radius:3px;background:linear-gradient(90deg,var(--second),var(--acc));
+  box-shadow:0 0 6px color-mix(in srgb,var(--acc) calc(var(--glow)*80%),transparent)}
+.bar i.hot{background:var(--bad);box-shadow:none}
+.ctx .num{font-size:var(--t-sm);min-width:92px}
+tr.idle-row td{padding:3px 8px}
+.more-row button{height:22px;font-size:var(--t-xs)}
+.slots tr.hidden{display:none}
+.tablewrap{overflow-x:auto;margin:0 -2px}
+
+/* ollama models */
+.models{display:flex;flex-direction:column;gap:4px;margin-top:8px}
+.model{display:grid;grid-template-columns:minmax(0,1fr) 70px 120px 90px;gap:10px;align-items:center;font-size:var(--t-md)}
+.model .n{font-family:var(--mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* hosts row */
+.hostrow{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.hostrow .tps b{font-size:20px}
+
+/* ── hardware rail [7] ── */
+.meters{display:grid;grid-template-columns:1fr 1fr;gap:10px 14px;margin-top:10px}
+.meter .l{display:flex;justify-content:space-between;font-size:var(--t-xs);color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.meter .v{font:var(--t-lg) var(--mono);margin:1px 0 4px}
+.meter .v small{font-size:var(--t-sm);color:var(--muted)}
+.meter .bar{height:5px}
+.meter .ok{color:var(--good)}.meter .warnc{color:var(--warn)}
+.stack{display:flex;height:10px;border-radius:3px;overflow:hidden;background:var(--track);margin:6px 0 6px}
+.stack i{display:block;height:100%;border-right:1px solid var(--card)}
+.legend{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:2px 8px;font-size:var(--t-sm)}
+.legend .sw{width:8px;height:8px;border-radius:2px;margin-top:5px}
+.legend .p{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.legend .g{font-family:var(--mono);color:var(--muted);text-align:right}
+.divider{height:1px;background:var(--line);margin:12px -14px}
+.subh{font-size:var(--t-xs);color:var(--muted);letter-spacing:.05em;text-transform:uppercase;margin-top:12px}
+
+/* saved profiles, compact list */
+.plist{display:flex;flex-direction:column}
+.prof{display:grid;grid-template-columns:10px minmax(0,1fr) auto;gap:8px;align-items:center;padding:7px 0;border-bottom:1px solid color-mix(in srgb,var(--line) 60%,transparent)}
+.prof:last-child{border-bottom:0}
+.prof .t{font-weight:600}.prof .m{font:var(--t-xs) var(--mono);color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.prof .d{width:7px;height:7px;border-radius:50%;background:var(--muted)}.prof .d.on{background:var(--good)}
+
+/* [8] empty state with an action */
+.empty{display:flex;gap:12px;align-items:center;padding:10px 12px;border:1px dashed var(--line);border-radius:8px;color:var(--muted);font-size:var(--t-md)}
+.empty b{color:var(--ink);font-weight:600;display:block}
+.empty .acts{margin-left:auto}
+
+/* history toolbar */
+.histbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.search{position:relative;flex:1 1 220px;max-width:320px}
+.search input{width:100%;height:28px;padding:0 30px 0 9px;font:inherit;font-size:var(--t-sm);color:var(--ink);background:var(--card-2);border:1px solid var(--line);border-radius:6px}
+.search input:focus{outline:none;border-color:var(--acc);box-shadow:0 0 0 3px color-mix(in srgb,var(--acc) 18%,transparent)}
+.search .kbd{position:absolute;right:6px;top:5px}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:6px;padding:2px;gap:2px}
+.seg button{height:22px;border:0;background:transparent;color:var(--muted);font-size:var(--t-xs)}
+.seg button.on{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var(--ink)}
+
+/* menus */
+details.menu{position:relative;display:inline-block}
+details.menu>summary{list-style:none}details.menu>summary::-webkit-details-marker{display:none}
+details.menu>div{position:absolute;right:0;top:32px;z-index:20;min-width:170px;padding:4px;background:var(--card);border:1px solid var(--border);border-radius:8px;box-shadow:0 8px 20px rgb(0 0 0/.45);display:flex;flex-direction:column}
+details.menu>div button{justify-content:space-between;background:transparent;border-color:transparent;width:100%}
+details.menu>div button:hover{background:color-mix(in srgb,var(--acc) 12%,transparent)}
+details.menu>div hr{border:0;border-top:1px solid var(--line);margin:4px 2px}
+
+/* [10] command palette */
+.pal-back{position:fixed;inset:0;z-index:50;background:rgb(0 0 0/.55);display:none;align-items:flex-start;justify-content:center;padding:12vh 16px 0}
+.pal-back.open{display:flex}
+.pal{width:min(560px,100%);background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;box-shadow:0 18px 40px rgb(0 0 0/.55)}
+.pal input{width:100%;border:0;border-bottom:1px solid var(--line);background:transparent;color:var(--ink);font:var(--t-lg) var(--sans);padding:12px 14px;outline:none}
+.pal ul{list-style:none;margin:0;padding:4px;max-height:50vh;overflow:auto}
+.pal li{display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:6px;cursor:pointer;font-size:var(--t-md)}
+.pal li .k{margin-left:auto;font-size:var(--t-xs);color:var(--muted)}
+.pal li.sel,.pal li:hover{background:color-mix(in srgb,var(--acc) 14%,transparent)}
+.pal .grp{font-size:var(--t-xs);color:var(--muted);text-transform:uppercase;letter-spacing:.06em;padding:8px 10px 2px;cursor:default}
+.pal .grp:hover{background:none}
+.pal .foot{display:flex;gap:12px;padding:7px 12px;border-top:1px solid var(--line);font-size:var(--t-xs);color:var(--muted)}
+
+/* [9] toasts */
+.toasts{position:fixed;right:16px;bottom:16px;z-index:60;display:flex;flex-direction:column;gap:8px;max-width:calc(100% - 32px)}
+.toast{display:flex;gap:10px;align-items:center;padding:8px 12px;background:var(--card);border:1px solid var(--border);border-left:3px solid var(--good);border-radius:8px;font-size:var(--t-md);box-shadow:0 6px 16px rgb(0 0 0/.4)}
+.toast.warn{border-left-color:var(--warn)}
+.toast button{height:24px}
+
+/* ── markers for the proposal list ── */
+.mk{display:inline-flex;align-items:center;justify-content:center;width:17px;height:17px;border-radius:50%;font:700 10px/1 var(--sans);
+  color:#1a1300;background:#ffd34d;vertical-align:middle;margin:0 2px;cursor:help;flex:none;letter-spacing:0;text-transform:none}
+body.nomk .mk{display:none}
+.demo{position:fixed;left:16px;bottom:16px;z-index:40;display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:6px 8px;background:var(--card);border:1px dashed #ffd34d88;border-radius:8px;font-size:var(--t-xs);color:var(--muted);max-width:calc(100% - 32px)}
+.demo select,.demo label{font:inherit;color:var(--ink)}
+.demo select{background:var(--card-2);border:1px solid var(--line);border-radius:4px;height:24px}
+.legendbox{margin-top:var(--gap)}
+.legendbox ol{margin:6px 0 0;padding-left:22px;columns:2 340px;column-gap:28px;font-size:var(--t-md)}
+.legendbox li{margin:0 0 5px;break-inside:avoid}
+.legendbox li span{color:var(--muted)}
+
+/* ── phone [12]: rows instead of wide tables, header in two lines, 16px gutter ── */
+@media(max-width:640px){
+  .top{padding:8px 16px;gap:8px}
+  nav{order:3;flex:1 1 100%;overflow-x:auto}
+  .strip{margin-left:0;order:4;flex:1 1 100%}
+  .strip .hide-s{display:none}
+  main{padding:12px 16px 90px}
+  .tps b{font-size:22px}
+  .sub{flex-basis:100%}
+  table.stackable thead{display:none}
+  table.stackable tr{display:grid;grid-template-columns:1fr auto;gap:0 10px;padding:6px 0;border-bottom:1px solid var(--line)}
+  table.stackable td{border:0;padding:1px 0;text-align:left}
+  table.stackable td.num{text-align:right}
+  table.stackable td[data-l]::before{content:attr(data-l) " ";color:var(--muted);font-family:var(--sans);font-size:var(--t-xs)}
+  table.stackable td.hide-s{display:none}
+  .model{grid-template-columns:minmax(0,1fr) auto}.model .hide-s{display:none}
+  .meters{grid-template-columns:1fr 1fr}
+}
+
+/* ── window shell without GPU (html.shell): no blur, no soft shadows, no loops ── */
+html.shell .top{background:var(--bg)}
+html.shell .bar i,html.shell .tps b,html.shell nav a.active::after{box-shadow:none}
+html.shell details.menu>div,html.shell .pal,html.shell .toast{box-shadow:none}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="brand"><span class="logo">◆</span> STYKKER <span class="acc">LLM</span></div>
+  <nav aria-label="Main">
+    <a href="#" class="active" aria-current="page">Monitor</a><a href="#">Model tests</a><a href="#">Benchmarks</a><a href="#">Recordings</a>
+  </nav>
+  <span class="mk" title="4: compact header with live status">4</span>
+  <div class="strip">
+    <button class="stat on" title="Proxy settings" onclick="toast('Proxy settings would open as a side panel')">● Proxy <b>:8080</b> → stykker</button>
+    <span class="stat" title="GPU VRAM used">GPU <span class="mini"><i style="width:72%"></i></span><b>17.2</b>/24 GB</span>
+    <span class="stat hide-s" title="System memory">RAM <b>38.1</b> GB free</span>
+    <span class="stat hide-s">Servers <b>3</b> · <span style="color:var(--good)">2 busy</span></span>
+    <button class="quiet" onclick="openPal()" title="Search pages and actions">Search <span class="kbd">Ctrl K</span></button><span class="mk" title="10: command palette">10</span>
+    <button onclick="busy(this,'Free VRAM','Freeing …','Freed 9.8 GB VRAM (1 server stopped, 1 model unloaded)')">Free VRAM</button>
+    <button class="sq quiet" title="Stop the StykkerLLM server" aria-label="Stop server">⏻</button>
+    <details class="menu"><summary class="btn sq" title="More" aria-label="More">☰</summary>
+      <div><button>Runs</button><button>Catalog</button><button>Models</button><hr><button>GPU</button><button>Prompt</button><button>Compare</button><hr><button>Model hosts</button><button>Phone access</button><button>Settings</button><button>Bug report</button></div>
+    </details>
+  </div>
+</header>
+
+<main>
+  <div class="notice" role="status" id="notice">
+    <span class="badge warn plain">Hint</span>
+    <span class="txt">qwen3-coder on <span class="mono">:8082</span> spills 1.4 GB into shared RAM – generation is slower than it could be. Lower <span class="mono">-ngl</span> or the context.</span>
+    <span class="acts"><a class="btn" href="#">Open log</a><button class="quiet" onclick="document.getElementById('notice').remove();toast('Hint dismissed','Undo')">Dismiss</button></span>
+  </div>
+
+  <div class="layout" style="margin-top:var(--gap)">
+    <div class="col">
+      <div class="sec">Running <span class="n">3</span><span class="mk" title="2: running servers first, saved profiles in the side column">2</span></div>
+
+      <!-- llama.cpp, busy -->
+      <article class="card busy">
+        <div class="hd">
+          <span class="dot" title="online"></span>
+          <span class="name">gemma-3-27b</span>
+          <span class="sub">gemma-3-27b-it-Q4_K_M · 127.0.0.1:8081</span>
+          <span class="badge good">served by proxy</span>
+          <span class="tps"><b>41.8</b><span>tokens/s</span></span>
+        </div>
+        <div class="toolbar">
+          <span class="clients">Clients: opencode, qwen-code</span>
+          <button class="primary">Prompt</button>
+          <button>Details</button>
+          <details class="menu"><summary class="btn">More ▾</summary><div><button onclick="toast('Recording started')">Record</button><button onclick="toast('Saved as profile “gemma-3-27b”')">Save as profile</button><button>Bench</button></div></details>
+          <button class="danger" onclick="busy(this,'Stop','Stopping …','gemma-3-27b stopped','Undo')">Stop</button>
+          <span class="mk" title="5: button levels: primary, normal, danger; rarely used actions in More">5</span>
+        </div>
+        <dl class="figs">
+          <div><dt>Peak</dt><dd>48.2</dd></div>
+          <div><dt>Avg active</dt><dd>41.7</dd></div>
+          <div><dt>Generated</dt><dd>182,340</dd></div>
+          <div><dt>Slots</dt><dd>2 <small>/ 4</small></dd></div>
+          <div><dt>GPU VRAM</dt><dd>17.0 <small>GB</small></dd></div>
+          <div><dt>RAM</dt><dd>1.2 <small>GB</small></dd></div>
+          <div><dt>CPU</dt><dd>6.4 <small>%</small></dd></div>
+          <div><dt>Draft</dt><dd>71 <small>%</small></dd></div>
+        </dl>
+        <span class="mk" title="3: key figures as a labelled grid instead of a sentence and chips" style="float:right;margin-top:-6px">3</span>
+        <div class="spark" id="sp1"><span class="lbl tl">50</span><span class="lbl bl">−2 min</span><span class="lbl br">now</span></div>
+        <div class="tablewrap" style="margin-top:8px">
+          <table class="slots stackable">
+            <thead><tr><th style="width:44px">Slot</th><th>Status</th><th class="num">t/s</th><th class="num">Generated</th><th style="width:42%">Context <span class="mk" title="6: units in the header, idle rows folded, full context in red with text">6</span></th></tr></thead>
+            <tbody>
+              <tr><td class="mono" data-l="slot">0</td><td><span class="badge good">generating</span></td><td class="num" data-l="t/s">42.1</td><td class="num" data-l="gen">3,812</td>
+                <td><div class="ctx"><div class="bar"><i style="width:38%"></i></div><span class="num">12,410 / 32k</span></div></td></tr>
+              <tr><td class="mono" data-l="slot">1</td><td><span class="badge warn">reading prompt</span></td><td class="num dim" data-l="t/s">–</td><td class="num dim" data-l="gen">–</td>
+                <td><div class="ctx"><div class="bar"><i class="hot" style="width:94%"></i></div><span class="num" style="color:var(--bad)" title="Context almost full">30,880 / 32k</span></div></td></tr>
+              <tr class="hidden idle-row"><td class="mono">2</td><td><span class="badge">idle</span></td><td class="num dim">–</td><td class="num dim">–</td><td><div class="ctx"><div class="bar"></div><span class="num dim">– / 32k</span></div></td></tr>
+              <tr class="hidden idle-row"><td class="mono">3</td><td><span class="badge">idle</span></td><td class="num dim">–</td><td class="num dim">–</td><td><div class="ctx"><div class="bar"></div><span class="num dim">– / 32k</span></div></td></tr>
+              <tr class="more-row"><td colspan="5"><button class="quiet" onclick="toggleIdle(this)">+ 2 idle slots</button></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </article>
+
+      <!-- llama.cpp, idle -->
+      <article class="card idle">
+        <div class="hd">
+          <span class="dot" title="online"></span>
+          <span class="name">qwen3-coder-30b</span>
+          <span class="sub">Qwen3-Coder-30B-A3B-Q4_K_XL · 127.0.0.1:8082</span>
+          <button class="quiet" style="height:22px;font-size:11px">→ Proxy</button>
+          <span class="tps"><b>0.0</b><span>tokens/s</span></span>
+        </div>
+        <div class="toolbar">
+          <span class="clients">Clients: none</span>
+          <button class="primary">Prompt</button><button>Details</button>
+          <details class="menu"><summary class="btn">More ▾</summary><div><button>Record</button><button>Save as profile</button><button>Bench</button></div></details>
+          <button class="danger">Stop</button>
+        </div>
+        <dl class="figs">
+          <div><dt>Peak</dt><dd>96.4</dd></div>
+          <div><dt>Avg active</dt><dd>88.0</dd></div>
+          <div><dt>Generated</dt><dd>41,207</dd></div>
+          <div><dt>Slots</dt><dd>0 <small>/ 2</small></dd></div>
+          <div><dt>GPU VRAM</dt><dd>4.6 <small>GB</small></dd></div>
+          <div><dt>Shared RAM</dt><dd class="warn">1.4 <small>GB</small></dd></div>
+          <div><dt>CPU</dt><dd>0.3 <small>%</small></dd></div>
+          <div><dt>Model file</dt><dd>17.7 <small>GB</small></dd></div>
+        </dl>
+        <div class="spark" id="sp2" style="height:40px"><span class="lbl tl">100</span><span class="lbl br">idle 4 min</span></div>
+      </article>
+
+      <!-- Ollama -->
+      <article class="card idle">
+        <div class="hd">
+          <span class="dot" title="online"></span>
+          <span class="name">Ollama</span>
+          <span class="sub">127.0.0.1:11434</span>
+          <span class="tps"><b>0.0</b><span>tokens/s</span></span>
+        </div>
+        <div class="models">
+          <div class="model muted" style="font-size:var(--t-xs);text-transform:uppercase;letter-spacing:.05em"><span>Loaded model</span><span class="num">Size</span><span class="hide-s">GPU / CPU</span><span class="num hide-s">Unloads in</span></div>
+          <div class="model"><span class="n">llama3.2:3b</span><span class="num">3.4 GB</span><span class="hide-s"><span class="bar" style="display:block"><i style="width:100%"></i></span></span><span class="num dim hide-s">3 min</span></div>
+          <div class="model"><span class="n">nomic-embed-text</span><span class="num">0.6 GB</span><span class="hide-s"><span class="bar" style="display:block"><i style="width:100%"></i></span></span><span class="num dim hide-s">4 min</span></div>
+        </div>
+      </article>
+
+      <div class="sec">On model hosts <span class="n">1</span></div>
+      <article class="card busy">
+        <div class="hostrow">
+          <span class="dot"></span><span class="name">mistral-small-24b</span><span class="tag">GPU-BOX</span>
+          <span class="sub">llama.cpp · :8080</span>
+          <span class="badge plain">VRAM 14.1 GB</span><span class="badge plain">Slots 1 / 2</span>
+          <span class="tps"><b>23.5</b><span>tokens/s</span></span>
+          <a class="btn" href="#">Hosts</a>
+        </div>
+      </article>
+
+      <div class="card">
+        <h2>Recent requests <small>last 8</small></h2>
+        <div class="tablewrap" style="margin-top:6px">
+        <table class="stackable">
+          <thead><tr><th>Server</th><th>When</th><th>Task</th><th class="num">Prompt <small>t/s</small></th><th class="num">Gen <small>t/s</small></th><th class="num">Tokens</th><th class="num">Time</th><th>Status</th></tr></thead>
+          <tbody>
+            <tr><td>gemma-3-27b</td><td class="dim" title="14:32:07">12 s ago</td><td class="dim hide-s">code edit</td><td class="num dim" data-l="pp">1,240</td><td class="num" data-l="tg">43.9</td><td class="num" data-l="tok">1,822</td><td class="num dim" data-l="">41 s</td><td><span class="badge good">done</span></td></tr>
+            <tr><td>mistral-small-24b <span class="tag">GPU-BOX</span></td><td class="dim" title="14:31:40">39 s ago</td><td class="dim hide-s">chat</td><td class="num dim" data-l="pp">880</td><td class="num" data-l="tg">24.1</td><td class="num" data-l="tok">412</td><td class="num dim">17 s</td><td><span class="badge good">done</span></td></tr>
+            <tr><td>gemma-3-27b</td><td class="dim" title="14:29:12">3 min ago</td><td class="dim hide-s">tool call</td><td class="num dim" data-l="pp">1,105</td><td class="num" data-l="tg">40.2</td><td class="num" data-l="tok">4,096</td><td class="num dim">102 s</td><td><span class="badge warn">truncated</span></td></tr>
+            <tr><td>qwen3-coder-30b</td><td class="dim" title="14:27:55">4 min ago</td><td class="dim hide-s">code edit</td><td class="num dim" data-l="pp">2,310</td><td class="num" data-l="tg">91.7</td><td class="num" data-l="tok">2,904</td><td class="num dim">32 s</td><td><span class="badge good">done</span></td></tr>
+            <tr><td>qwen3-coder-30b</td><td class="dim" title="14:25:03">7 min ago</td><td class="dim hide-s">chat</td><td class="num dim" data-l="pp">–</td><td class="num dim" data-l="tg">–</td><td class="num" data-l="tok">0</td><td class="num dim">–</td><td><span class="badge bad">failed</span></td></tr>
+          </tbody>
+        </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="histbar">
+          <h2 style="margin-right:6px">History</h2>
+          <label class="search"><input id="hsearch" placeholder="Search model, ctx …" aria-label="Search history"><span class="kbd">/</span></label>
+          <span class="seg" role="group" aria-label="Sort"><button class="on">Recent</button><button>Best t/s</button><button>Runs</button></span>
+          <span class="mk" title="11: keyboard: / focuses search, sortable columns">11</span>
+        </div>
+        <div class="tablewrap" style="margin-top:6px">
+        <table class="stackable">
+          <thead><tr><th>Model</th><th class="num">Ctx</th><th>Last seen</th><th class="num">Runs</th><th class="num">Best <small>t/s</small></th><th class="num">VRAM <small>GB</small></th><th></th></tr></thead>
+          <tbody>
+            <tr><td>gemma-3-27b-it-Q4_K_M</td><td class="num" data-l="ctx">32k</td><td class="dim hide-s">today 14:02</td><td class="num" data-l="runs">23</td><td class="num" data-l="best">48.2</td><td class="num" data-l="vram">17.0</td><td class="num"><button>Start again</button> <details class="menu"><summary class="btn sq" aria-label="More">⋯</summary><div><button>Details</button><button>Save as profile</button><hr><button style="color:var(--bad)">Forget</button></div></details></td></tr>
+            <tr><td>Qwen3-Coder-30B-A3B-Q4_K_XL</td><td class="num" data-l="ctx">64k</td><td class="dim hide-s">today 13:47</td><td class="num" data-l="runs">11</td><td class="num" data-l="best">96.4</td><td class="num" data-l="vram">20.9</td><td class="num"><button>Start again</button> <details class="menu"><summary class="btn sq" aria-label="More">⋯</summary><div><button>Details</button><button>Save as profile</button><hr><button style="color:var(--bad)">Forget</button></div></details></td></tr>
+            <tr><td>Llama-3.3-70B-IQ2_XS</td><td class="num" data-l="ctx">8k</td><td class="dim hide-s">2026-10-03</td><td class="num" data-l="runs">2</td><td class="num" data-l="best">7.9</td><td class="num" data-l="vram">22.8</td><td class="num"><button>Start again</button> <details class="menu"><summary class="btn sq" aria-label="More">⋯</summary><div><button>Details</button><button>Save as profile</button><hr><button style="color:var(--bad)">Forget</button></div></details></td></tr>
+          </tbody>
+        </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- side column -->
+    <aside class="col">
+      <div class="sec">Hardware <span class="mk" title="7: GPU and system in one compact card">7</span></div>
+      <div class="card">
+        <h2>GPU <small>RTX 4090 · 24 GB</small></h2>
+        <div class="meters">
+          <div class="meter"><div class="l"><span>Load</span></div><div class="v glow">87 <small>%</small></div><div class="bar"><i style="width:87%"></i></div></div>
+          <div class="meter"><div class="l"><span>VRAM</span><span>6.8 free</span></div><div class="v glow">17.2 <small>/ 24 GB</small></div><div class="bar"><i style="width:72%"></i></div></div>
+          <div class="meter"><div class="l"><span>Power</span></div><div class="v glow">312 <small>/ 450 W</small></div><div class="bar"><i style="width:69%"></i></div></div>
+          <div class="meter"><div class="l"><span>Temp</span><span class="ok">clocks free</span></div><div class="v glow">64 <small>°C</small></div><div class="bar"><i style="width:64%"></i></div></div>
+        </div>
+        <div class="subh">VRAM per process</div>
+        <div class="stack"><i style="width:70%;background:var(--acc)"></i><i style="width:14%;background:var(--second)"></i><i style="width:3%;background:var(--warn)"></i><i style="width:4%;background:var(--muted)"></i></div>
+        <div class="legend">
+          <span class="sw" style="background:var(--acc)"></span><span class="p">llama-server :8081</span><span class="g">17.0</span>
+          <span class="sw" style="background:var(--second)"></span><span class="p">ollama</span><span class="g">3.4</span>
+          <span class="sw" style="background:var(--warn)"></span><span class="p">dwm.exe</span><span class="g">0.7</span>
+          <span class="sw" style="background:var(--muted)"></span><span class="p">other (6)</span><span class="g">0.9</span>
+        </div>
+        <div class="divider"></div>
+        <h2>System <small>32 logical cores</small></h2>
+        <div class="meters">
+          <div class="meter"><div class="l"><span>CPU</span></div><div class="v glow">14 <small>%</small></div><div class="bar"><i style="width:14%"></i></div></div>
+          <div class="meter"><div class="l"><span>Memory</span><span>38.1 free</span></div><div class="v glow">25.9 <small>/ 64 GB</small></div><div class="bar"><i style="width:40%"></i></div></div>
+        </div>
+      </div>
+
+      <div class="sec">Saved profiles <span class="n">4</span></div>
+      <div class="card">
+        <div class="plist">
+          <div class="prof"><span class="d on"></span><div><div class="t">gemma-3-27b</div><div class="m">ctx 32k · :8081 · best 48.2 t/s · 17.0 GB</div></div><span class="badge good">running</span></div>
+          <div class="prof"><span class="d on"></span><div><div class="t">coder-fast</div><div class="m">ctx 64k · :8082 · best 96.4 t/s · 20.9 GB</div></div><span class="badge good">running</span></div>
+          <div class="prof"><span class="d"></span><div><div class="t">llama-70b-lowctx</div><div class="m">ctx 8k · :8083 · best 7.9 t/s · 22.8 GB</div></div>
+            <span class="acts"><button onclick="busy(this,'Start','Checking …','Not enough free VRAM: needs 22.8 GB, 6.8 GB free','',true)">Start</button><details class="menu"><summary class="btn sq" aria-label="More">⋯</summary><div><button>Bench</button><button>Edit</button><hr><button style="color:var(--bad)">Remove</button></div></details></span></div>
+          <div class="prof"><span class="d"></span><div><div class="t">embed-small</div><div class="m">ctx 8k · :8084 · never measured</div></div>
+            <span class="acts"><button onclick="busy(this,'Start','Starting …','embed-small started on :8084')">Start</button><details class="menu"><summary class="btn sq" aria-label="More">⋯</summary><div><button>Bench</button><button>Edit</button><hr><button style="color:var(--bad)">Remove</button></div></details></span></div>
+        </div>
+      </div>
+
+      <div class="sec">Empty state example <span class="mk" title="8: empty states with one clear next step">8</span></div>
+      <div class="empty">
+        <div><b>No benchmark yet</b>Measure this server once to compare it later.</div>
+        <span class="acts"><button class="primary">Run bench</button></span>
+      </div>
+    </aside>
+  </div>
+
+  <div class="card legendbox" id="legend">
+    <h2>Mockup markers <small>see proposals.de.md for details</small></h2>
+    <ol>
+      <li>Type scale with five steps, tabular digits everywhere <span>(app.css)</span></li>
+      <li>Running servers first, saved profiles and hardware in a side column <span>(Monitor.razor)</span></li>
+      <li>Key figures as a labelled grid instead of a sentence plus chips <span>(Monitor.razor)</span></li>
+      <li>Compact header: proxy, VRAM, RAM, server count as status chips <span>(MainLayout.razor)</span></li>
+      <li>Three button levels, badges visibly different from buttons <span>(app.css)</span></li>
+      <li>Slots table: units in header, idle rows folded <span>(Monitor.razor)</span></li>
+      <li>GPU and system in one hardware card with legend <span>(Monitor.razor, StackBar)</span></li>
+      <li>Empty states with one action <span>(all pages)</span></li>
+      <li>Feedback: busy buttons and toasts with undo (click Stop, Start, Free VRAM) <span>(MainLayout, WebActions)</span></li>
+      <li>Command palette Ctrl+K for pages and actions <span>(MainLayout, ui.js)</span></li>
+      <li>Keyboard: / for search, visible focus ring <span>(ui.js, app.css)</span></li>
+      <li>Phone: tables turn into rows below 640 px <span>(app.css)</span></li>
+    </ol>
+  </div>
+</main>
+
+<div class="demo" aria-label="Mockup controls">
+  <span style="color:#ffd34d">Mockup</span>
+  <select id="theme" aria-label="Theme" onchange="document.documentElement.dataset.theme=this.value">
+    <option value="deep">Deep Sea</option><option value="obsidian">Obsidian</option><option value="cyber">Cyber Grid</option><option value="phosphor">Phosphor</option>
+  </select>
+  <label><input type="checkbox" checked onchange="document.body.classList.toggle('nomk',!this.checked)"> markers</label>
+  <label title="html.shell: window without GPU"><input type="checkbox" onchange="document.documentElement.classList.toggle('shell',this.checked)"> shell</label>
+</div>
+
+<div class="pal-back" id="pal" onclick="if(event.target===this)closePal()">
+  <div class="pal" role="dialog" aria-label="Command palette">
+    <input id="palq" placeholder="Go to page or run an action …" autocomplete="off" oninput="filterPal()" onkeydown="palKey(event)">
+    <ul id="pall">
+      <li class="grp">Actions</li>
+      <li>Start profile: llama-70b-lowctx<span class="k">profile</span></li>
+      <li>Start profile: embed-small<span class="k">profile</span></li>
+      <li>Stop gemma-3-27b<span class="k">server</span></li>
+      <li>Prompt gemma-3-27b<span class="k">server</span></li>
+      <li>Free VRAM<span class="k">global</span></li>
+      <li>Proxy: serve qwen3-coder-30b<span class="k">proxy</span></li>
+      <li class="grp">Pages</li>
+      <li>Model tests<span class="k">g t</span></li><li>Benchmarks<span class="k">g b</span></li><li>Recordings<span class="k">g r</span></li>
+      <li>GPU details<span class="k">page</span></li><li>Model hosts<span class="k">page</span></li><li>Phone access<span class="k">page</span></li><li>Settings<span class="k">page</span></li>
+    </ul>
+    <div class="foot"><span><span class="kbd">↑↓</span> move</span><span><span class="kbd">Enter</span> run</span><span><span class="kbd">Esc</span> close</span></div>
+  </div>
+</div>
+
+<div class="toasts" id="toasts" aria-live="polite"></div>
+
+<script>
+// sparklines: area + glow + line + 50 % reference line
+function spark(id,pts,max){
+  const el=document.getElementById(id),w=300,h=64,n=pts.length;
+  const xy=pts.map((v,i)=>[(i/(n-1)*w).toFixed(1),(h-2-v/max*(h-8)).toFixed(1)]);
+  const line=xy.map(p=>p.join(',')).join(' ');
+  el.insertAdjacentHTML('afterbegin',`<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true">
+    <line class="ref" x1="0" x2="${w}" y1="${h/2}" y2="${h/2}"/><polygon class="area" points="0,${h} ${line} ${w},${h}"/>
+    <polyline class="g1" points="${line}"/><polyline class="ln" points="${line}"/></svg>`);
+}
+spark('sp1',[0,0,12,38,41,44,40,43,46,48,45,42,0,0,0,30,39,42,44,41,43,40,42,41.8],50);
+spark('sp2',[0,80,92,96,90,88,91,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],100);
+
+function toggleIdle(b){
+  const rows=b.closest('tbody').querySelectorAll('tr.idle-row'),open=rows[0].classList.contains('hidden');
+  rows.forEach(r=>r.classList.toggle('hidden',!open));b.textContent=open?'− hide idle slots':'+ 2 idle slots';
+}
+function toast(msg,action,warn){
+  const t=document.createElement('div');t.className='toast'+(warn?' warn':'');t.textContent=msg;
+  if(action){const b=document.createElement('button');b.className='quiet';b.textContent=action;b.onclick=()=>t.remove();t.append(b);}
+  document.getElementById('toasts').append(t);setTimeout(()=>t.remove(),4500);
+}
+function busy(btn,label,busyLabel,done,action,warn){
+  btn.setAttribute('aria-busy','true');btn.disabled=true;btn.textContent=busyLabel;
+  setTimeout(()=>{btn.removeAttribute('aria-busy');btn.disabled=false;btn.textContent=label;toast(done,action,warn);},900);
+}
+// command palette
+const pal=document.getElementById('pal'),palq=document.getElementById('palq');
+function items(){return [...document.querySelectorAll('#pall li:not(.grp)')].filter(li=>li.style.display!=='none');}
+function sel(i){const it=items();it.forEach(x=>x.classList.remove('sel'));if(it.length)it[(i+it.length)%it.length].classList.add('sel');}
+function openPal(){pal.classList.add('open');palq.value='';filterPal();palq.focus();}
+function closePal(){pal.classList.remove('open');}
+function filterPal(){const q=palq.value.toLowerCase();document.querySelectorAll('#pall li:not(.grp)').forEach(li=>li.style.display=li.textContent.toLowerCase().includes(q)?'':'none');sel(0);}
+function palKey(e){const it=items(),i=it.findIndex(x=>x.classList.contains('sel'));
+  if(e.key==='ArrowDown'){sel(i+1);e.preventDefault();}else if(e.key==='ArrowUp'){sel(i-1);e.preventDefault();}
+  else if(e.key==='Enter'&&it[i]){closePal();toast('Would run: '+it[i].firstChild.textContent);}else if(e.key==='Escape')closePal();}
+document.getElementById('pall').addEventListener('click',e=>{const li=e.target.closest('li:not(.grp)');if(li){closePal();toast('Would run: '+li.firstChild.textContent);}});
+document.addEventListener('keydown',e=>{
+  if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k'){e.preventDefault();openPal();}
+  else if(e.key==='/'&&!/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)){e.preventDefault();document.getElementById('hsearch').focus();}
+  else if(e.key==='Escape')closePal();
+});
+// close other open menus when one opens
+document.querySelectorAll('details.menu').forEach(d=>d.addEventListener('toggle',()=>{if(d.open)document.querySelectorAll('details.menu[open]').forEach(o=>o!==d&&(o.open=false));}));
+</script>
+</body>
+</html>
