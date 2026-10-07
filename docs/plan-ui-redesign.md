@@ -1,6 +1,6 @@
 # Plan: new web interface (Dark + Spacepunk Titan)
 
-Status: **U1–U7 and U9 done** (2026-10-08); U8 next. Approved by the owner on 2026-10-07. Work happens on `dev`, package by package; after each package:
+Status: **U1–U9 done** (2026-10-08); U10 next. Approved by the owner on 2026-10-07. Work happens on `dev`, package by package; after each package:
 build, all tests, a screenshot in Dark and Titan, commit.
 
 Reference: the mockups in `docs/design/` (open them in a browser, controls at the bottom left).
@@ -32,7 +32,7 @@ Reference: the mockups in `docs/design/` (open them in a browser, controls at th
 | U5 ✓ | Hardware card | GPU and system in one card, VRAM and RAM per program with legend, link to `/gpu` | screenshot |
 | U6 ✓ | Profiles | Tiles with the fixed six symbols, running = lit with live t/s, start/stop, menu (edit, idle-unload, delete), command line folded; **VRAM forecast** before start (free vs. needed) | unit test forecast; screenshot |
 | U7 ✓ | Recent requests | Fixed columns: client kind, host, model dot, duration bar, t/s colour scale, tools, thinking, result, age. New data: **client kind**, **tool calls**, **thinking tokens**, **result** per request (proxy tap) | unit tests on the tap; screenshot |
-| U8 | History | Grouped by day, run bar, avg/peak t/s, tokens, **end reason** (clean, crashed, stopped from outside – new field), backend filter, `/` search, row actions, forget with undo, link to `/history/{key}` | unit test end reason; screenshot |
+| U8 ✓ | History | Grouped by day, run bar, avg/peak t/s, tokens, **end reason** (clean, crashed, stopped from outside – new field), backend filter, `/` search, row actions, forget with undo, link to `/history/{key}` | unit test end reason; screenshot |
 | U9 ✓ | Proxy panel | All proxy settings in one panel (on/off, port 17500, LAN, target/model, remote Stykker machines, cloud providers with write-only key), opened from the proxy chip and Ctrl+K | existing proxy tests; screenshot |
 | U10 | Commands and feedback | Ctrl+K command palette (pages and actions, focus trap), `/` focuses search, toasts, stop popover, undo, consistent focus ring, Server-lost banner, read-only/viewer states | keyboard walk-through in the browser |
 | U11 | Hints | "Slower than usual" (compared with the profile's average), VRAM short, hazard stripes in Titan | unit test thresholds |

@@ -89,6 +89,7 @@ builder.Services.AddScoped<WebPrompt>();
 builder.Services.AddScoped(sp => new LaunchCoordinator(sp.GetRequiredService<EngineHost>().Engine, sp.GetRequiredService<WebPrompt>()));
 builder.Services.AddScoped<ViewerSession>();
 builder.Services.AddScoped<WebActions>();
+builder.Services.AddScoped<Toasts>();
 builder.Services.AddHttpContextAccessor();   // für die Rolle beim Vorab-Rendern (ViewerSession)
 builder.Services.AddRazorComponents().AddInteractiveServerComponents();
 builder.Services.AddScoped<Microsoft.AspNetCore.Components.Server.Circuits.CircuitHandler, HoldCircuits>();

@@ -18,6 +18,27 @@ public class LibraryTests
 
     private static readonly DateTime T0 = new(2026, 1, 1, 12, 0, 0);
 
+    // U8: Tokens des letzten Laufs und wie er endete; ein neuer Lauf setzt das Ende zurück
+    [TestMethod]
+    public void LastRun_KeepsTokensAndEnd_NewRunClearsTheEnd()
+    {
+        var lib = new Library();
+        var s = Server();
+        lib.Observe(s, new Observation(40, null, null, Generated: 1200), T0);
+        lib.Observe(s, new Observation(40, null, null, Generated: 5300), T0.AddSeconds(1));
+        lib.RecordEnd(s, "crashed", T0.AddSeconds(2));
+        var h = lib.History.Single();
+        Assert.AreEqual(5300, h.LastRunTokens);
+        Assert.AreEqual("crashed", h.LastEnd);
+        Assert.AreEqual(T0.AddSeconds(2), h.LastEndAt);
+
+        lib.Observe(Server(pid: 11, start: 2), new Observation(0, null, null), T0.AddMinutes(1));
+        Assert.AreEqual(2, h.Runs);
+        Assert.AreEqual("", h.LastEnd, "läuft wieder: kein Ende");
+        lib.RecordEnd(Server(pid: 99, model: "other.gguf"), "clean", T0);   // unbekannter Server: nichts passiert
+        Assert.AreEqual(1, lib.History.Count);
+    }
+
     [TestMethod]
     public void ObserveBuildsStatisticsPerRun()
     {

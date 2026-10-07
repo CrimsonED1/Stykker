@@ -6,6 +6,7 @@
 @inject WebPrompt Prompt
 @inject NavigationManager Nav
 @inject IJSRuntime JS
+@inject Toasts Toast
 
 @* Monitor wie im Fenster (docs/ui.md, Bereiche 2–8): Proxy, Saved, Running, GPU, System, Recent requests, History *@
 
@@ -112,24 +113,62 @@
     }
 </div>
 
+@* History (U8): nach Tagen gruppiert, je Lauf Laufzeit, Ø/Spitze t/s, Tokens des letzten Laufs und wie er endete;
+   Suche (/ springt hinein), Filter, Aktionen als Symbole, Vergessen mit Rückgängig *@
+@{
+    var runningKeys = e.Registry.Servers.Where(x => !string.IsNullOrEmpty(x.Info.Program) && x.Info.Args != null).Select(x => Library.MakeKey(x.Info.Program!, x.Info.Args!)).ToHashSet();
+    var hlist = e.Library.History.Where(Match).Where(h => !_forgetting.Contains(h.Key))
+        .Where(h => _hfilter == "all" || (_hfilter == "crashed" && h.LastEnd == "crashed") || (_hfilter == "running" && runningKeys.Contains(h.Key)))
+        .OrderByDescending(h => h.LastSeen).Take(40).ToList();
+    double maxRun = hlist.Count > 0 ? Math.Max(1, hlist.Max(h => h.Runs > 0 ? h.TotalSeconds / h.Runs : 0)) : 1;
+}
 <div class="card">
-    <div class="row"><h2 style="margin:0">@Strings.SectionHistory</h2><input placeholder="@Strings.HistorySearch" @bind="_q" @bind:event="oninput" style="margin-left:12px;flex:1;max-width:260px" /></div>
-    <table style="margin-top:8px">
-        <tr><th>@Strings.ColModel</th><th class="num">@Strings.ColCtx</th><th>@Strings.ColLastSeen</th><th class="num">@Strings.ColRuns</th><th class="num">@Strings.ColBest</th><th class="num">@Strings.ColVram</th><th></th></tr>
-        @foreach (var h in e.Library.History.Where(Match).Take(30))
+    <div class="histbar">
+        <h2>@Strings.SectionHistory</h2>
+        <label class="search"><input id="hsearch" placeholder="@Strings.HistorySearch" @bind="_q" @bind:event="oninput" aria-label="@Strings.HistorySearch" /><span class="kbd">/</span></label>
+        <span class="fchips" role="group" aria-label="@Strings.HistFilter">
+            @foreach (var (f, label) in new[] { ("all", Strings.HistAll), ("running", Strings.HistRunning), ("crashed", Strings.HistCrashed) })
+            {
+                var ff = f;
+                <button class="fchip @(_hfilter == ff ? "on" : "")" aria-pressed="@(_hfilter == ff ? "true" : "false")" @onclick="() => _hfilter = ff">@label</button>
+            }
+        </span>
+    </div>
+    @if (hlist.Count == 0)
+    {
+        <div class="empty"><Icon Name="timer" Class="lg" /><div><b>@(_q.Length > 0 || _hfilter != "all" ? Strings.HistNoMatch : Strings.HistEmptyTitle)</b><div class="muted small">@(_q.Length > 0 || _hfilter != "all" ? Strings.HistNoMatchHint : Strings.HistEmptyHint)</div></div></div>
+    }
+    <div class="hist">
+        @foreach (var grp in hlist.GroupBy(h => DayGroup(h.LastSeen)))
         {
-            <tr><td>@(h.Name.Length > 0 ? h.Name : h.ModelPath != null ? ServerInfo.ModelName(h.ModelPath) : "?")</td>
-                <td class="num">@(h.Ctx is int c ? $"{c / 1024}k" : "–")</td><td class="muted">@h.LastSeen.ToString("yyyy-MM-dd HH:mm")</td>
-                <td class="num">@h.Runs</td><td class="num">@(h.BestTps > 0 ? h.BestTps.ToString("0.0", CultureInfo.InvariantCulture) : "–")</td>
-                <td class="num">@(h.MaxVramGb > 0 ? h.MaxVramGb.ToString("0.0", CultureInfo.InvariantCulture) + " GB" : "–")</td>
-                <td style="white-space:nowrap">
-                    <button disabled="@ro" title="@RoTip" @onclick="() => OpenDetails(h)">@Strings.BtnDetails</button>
-                    <button disabled="@ro" title="@RoTip" @onclick="() => StartHistory(h)">@Strings.BtnStartAgain</button>
-                    <button disabled="@ro" title="@Strings.BtnSave" @onclick='() => Act("profile.add-history", h.Key, h.Name)'>@Strings.BtnSave</button>
-                    <button class="bad" disabled="@ro" @onclick="() => Forget(h)">@Strings.BtnForget</button>
-                </td></tr>
+            <div class="hgrp">@grp.Key <span class="muted">@grp.Count()</span></div>
+            @foreach (var h in grp)
+            {
+                var hh = h;
+                bool live = runningKeys.Contains(h.Key);
+                double avgRun = h.Runs > 0 ? h.TotalSeconds / h.Runs : 0;
+                var endState = live ? "live" : h.LastEnd;
+                <div class="hr">
+                    <i class="hdot @(live ? "on" : "")" style="--b:var(--b-llama)"></i>
+                    <div class="hname">
+                        <b title="@(h.ModelPath ?? h.Name)">@(h.Name.Length > 0 ? h.Name : h.ModelPath != null ? ServerInfo.ModelName(h.ModelPath) : "?")</b>
+                        <span class="muted small">@h.LastSeen.ToString(grp.Key == Strings.HistOlder ? "d.M. HH:mm" : "HH:mm", CultureInfo.InvariantCulture) · :@(h.Port?.ToString(CultureInfo.InvariantCulture) ?? "–") · @h.Runs×</span>
+                    </div>
+                    <span class="mc @(h.Ctx == null ? "na" : "")" title="@Strings.CardCtx"><Icon Name="ctx" Title="@Strings.CardCtx" /><b>@(h.Ctx is int c ? (c / 1024).ToString(CultureInfo.InvariantCulture) : "–")</b>@if (h.Ctx != null) { <small>k</small> }</span>
+                    <span class="hrun" title="@Strings.HistRunTip(avgRun, h.TotalSeconds)"><span class="dbar"><i style="width:@((int)(100 * avgRun / maxRun))%"></i></span><small>@Dur(avgRun)</small></span>
+                    <span class="htps" title="@Strings.HistTpsTip"><b class="sp@(RequestRows.SpeedLevel(h.MeanTps))">@(h.MeanTps > 0 ? h.MeanTps.ToString("0.0", CultureInfo.InvariantCulture) : "–")</b><small> / @(h.BestTps > 0 ? h.BestTps.ToString("0.0", CultureInfo.InvariantCulture) : "–")</small></span>
+                    <span class="mc @(h.LastRunTokens > 0 ? "" : "na")" title="@Strings.HistTokensTip"><Icon Name="sum" Title="@Strings.CardSum" /><b>@(h.LastRunTokens > 0 ? (h.LastRunTokens / 1000.0).ToString("0.0", CultureInfo.InvariantCulture) : "–")</b>@if (h.LastRunTokens > 0) { <small>k</small> }</span>
+                    <span class="hend end-@(endState.Length > 0 ? endState : "none")" title="@Strings.HistEndText(endState, h.LastEndAt)"><Icon Name="@EndIcon(endState)" Title="@Strings.HistEndText(endState, h.LastEndAt)" /></span>
+                    <span class="hacts">
+                        <button class="ib quiet" disabled="@(ro || !CanWrite || live)" title="@Strings.BtnStartAgain" aria-label="@Strings.BtnStartAgain" @onclick="() => StartHistory(hh)"><Icon Name="play" /></button>
+                        <button class="ib quiet" disabled="@(ro || !CanWrite)" title="@Strings.CardSave" aria-label="@Strings.CardSave" @onclick='() => Act("profile.add-history", hh.Key, hh.Name)'><Icon Name="save" /></button>
+                        <button class="ib quiet" title="@Strings.BtnDetails" aria-label="@Strings.BtnDetails" @onclick="() => OpenDetails(hh)"><Icon Name="info" /></button>
+                        <button class="ib quiet danger" disabled="@(ro || !CanWrite)" title="@Strings.BtnForget" aria-label="@Strings.BtnForget" @onclick="() => Forget(hh)"><Icon Name="trash" /></button>
+                    </span>
+                </div>
+            }
         }
-    </table>
+    </div>
 </div>
 </div>
 <aside class="mon-side">
@@ -659,12 +698,32 @@
         _edit = null;
     }
 
-    private async Task Forget(HistoryEntry h)
+    // Vergessen mit Rückgängig (U8): der Eintrag verschwindet sofort aus der Liste, gelöscht wird erst nach Ablauf der Meldung
+    private readonly HashSet<string> _forgetting = new();
+    private string _hfilter = "all";
+
+    private Task Forget(HistoryEntry h)
     {
+        if (!CanWrite) return Task.CompletedTask;
         var name = h.Name.Length > 0 ? h.Name : Strings.SectionHistory;
-        if (!await Prompt.ConfirmAsync(Strings.BtnForget, Strings.ForgetConfirm(name), warning: true)) return;
-        await Act("history.forget", h.Key);
+        var key = h.Key;
+        _forgetting.Add(key);
+        Toast.ShowUndo(Strings.HistForgotten(name),
+            commit: async () => { await InvokeAsync(async () => { await Act("history.forget", key); _forgetting.Remove(key); StateHasChanged(); }); },
+            undo: () => InvokeAsync(() => { _forgetting.Remove(key); StateHasChanged(); }));
+        return Task.CompletedTask;
     }
+
+    private static string DayGroup(DateTime t) =>
+        t.Date == DateTime.Today ? Strings.HistToday : t.Date == DateTime.Today.AddDays(-1) ? Strings.HistYesterday : Strings.HistOlder;
+
+    private static string Dur(double sec) =>
+        sec <= 0 ? "–" : sec < 60 ? $"{(int)sec}s" : sec < 3600 ? $"{(int)(sec / 60)}m" : (sec / 3600).ToString("0.#", CultureInfo.InvariantCulture) + "h";
+
+    private static string EndIcon(string end) => end switch
+    {
+        "live" => "s-gen", "clean" => "r-ok", "crashed" => "e-crash", "outside" => "e-kill", _ => "s-idle",
+    };
 
     private async Task Start(Profile p) { if (CanWrite && await Launcher.StartProfileAsync(p)) _flash = Strings.StartingShort; }
     private async Task StartHistory(HistoryEntry h) { if (CanWrite) await Launcher.StartHistoryAsync(h); }

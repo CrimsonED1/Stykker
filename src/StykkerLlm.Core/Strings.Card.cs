@@ -52,6 +52,25 @@ public static partial class Strings
     {
         "full" => "stopped at the length or context limit", "abort" => "cancelled by the client", "err" => "error answer", _ => "done",
     };
+    // History (U8)
+    public const string HistFilter = "Filter", HistAll = "All", HistRunning = "running", HistCrashed = "crashed";
+    public const string HistToday = "Today", HistYesterday = "Yesterday", HistOlder = "Older";
+    public const string HistEmptyTitle = "No runs yet", HistEmptyHint = "Every llama-server you start – here, in a terminal or by a script – appears here with its settings and speed.";
+    public const string HistNoMatch = "Nothing matches", HistNoMatchHint = "Clear the search or pick All.";
+    public const string HistTpsTip = "Average t/s while generating / peak", HistTokensTip = "Tokens generated in the last run";
+    public static string HistRunTip(double avg, double total) => $"Average run {Fmt(avg)} · all runs {Fmt(total)}";
+    public static string HistForgotten(string name) => $"Forgot \"{name}\"";
+    public const string ToastUndo = "Undo";
+    public static string HistEndText(string end, DateTime? at) => end switch
+    {
+        "live" => "running now",
+        "clean" => "stopped by StykkerLLM" + At(at),
+        "crashed" => "crashed" + At(at),
+        "outside" => "ended outside StykkerLLM (closed, killed or crashed without a log hint)" + At(at),
+        _ => "end not recorded",
+    };
+    private static string At(DateTime? t) => t is DateTime d ? $" · {d:g}" : "";
+    private static string Fmt(double sec) => sec < 60 ? $"{(int)sec} s" : sec < 3600 ? $"{(int)(sec / 60)} min" : $"{sec / 3600:0.#} h";
     public static string StateText(string state) => state switch
     {
         "gen" => CardStateGen, "read" => CardStateRead, "load" => CardStateLoad, "off" => CardStateOff, _ => CardStateIdle,

@@ -57,6 +57,11 @@ public sealed class HistoryEntry
     public long TpsCount { get; set; }
     public double MaxVramGb { get; set; }
     public double? ModelSizeGb { get; set; }
+    // Letzter Lauf (U8): erzeugte Tokens und wie er endete – "" (läuft/unbekannt), clean (über StykkerLLM gestoppt),
+    // crashed (abgestürzt, Ursache im Log erkannt), outside (von außen beendet oder ohne erkennbare Ursache weg)
+    public long LastRunTokens { get; set; }
+    public string LastEnd { get; set; } = "";
+    public DateTime? LastEndAt { get; set; }
     // Letzter gezählter Serverprozess (PID + Startzeit): ein Neustart des Monitors zählt nicht als neuer Lauf
     public int LastRunPid { get; set; }
     public long LastRunTicks { get; set; }
@@ -73,7 +78,7 @@ public sealed class LibraryData
 }
 
 // Was ein Beobachtungsschritt über einen laufenden Server weiß
-public sealed record Observation(double Tps, double? VramGb, double? ModelGb, int? Ctx = null);
+public sealed record Observation(double Tps, double? VramGb, double? ModelGb, int? Ctx = null, long Generated = 0);
 
 // library.json: gemerkte Profile und Verlauf. Änderungen nur vom UI-Thread (intern trotzdem gesperrt).
 // Gespeichert wird verzögert (SaveIfDirty) und atomar; eine unlesbare Datei wird zur Seite gelegt, nicht überschrieben.
@@ -299,6 +304,7 @@ public sealed class Library
             {
                 h.Runs++;
                 h.LastRunPid = pid; h.LastRunTicks = info.StartTicks;
+                h.LastEnd = ""; h.LastEndAt = null;
                 _runs[run] = (key, now);
                 if (_runs.Count > 64) foreach (var k in _runs.Where(kv => now - kv.Value.At > TimeSpan.FromHours(1)).Select(kv => kv.Key).ToList()) _runs.Remove(k);
             }
@@ -315,6 +321,7 @@ public sealed class Library
                 h.TpsSum += obs.Tps; h.TpsCount++;
             }
             if (obs.VramGb is double v) h.MaxVramGb = Math.Max(h.MaxVramGb, v);
+            if (obs.Generated > 0) h.LastRunTokens = obs.Generated;
             if (obs.ModelGb is double m && m > 0) h.ModelSizeGb = m;
 
             if (_data.History.Count > MaxHistory)
@@ -325,6 +332,21 @@ public sealed class Library
             }
             _dirty = true;
             return key;
+        }
+    }
+
+    // Ein Server ist verschwunden: wie sein Lauf endete (clean, crashed, outside) im Verlauf merken
+    public void RecordEnd(ServerInfo info, string reason, DateTime now)
+    {
+        if (string.IsNullOrEmpty(info.Program)) return;
+        var key = MakeKey(info.Program, info.Args);
+        lock (_lock)
+        {
+            var h = _data.History.FirstOrDefault(e => e.Key == key);
+            if (h == null) return;
+            h.LastEnd = reason;
+            h.LastEndAt = now;
+            _dirty = true;
         }
     }
 
