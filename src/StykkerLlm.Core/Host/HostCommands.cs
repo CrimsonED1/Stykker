@@ -13,6 +13,10 @@ public sealed class HostSettings
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".lmstudio", "models"),
     };
     public List<string> AllowPrograms { get; set; } = new();
+    // llama-server dieses PCs für „Modell starten“ ohne fertige Befehlszeile (Name im PATH oder voller Pfad)
+    public string LlamaServer { get; set; } = "llama-server";
+    // Zusätzliche Argumente für diesen Start (z. B. Kontextgröße), vor -m eingefügt
+    public List<string> LlamaArgs { get; set; } = new() { "-ngl", "99" };
 
     public static HostSettings Load(AppPaths paths)
     {
@@ -46,6 +50,7 @@ public sealed class HostSettings
 // befugt – Rückfragen beantwortet RemotePrompt mit Ja. Gestartet werden nur Modellserver (HostSettings.Allows).
 //   models                         GGUF-Dateien in den Modellordnern: [{ path, name, sizeGb }]
 //   start  { name, program, args, workingDir }    Modellserver starten
+//   start  { model }               eine Modelldatei mit dem llama-server des Hosts starten (freier Port)
 //   stop   { key }                 einen laufenden Server stoppen
 //   unload { key, model }          ein Modell entladen (Ollama, LM Studio)
 public sealed class HostCommands(MonitorEngine engine, HostSettings settings)
@@ -61,6 +66,17 @@ public sealed class HostCommands(MonitorEngine engine, HostSettings settings)
                 foreach (var g in found)
                     list.Add(new JsonObject { ["path"] = g.Path, ["name"] = ServerInfo.ModelName(g.Path), ["sizeGb"] = Math.Round(g.FileSize / 1e9, 2) });
                 return new HostReply(true, Strings.HostModelsFound(found.Count), JsonSerializer.SerializeToElement(list));
+            }
+            case "start" when Str(args, "program").Length == 0 && Str(args, "model").Length > 0:
+            {
+                var model = Str(args, "model");
+                if (!File.Exists(model) && engine.Simulation == null) return new HostReply(false, Strings.HostNoModelFile(model));
+                int port = FreePort(engine);
+                var argv = new List<string>(settings.LlamaArgs) { "-m", model, "--port", port.ToString(Strings.Inv) };
+                var spec = new LaunchSpec(ServerInfo.ModelName(model), settings.LlamaServer, argv, null);
+                var prompt = new RemotePrompt();
+                bool ok = await new LaunchCoordinator(engine, prompt).StartSpecAsync(spec).ConfigureAwait(false);
+                return new HostReply(ok, ok ? Strings.HostStartedOn(spec.Name, port) : string.Join(" ", prompt.Messages));
             }
             case "start":
             {
@@ -92,6 +108,25 @@ public sealed class HostCommands(MonitorEngine engine, HostSettings settings)
             default:
                 return new HostReply(false, Strings.HostCommandUnknown(name));
         }
+    }
+
+    // Erster freier Port ab 8081 (weder belegt noch von einem erkannten Server benutzt)
+    private static int FreePort(MonitorEngine engine)
+    {
+        var used = engine.Servers.Select(s => s.Info.Port).ToHashSet();
+        for (int p = 8081; p < 8200; p++)
+        {
+            if (used.Contains(p)) continue;
+            try
+            {
+                var l = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, p);
+                l.Start();
+                l.Stop();
+                return p;
+            }
+            catch (System.Net.Sockets.SocketException) { }
+        }
+        return 8200;
     }
 
     private static string Str(JsonElement e, string name) =>

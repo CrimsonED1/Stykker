@@ -511,6 +511,7 @@ public static class ActionApi
                             args["program"] = req.Get("program") ?? "";
                             args["workingDir"] = req.Get("workingDir") ?? "";
                             args["args"] = System.Text.Json.Nodes.JsonNode.Parse(req.Get("args") is { Length: > 0 } a ? a : "[]");
+                            args["model"] = req.Get("model") ?? "";
                             break;
                         case "host.stop":
                             args["key"] = req.Arg2 ?? "";

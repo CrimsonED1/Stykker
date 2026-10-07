@@ -5,6 +5,7 @@
 @inject ActionContext Actions
 @inject ViewerSession Viewer
 @implements IDisposable
+@using System.Globalization
 
 @* Model-Hosts (docs/plan-hosts-gateway.md): PCs, die nur Modelle laufen lassen und sich hier einwählen.
    Oben der Code für einen neuen Host und die Adressen dieses Servers, darunter die gekoppelten Hosts. *@
@@ -41,34 +42,130 @@
 }
 
 <h3 class="sec">@Strings.HostsTitle · @hosts.Count</h3>
-<div class="card">
-    @if (hosts.Count == 0)
-    {
-        <span class="muted small">@Strings.HostsNone</span>
-    }
-    else
-    {
-        <table>
-            @foreach (var h in hosts)
+@if (hosts.Count == 0)
+{
+    <div class="card"><span class="muted small">@Strings.HostsNone</span></div>
+}
+<div class="nodes">
+@foreach (var h in hosts)
+{
+    var id = h.Entry.Id;
+    var st = h.Connected ? h.State : null;
+    <div class="card node @(h.Connected ? "" : "off")">
+        <div class="row">
+            <span class="dot @(h.Connected ? "on" : "off")">●</span>
+            <b style="font-size:16px">@(h.Name.Length > 0 ? h.Name : h.Entry.Name)</b>
+            <span class="muted small">@h.Address @(h.Version.Length > 0 ? "· " + h.Version : "")</span>
+            <span style="flex:1"></span>
+            <span class="pill @(h.Connected ? "ok" : "wait")">@(h.Connected ? Strings.HostOnline : Strings.HostOffline)</span>
+        </div>
+        @if (st?.Gpu is { } g)
+        {
+            <div class="kpis" style="margin-top:10px">
+                <div class="kpi"><div class="muted">@g.Name</div>@g.MemUsedGb.ToString("0.0", CultureInfo.InvariantCulture) / @g.MemTotalGb.ToString("0") GB<div class="bar"><div style="width:@Pct(g.MemUsedGb, g.MemTotalGb)%"></div></div></div>
+                @if (st.Sys is { } sy)
+                {
+                    <div class="kpi"><div class="muted">@Strings.TuiMemory</div>@sy.RamUsedGb.ToString("0.0", CultureInfo.InvariantCulture) / @sy.RamTotalGb.ToString("0") GB<div class="bar"><div style="width:@Pct(sy.RamUsedGb, sy.RamTotalGb)%"></div></div></div>
+                }
+            </div>
+        }
+        @if (st != null)
+        {
+            @if (st.Servers.Count == 0)
             {
-                <tr>
-                    <td><span class="dot @(h.Connected ? "on" : "off")">●</span> <b>@(h.Name.Length > 0 ? h.Name : h.Entry.Name)</b>
-                        <span class="muted small">@h.Address @(h.Version.Length > 0 ? "· " + h.Version : "")</span></td>
-                    <td class="small">@(h.Connected ? Strings.HostOnline : Strings.HostOffline)</td>
-                    <td class="small">@(h.State?.Gpu is { } g ? $"{g.Name} · {g.MemUsedGb:0.0}/{g.MemTotalGb:0} GB" : "")</td>
-                    <td class="small">@Strings.HostServers(h.State?.Servers.Count ?? 0)</td>
-                    <td class="actions">
-                        @if (Viewer.CanWrite)
-                        {
-                            <button class="bad" @onclick="() => Remove(h.Entry.Id)">@Strings.BtnRemove</button>
-                        }
-                    </td>
-                </tr>
+                <p class="muted small">@Strings.HostsNothingRunning</p>
             }
-        </table>
-    }
-    @if (_flash.Length > 0) { <p class="muted small">@_flash</p> }
+            @foreach (var sv in st.Servers)
+            {
+                <div class="row small" style="margin-top:6px">
+                    <span class="dot @(sv.Online ? "on" : "off")">●</span><b>@sv.Name</b><span class="muted">@sv.Backend · :@sv.Port</span>
+                    <span class="num">@sv.Current.ToString("0.0", CultureInfo.InvariantCulture) t/s</span>
+                    @if (sv.VramGb is double v) { <span class="chip">VRAM<b>@v.ToString("0.0", CultureInfo.InvariantCulture) GB</b></span> }
+                    <span style="flex:1"></span>
+                    @if (Viewer.CanWrite && !sv.Manual && sv.Backend == "llama.cpp")
+                    {
+                        <button class="bad" @onclick='() => Act(id, "host.stop", sv.Key, null)'>@Strings.Stop</button>
+                    }
+                    @if (Viewer.CanWrite)
+                    {
+                        @foreach (var m in sv.Models.Where(m => sv.Backend != "llama.cpp"))
+                        {
+                            <button @onclick='() => Act(id, "host.unload", sv.Key, m.Name)'>@Strings.HostsUnload @m.Name</button>
+                        }
+                    }
+                </div>
+            }
+        }
+        @if (Viewer.CanWrite)
+        {
+            <div class="row" style="margin-top:12px">
+                @if (h.Connected)
+                {
+                    <button @onclick="() => LoadModels(id)">@Strings.HostsModelsButton</button>
+                }
+                <span style="flex:1"></span>
+                <button class="bad" @onclick="() => Remove(id)">@Strings.BtnRemove</button>
+            </div>
+        }
+        @if (_models.TryGetValue(id, out var files))
+        {
+            @if (files.Count == 0)
+            {
+                <p class="muted small">@Strings.HostsNoModels</p>
+            }
+            else
+            {
+                <table style="margin-top:8px">
+                    @foreach (var f in files)
+                    {
+                        <tr>
+                            <td>@f.Name</td><td class="num small">@f.SizeGb.ToString("0.0", CultureInfo.InvariantCulture) GB</td>
+                            <td class="actions"><button class="good" @onclick='() => Act(id, "host.start", null, f.Path)'>@Strings.BtnStart</button></td>
+                        </tr>
+                    }
+                </table>
+            }
+        }
+        @if (_msg.TryGetValue(id, out var msg) && msg.Length > 0)
+        {
+            <p class="muted small">@msg</p>
+        }
+    </div>
+}
 </div>
+@if (_flash.Length > 0) { <p class="muted small">@_flash</p> }
+
+@code {
+    private readonly Dictionary<string, List<(string Name, string Path, double SizeGb)>> _models = new();
+    private readonly Dictionary<string, string> _msg = new();
+
+    private static int Pct(double used, double total) => total > 0 ? (int)Math.Clamp(100 * used / total, 0, 100) : 0;
+
+    private async Task LoadModels(string id)
+    {
+        _msg[id] = Strings.HostsModelsLoading;
+        var r = await Web.RunAsync(new ActionRequest { Action = "host.models", Arg = id });
+        _msg[id] = r.Message;
+        var list = new List<(string, string, double)>();
+        if (r.Ok && r.Data is { Length: > 0 } data)
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(data);
+            foreach (var e in doc.RootElement.EnumerateArray())
+                list.Add((e.GetProperty("name").GetString() ?? "", e.GetProperty("path").GetString() ?? "", e.GetProperty("sizeGb").GetDouble()));
+        }
+        _models[id] = list;
+    }
+
+    // Befehl an den Host: host.start (Modelldatei), host.stop (Server-Key), host.unload (Key + Modell)
+    private async Task Act(string id, string action, string? key, string? value)
+    {
+        var req = new ActionRequest { Action = action, Arg = id, Arg2 = key };
+        if (action == "host.start" && value != null) req.Values["model"] = value;
+        if (action == "host.unload" && value != null) req.Values["model"] = value;
+        _msg[id] = "…";
+        _msg[id] = (await Web.RunAsync(req)).Message;
+    }
+}
 
 @code {
     private Timer? _t;

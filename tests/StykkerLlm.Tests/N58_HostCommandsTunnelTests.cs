@@ -152,4 +152,16 @@ public class N58_HostCommandsTunnelTests
         Assert.IsFalse((await cmds.RunAsync("stop", JsonSerializer.SerializeToElement(new { key = "nope" }), CancellationToken.None)).Ok);
         Assert.IsFalse((await cmds.RunAsync("format-disk", default, CancellationToken.None)).Ok);
     }
+
+    [TestMethod, Timeout(20000)]
+    public async Task Commands_StartAModelFile_WithTheHostsLlamaServer()
+    {
+        using var sim = new SimHost(SimServerSpec.Defaults());
+        sim.World.Start();
+        await sim.Engine.TickAsync();
+        var cmds = new HostCommands(sim.Engine, new HostSettings { LlamaServer = @"C:\llama\llama-server.exe" });
+        var r = await cmds.RunAsync("start", JsonSerializer.SerializeToElement(new { model = @"D:\models\qwen3-8b.gguf" }), CancellationToken.None);
+        Assert.IsTrue(r.Ok, r.Message);
+        StringAssert.Contains(r.Message, "port");
+    }
 }
