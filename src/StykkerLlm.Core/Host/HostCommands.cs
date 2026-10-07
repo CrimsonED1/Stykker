@@ -96,7 +96,8 @@ public sealed class HostCommands(MonitorEngine engine, HostSettings settings)
                 if (s == null) return new HostReply(false, Strings.HostNoSuchServer);
                 var prompt = new RemotePrompt();
                 await new LaunchCoordinator(engine, prompt).StopServerAsync(s).ConfigureAwait(false);
-                return new HostReply(true, prompt.Messages.LastOrDefault() ?? Strings.HostStopped(s.Name));
+                // RemotePrompt sammelt auch die (automatisch bejahte) Rückfrage – die gehört nicht in die Antwort
+                return new HostReply(true, Strings.HostStopped(s.Name));
             }
             case "unload":
             {
@@ -110,11 +111,11 @@ public sealed class HostCommands(MonitorEngine engine, HostSettings settings)
         }
     }
 
-    // Erster freier Port ab 8081 (weder belegt noch von einem erkannten Server benutzt)
+    // Erster freier Port ab 8180 (weder belegt noch von einem erkannten Server benutzt; 8080/8081 sind oft schon vergeben)
     private static int FreePort(MonitorEngine engine)
     {
         var used = engine.Servers.Select(s => s.Info.Port).ToHashSet();
-        for (int p = 8081; p < 8200; p++)
+        for (int p = 8180; p < 8300; p++)
         {
             if (used.Contains(p)) continue;
             try
@@ -126,7 +127,7 @@ public sealed class HostCommands(MonitorEngine engine, HostSettings settings)
             }
             catch (System.Net.Sockets.SocketException) { }
         }
-        return 8200;
+        return 8300;
     }
 
     private static string Str(JsonElement e, string name) =>

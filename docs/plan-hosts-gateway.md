@@ -47,7 +47,7 @@ Order: P1 → P2 → P3 → P4 → P5 → P6 → P7, P8 any time after P4.
 |---|---|---|
 | B1 | Service hosting | Server as **Windows service** and **systemd/Docker**; data in `%ProgramData%\StykkerLLM` (or `/var/lib/stykker`); secrets with machine scope (DPAPI LocalMachine on Windows, file with ACL on Linux); always on (no UI binding); HTTPS with a configured certificate (`gateway.json`) |
 | B2 | Accounts and keys | Local admin account for the first start; **personal API keys** per user (hashed, revocable, expiry); admin web for users and keys |
-| B3 | SSO | Generic **OIDC** (authorization code + PKCE), tested with **Keycloak**; works with Entra ID and Google; groups from the token claims mapped to StykkerLLM groups |
+| B3 | SSO | Generic **OIDC** (authorization code + PKCE), tested with **Keycloak**; works with Entra ID and Google; groups from the token claims mapped to StykkerLLM groups | **Only planned for now** (user, 2026-10-07): no test environment yet – keep the interfaces open (users, groups, claims), no OIDC package until it can be tested.
 | B4 | Rules | Per group: allowed models, quotas (tokens/day, requests/minute), priority in the queue; enforcement in the proxy; refused requests get 403 with the reason |
 | B5 | Audit and usage | Per request: user, group, model, host, tokens, durations, result; **prompt texts optional** (off by default, retention in days); export CSV/JSON (SIEM); usage per person/group/model |
 | B6 | Hosts for business | Enrollment keys from the admin web instead of six digits; hosts dial in over **HTTPS/WSS**; host as Windows service or systemd |

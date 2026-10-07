@@ -246,7 +246,7 @@
                 <div class="row">
                     <span class="dot @(rs.Online ? "on" : "off")">●</span>
                     <b style="font-size:16px">@rs.Name</b><span class="pill" title="@Strings.HostBadgeTip">@hn</span>
-                    <span class="muted small">@(rs.Model != "–" && rs.Model != rs.Name ? rs.Model + " · " : "")@rs.Backend · :@rs.Port</span>
+                    <span class="muted small">@(rs.Model != "–" && ServerInfo.ModelName(rs.Model) != rs.Name ? ServerInfo.ModelName(rs.Model) + " · " : "")@rs.Backend · :@rs.Port</span>
                     <a class="btn" href="hosts">@Strings.HostsTitle</a>
                     <span style="margin-left:auto" class="big">@rs.Current.ToString("0.0", CultureInfo.InvariantCulture)</span><span class="muted small">@Strings.ColTps</span>
                 </div>
