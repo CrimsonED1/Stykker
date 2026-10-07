@@ -226,6 +226,39 @@
     </div>
 }
 
+@* Server auf den Model-Hosts (docs/plan-hosts-gateway.md, P5): kurz, mit Host-Badge; Bedienung auf der Seite Hosts *@
+@{ var onHosts = Host.Hosts.List().Where(h => h.Connected && h.State != null).ToList(); }
+@if (onHosts.Count > 0)
+{
+    <h3 class="sec">@Strings.SectionOnHosts</h3>
+    @foreach (var h in onHosts)
+    {
+        var hn = h.Name.Length > 0 ? h.Name : h.Entry.Name;
+        @if (h.State!.Servers.Count == 0)
+        {
+            <div class="card"><div class="row"><span class="pill">@hn</span><span class="muted small">@Strings.HostsNothingRunning</span>
+                @if (h.State.Gpu is { } hg) { <span style="margin-left:auto" class="chip">@hg.Name<b>@hg.MemUsedGb.ToString("0.0", CultureInfo.InvariantCulture) / @hg.MemTotalGb.ToString("0") GB</b></span> }
+            </div></div>
+        }
+        @foreach (var rs in h.State.Servers)
+        {
+            <div class="card server @(rs.Current > 0 ? "busy" : "")">
+                <div class="row">
+                    <span class="dot @(rs.Online ? "on" : "off")">●</span>
+                    <b style="font-size:16px">@rs.Name</b><span class="pill" title="@Strings.HostBadgeTip">@hn</span>
+                    <span class="muted small">@(rs.Model != "–" && rs.Model != rs.Name ? rs.Model + " · " : "")@rs.Backend · :@rs.Port</span>
+                    <a class="btn" href="hosts">@Strings.HostsTitle</a>
+                    <span style="margin-left:auto" class="big">@rs.Current.ToString("0.0", CultureInfo.InvariantCulture)</span><span class="muted small">@Strings.ColTps</span>
+                </div>
+                <div style="margin:6px 0">
+                    <span class="chip">@Strings.ChipGpuVram<b>@Gb(rs.VramGb)</b></span>
+                    @if (rs.Slots.Count > 0) { <span class="chip">@Strings.ColSlot<b>@rs.Slots.Count(v => v.Busy) / @rs.Slots.Count</b></span> }
+                </div>
+            </div>
+        }
+    }
+}
+
 @if (e.Gpu is { } g)
 {
     <div class="card">

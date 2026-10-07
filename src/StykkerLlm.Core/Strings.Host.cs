@@ -27,7 +27,7 @@ public static partial class Strings
     public static string HostStartedOn(string name, int port) => $"{name} is starting on the host (port {port}).";
     public static string HostNoModelFile(string path) => $"The host has no file {path}.";
     public const string HostsModelsButton = "Model files", HostsModelsLoading = "Reading the model folders on the host …";
-    public const string HostsUnload = "Unload";
+    public const string HostsUnload = "Unload", SectionOnHosts = "On model hosts", HostBadgeTip = "Runs on this model host";
     public const string HostsNothingRunning = "No model server running on this host.";
     public const string HostsNoModels = "No GGUF files in the host's model folders (host-settings.json → ModelRoots).";
     public const string HostTunnelOnlyLocal = "The host only forwards requests to model servers on its own PC.";
