@@ -66,6 +66,13 @@ public sealed class HostHub
 
     public HostLive? Find(string id) => List().FirstOrDefault(h => h.Entry.Id == id);
 
+    // Ein HttpClient, der Anfragen durch den Tunnel an die Modellserver des Hosts schickt (null, wenn er nicht verbunden ist)
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, HttpClient> _clients = new();
+    public HttpClient? ClientFor(string hostId) =>
+        Find(hostId)?.Connected == true
+            ? _clients.GetOrAdd(hostId, id => new HttpClient(new HostTunnelHandler(this, id)) { Timeout = Timeout.InfiniteTimeSpan })
+            : null;
+
     // Eine Verbindung bedienen, bis sie endet. host ist schon geprüft (Token aus dem Kopf).
     public async Task HandleAsync(WebSocket ws, HostEntry host, string address, CancellationToken ct)
     {

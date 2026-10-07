@@ -1,6 +1,6 @@
 # Plan: model hosts (private) and gateway (business)
 
-Status: **P1–P5 done** (StykkerHost with tray; dial-in; pairing; commands and HTTP tunnel; Hosts page with cards, host servers on the monitor, 2026-10-07); P6 next. Moved from P5 to P6: profiles *Run on*, model picker per host, host line in `stykker`.
+Status: **P1–P6 done** (StykkerHost with tray; dial-in; pairing; commands and HTTP tunnel; Hosts page with cards, host servers on the monitor; proxy routes to hosts and starts missing models on a fitting host, 2026-10-07); P7 next. Moved from P5 to P6: profiles *Run on*, model picker per host, host line in `stykker`.
 
 ## Decisions
 
@@ -35,7 +35,7 @@ Status: **P1–P5 done** (StykkerHost with tray; dial-in; pairing; commands and 
 | P3 ✓ | Pairing | Server shows **add host**: code + address/QR. Host: tray **Pair…** opens a small local page (127.0.0.1 only) with the servers found in the LAN and the code field. Token stored on both sides (DPAPI), revocable | wrong code, expired code, revoke token |
 | P4 ✓ | Commands + tunnel | start/stop/unload on host, model file list per host, inference tunnel with streaming (OpenAI + Anthropic), cancel on disconnect | streaming through the tunnel with the simulator, byte-exact |
 | P5 ✓ | Server UI | Page **Hosts** replaces Nodes; monitor shows servers of all hosts with a host badge, GPU card per host; profiles get **Run on: this PC / host …**; model picker per host | web, phone; display in `stykker` (read-only) |
-| P6 | Automatic placement | Proxy: running → route; else file + free VRAM → start there, wait until ready; idle unload as today; clear errors (no host has the model, no VRAM) | scheduler unit tests, start-on-demand in the simulator |
+| P6 ✓ | Automatic placement | Proxy: running → route; else file + free VRAM → start there, wait until ready; idle unload as today; clear errors (no host has the model, no VRAM) | scheduler unit tests, start-on-demand in the simulator |
 | P7 | Clean-up | Remove hub/node code and pages (role hub, result sync `/api/eval/runs`, node web pages), keep discovery/scheduler; docs, README | build, all tests, no dead strings |
 | P8 | Host as service (optional) | `StykkerHost install-service` / `uninstall-service` (needs admin); tray companion talks to the service locally | install/uninstall on a test VM |
 

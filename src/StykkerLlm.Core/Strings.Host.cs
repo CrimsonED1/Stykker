@@ -30,6 +30,9 @@ public static partial class Strings
     public const string HostsUnload = "Unload", SectionOnHosts = "On model hosts", HostBadgeTip = "Runs on this model host";
     public const string HostsNothingRunning = "No model server running on this host.";
     public const string HostsNoModels = "No GGUF files in the host's model folders (host-settings.json → ModelRoots).";
+    public static string HostNoVramFor(string model, double needGb, double freeGb) =>
+        $"No model host has enough free graphics memory for {model} (needs about {needGb.ToString("0.0", Inv)} GB, at most {freeGb.ToString("0.0", Inv)} GB free).";
+    public static string HostStartTimeout(string model, string host) => $"{model} was started on {host} but is not ready yet. Try again in a moment.";
     public const string HostTunnelOnlyLocal = "The host only forwards requests to model servers on its own PC.";
     public static string HostProgramNotAllowed(string program) => $"The host does not start '{program}' (not a model server; allow it in the host settings).";
     // Kopplung (Host-Seite)

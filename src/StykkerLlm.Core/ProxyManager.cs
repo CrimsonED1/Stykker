@@ -88,6 +88,12 @@ public sealed class ProxyManager : IDisposable
     // Rechner dazu, ohne in den Einstellungen zu landen. Der Server setzt das; ohne Nodes bleibt es leer.
     public Func<IEnumerable<RemoteStykker>>? NodeRemotes { get; set; }
 
+    // Model-Hosts (docs/plan-hosts-gateway.md, P6): ihre laufenden Server sind Ziele, Anfragen gehen durch den Tunnel
+    public Func<IEnumerable<HostServers>>? HostSources { get; set; }
+    public Func<string, HttpClient?>? HostClient { get; set; }
+    public Func<string, CancellationToken, Task<HostChoice>>? HostStart { get; set; }
+    public Func<IReadOnlyList<string>>? StartableModels { get; set; }
+
     // Eingetragene Rechner und Nodes, je Adresse einmal (der Eintrag von Hand gewinnt, sein Name gilt)
     private List<RemoteStykker> AllRemotes()
     {
@@ -273,6 +279,9 @@ public sealed class ProxyManager : IDisposable
         proxy.UpstreamError += OnUpstreamError;
         // Der Schlüssel eines Cloud-Ziels kommt hier herein und verlässt den Router nur als Authorization-Kopfzeile
         if (_keys != null) proxy.AuthFor = t => t.Cloud ? _keys.Get(ProviderBaseUrl(t.Key)) : null;
+        proxy.HostClient = HostClient;
+        proxy.HostStart = HostStart;
+        proxy.StartableModels = StartableModels;
         try { proxy.Start(); }
         catch (Exception ex)
         {
@@ -466,6 +475,15 @@ public sealed class ProxyManager : IDisposable
             foreach (var t in LocalTargets(s))
                 targets.Add(t);
 
+        // Server der Model-Hosts: nach den lokalen (bei gleichem Namen gewinnt dieser PC)
+        IEnumerable<HostServers> hosts;
+        try { hosts = HostSources?.Invoke()?.ToList() ?? new List<HostServers>(); }
+        catch (InvalidOperationException) { hosts = new List<HostServers>(); }
+        foreach (var h in hosts)
+            foreach (var rs in h.Servers)
+                foreach (var t in HostTargets(h, rs))
+                    targets.Add(t);
+
         // Namensgleichheit: lokale Modelle zuerst; entfernte bekommen „<Rechner>/<Modell>"
         var used = new HashSet<string>(targets.Select(t => t.Model).Where(m => !string.IsNullOrEmpty(m))!, StringComparer.OrdinalIgnoreCase);
         foreach (var r in AllRemotes())
@@ -495,6 +513,22 @@ public sealed class ProxyManager : IDisposable
                     ServerKey: "", Remote: true, PublicModel: $"{name}/{m}", DisplayName: $"{name} · {m}", Cloud: true));
         }
         return targets;
+    }
+
+    // Die Ziele eines Servers auf einem Model-Host. Angeboten wird der Name der Modelldatei (ohne Pfad und .gguf).
+    internal static IEnumerable<ProxyTarget> HostTargets(HostServers h, RemoteServer rs)
+    {
+        string prefix = $"host:{h.HostId}|{rs.Key}|";
+        if (rs.Backend == "llama.cpp")
+        {
+            var model = !string.IsNullOrEmpty(rs.Model) && rs.Model != "–" ? rs.Model : rs.Name;
+            yield return new ProxyTarget(prefix + model, rs.Url, model, BackendKind.LlamaCpp, rs.Online && !rs.Loading, rs.Loading,
+                Remote: true, PublicModel: ServerInfo.ModelName(model), DisplayName: $"{h.Name} · {rs.Name}", HostId: h.HostId);
+            yield break;
+        }
+        foreach (var m in rs.Models.Select(m => m.Name).Where(n => !string.IsNullOrEmpty(n)).Distinct(StringComparer.OrdinalIgnoreCase))
+            yield return new ProxyTarget(prefix + m, rs.Url, m, BackendKind.LmStudio, rs.Online, false,
+                Remote: true, DisplayName: $"{h.Name} · {m}", HostId: h.HostId);
     }
 
     // Die Ziele eines lokalen Servers: llama.cpp führt ein Modell, Ollama/LM Studio je geladenes Modell eines
@@ -637,3 +671,5 @@ public sealed class ProxyManager : IDisposable
         if (_ownsHttp) _http.Dispose();
     }
 }
+// Die laufenden Server eines verbundenen Model-Hosts (für die Ziele des Proxys)
+public sealed record HostServers(string HostId, string Name, IReadOnlyList<RemoteServer> Servers);
