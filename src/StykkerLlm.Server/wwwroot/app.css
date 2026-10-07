@@ -415,7 +415,7 @@ html.shell .hchip .mini i{transition:none;box-shadow:none}
 @keyframes slot-run{from{background-position:0 160%}to{background-position:0 -60%}}
 .slot .ic,.slot b{position:relative}.slot b{font:10px var(--font-num);color:var(--muted);font-weight:400}
 .mods{display:flex;flex-direction:column;gap:5px;margin-top:10px}
-.mod{display:grid;grid-template-columns:minmax(0,1fr) 70px 70px 54px 54px;gap:10px;align-items:center}
+.mod{display:grid;grid-template-columns:minmax(0,1fr) 70px 70px 54px 54px 30px;gap:10px;align-items:center}
 .mod.head{font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
 .mod .n{font:13px var(--font-num);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .mod .bar{min-width:0}.mods-empty{margin-top:8px}
@@ -433,7 +433,7 @@ html.shell .hchip .mini i{transition:none;box-shadow:none}
   .hd5 .name{max-width:none;flex:1 1 auto}
   .acts3{margin-left:0;order:9}.tps{order:8;margin-left:auto}
   .body2{flex-direction:column}.body2 .spark{height:56px}.tiles{flex-wrap:wrap}.slot{min-height:48px}
-  .mod{grid-template-columns:minmax(0,1fr) 64px 54px}.mod>:nth-child(3),.mod>:nth-child(4){display:none}
+  .mod{grid-template-columns:minmax(0,1fr) 64px 54px 30px}.mod>:nth-child(3),.mod>:nth-child(4){display:none}
 }
 .card.hostidle .hd5{gap:10px}
 /* Fenster ohne GPU: keine Dauerbewegung, keine weichen Lichthöfe */
@@ -651,3 +651,12 @@ html[data-theme=titan] :focus-visible{outline-color:var(--acc)}
 html[data-theme=titan] .card.srv.warnstripe{background-image:repeating-linear-gradient(-45deg,#d99a1e 0 6px,#1a1e20 6px 12px);background-size:100% 4px;background-repeat:no-repeat;background-position:top left}
 html[data-theme=titan] .card.srv.busy.warnstripe{background:repeating-linear-gradient(-45deg,#d99a1e 0 6px,#1a1e20 6px 12px) top left/100% 4px no-repeat,linear-gradient(225deg,transparent 0 8.2px,var(--card-border) 8.2px 9.2px,transparent 9.2px) no-repeat,color-mix(in srgb,var(--b) 6%,var(--card))}
 html[data-theme=titan] .pf.tight{background-image:repeating-linear-gradient(-45deg,#d99a1e 0 6px,#1a1e20 6px 12px);background-size:100% 3px;background-repeat:no-repeat}
+
+/* Übrige Seiten (U12): Kopf bleibt einzeilig, ruhiges Logo, Themenwahl als Umschalter */
+html[data-theme=titan] nav a{font-family:var(--font);letter-spacing:.02em}
+.brand .logo{animation:none}
+.top{flex-wrap:nowrap}.top nav{flex:none}.top .status{min-width:0;flex-wrap:nowrap}.top .status button,.top .status a{white-space:nowrap}
+@media(max-width:1180px){.top{flex-wrap:wrap}.top .status{flex-wrap:wrap;overflow:visible}}
+[data-view=small] .top{flex-wrap:wrap}[data-view=small] .top .status{flex-wrap:wrap;overflow:visible}
+.theme-seg button{min-width:110px}
+@media(max-width:1560px){.hsearch span:first-child{display:none}.top nav a{padding:5px 10px}.top{gap:12px 16px}}

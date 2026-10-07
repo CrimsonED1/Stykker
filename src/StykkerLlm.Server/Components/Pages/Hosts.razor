@@ -77,23 +77,9 @@
             }
             @foreach (var sv in st.Servers)
             {
-                <div class="row small" style="margin-top:6px">
-                    <span class="dot @(sv.Online ? "on" : "off")">●</span><b>@sv.Name</b><span class="muted">@sv.Backend · :@sv.Port</span>
-                    <span class="num">@sv.Current.ToString("0.0", CultureInfo.InvariantCulture) t/s</span>
-                    @if (sv.VramGb is double v) { <span class="chip">VRAM<b>@v.ToString("0.0", CultureInfo.InvariantCulture) GB</b></span> }
-                    <span style="flex:1"></span>
-                    @if (Viewer.CanWrite && !sv.Manual && sv.Backend == "llama.cpp")
-                    {
-                        <button class="bad" @onclick='() => Act(id, "host.stop", sv.Key, null)'>@Strings.Stop</button>
-                    }
-                    @if (Viewer.CanWrite)
-                    {
-                        @foreach (var m in sv.Models.Where(m => sv.Backend != "llama.cpp"))
-                        {
-                            <button @onclick='() => Act(id, "host.unload", sv.Key, m.Name)'>@Strings.HostsUnload @m.Name</button>
-                        }
-                    }
-                </div>
+                var r = sv;
+                <ServerCard Model="ServerCardModel.From(r, id, h.Name.Length > 0 ? h.Name : h.Entry.Name)" CanWrite="Viewer.CanWrite"
+                            OnStop='() => Act(id, "host.stop", r.Key, null)' OnUnload='m => Act(id, "host.unload", r.Key, m)' />
             }
         }
         @if (Viewer.CanWrite)

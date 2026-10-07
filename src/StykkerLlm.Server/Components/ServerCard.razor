@@ -79,7 +79,7 @@
         else
         {
             <div class="mods">
-                <div class="mod head" aria-hidden="true"><span>@Strings.CardModelCol</span><span>VRAM</span><span>@Strings.CardOnGpu</span><span>@Strings.CardCtxCol</span><span>@Strings.CardUnloads</span></div>
+                <div class="mod head" aria-hidden="true"><span>@Strings.CardModelCol</span><span>VRAM</span><span>@Strings.CardOnGpu</span><span>@Strings.CardCtxCol</span><span>@Strings.CardUnloads</span><span></span></div>
                 @foreach (var lm in m.Models)
                 {
                     double onGpu = lm.SizeBytes > 0 ? Math.Clamp((double)lm.VramBytes / lm.SizeBytes, 0, 1) : 0;
@@ -89,6 +89,13 @@
                         <span class="bar" title="@((int)(onGpu * 100)) % @Strings.CardOnGpu"><div style="width:@((int)(onGpu * 100))%"></div></span>
                         <span class="mc @(lm.ContextLength == null ? "na" : "")" title="@Strings.CardCtx"><Icon Name="ctx" /><b>@(lm.ContextLength is int c ? (c / 1024).ToString(CultureInfo.InvariantCulture) : "–")</b>@if (lm.ContextLength != null) { <small>k</small> }</span>
                         <span class="mc @(lm.ExpiresAt == null ? "na" : "")" title="@Strings.Until(lm.ExpiresAt)"><Icon Name="timer" /><b>@Short(lm.ExpiresAt)</b></span>
+                        <span>
+                            @if (CanWrite && OnUnload.HasDelegate)
+                            {
+                                var name = lm.Name;
+                                <button class="ib quiet" title="@Strings.UnloadTitle" aria-label="@Strings.UnloadTitle" @onclick="() => OnUnload.InvokeAsync(name)"><Icon Name="eject" /></button>
+                            }
+                        </span>
                     </div>
                 }
             </div>
@@ -150,6 +157,7 @@
     [Parameter] public EventCallback OnSave { get; set; }
     [Parameter] public EventCallback OnRecord { get; set; }
     [Parameter] public EventCallback OnStop { get; set; }
+    [Parameter] public EventCallback<string> OnUnload { get; set; }
 
     private string PromptHref => Model.IsLocal ? $"prompt?server={Uri.EscapeDataString(Model.Key)}" : "prompt";
 

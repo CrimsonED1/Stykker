@@ -15,12 +15,13 @@
 <div class="grid2">
     <div class="card">
         <h2>@Strings.MenuTheme</h2>
-        <div class="row">
+        <div class="seg theme-seg" role="radiogroup" aria-label="@Strings.MenuTheme">
             @foreach (var t in ThemeCatalog.Choices)
             {
-                <button class="@(e.Settings.Theme == t ? "good" : "")" disabled="@ro" @onclick="() => SetTheme(t)">@t</button>
+                <button class="@(e.Settings.Theme == t ? "on" : "")" role="radio" aria-checked="@(e.Settings.Theme == t ? "true" : "false")" disabled="@ro" @onclick="() => SetTheme(t)">@t</button>
             }
         </div>
+        <p class="muted small">@Strings.ThemeHint</p>
     </div>
 
     <div class="card">

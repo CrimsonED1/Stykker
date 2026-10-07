@@ -49,7 +49,8 @@
                 Served="px.IsServed(sv.Key)" ProxyRunning="px.Running" SparkAgo="@SparkAgo"
                 OnServe="() => Serve(sv)" OnSave='() => Act("save", sv.Key, sv.Name)'
                 OnRecord='() => Act(e.Recorder.Sessions.Any(r => r.Target == sv.Key) ? "record.stop" : "record.start", sv.Key)'
-                OnStop='() => Act("stop", sv.Key)' />
+                OnStop='() => Act("stop", sv.Key)'
+                OnUnload='m => ActArg2("unload", sv.Key, m)' />
 }
 
 @* Server auf den Model-Hosts (docs/plan-hosts-gateway.md): dieselbe Karte mit Host-Badge; Stop geht an den Host *@
@@ -606,6 +607,13 @@
     // Verlauf desselben Servers (gleiche Befehlszeile) für „langsamer als sonst“
     private HistoryEntry? UsualFor(ServerWatcher s) =>
         string.IsNullOrEmpty(s.Info.Program) || s.Info.Args == null ? null : Host.Engine.Library.FindHistory(Library.MakeKey(s.Info.Program, s.Info.Args));
+
+    private async Task ActArg2(string action, string arg, string arg2)
+    {
+        if (!CanWrite) return;
+        var r = await Web.RunAsync(new ActionRequest { Action = action, Arg = arg, Arg2 = arg2 });
+        if (!r.Ok) await Prompt.InformAsync(Strings.ActionFailed, r.Message, warning: true);
+    }
 
     private bool Match(HistoryEntry h) => Library.Matches(h, _q);
 
