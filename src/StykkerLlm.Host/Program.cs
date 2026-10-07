@@ -41,6 +41,7 @@ internal sealed class HostApp : IDisposable
     private readonly IPlatform _platform;
     private readonly AppSettings _settings;
     private readonly MonitorEngine _engine;
+    private readonly HostCommands _commands;
     private readonly ManualResetEventSlim _quit = new(false);
     private readonly object _linkGate = new();
     private HostConfig _config;
@@ -56,6 +57,7 @@ internal sealed class HostApp : IDisposable
         _platform = OperatingSystem.IsWindows() ? new WindowsPlatform() : new BasicPlatform();
         _settings = AppSettings.Load(paths.SettingsFile);
         _engine = new MonitorEngine(_platform, paths, _settings, readOnly: false);
+        _commands = new HostCommands(_engine, HostSettings.Load(paths));
         _config = HostConfig.Load(paths, _platform);
         _link = NewLink(_config);
     }
@@ -99,7 +101,7 @@ internal sealed class HostApp : IDisposable
     {
         var link = new HostLinkClient(config,
             () => StateJson.WriteText(_engine, null, null, 0, DateTimeOffset.Now, withHistory: false),
-            Environment.MachineName, AppLog.Version());
+            Environment.MachineName, AppLog.Version(), onCommand: _commands.RunAsync);
         link.Log += AppLog.Write;
         return link;
     }

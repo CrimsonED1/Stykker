@@ -499,6 +499,31 @@ public static class ActionApi
                     if (ctx.Hosts == null) return ActionResult.Fail("not available");
                     ctx.Hosts.Pairing.Rotate();
                     return Ok();
+                // Befehle an einen Host (Arg = Host-Id): Modelldateien, Server starten/stoppen, Modell entladen
+                case "host.models" or "host.start" or "host.stop" or "host.unload":
+                {
+                    if (ctx.Hosts == null) return ActionResult.Fail("not available");
+                    var args = new System.Text.Json.Nodes.JsonObject();
+                    switch (req.Action)
+                    {
+                        case "host.start":
+                            args["name"] = req.Get("name") ?? "";
+                            args["program"] = req.Get("program") ?? "";
+                            args["workingDir"] = req.Get("workingDir") ?? "";
+                            args["args"] = System.Text.Json.Nodes.JsonNode.Parse(req.Get("args") is { Length: > 0 } a ? a : "[]");
+                            break;
+                        case "host.stop":
+                            args["key"] = req.Arg2 ?? "";
+                            break;
+                        case "host.unload":
+                            args["key"] = req.Arg2 ?? "";
+                            args["model"] = req.Get("model") ?? "";
+                            break;
+                    }
+                    var reply = await ctx.Hosts.CommandAsync(req.Arg ?? "", req.Action[5..], args,
+                        req.Action == "host.models" ? TimeSpan.FromMinutes(2) : TimeSpan.FromSeconds(60), ct).ConfigureAwait(false);
+                    return reply.Ok ? Ok(reply.Message, reply.Data?.GetRawText()) : ActionResult.Fail(reply.Message);
+                }
                 case "host.remove":
                     if (ctx.Hosts == null) return ActionResult.Fail("not available");
                     return await ctx.Hosts.RemoveAsync(req.Arg ?? "").ConfigureAwait(false) ? Ok() : ActionResult.Fail(Strings.HostNotFound);

@@ -16,6 +16,16 @@ public static partial class Strings
     public static string HostConnecting(string server) => $"Connecting to {server} …";
     public static string HostWaiting(string error) => $"No connection: {error}";
     public const string HostNotFound = "No such host.";
+    public const string HostNotConnected = "The host is not connected.", HostNoAnswer = "The host did not answer in time.";
+    public static string HostGone(string name) => $"The connection to host {name} was lost.";
+    public static string HostCommandUnknown(string name) => $"Unknown command: {name}";
+    public static string HostModelsFound(int n) => n == 1 ? "1 model file" : $"{n} model files";
+    public const string HostNoSuchServer = "No such server on the host.";
+    public static string HostStarted(string name) => $"{name} is starting on the host.";
+    public static string HostStopped(string name) => $"{name} stopped.";
+    public static string HostUnloaded(string model) => $"{model} unloaded.";
+    public const string HostTunnelOnlyLocal = "The host only forwards requests to model servers on its own PC.";
+    public static string HostProgramNotAllowed(string program) => $"The host does not start '{program}' (not a model server; allow it in the host settings).";
     // Kopplung (Host-Seite)
     public const string HostPairMenu = "Pair with a server …", HostUnpairMenu = "Unpair";
     public const string HostPairTitle = "Pair StykkerHost";
