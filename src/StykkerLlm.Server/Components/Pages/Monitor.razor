@@ -192,9 +192,14 @@
         }
         @if (e.Sys is { } sy)
         {
-            <h2 class="@(e.Gpu != null ? "hw-sep" : "")">@Strings.SystemCard</h2>
+            <h2 class="@(e.Gpu != null ? "hw-sep" : "")">@Strings.SystemCard
+                @if (e.Memory is { } mem)
+                {
+                    <small class="muted" title="@Strings.HwMemTip(mem.Modules, mem.TotalGb, mem.Channels)">@mem.Short · @mem.Modules×@((mem.TotalGb / Math.Max(1, mem.Modules)).ToString("0", CultureInfo.InvariantCulture)) GB · ≈@mem.BandwidthGbs.ToString("0", CultureInfo.InvariantCulture) GB/s</small>
+                }
+            </h2>
             <div class="meters">
-                @Meter(Strings.CpuLoad, sy.CpuPercent.ToString("0", CultureInfo.InvariantCulture), "%", sy.CpuPercent / 100, Strings.LogicalCores(sy.Cores))
+                @Meter(Strings.CpuLoad, sy.CpuPercent.ToString("0", CultureInfo.InvariantCulture), "%", sy.CpuPercent / 100, Strings.LogicalCores(sy.Cores), tip: CoreTip(sy))
                 @Meter(Strings.Memory, sy.RamUsedGb.ToString("0.0", CultureInfo.InvariantCulture), "/ " + sy.RamTotalGb.ToString("0", CultureInfo.InvariantCulture) + " GB", sy.RamFrac, Strings.HwFree(Math.Max(0, sy.RamTotalGb - sy.RamUsedGb)))
             </div>
             @if (e.RamTop.Count > 0)
@@ -518,10 +523,10 @@
     }
 
     // Eine Messanzeige der Hardware-Karte: Name, rechts eine Notiz (frei, Drosselung), großer Wert, Balken
-    private static RenderFragment Meter(string label, string value, string unit, double frac, string? note, bool warnNote = false) => __builder =>
+    private static RenderFragment Meter(string label, string value, string unit, double frac, string? note, bool warnNote = false, string? tip = null) => __builder =>
     {
         frac = Math.Clamp(frac, 0, 1);
-        <div class="meter @(frac > .92 ? "hot" : "")">
+        <div class="meter @(frac > .92 ? "hot" : "")" title="@tip">
             <div class="l"><span>@label</span>@if (note != null) { <span class="@(warnNote ? "warnc" : "")" title="@note">@note</span> }</div>
             <div class="v"><b>@value</b> <small>@unit</small></div>
             <div class="bar"><div style="width:@((int)(frac * 100))%"></div></div>
@@ -613,6 +618,13 @@
         if (!CanWrite) return;
         var r = await Web.RunAsync(new ActionRequest { Action = action, Arg = arg, Arg2 = arg2 });
         if (!r.Ok) await Prompt.InformAsync(Strings.ActionFailed, r.Message, warning: true);
+    }
+
+    // Tooltip der CPU-Anzeige (U14): Auslastung je logischem Kern, vier je Zeile
+    private static string? CoreTip(SystemSample sy)
+    {
+        if (sy.CoreLoads is not { Length: > 0 } c) return null;
+        return string.Join("\n", c.Select((v, i) => $"{i,2}: {v,3:0} %").Chunk(4).Select(row => string.Join("   ", row)));
     }
 
     private bool Match(HistoryEntry h) => Library.Matches(h, _q);

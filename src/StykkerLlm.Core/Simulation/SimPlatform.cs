@@ -183,8 +183,11 @@ public sealed class SimPlatform : IPlatform
     {
         if (!_w.ShowSystem) return null;
         double busy = _w.TotalLoad();
-        return new SystemSample(Math.Clamp(6 + busy * 24 + (_noise.NextDouble() - 0.5) * 5, 0, 100), 16, 21.5 + busy * 2.0, 64, 30.2 + busy * 2.0, 78);
+        var cores = Enumerable.Range(0, 16).Select(k => Math.Clamp((k % 4 == 0 ? 30 : 4) + busy * (k < 8 ? 40 : 12) + (_noise.NextDouble() - 0.5) * 8, 0, 100)).ToArray();
+        return new SystemSample(Math.Clamp(6 + busy * 24 + (_noise.NextDouble() - 0.5) * 5, 0, 100), 16, 21.5 + busy * 2.0, 64, 30.2 + busy * 2.0, 78, cores);
     }
+
+    public MemoryInfo? ReadMemoryInfo() => _w.ShowSystem ? new MemoryInfo("DDR5", 6000, 2, 64, 2) : null;
 
     public IReadOnlyList<(string Name, double Gb)>? ReadGpuTop(int count)
     {

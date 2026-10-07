@@ -16,7 +16,9 @@ public sealed record ProcessUsage(double WorkingSetGb, double PrivateGb, TimeSpa
 
 // RamUsedGb = belegter Arbeitsspeicher (gesamt minus verfügbar, wie "In Verwendung" im Task-Manager). Commit ist die zugesagte Menge
 // (Arbeitsspeicher + Auslagerungsdatei): nur als Warnung gedacht, nicht als zweiter Hauptwert.
-public sealed record SystemSample(double CpuPercent, int Cores, double RamUsedGb, double RamTotalGb, double CommitUsedGb, double CommitLimitGb)
+// CoreLoads: Auslastung je logischem Kern in Prozent (U14, nur für den Tooltip), null = nicht gemessen
+public sealed record SystemSample(double CpuPercent, int Cores, double RamUsedGb, double RamTotalGb, double CommitUsedGb, double CommitLimitGb,
+    double[]? CoreLoads = null)
 {
     public const double CommitWarnFrac = 0.85, CommitCriticalFrac = 0.95;
 
@@ -82,6 +84,8 @@ public interface IPlatform : IDisposable
     IGpuMemoryQuery? OpenGpuMemory(int pid);
     GpuSample? ReadGpu();
     SystemSample? ReadSystem();
+    // Arbeitsspeicher laut Firmware (Typ, Takt, Module; U14). Standard: unbekannt.
+    MemoryInfo? ReadMemoryInfo() => null;
     // Treiberversion der GPU (für den Benchmark-Fingerprint). Standard: unbekannt (z. B. Demo/andere Plattformen).
     string? GpuDriver => null;
     // größte VRAM-Belegungen je Prozess (teuer: höchstens alle paar Sekunden)

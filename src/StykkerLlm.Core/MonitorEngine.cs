@@ -33,6 +33,9 @@ public sealed class MonitorEngine : IDisposable
     public IReadOnlyList<ServerWatcher> Servers => Registry.Servers;
     public GpuSample? Gpu { get; private set; }
     public SystemSample? Sys { get; private set; }
+    // Arbeitsspeicher laut Firmware: ändert sich im Betrieb nicht, deshalb einmal gelesen (U14)
+    private MemoryInfo? _memory; private bool _memoryRead;
+    public MemoryInfo? Memory { get { if (!_memoryRead) { _memoryRead = true; try { _memory = Platform.ReadMemoryInfo(); } catch (Exception ex) when (ex is not OutOfMemoryException) { _memory = null; } } return _memory; } }
     public IReadOnlyList<(string Name, double Gb)> VramTop => _vramTop;
     private volatile List<(string Name, double Gb)> _ramTop = new();
     // größte RAM-Belegungen je Programm (alle 5 s, Hintergrund-Task)

@@ -266,6 +266,7 @@ public sealed class WindowsPlatform : IPlatform
     public string? GpuDriver => _nvml.DriverVersion;
 
     public SystemSample? ReadSystem() => _sys.Read();
+    public MemoryInfo? ReadMemoryInfo() => SysInfo.ReadMemory();
 
     public IReadOnlyList<(string Name, double Gb)>? ReadGpuTop(int count)
     {

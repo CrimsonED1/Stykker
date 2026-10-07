@@ -81,6 +81,8 @@ public static partial class Strings
     public const string LostLogTail = "last log lines";
     public static string CardSlower(int pct) => $"{pct} % slower than this server's usual average – another program on the GPU, a hotter card or a bigger context?";
     public const string ThemeHint = "System follows the light or dark setting of this device: light → Spacepunk Titan, dark → Dark.";
+    public static string HwMemTip(int modules, double totalGb, int channels) =>
+        $"{modules} module(s), {N1(totalGb)} GB. Bandwidth is theoretical: speed × 8 bytes × {channels} channel(s) (channels estimated from the modules).";
     public static string StateText(string state) => state switch
     {
         "gen" => CardStateGen, "read" => CardStateRead, "load" => CardStateLoad, "off" => CardStateOff, _ => CardStateIdle,
