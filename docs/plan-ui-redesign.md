@@ -1,6 +1,6 @@
 # Plan: new web interface (Dark + Spacepunk Titan)
 
-Status: **U1–U9 done** (2026-10-08); U10 next. Approved by the owner on 2026-10-07. Work happens on `dev`, package by package; after each package:
+Status: **U1–U11 done** (2026-10-08); U12 next. Stop keeps its detailed confirm dialog (process, PID, clients) instead of a small popover. Approved by the owner on 2026-10-07. Work happens on `dev`, package by package; after each package:
 build, all tests, a screenshot in Dark and Titan, commit.
 
 Reference: the mockups in `docs/design/` (open them in a browser, controls at the bottom left).
@@ -34,8 +34,8 @@ Reference: the mockups in `docs/design/` (open them in a browser, controls at th
 | U7 ✓ | Recent requests | Fixed columns: client kind, host, model dot, duration bar, t/s colour scale, tools, thinking, result, age. New data: **client kind**, **tool calls**, **thinking tokens**, **result** per request (proxy tap) | unit tests on the tap; screenshot |
 | U8 ✓ | History | Grouped by day, run bar, avg/peak t/s, tokens, **end reason** (clean, crashed, stopped from outside – new field), backend filter, `/` search, row actions, forget with undo, link to `/history/{key}` | unit test end reason; screenshot |
 | U9 ✓ | Proxy panel | All proxy settings in one panel (on/off, port 17500, LAN, target/model, remote Stykker machines, cloud providers with write-only key), opened from the proxy chip and Ctrl+K | existing proxy tests; screenshot |
-| U10 | Commands and feedback | Ctrl+K command palette (pages and actions, focus trap), `/` focuses search, toasts, stop popover, undo, consistent focus ring, Server-lost banner, read-only/viewer states | keyboard walk-through in the browser |
-| U11 | Hints | "Slower than usual" (compared with the profile's average), VRAM short, hazard stripes in Titan | unit test thresholds |
+| U10 ✓ | Commands and feedback | Ctrl+K command palette (pages and actions, focus trap), `/` focuses search, toasts, stop popover, undo, consistent focus ring, Server-lost banner, read-only/viewer states | keyboard walk-through in the browser |
+| U11 ✓ | Hints | "Slower than usual" (compared with the profile's average), VRAM short, hazard stripes in Titan | unit test thresholds |
 | U12 | Other pages | Hosts, Runs, Results, Catalog, Models, Bench, Recordings, Compare, Prompt, Phone, Settings, GPU, history detail, bug report: new tokens, symbols and controls; no old theme left | screenshot per page, both themes |
 | U14 | Memory details | Hardware card: RAM type (DDR4/DDR5), configured speed and theoretical bandwidth from SMBIOS (Windows, GetSystemFirmwareTable, no package); logical core count already shown in *CPU load*. No per-core load (owner, 2026-10-08) | unit test SMBIOS type-17 parser with a captured table |
 | U13 | Clean-up and docs | Remove old theme code and unused CSS, update README images, docs/ui.md, CHANGELOG | build, all tests, no dead CSS classes |

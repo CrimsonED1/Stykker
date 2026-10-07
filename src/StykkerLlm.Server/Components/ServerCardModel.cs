@@ -39,6 +39,7 @@ public sealed class ServerCardModel
     public bool Recording { get; init; }
     public DateTime? RecordingSince { get; init; }
     public double? SpillGb { get; init; }
+    public int? SlowerPct { get; init; }          // „langsamer als sonst“ (U11), null = kein Hinweis
 
     public bool IsLocal => HostId == null;
     // Ollama und LM Studio führen mehrere Modelle in einem Server: Tabelle der geladenen Modelle statt Slots
@@ -63,7 +64,7 @@ public sealed class ServerCardModel
 
     public int SlotsBusy => Slots.Count(s => s.State != "idle");
 
-    public static ServerCardModel From(ServerWatcher s, RecordingSession? rec)
+    public static ServerCardModel From(ServerWatcher s, RecordingSession? rec, HistoryEntry? usual = null)
     {
         var slots = s.Slots.Select(v => new CardSlot(v.Id, SlotState(v.Busy, v.ReadingPrompt),
             v.Busy && v.CtxMax > 0 ? Math.Clamp((double)v.CtxUsed / v.CtxMax, 0, 1) : 0, v.Tps, v.Generated, v.CtxUsed, v.CtxMax)).ToList();
@@ -80,6 +81,7 @@ public sealed class ServerCardModel
             Clients = s.Clients, Slots = slots, Models = s.Models.ToList(), History = hist,
             Recording = rec != null, RecordingSince = rec?.Started,
             SpillGb = ServerWatcher.SpillGb(s.Models, s.SharedGb),
+            SlowerPct = usual == null ? null : SpeedHint.SlowerPercent(s.AverageActive(), hist.Count(v => v > 0), usual.MeanTps, usual.TpsCount),
         };
     }
 

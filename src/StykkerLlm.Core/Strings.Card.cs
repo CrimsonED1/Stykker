@@ -71,6 +71,15 @@ public static partial class Strings
     };
     private static string At(DateTime? t) => t is DateTime d ? $" · {d:g}" : "";
     private static string Fmt(double sec) => sec < 60 ? $"{(int)sec} s" : sec < 3600 ? $"{(int)(sec / 60)} min" : $"{sec / 3600:0.#} h";
+    // Befehlsfenster und Rahmen (U10)
+    public const string CmdTitle = "Commands", CmdSearch = "Search or run …", CmdPlaceholder = "Page, profile, server or action …", CmdNone = "Nothing found";
+    public const string CmdPage = "page", CmdAction = "action", CmdProfile = "profile", CmdServer = "server";
+    public const string CmdProxyOn = "Turn the proxy on", CmdProxyOff = "Turn the proxy off";
+    public static string CmdTheme(string t) => $"Theme: {t}";
+    public static string CmdStart(string name) => $"Start {name}";
+    public static string CmdStop(string name) => $"Stop {name}";
+    public const string LostLogTail = "last log lines";
+    public static string CardSlower(int pct) => $"{pct} % slower than this server's usual average – another program on the GPU, a hotter card or a bigger context?";
     public static string StateText(string state) => state switch
     {
         "gen" => CardStateGen, "read" => CardStateRead, "load" => CardStateLoad, "off" => CardStateOff, _ => CardStateIdle,

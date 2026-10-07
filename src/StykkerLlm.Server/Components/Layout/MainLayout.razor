@@ -67,6 +67,7 @@
         {
             <span class="pill wait" title="@Strings.RemoteRoleHint">@Strings.RoleViewer</span>
         }
+        <button class="hsearch" title="@Strings.CmdTitle (Ctrl+K)" aria-label="@Strings.CmdTitle" onclick="document.getElementById('cmdk-open').click()"><span>@Strings.CmdSearch</span><span class="kbd">Ctrl K</span></button>
         <button @onclick="FreeVram" disabled="@(Host.ReadOnly || Viewer.IsViewer)" title="@Strings.FreeVramTitle">@Strings.BtnFreeVram</button>
         @if (_confirm)
         {
@@ -101,34 +102,39 @@
         </div>
     </details>
 </header>
-@if (Viewer.Known && Viewer.IsViewer)
+@if (Host.ReadOnly)
 {
-    <p class="muted small">@Strings.ViewerOnly</p>
+    <div class="notice-bar"><Icon Name="lock" /><span>@Strings.ServerReadOnlyHint</span></div>
 }
+else if (Viewer.Known && Viewer.IsViewer)
+{
+    <div class="notice-bar"><Icon Name="lock" /><span>@Strings.ViewerOnly</span></div>
+}
+@* Server verloren (U10): Banner oben statt Dialog über der Seite – Ursache, Log, Neustart über Profil/History *@
 @if (Host.LastLost is { } lost)
 {
-    <div class="modal-back" style="align-items:flex-start;padding-top:40px">
-        <div class="modal">
-            <h2 style="margin-top:0">@Strings.LostTitle</h2>
-            <p><b>@lost.Name</b> <span class="muted small">@lost.Url @(lost.Pid is int pid ? $"· PID {pid}" : "") · @lost.When.ToString("g")</span></p>
-            @if (!string.IsNullOrEmpty(lost.Cause))
+    <div class="lost-bar" role="alert">
+        <Icon Name="e-crash" Class="lg" />
+        <div class="lost-txt">
+            <b>@Strings.LostTitle: @lost.Name</b>
+            <span class="muted small">@lost.Url @(lost.Pid is int pid ? $"· PID {pid}" : "") · @lost.When.ToString("g")</span>
+            @if (!string.IsNullOrEmpty(lost.Cause)) { <span>@lost.Cause</span> }
+            @if (lost.LogTail.Count > 0)
             {
-                <p>@lost.Cause</p>
+                <details><summary class="small">@Strings.LostLogTail</summary><div class="log">@foreach (var line in lost.LogTail) { <div>@line</div> }</div></details>
             }
-            @if (lost.LogFile is { Length: > 0 } log)
-            {
-                <p class="muted small">@log <a class="btn" href="@($"log?path={Uri.EscapeDataString(log)}")">@Strings.BtnOpenLog</a></p>
-            }
-            <div class="log">@foreach (var line in lost.LogTail) { <div>@line</div> }</div>
-            <div class="row" style="margin-top:10px">
-                <button @onclick="DismissLost">@Strings.Ok</button>
-            </div>
         </div>
+        @if (lost.LogFile is { Length: > 0 } log)
+        {
+            <a class="btn ib txt" href="@($"log?path={Uri.EscapeDataString(log)}")"><Icon Name="file" />@Strings.BtnOpenLog</a>
+        }
+        <button class="ib" title="@Strings.BtnDismiss" aria-label="@Strings.BtnDismiss" @onclick="DismissLost"><Icon Name="x" /></button>
     </div>
 }
 <main>@Body</main>
 <PromptDialog />
 <ToastHost />
+<CommandPalette />
 </div>
 
 @code {

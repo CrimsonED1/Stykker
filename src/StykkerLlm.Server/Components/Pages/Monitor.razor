@@ -45,7 +45,7 @@
 @foreach (var s in e.Registry.Servers)
 {
     var sv = s;
-    <ServerCard Model="ServerCardModel.From(sv, e.Recorder.Sessions.FirstOrDefault(r => r.Target == sv.Key))" CanWrite="CanWrite && !ro"
+    <ServerCard Model="ServerCardModel.From(sv, e.Recorder.Sessions.FirstOrDefault(r => r.Target == sv.Key), UsualFor(sv))" CanWrite="CanWrite && !ro"
                 Served="px.IsServed(sv.Key)" ProxyRunning="px.Running" SparkAgo="@SparkAgo"
                 OnServe="() => Serve(sv)" OnSave='() => Act("save", sv.Key, sv.Name)'
                 OnRecord='() => Act(e.Recorder.Sessions.Any(r => r.Target == sv.Key) ? "record.stop" : "record.start", sv.Key)'
@@ -602,6 +602,10 @@
         var d = DateTime.Now - t.Value;
         return d.TotalSeconds < 60 ? $"{Math.Max(0, (int)d.TotalSeconds)}s" : d.TotalMinutes < 60 ? $"{(int)d.TotalMinutes}m" : d.TotalHours < 24 ? $"{(int)d.TotalHours}h" : $"{(int)d.TotalDays}d";
     }
+
+    // Verlauf desselben Servers (gleiche Befehlszeile) für „langsamer als sonst“
+    private HistoryEntry? UsualFor(ServerWatcher s) =>
+        string.IsNullOrEmpty(s.Info.Program) || s.Info.Args == null ? null : Host.Engine.Library.FindHistory(Library.MakeKey(s.Info.Program, s.Info.Args));
 
     private bool Match(HistoryEntry h) => Library.Matches(h, _q);
 

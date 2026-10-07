@@ -36,6 +36,20 @@
     setInterval(theme, 3000);
     new MutationObserver(theme).observe(document.head, { childList: true, subtree: true, attributes: true, attributeFilter: ['content'] });
 
+    // Tastatur (U10): Ctrl+K öffnet das Befehlsfenster, „/“ springt in die Suche der History (sonst Befehlsfenster);
+    // im offenen Befehlsfenster bleibt der Fokus im Eingabefeld (Tab springt nicht hinaus)
+    window.stykkerFocus = function (id) { const el = document.getElementById(id); if (el) { el.focus(); if (el.select) el.select(); } };
+    document.addEventListener('keydown', function (e) {
+        const t = e.target, typing = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
+        const open = () => { const b = document.getElementById('cmdk-open'); if (b) b.click(); };
+        if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')) { e.preventDefault(); open(); return; }
+        if (document.querySelector('.cmdk') && e.key === 'Tab') { e.preventDefault(); window.stykkerFocus('cmdk-input'); return; }
+        if (!typing && e.key === '/' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+            e.preventDefault();
+            if (document.getElementById('hsearch')) window.stykkerFocus('hsearch'); else open();
+        }
+    });
+
     // Im Fenster StykkerUI gibt es keine Browser-Knöpfe und -Tasten: Photino baut in jede Seite
     // window.external ein – daran ist die Hülle zu erkennen.
     const inShell = () => !!(window.external && typeof window.external.receiveMessage === 'function');

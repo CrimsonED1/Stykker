@@ -620,3 +620,34 @@ html[data-theme=titan] .toast{border-radius:0;box-shadow:none;border-left:4px so
 html[data-theme=titan] .fchip,html[data-theme=titan] .kbd{border-radius:0}
 html[data-theme=titan] .fchip.on{background:var(--card);box-shadow:inset 0 -2px 0 var(--signal);border-color:var(--card-border)}
 html[data-theme=titan] .hdot{border-radius:0}
+
+/* Befehlsfenster, Banner, Hinweisleiste, Fokus (U10) */
+.cmdk-hidden{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;padding:0;border:0}
+.cmdk-back{position:fixed;inset:0;z-index:70;background:rgb(var(--bg-rgb)/.6)}
+.cmdk{position:fixed;z-index:71;left:50%;top:12vh;transform:translateX(-50%);width:min(560px,calc(100vw - 32px));background:var(--card);border:1px solid var(--card-border);border-radius:12px;box-shadow:0 24px 60px rgb(0 0 0/.5);animation:pop .18s ease-out;overflow:hidden}
+.cmdk-in{display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--line)}
+.cmdk-in input{flex:1;border:0;background:transparent;font-size:15px;padding:4px 0;box-shadow:none!important}
+.cmdk-list{max-height:52vh;overflow:auto;padding:6px}
+.cmdk-item{display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:8px;cursor:pointer}
+.cmdk-item span{flex:1}.cmdk-item.sel{background:rgb(var(--acc-rgb)/.16);color:var(--ink)}.cmdk-item .ic{color:var(--muted)}
+.cmdk-none{padding:10px}
+.hsearch{display:inline-flex;align-items:center;gap:8px;color:var(--muted);font-size:12px}
+.notice-bar,.lost-bar{display:flex;align-items:center;gap:10px;margin:10px 20px 0;padding:8px 12px;border-radius:10px;border:1px solid rgb(var(--warn-rgb)/.5);background:rgb(var(--warn-rgb)/.08)}
+.notice-bar .ic{color:var(--warn)}
+.lost-bar{border-color:rgb(var(--bad-rgb)/.6);background:rgb(var(--bad-rgb)/.08);align-items:flex-start}
+.lost-bar>.ic{color:var(--bad);margin-top:2px}.lost-txt{display:flex;flex-direction:column;gap:2px;flex:1;min-width:0}
+.lost-txt .log{max-height:160px}
+:focus-visible{outline:2px solid rgb(var(--acc-rgb)/.85);outline-offset:2px}
+input:focus-visible,select:focus-visible,textarea:focus-visible{outline:none}
+html.shell .cmdk{animation:none;box-shadow:none}
+@media(max-width:640px){.hsearch span:first-child{display:none}}
+html[data-theme=titan] .cmdk{border-radius:0;box-shadow:0 0 0 1px var(--card-border)}
+html[data-theme=titan] .cmdk-item{border-radius:0}html[data-theme=titan] .cmdk-item.sel{background:var(--card2);box-shadow:inset 3px 0 0 var(--signal)}
+html[data-theme=titan] .notice-bar,html[data-theme=titan] .lost-bar{border-radius:0;background:var(--card);background-image:repeating-linear-gradient(-45deg,#d99a1e 0 6px,#1a1e20 6px 12px);background-size:6px 100%;background-repeat:no-repeat;padding-left:18px}
+html[data-theme=titan] :focus-visible{outline-color:var(--acc)}
+
+/* Hinweise (U11): langsamer als sonst, VRAM knapp – in Titan mit Warnstreifen an der Oberkante */
+.chipi.slow b{font-family:var(--font-num)}
+html[data-theme=titan] .card.srv.warnstripe{background-image:repeating-linear-gradient(-45deg,#d99a1e 0 6px,#1a1e20 6px 12px);background-size:100% 4px;background-repeat:no-repeat;background-position:top left}
+html[data-theme=titan] .card.srv.busy.warnstripe{background:repeating-linear-gradient(-45deg,#d99a1e 0 6px,#1a1e20 6px 12px) top left/100% 4px no-repeat,linear-gradient(225deg,transparent 0 8.2px,var(--card-border) 8.2px 9.2px,transparent 9.2px) no-repeat,color-mix(in srgb,var(--b) 6%,var(--card))}
+html[data-theme=titan] .pf.tight{background-image:repeating-linear-gradient(-45deg,#d99a1e 0 6px,#1a1e20 6px 12px);background-size:100% 3px;background-repeat:no-repeat}

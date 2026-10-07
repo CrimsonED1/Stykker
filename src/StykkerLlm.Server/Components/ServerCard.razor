@@ -7,7 +7,7 @@
     var st = m.State;
     string F1(double v) => v.ToString("0.0", CultureInfo.InvariantCulture);
 }
-<article class="card srv @(st == "gen" || st == "read" ? "busy" : "") @(st == "off" ? "off" : "")" style="--b:var(@m.BackendVar)">
+<article class="card srv @(st == "gen" || st == "read" ? "busy" : "") @(st == "off" ? "off" : "") @(m.SlowerPct != null || m.SpillGb != null ? "warnstripe" : "")" style="--b:var(@m.BackendVar)">
     <div class="hd5">
         <span class="bk" title="@m.Backend"><Icon Name="@m.BackendIcon" Title="@m.Backend" /></span>
         <span class="name" title="@m.Model">@m.Name</span>
@@ -32,6 +32,10 @@
         @if (m.Recording)
         {
             <span class="recchip" title="@Strings.CardRecording"><Icon Name="rec" /><b>@RecTime()</b></span>
+        }
+        @if (m.SlowerPct is int slow)
+        {
+            <span class="chipi warnc slow" title="@Strings.CardSlower(slow)"><Icon Name="down" /><b>−@slow %</b></span>
         }
         @if (m.SpillGb is double spill)
         {
