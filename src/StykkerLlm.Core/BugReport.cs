@@ -6,7 +6,7 @@ namespace StykkerLlm.Core;
 
 // Fehlerbericht: ein Zip im Datenordner (bug-reports\) mit Beschreibung, Umgebung, den Protokollen aller Programme,
 // den Einstellungen und – wenn der Server läuft – seinem Zustand. Nie dabei: Schlüssel, Zugangscode, Geräte,
-// Anbieter-Schlüssel (access.dat, server.key, nodes.dat, providers\, confirm.key, web-shell.dat). Was mitgeht, wird
+// Anbieter-Schlüssel (access.dat, server.key, hosts.dat, host.json, providers\, confirm.key, web-shell.dat). Was mitgeht, wird
 // geschwärzt: Werte von --api-key/--hf-token & Co., Tokens in URLs, der Windows-Benutzername und der Rechnername.
 // Dazu eine Adresse für ein neues GitHub-Issue mit Beschreibung und Umgebung (ohne Protokolle – das Zip hängt man an).
 public static partial class BugReport

@@ -144,7 +144,7 @@ public class N54_LifeLogsBugReportTests
         Assert.IsFalse(empty.Ok);
         Assert.AreEqual(Strings.BugReportEmpty, empty.Message);
 
-        var hub = ActionApi.ExecuteAsync(new ActionRequest { Action = "bugreport.create", Arg = "x" }, ctx, null!, role: AccessRole.Hub).GetAwaiter().GetResult();
+        var hub = ActionApi.ExecuteAsync(new ActionRequest { Action = "bugreport.create", Arg = "x" }, ctx, null!, role: AccessRole.LegacyHub).GetAwaiter().GetResult();
         Assert.IsFalse(hub.Ok);
         var viewer = ActionApi.ExecuteAsync(new ActionRequest { Action = "bugreport.create", Arg = "x" }, ctx, null!, role: AccessRole.Viewer).GetAwaiter().GetResult();
         Assert.IsFalse(viewer.Ok);

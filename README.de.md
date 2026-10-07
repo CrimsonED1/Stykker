@@ -26,10 +26,11 @@ jedem Browser oder auf dem Handy; im Terminal behältst du alles im Blick. Nicht
 - **Aufnahmen** mit Zeitleiste je Anfrage, Vergleich zweier Aufnahmen, Export als Markdown/CSV.
 - **Benchmarks**: Kontext-Leiter, Tool-Test, parallele Anfragen, mit Warnung bei Rückschritten.
 - **Modelltests**: Reihen *basic*, *hard*, *creative* und *agent* (das Modell arbeitet mit echten Werkzeugen in einem
-  Wegwerf-Ordner), automatisch bewertet, Rangliste je Modell, auf Wunsch auf gekoppelte PCs verteilt.
+  Wegwerf-Ordner), automatisch bewertet, Rangliste je Modell.
 - **Prompt-Tester** an jedem geladenen Modell, mit Werkzeugen (lesen, auflisten, schreiben, bearbeiten, cmd/PowerShell);
   jeden Aufruf gibst du frei.
-- **Nodes**: andere PCs mit StykkerLLM koppeln, ihre Server sehen und steuern.
+- **Model-Hosts**: andere PCs lassen nur Modelle laufen (StykkerHost, ein Tray-Symbol); der Server zeigt und steuert sie,
+  sein Proxy startet ein angefragtes Modell auf dem Host, der die Datei hat und genug Platz.
 - **Handy-Zugang**: sechsstelliger Code oder QR-Code, Rollen *Admin* und *Viewer*, Schalter Home/VPN – auch über Tailscale.
 - **Fehlerbericht** mit einem Klick: Zip mit Protokollen und Stand, Geheimnisse geschwärzt, dazu ein vorausgefülltes
   GitHub-Issue.
@@ -39,9 +40,9 @@ jedem Browser oder auf dem Handy; im Terminal behältst du alles im Blick. Nicht
 |---|---|
 | ![Rangliste der Modelltests](docs/images/model-tests.png) | ![GPU-Details](docs/images/gpu.png) |
 
-| Benchmarks | Nodes |
-|---|---|
-| ![Benchmarks](docs/images/benchmarks.png) | ![Nodes](docs/images/nodes.png) |
+| Benchmarks |
+|---|
+| ![Benchmarks](docs/images/benchmarks.png) |
 
 ## Ein Kern, drei Ansichten
 
@@ -59,8 +60,8 @@ jedem Browser oder auf dem Handy; im Terminal behältst du alles im Blick. Nicht
 </tr><tr><td>Handy (kompakte Ansicht)</td><td>Terminal: <code>stykker</code>, Details eines Servers offen</td></tr></table>
 
 **Der Server lebt, solange du ihn nutzt.** Jedes Fenster, jede Terminal-Anzeige und jeder offene Browser-Tab hält ihn am
-Leben; wenige Sekunden nach dem letzten beendet er sich von selbst (außer ein Modelltest oder Benchmark läuft noch). Für
-einen PC, den andere als Node nutzen, **Einstellungen → Keep the server running** einschalten.
+Leben; wenige Sekunden nach dem letzten beendet er sich von selbst (außer ein Modelltest oder Benchmark läuft noch). Soll er
+auch ohne Fenster weiterlaufen: **Einstellungen → Keep the server running** einschalten.
 
 ## Installation
 
@@ -120,9 +121,8 @@ stykker help | version
   zeigen ☰ → Phone access und die Terminal-Anzeige (`c`). Oder das neue Gerät zeigt einen Code, und du gibst ihn auf einem
   schon angemeldeten Gerät frei.
 - **Rollen**: *Admin* darf alles, *Viewer* nur zusehen (keine Aktionen, kein Zugangscode).
-- **Nodes** (☰ → Nodes): im Netz suchen, einen anderen PC mit seinem Code koppeln, dann seine Server sehen, starten und
-  stoppen und Modelltests darauf laufen lassen. Seine Modelle erscheinen auch im Stykker-Proxy als `node/modell`.
-  Siehe [docs/nodes.md](docs/nodes.md) (englisch).
+- **Model-Hosts** (☰ → Hosts): einen PC mit `StykkerHost.exe` per sechsstelligem Code koppeln, dann seine GPU sehen,
+  seine Modelle starten und stoppen; der Proxy nutzt sie wie lokale. Siehe [docs/hosts.md](docs/hosts.md) (englisch).
 - **Messwerte** für Statusleisten und Dashboards: `http://127.0.0.1:8078/api/metrics` (Prometheus-Text, nur dieser Rechner).
 
 HTTPS gibt es noch nicht: im eigenen Netz oder über ein VPN wie Tailscale nutzen, nicht offen im Internet.
@@ -132,7 +132,8 @@ HTTPS gibt es noch nicht: im eigenen Netz oder über ein VPN wie Tailscale nutze
 - Ein lokaler Proxy auf Port **17500** (vorgegeben nur für diesen Rechner). Einschalten oben im Monitor.
 - OpenAI-kompatible Clients (Qwen Code, Aider, …): `http://127.0.0.1:17500/v1`, Modell **`stykker`** oder ein Modell aus
   `/v1/models`. Anthropic-kompatible Clients (Claude Code, …): `http://127.0.0.1:17500`.
-- `/v1/models` listet alle lokalen Modelle, die der gekoppelten Nodes und anderer Stykker-Rechner, dazu Cloud-Anbieter, die du
+- `/v1/models` listet alle lokalen Modelle, die der gekoppelten Hosts (laufende und GGUF-Dateien, die bei der ersten Anfrage
+  starten) und anderer Stykker-Rechner, dazu Cloud-Anbieter, die du
   mit Name, URL und Schlüssel einträgst (mit Windows-DPAPI gespeichert, nie wieder angezeigt). Das Feld `model` entscheidet,
   wohin eine Anfrage geht.
 - Der Proxy reicht Anfragen unverändert durch und zählt nur Zahlen und Namen. Prompt- und Antworttexte werden nie gespeichert.
@@ -141,8 +142,8 @@ HTTPS gibt es noch nicht: im eigenen Netz oder über ein VPN wie Tailscale nutze
 
 *Model tests* in der Weboberfläche. Bereiche: **coding** (der Python-Code des Modells läuft nach Rückfrage gegen Tests in
 einem Temp-Ordner; keine Sandbox), **reasoning**, **format**, **tools**, **long context**, **creative** und **agent**
-(mehrstufige Aufgaben mit echten Datei- und Shell-Werkzeugen). Ergebnisse landen im Datenordner, die Rangliste ist je Modell;
-Läufe lassen sich auf gekoppelte Nodes verteilen. Eigene Reihen: JSON-Dateien unter `eval\` im Datenordner.
+(mehrstufige Aufgaben mit echten Datei- und Shell-Werkzeugen). Ergebnisse landen im Datenordner, die Rangliste ist je Modell.
+Eigene Reihen: JSON-Dateien unter `eval\` im Datenordner.
 
 ## Protokolle und Fehlerberichte
 

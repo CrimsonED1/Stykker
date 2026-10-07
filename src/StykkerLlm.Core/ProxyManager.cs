@@ -84,27 +84,13 @@ public sealed class ProxyManager : IDisposable
     public bool BindLan => _settings.ProxyBindLan;
     public IReadOnlyList<RemoteStykker> Remotes => _settings.RemoteStykkers;
 
-    // Gekoppelte Nodes, deren Proxy im Netz erreichbar ist (docs/nodes.md, N4): sie kommen wie von Hand eingetragene
-    // Rechner dazu, ohne in den Einstellungen zu landen. Der Server setzt das; ohne Nodes bleibt es leer.
-    public Func<IEnumerable<RemoteStykker>>? NodeRemotes { get; set; }
-
     // Model-Hosts (docs/plan-hosts-gateway.md, P6): ihre laufenden Server sind Ziele, Anfragen gehen durch den Tunnel
     public Func<IEnumerable<HostServers>>? HostSources { get; set; }
     public Func<string, HttpClient?>? HostClient { get; set; }
     public Func<string, CancellationToken, Task<HostChoice>>? HostStart { get; set; }
     public Func<IReadOnlyList<string>>? StartableModels { get; set; }
 
-    // Eingetragene Rechner und Nodes, je Adresse einmal (der Eintrag von Hand gewinnt, sein Name gilt)
-    private List<RemoteStykker> AllRemotes()
-    {
-        var list = _settings.RemoteStykkers.ToList();
-        IEnumerable<RemoteStykker> nodes;
-        try { nodes = NodeRemotes?.Invoke() ?? Enumerable.Empty<RemoteStykker>(); }
-        catch (InvalidOperationException) { nodes = Enumerable.Empty<RemoteStykker>(); }
-        foreach (var n in nodes)
-            if (!list.Any(r => RemoteKey(r).Equals(RemoteKey(n), StringComparison.OrdinalIgnoreCase))) list.Add(n);
-        return list;
-    }
+    private List<RemoteStykker> AllRemotes() => _settings.RemoteStykkers.ToList();
     // Die eingetragenen Cloud-Anbieter (ohne Schlüssel – der steht in ProviderKeys und verlässt diese Schicht nicht)
     public IReadOnlyList<ProxyProvider> Providers => _settings.ProxyProviders;
     public RouterProxy? Proxy => _proxy;

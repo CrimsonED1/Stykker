@@ -335,7 +335,7 @@ public static class EvalSuites
     {
         var list = new List<(string, EvalRun)>();
         if (!Directory.Exists(dir)) return list;
-        // Unterordner nodes/<Name>/: Läufe gekoppelter Nodes, die der Hub eingesammelt hat (docs/nodes.md, N3)
+        // Unterordner nodes/<Name>/: Läufe, die frühere Versionen von anderen PCs eingesammelt haben (bleiben lesbar)
         foreach (var f in Directory.GetFiles(dir, "*.json", SearchOption.AllDirectories))
             try { if (JsonSerializer.Deserialize<EvalRun>(File.ReadAllText(f), Json) is { } r) list.Add((f, Normalize(r))); } catch { }
         return list.OrderByDescending(x => x.Item2.Started).ToList();

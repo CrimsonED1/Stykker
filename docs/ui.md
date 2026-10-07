@@ -16,10 +16,10 @@ only**: it shows the state and sends the user to the web UI for anything that ch
 | 6 | System (CPU, RAM per program) | Monitor |
 | 7 | Recent requests | Monitor |
 | 8 | History with search, start again, save, forget | Monitor, `/history/{key}` |
-| 9 | Model tests: Runs, Results, Catalog, Models; run on this PC / a node / automatic | `/runs`, `/results`, `/catalog`, `/models` |
+| 9 | Model tests: Runs, Results, Catalog, Models | `/runs`, `/results`, `/catalog`, `/models` |
 | 10 | Benchmarks, recordings, compare | `/bench`, `/recordings`, `/compare` |
 | 11 | Phone access: Home/VPN switch, six-digit code + QR, approve a device that shows a code, devices and roles | `/phone`, `/approve` |
-| 12 | Nodes: search, pair, per-node cards, actions, model comparison | `/nodes` |
+| 12 | Model hosts: pairing code, per-host cards (GPU, servers, model files, start/stop), host servers on the monitor | `/hosts`, Monitor |
 | 13 | Prompt tester with tools (read, list, write, edit, cmd/PowerShell; approve per call) | `/prompt` |
 | 14 | Settings: theme, limits, *Keep the server running*, servers by URL, about | `/settings` |
 | 15 | Bug report: zip with logs, settings, state (no secrets) + GitHub issue link | `/bugreport` |

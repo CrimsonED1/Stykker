@@ -213,37 +213,6 @@ public class R3_ProxyServeRemoteTests
         Assert.AreEqual("remote-model", seen);
     }
 
-    // docs/nodes.md N4: ein gekoppelter Node kommt ohne Eintrag in den Einstellungen dazu – seine Modelle stehen im Proxy
-    [TestMethod]
-    public async Task NodeRemotes_OfferTheModelsOfPairedNodes_WithoutTouchingTheSettings()
-    {
-        using var up = new RawUpstream();
-        up.Handler = async (req, s, ct) =>
-        {
-            const string payload = "{\"object\":\"list\",\"data\":[{\"id\":\"node-model\"}]}";
-            await RawUpstream.Send(s, $"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {payload.Length}\r\nConnection: close\r\n\r\n{payload}", ct);
-        };
-        var settings = new AppSettings { ProxyEnabled = true, ProxyPort = 0 };
-        using var http = RequestProxy.CreateClient();
-        using var pm = new ProxyManager(() => Array.Empty<ServerWatcher>(), settings, _ => { }, http: http)
-        {
-            NodeRemotes = () => new[] { new RemoteStykker { Name = "ALEXPC", Url = up.Url } },
-        };
-        Assert.IsTrue(pm.Toggle(out var err), err);
-
-        string models = "";
-        var end = DateTime.Now.AddSeconds(8);
-        while (DateTime.Now < end)
-        {
-            pm.Maintain();
-            models = await Get(pm.Port, "/v1/models");
-            if (models.Contains("node-model")) break;
-            await Task.Delay(200);
-        }
-        StringAssert.Contains(models, "node-model");
-        Assert.AreEqual(0, settings.RemoteStykkers.Count, "Nodes landen nicht in den Einstellungen");
-    }
-
     // Nr. 47: der Proxy erkennt die „Kontext zu klein"-Antwort des Backends (Status 400) und meldet sie – Antwort bleibt unverändert
     [TestMethod]
     public async Task Upstream400_ContextTooSmall_RaisesUpstreamError()

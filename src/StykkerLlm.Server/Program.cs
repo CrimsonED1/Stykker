@@ -80,7 +80,6 @@ builder.Services.AddSingleton(sp => new ActionContext
     Access = sp.GetRequiredService<EngineHost>().Access,
     Queue = sp.GetRequiredService<EvalQueue>(),
     Benchmarks = sp.GetRequiredService<EngineHost>().Benchmarks,
-    Nodes = sp.GetRequiredService<EngineHost>().Nodes,
     Hosts = sp.GetRequiredService<EngineHost>().Hosts,
     Shutdown = () => { sp.GetRequiredService<IHostApplicationLifetime>().StopApplication(); return Task.CompletedTask; },
     ServerPort = port,
@@ -108,9 +107,6 @@ var gate = new AccessGate(engineHost.Access, engineHost.Key, port, () => ThemeCa
 app.Use(async (ctx, next) =>
 {
     if (await gate.TryHandleAsync(ctx)) return;
-    // Ein Hub, der diesen PC als Node abfragt, hält den Server am Leben (seine Anfragen kommen regelmäßig)
-    if (AccessGate.RoleOf(ctx) == AccessRole.Hub)
-        engineHost.Holds.Touch("hub:" + ctx.Connection.RemoteIpAddress, DateTime.Now);
     await next();
 });
 
@@ -139,6 +135,9 @@ app.MapPost("/hosts/pair", async (HttpContext ctx) =>
     AppLog.Write($"host paired: {p.Entry.Name} ({ctx.Connection.RemoteIpAddress})");
     return Results.Json(new Dictionary<string, object> { ["ok"] = true, ["token"] = p.Token, ["id"] = p.Entry.Id, ["serverName"] = Environment.MachineName });
 });
+// Die frühere Seite Nodes (ersetzt durch Model-Hosts): alte Lesezeichen landen auf Hosts
+app.MapGet("/nodes", () => Results.Redirect("/hosts"));
+
 app.MapGet("/api/hosts", (HttpContext ctx) =>
     Results.Text(HostStateJson.Write(engineHost.Hosts.List(), DateTime.Now), "application/json"));
 
@@ -238,21 +237,6 @@ app.MapPost("/api/action", async (HttpContext ctx, ActionContext actions) =>
 });
 
 app.UseAntiforgery();
-
-// Läufe der Modelltests für einen Hub (docs/nodes.md, N3): erst die Liste der Dateinamen, dann je Datei der Inhalt.
-// Nur die eigenen Läufe (oberste Ebene), nicht die schon von anderen Nodes eingesammelten.
-app.MapGet("/api/eval/runs", () =>
-{
-    var dir = paths.EvalResultsDir;
-    var names = Directory.Exists(dir) ? Directory.GetFiles(dir, "*.json").Select(Path.GetFileName).ToList() : new List<string?>();
-    return Results.Text(JsonSerializer.Serialize(names), "application/json");
-});
-app.MapGet("/api/eval/runs/{name}", (string name) =>
-{
-    if (!NodeRegistry.IsRunFileName(name)) return Results.NotFound();
-    var file = Path.Combine(paths.EvalResultsDir, name);
-    return File.Exists(file) ? Results.Text(File.ReadAllText(file), "application/json") : Results.NotFound();
-});
 
 // Benchmark als Markdown oder CSV (der Knopf im Fenster macht dasselbe)
 app.MapGet("/api/bench/{id}", (string id, EngineHost host) =>

@@ -12,20 +12,18 @@ public static class AccessRole
 {
     public const string Admin = "admin";
     public const string Viewer = "viewer";
-    // Ein anderer Stykker-Rechner, der diesen als Node steuert (docs/nodes.md): darf alles wie Admin, wird aber eigens
-    // angezeigt, damit man in der Geräteliste sieht, welcher Hub hier mitliest
-    public const string Hub = "hub";
+    // Frühere Rolle eines koppelnden Hubs (alte Node-Kopplung, entfernt): solche Geräte dürfen nur noch lesen
+    public const string LegacyHub = "hub";
 
-    // Von Hand vergeben lassen sich nur Admin und Viewer; Hub entsteht nur durch die Kopplung eines Hubs
     public static bool IsValid(string? role) => role is Admin or Viewer;
 
-    // Für Werte aus der Datei: alles Unbekannte (auch fehlend) bedeutet Admin
-    public static string Normalize(string? role) => role switch { Viewer => Viewer, Hub => Hub, _ => Admin };
+    // Für Werte aus der Datei: fehlend bedeutet Admin (ältere Dateien), ein alter Hub nur Viewer
+    public static string Normalize(string? role) => role switch { Viewer => Viewer, LegacyHub => Viewer, _ => Admin };
 
     public static bool CanWrite(string? role) => Normalize(role) != Viewer;
 }
 
-// Ein Gerät, das sich mit dem Zugangscode angemeldet hat (Browser im Heimnetz, Handy, Hub).
+// Ein Gerät, das sich mit dem Zugangscode angemeldet hat (Browser im Heimnetz, Handy, Fenster).
 // Gespeichert wird nur der Hash des Cookies, nie das Cookie selbst: ein kopiertes access.dat erlaubt kein Mithören.
 public sealed class AccessDevice
 {
@@ -70,8 +68,7 @@ public sealed class PairRequest
 public static class PairKinds
 {
     public const string Browser = "browser";
-    public const string Hub = "hub";
-    public static string Normalize(string? kind) => kind == Hub ? Hub : Browser;
+    public static string Normalize(string? kind) => Browser;
 }
 
 public static class PairStatus
@@ -227,13 +224,12 @@ public sealed class AccessControl
     }
 
     // Anmeldung mit dem Code: liefert das Cookie (Token) für das Gerät, oder null bei falschem oder abgelaufenem Code.
-    // Der Code ist danach verbraucht (der nächste steht sofort in Fenster, TUI und Web). Ein Hub meldet sich mit
-    // kind "hub" an und bekommt die Rolle Hub.
+    // Der Code ist danach verbraucht (der nächste steht sofort in Fenster, TUI und Web). 
     public (string Token, AccessDevice Device)? Pair(string? code, string? name, string? address, string? kind = null)
     {
         var clean = CleanCode(code);
         if (clean.Length == 0) return null;
-        var (token, device) = NewDevice(name, address, PairKinds.Normalize(kind) == PairKinds.Hub ? AccessRole.Hub : AccessRole.Admin);
+        var (token, device) = NewDevice(name, address, AccessRole.Admin);
         bool ok, burn;
         lock (_lock)
         {
@@ -312,8 +308,8 @@ public sealed class AccessControl
         return (req, secret);
     }
 
-    // Freigabe mit den Ziffern, die das neue Gerät zeigt. Ein Browser bekommt die gewünschte Rolle (Vorgabe Admin),
-    // ein Hub immer die Rolle Hub. null = keine offene Anfrage mit diesem Code.
+    // Freigabe mit den Ziffern, die das neue Gerät zeigt. Es bekommt die gewünschte Rolle (Vorgabe Admin);
+    // null = keine offene Anfrage mit diesem Code.
     public PairRequest? Approve(string? code, string? role = null)
     {
         var clean = CleanCode(code);
@@ -324,7 +320,7 @@ public sealed class AccessControl
             PruneRequests();
             req = _requests.FirstOrDefault(r => r.Status == PairStatus.Pending && _now() < r.Expires && SameCode(r.Code, clean));
             if (req == null) return null;
-            var want = req.Kind == PairKinds.Hub ? AccessRole.Hub : role == AccessRole.Viewer ? AccessRole.Viewer : AccessRole.Admin;
+            var want = role == AccessRole.Viewer ? AccessRole.Viewer : AccessRole.Admin;
             var (token, device) = NewDevice(req.Name, req.Address, want);
             _state.Devices.Add(device);
             req.Token = token;

@@ -89,7 +89,7 @@ public sealed class AppSettings
     // Cyber Grid, Space Glass, Obsidian, Deep Sea, Phosphor
     public string Theme { get; set; } = "Deep Sea";
     public bool OverlayVisible { get; set; }
-    // Server weiterlaufen lassen, auch wenn kein Fenster, keine TUI und keine Webseite mehr offen ist (Node-PC)
+    // Server weiterlaufen lassen, auch wenn kein Fenster, keine TUI und keine Webseite mehr offen ist
     public bool KeepServerRunning { get; set; }
     public int? OverlayX { get; set; }
     public int? OverlayY { get; set; }

@@ -12,7 +12,7 @@
                               |
                      IPlatform (Windows: processes, ports, NVML, DPAPI)
                               |
-             llama.cpp / Ollama / LM Studio / vLLM servers on this PC (and nodes on other PCs)
+             llama.cpp / Ollama / LM Studio / vLLM servers on this PC (and on model hosts)
 ```
 
 - **MonitorEngine** (Core) measures once per tick: finds servers (`ServerDiscovery`, by listening ports and command lines),
@@ -21,8 +21,8 @@
   The web pages read the engine directly; the terminal display and other clients read `/api/state` or the live stream `/api/stream`
   and parse it with `StateSnapshot`.
 - **ActionApi** (`Core/Server/ActionApi.cs`) is the single place that changes anything: start/stop/unload, profiles,
-  proxy, recordings, benchmarks, eval queue, settings, access, nodes. Web pages call it in-process (`WebActions`),
-  clients via `POST /api/action`. Roles are checked there (viewer = read only, hub = everything except access).
+  proxy, recordings, benchmarks, eval queue, settings, access, model hosts. Web pages call it in-process (`WebActions`),
+  clients via `POST /api/action`. Roles are checked there (viewer = read only).
 - **AccessGate** (`Server/AccessGate.cs`) decides who gets in: the data-folder key (`server.key`, local terminal display/scripts),
   a device token (cookie for browsers, `X-Stykker-Device` header for hubs), or nothing (only `/api/ping` and `/pair…`).
   Remote access needs the switch *Home/VPN*; the access code has six digits, lives ten minutes and works once.
@@ -39,8 +39,8 @@
 
 `ServerHolds` (Core) counts who needs the server: StykkerUI windows and interactive `stykker` sessions renew a lease every
 5 s (`POST /api/hold`, 20 s lease, `DELETE` on exit), web pages count while their Blazor connection is up (`HoldCircuits`),
-and a hub's requests count for that hub. With nobody left and no model test or benchmark running, the server stops after
-15 s (3 s after the last client signed off; a fresh server waits 60 s for its first client). A PC used as a node turns on the setting
+With nobody left and no model test or benchmark running, the server stops after
+15 s (3 s after the last client signed off; a fresh server waits 60 s for its first client). To keep it up anyway, turn on the setting
 *Keep the server running* (or the server is started with `--stay`).
 
 ## Logs and bug reports
@@ -48,12 +48,12 @@ and a hub's requests count for that hub. With nobody left and no model test or b
 One log per program (`AppLog`): `StykkerLLM-Server.log`, `StykkerUI.log`, `stykker.log` in `logs/` next to the exe if
 writable, else in the data folder. The server also writes ASP.NET Core warnings, engine notices and unhandled exceptions.
 `BugReport` zips the description, environment, the tails of all logs, `settings.json` and the state (no access code) into
-`bug-reports/`, with secrets blacked out; it never reads `access.dat`, `server.key`, `nodes.dat`, providers or tokens.
+`bug-reports/`, with secrets blacked out; it never reads `access.dat`, `server.key`, `hosts.dat`, `host.json`, providers or tokens.
 
 ## Data and files
 
 All user data is in `%APPDATA%\StykkerLLM` (or `--data-dir`): settings, library (profiles, history, benchmarks),
-`access.dat`, `server.key`, `nodes.dat`, eval models/settings/results, recordings, logs. Files with secrets are bound to the
+`access.dat`, `server.key`, `hosts.dat`, eval models/settings/results, recordings, logs. Files with secrets are bound to the
 Windows user (DPAPI) where possible.
 
 ## Testing without hardware

@@ -64,8 +64,6 @@ public sealed class ActionContext
     public AccessControl? Access { get; init; }
     public EvalQueue? Queue { get; init; }
     public BenchmarkService? Benchmarks { get; init; }
-    // Gekoppelte Nodes (dieser Server als Hub)
-    public NodeRegistry? Nodes { get; init; }
     // Model-Hosts, die sich einwählen (docs/plan-hosts-gateway.md)
     public HostHub? Hosts { get; init; }
     // Server beenden (Web-Kopf, „stykker stop --server“)
@@ -101,19 +99,11 @@ public static class ActionApi
 
     public static bool ViewerAllowed(string? action) => action != null && ViewerMayRun.Contains(action);
 
-    public static bool HubForbidden(string? action) =>
-        action is "code.rotate" or "device.remove" or "device.role" or "remote.set" or "pair.approve" or "pair.deny" or "shutdown" or "bugreport.create"
-        || (action?.StartsWith("node.", StringComparison.Ordinal) ?? false)
-        || (action?.StartsWith("host.", StringComparison.Ordinal) ?? false);
-
     /// <param name="role">Rolle des Aufrufers (AccessRole). null = Admin (Schlüssel aus dem Datenordner, also Fenster/TUI).</param>
     public static async Task<ActionResult> ExecuteAsync(ActionRequest req, ActionContext ctx, IUserPrompt prompt, CancellationToken ct = default, string? role = null)
     {
         var e = ctx.Engine;
         if (!AccessRole.CanWrite(role) && !ViewerAllowed(req.Action)) return ActionResult.Fail(Strings.ViewerOnly);
-        // Ein Hub steuert Server, Tests und Proxy des Nodes, aber nicht dessen Zugang (Code, Geräte, Home/VPN):
-        // sonst könnte ein gekoppelter Rechner sich selbst unentfernbar machen oder andere Geräte aussperren
-        if (AccessRole.Normalize(role) == AccessRole.Hub && HubForbidden(req.Action)) return ActionResult.Fail(Strings.NodeHubNotAllowed);
         if (e.ReadOnly) return ActionResult.Fail(Strings.ReadOnlyEngine);
         ActionResult Ok(string msg = "ok", string? data = null) => new(true, msg, data);
 
@@ -377,38 +367,6 @@ public static class ActionApi
                     q.Start();
                     return Ok(models.Count.ToString(Strings.Inv));
                 }
-                case "eval.distribute":
-                {
-                    // Verteilte Tests (N3): Ids = Modelldateien; jede geht an den PC, auf dem sie liegt und der am
-                    // wenigsten zu tun hat (NodeScheduler). Dieser PC reiht direkt ein, Nodes über ihre eigene Warteschlange.
-                    var q = ctx.Queue;
-                    if (q == null) return ActionResult.Fail("model tests are not available here");
-                    var suiteList = (req.Get("suites") ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-                    if (suiteList.Length == 0) return ActionResult.Fail(Strings.EvalPickSuite);
-                    int repeat = Math.Clamp(req.Number > 0 ? req.Number : 1, 1, 20);
-                    var selfState = StateSnapshot.Parse(StateJson.WriteText(e, null, q, ctx.ServerPort, DateTimeOffset.Now, withHistory: false));
-                    var self = NodeStateJson.Self(selfState, NetAddr.Url("127.0.0.1", ctx.ServerPort));
-                    var plan = NodeScheduler.Assign(req.Ids, self, NodeStateJson.FromRegistry(ctx.Nodes).List);
-                    if (plan.Count == 0) return ActionResult.Fail(Strings.EvalNoModels);
-                    var notes = new List<string>();
-                    foreach (var group in plan.GroupBy(x => x.NodeId))
-                    {
-                        if (group.Key == self.Id)
-                        {
-                            if (req.Flag) q.AllowCode = true;
-                            var mine = q.Models.Where(m => group.Any(x => x.ModelId == m.Id)).ToList();
-                            q.Enqueue(mine, suiteList, repeat);
-                            q.Start();
-                            notes.Add($"{Strings.NodeThisPc}: {mine.Count}");
-                            continue;
-                        }
-                        var inner = new ActionRequest { Action = "eval.enqueue", Number = repeat, Flag = req.Flag, Ids = group.Select(x => x.ModelId).ToList() };
-                        inner.Values["suites"] = string.Join(',', suiteList);
-                        var r = ctx.Nodes == null ? ActionResult.Fail(Strings.NodeUnknown) : await ctx.Nodes.SendAsync(group.Key, inner, ct);
-                        notes.Add($"{group.First().NodeName}: {(r.Ok ? group.Count().ToString(Strings.Inv) : r.Message)}");
-                    }
-                    return Ok(string.Join(" · ", notes), System.Text.Json.JsonSerializer.Serialize(plan));
-                }
                 case "eval.try":
                 {
                     var q = ctx.Queue;
@@ -533,7 +491,7 @@ public static class ActionApi
                 case "bugreport.create":
                 {
                     if (string.IsNullOrWhiteSpace(req.Arg)) return ActionResult.Fail(Strings.BugReportEmpty);
-                    var state = StateJson.WriteText(e, ctx.Access, ctx.Queue, ctx.ServerPort, DateTimeOffset.Now, withHistory: false, withCode: false, nodes: ctx.Nodes);
+                    var state = StateJson.WriteText(e, ctx.Access, ctx.Queue, ctx.ServerPort, DateTimeOffset.Now, withHistory: false, withCode: false);
                     var report = BugReport.Create(e.Paths, req.Arg, state, DateTime.Now, gpu: e.Gpu?.Name);
                     AppLog.Write($"bug report: {report.ZipPath}");
                     return Ok(report.Summary, report.ZipPath + "\n" + report.IssueUrl + "\n" + string.Join("|", report.Entries));
@@ -563,44 +521,6 @@ public static class ActionApi
                 {
                     if (ctx.Access == null) return ActionResult.Fail("not available");
                     return ctx.Access.Deny(req.Arg) ? Ok() : ActionResult.Fail(Strings.PairApproveUnknown);
-                }
-                // ── Nodes (docs/nodes.md) ──
-                case "node.search":
-                {
-                    var found = await NodeDiscovery.SearchAsync(TimeSpan.FromSeconds(2), ct);
-                    var paired = ctx.Nodes?.Nodes.Select(n => n.Entry.Url).ToHashSet(StringComparer.OrdinalIgnoreCase) ?? new();
-                    var list = found.Where(f => !f.Self).Select(f => new { f.Name, f.Url, f.Remote, paired = paired.Contains(f.Url) }).ToList();
-                    return Ok(list.Count == 0 ? Strings.NodeSearchNone : Strings.NodeFound(list.Count), System.Text.Json.JsonSerializer.Serialize(list));
-                }
-                case "node.pair":
-                {
-                    // Arg = Adresse, Arg2 = Code des Nodes (leer: Netflix-Weg, der Hub zeigt einen Code)
-                    if (ctx.Nodes == null) return ActionResult.Fail("not available");
-                    return string.IsNullOrWhiteSpace(req.Arg2)
-                        ? await ctx.Nodes.StartPairAsync(req.Arg, ct)
-                        : await ctx.Nodes.PairWithCodeAsync(req.Arg, req.Arg2, ct);
-                }
-                case "node.pair.cancel":
-                    ctx.Nodes?.CancelPairing();
-                    return Ok();
-                case "node.remove":
-                    if (ctx.Nodes == null) return ActionResult.Fail("not available");
-                    return await ctx.Nodes.RemoveAsync(req.Arg, ct) ? Ok() : ActionResult.Fail(Strings.NodeUnknown);
-                case "node.rename":
-                    if (ctx.Nodes == null) return ActionResult.Fail("not available");
-                    return ctx.Nodes.Rename(req.Arg, req.Arg2) ? Ok() : ActionResult.Fail(Strings.NodeUnknown);
-                case "node.do":
-                {
-                    // Eine Aktion auf dem Node: Arg = Node, Name = Aktion, Arg2/Flag/Number/Ids/Values werden durchgereicht
-                    if (ctx.Nodes == null) return ActionResult.Fail("not available");
-                    if (string.IsNullOrWhiteSpace(req.Name) || HubForbidden(req.Name)) return ActionResult.Fail(Strings.NodeHubNotAllowed);
-                    var inner = new ActionRequest
-                    {
-                        Action = req.Name!, Arg = req.Arg2, Arg2 = req.Values.TryGetValue("arg2", out var a2) ? a2 : null,
-                        Flag = req.Flag, Number = req.Number, Ids = req.Ids, Secret = req.Secret,
-                    };
-                    foreach (var kv in req.Values.Where(kv => kv.Key != "arg2")) inner.Values[kv.Key] = kv.Value;
-                    return await ctx.Nodes.SendAsync(req.Arg, inner, ct);
                 }
 
                 case "device.remove":

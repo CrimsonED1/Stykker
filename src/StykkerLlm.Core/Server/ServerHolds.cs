@@ -1,8 +1,8 @@
 namespace StykkerLlm.Core;
 
 // Der Server lebt nur, solange ihn jemand braucht: ein offenes Fenster (StykkerUI), eine TUI, eine offene Webseite
-// (Blazor-Verbindung) oder ein Hub, der diesen PC als Node abfragt. Fenster und TUI melden sich regelmäßig
-// (POST /api/hold, Mietdauer Lease); Webseiten zählen über ihre Verbindung; Hubs über ihre Anfragen.
+// (Blazor-Verbindung). Fenster und TUI melden sich regelmäßig
+// (POST /api/hold, Mietdauer Lease); Webseiten zählen über ihre Verbindung.
 // Ist niemand mehr da und läuft keine Arbeit (Modelltest, Benchmark), beendet sich der Server nach Grace –
 // nach einem ausdrücklichen Abmelden des Letzten schon nach QuickGrace. Ein frisch gestarteter Server wartet
 // StartGrace lang auf den ersten Halter (das Fenster startet ihn und meldet sich danach erst an).
@@ -22,7 +22,7 @@ public sealed class ServerHolds
 
     public ServerHolds(DateTime started) => _started = started;
 
-    // Fenster/TUI: "ui:<id>", "tui:<id>"; Hubs: "hub:<adresse>"
+    // Fenster/TUI: "ui:<id>", "tui:<id>"
     public void Touch(string id, DateTime now)
     {
         if (string.IsNullOrWhiteSpace(id)) return;
@@ -46,7 +46,7 @@ public sealed class ServerHolds
         }
     }
 
-    // Wer gerade hält (für Status und Log): "ui", "tui", "hub", "web" mit Anzahl
+    // Wer gerade hält (für Status und Log): "ui", "tui", "web" mit Anzahl
     public string Describe(DateTime now)
     {
         lock (_gate)

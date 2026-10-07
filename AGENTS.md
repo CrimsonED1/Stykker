@@ -6,8 +6,8 @@ Read it before changing anything. `CLAUDE.md` and `QWEN.md` only point here.
 ## What it is
 
 StykkerLLM watches and controls local LLM servers (llama.cpp and forks, Ollama, LM Studio, vLLM): tokens/s, VRAM,
-requests, recordings, benchmarks, model tests, a proxy that serves every model under one URL, and several PCs paired
-as nodes. **The server is the core.** Every user interface is a client of it:
+requests, recordings, benchmarks, model tests, a proxy that serves every model under one URL, and model hosts (other PCs
+that only run models). **The server is the core.** Every user interface is a client of it:
 
 | Program | Project | What it is |
 |---|---|---|
@@ -15,7 +15,7 @@ as nodes. **The server is the core.** Every user interface is a client of it:
 | `StykkerUI.exe` | `src/StykkerLlm.UI` | A window around the web UI (Photino: WebView2 / WKWebView / WebKitGTK), draws without GPU by default |
 | `StykkerHost.exe` | `src/StykkerLlm.Host` | Model host without UI (tray only): measures this PC, later runs models for a server (`docs/plan-hosts-gateway.md`) |
 | `stykker.exe` | `src/StykkerLlm.Cli` | Terminal **display** (read-only, keys only) and `status`, `web`, `stop`, `bugreport` |
-| – | `src/StykkerLlm.Core` | All logic, UI-free and platform-free. Strings, state JSON, actions, eval, proxy, nodes |
+| – | `src/StykkerLlm.Core` | All logic, UI-free and platform-free. Strings, state JSON, actions, eval, proxy, model hosts |
 | – | `src/StykkerLlm.Platform.Windows` | `IPlatform` for Windows (processes, ports, NVML, DPAPI, tray icon) |
 | – | `tests/StykkerLlm.Tests` | MSTest, no network, no real servers (fakes and the simulator) |
 
@@ -45,7 +45,7 @@ dotnet test tests/StykkerLlm.Tests -c Release  # all green (2 tray tests skip wi
   (`#if DEBUG`); a release has no options. The server keeps `--data-dir`/`--port` because the window starts it with them.
 - Logs: one per program (`StykkerLLM-Server.log`, `StykkerUI.log`, `stykker.log`) in `logs/` next to the exe when that folder
   is writable, otherwise in the data folder's `logs/` (`Core/AppLog.cs`). Write important events with `AppLog.Write`.
-- Server lifetime: the server runs only while a StykkerUI window, an interactive `stykker`, a web page or a hub needs it
+- Server lifetime: the server runs only while a StykkerUI window, an interactive `stykker`, a web page needs it
   (`Core/Server/ServerHolds.cs`, `POST/DELETE /api/hold`). `--stay` or the setting *Keep the server running* keep it up.
   When you start a server by hand for testing, pass `--stay`, or it ends about 75 s after start without a client.
 - Bug report: `Core/BugReport.cs` (zip in `bug-reports/`, secrets never included, redaction), action `bugreport.create`,
@@ -65,13 +65,13 @@ dotnet test tests/StykkerLlm.Tests -c Release  # all green (2 tray tests skip wi
 | change a web page | `Server/Components/Pages/*.razor`, layout in `Components/Layout/MainLayout.razor`, styles in `wwwroot/app.css` (theme colors come from `Core/ThemeCatalog.cs`) |
 | change the terminal display | `Cli/Tui/TuiApp.cs` (frame, keys, panels), `Cli/Tui/StateSource.cs` (server / simulator), commands in `Cli/Program.cs` |
 | access, pairing, roles | `Core/Server/AccessControl.cs` (6-digit codes, devices, roles), `Server/AccessGate.cs` (HTTP entry) |
-| nodes (several PCs) | `Core/Server/Node*.cs`, page `Nodes.razor`, `docs/nodes.md` |
+| model hosts (several PCs) | `Core/Host/*.cs`, `src/StykkerLlm.Host`, page `Hosts.razor`, `docs/hosts.md` |
 | model tests (eval) | `Core/Eval/` – suites are JSON (`suite-*.json`, embedded), graders in `EvalGrader.cs`, queue in `EvalQueue.cs` |
 | prompt tester with tools | `Core/PromptHarness.cs`, `Core/PromptTools.cs`, page `PromptPage.razor` |
 | proxy (one URL for all models) | `Core/ProxyManager.cs`, `Core/RequestProxy.cs`, `Core/ProxyRouter.cs` |
 | fake servers for tests and screenshots | `Core/Simulation/` (`SimWorld`, `SimHandler`) |
 
-Architecture notes: `docs/architecture.md`. UI rules: `docs/ui.md`. Nodes today: `docs/nodes.md`; the next step (model hosts, gateway): `docs/plan-hosts-gateway.md`.
+Architecture notes: `docs/architecture.md`. UI rules: `docs/ui.md`. Model hosts: `docs/hosts.md`; plan and next steps (gateway): `docs/plan-hosts-gateway.md`.
 
 ## Rules
 
@@ -91,14 +91,14 @@ Architecture notes: `docs/architecture.md`. UI rules: `docs/ui.md`. Nodes today:
 
 ## Ports and files
 
-- 8078 web/API, 17500 proxy, 17501 UDP node discovery.
-- Data folder: `settings.json`, `access.dat` (devices, code; DPAPI on Windows), `server.key`, `nodes.dat`, `eval-*.json`,
+- 8078 web/API, 17500 proxy, 17501 UDP server discovery (used by StykkerHost's pairing page).
+- Data folder: `settings.json`, `access.dat` (devices, code; DPAPI on Windows), `server.key`, `hosts.dat`, `eval-*.json`,
   `eval-results/`, recordings, logs.
 
 ## Open work
 
 Tracked as GitHub issues. Larger known gaps: Linux platform (`Core/LinuxPlatform.cs.wip`, not built yet),
-real two-PC test of nodes, big-model runs of the eval suites. The web UI runs inside StykkerUI without GPU: keep
+real two-PC test of model hosts, big-model runs of the eval suites. The web UI runs inside StykkerUI without GPU: keep
 endless animations, blur and large shadows out of `html.shell` (see the end of `app.css`), they cost CPU on every tick.
 StykkerUI crashed twice in Photino's native window setup (`Photino_ctor`, heap corruption) during testing and could
 not be reproduced since; `StykkerUI.log` and the dumps in `%LOCALAPPDATA%\CrashDumps` help if it shows up again. Never call
