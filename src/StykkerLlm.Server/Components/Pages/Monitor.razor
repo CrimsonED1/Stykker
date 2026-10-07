@@ -5,6 +5,7 @@
 @inject WebActions Web
 @inject WebPrompt Prompt
 @inject NavigationManager Nav
+@inject IJSRuntime JS
 
 @* Monitor wie im Fenster (docs/ui.md, Bereiche 2–8): Proxy, Saved, Running, GPU, System, Recent requests, History *@
 
@@ -238,74 +239,112 @@
 </div>
 
 <div id="proxy" class="mon-proxy">
-<div class="row" style="margin-bottom:12px">
-    <button class="@(px.Running ? "good" : "")" disabled="@ro" title="@RoTip" @onclick="ToggleProxy">@(px.Running ? Strings.BtnProxySwitchOn(px.Port) : Strings.BtnProxySwitchOff)</button>
-    <span class="small" style="color:@(px.Running ? "var(--good)" : "var(--muted)")">@Strings.ProxyBar(px.Running, px.Port, px.TargetName(), px.BindLan)</span>
-    @if (_flash.Length > 0) { <span class="small" style="margin-left:auto;color:var(--good)">@_flash</span> }
-</div>
+@* Proxy-Panel (U9): Kopf mit Schalter und Adresse, Ziel „stykker“, LAN, Quellen als kurze Listen; Formulare erst auf
+   Klick, lange Hinweise als Tooltip am Info-Symbol *@
+@{ var models = px.Choices(); var remotes = px.RemoteStates(); var provs = Providers; var baseUrl = ProxyBaseUrl(px); }
+<h3 class="sec">@Strings.PxTitle</h3>
+<div class="card pxp @(px.Running ? "on" : "")">
+    <div class="pxp-hd">
+        <span class="lamp @(px.Running ? "on" : "")"></span>
+        <b>@(px.Running ? Strings.PxRunning : Strings.PxStopped)</b>
+        <button class="switch @(px.Running ? "on" : "")" role="switch" aria-checked="@(px.Running ? "true" : "false")" aria-label="@Strings.PxTitle" disabled="@(ro || !CanWrite)" @onclick="ToggleProxy"><i></i></button>
+        @if (px.Running)
+        {
+            <code class="pxp-url" title="@Strings.ProxyBar(px.Running, px.Port, px.TargetName(), px.BindLan)">@baseUrl</code>
+            <button class="ib quiet" title="@Strings.PxCopy" aria-label="@Strings.PxCopy" @onclick="() => Copy(baseUrl)"><Icon Name="@(_copied ? "r-ok" : "file")" /></button>
+        }
+    </div>
+    @if (_flash.Length > 0) { <div class="small pxp-flash">@_flash</div> }
 
-<details class="card" style="margin-bottom:12px">
-    <summary class="small">@Strings.BtnProxySettings</summary>
-    <div class="row" style="margin:8px 0">
-        <span class="small muted">@Strings.ProxyServeLabel</span>
-        <select disabled="@ro" value="@ServeValue" @onchange="OnServeChanged">
+    <div class="pxp-row">
+        <span class="pxp-l">@Strings.PxAnswers <span class="tip" title="@Strings.ProxySwitchHint"><Icon Name="info" /></span></span>
+        <select disabled="@(ro || !CanWrite)" value="@ServeValue" @onchange="OnServeChanged">
             <option value="">@Strings.ProxyTargetAuto</option>
-            @foreach (var c in px.Choices()) { <option value="@c.Value">@c.Display</option> }
+            @foreach (var c in models) { <option value="@c.Value">@c.Display</option> }
         </select>
     </div>
-    <div class="small muted">@Strings.ProxySwitchHint</div>
-    <label class="row" style="margin:8px 0"><input type="checkbox" checked="@px.BindLan" disabled="@ro" @onchange="OnLanChanged" /> <span class="small">@Strings.ProxyLanLabel</span></label>
-    <div class="small muted">@Strings.ProxyLanHint</div>
-    <div class="row" style="margin:8px 0">
-        <span class="small muted">@Strings.ProxyRemoteLabel</span>
-        <input placeholder="@Strings.ProxyRemoteNameLabel" @bind="_rName" @bind:event="oninput" disabled="@ro" />
-        <input placeholder="@Strings.ProxyRemoteUrlLabel" @bind="_rUrl" @bind:event="oninput" disabled="@ro" />
-        <button class="good" disabled="@ro" @onclick="AddRemote">@Strings.BtnProxyAddRemote</button>
+    <div class="pxp-row">
+        <span class="pxp-l">@Strings.PxLan <span class="tip warnc" title="@Strings.ProxyLanHint"><Icon Name="info" /></span></span>
+        <button class="switch sm @(px.BindLan ? "on warn" : "")" role="switch" aria-checked="@(px.BindLan ? "true" : "false")" aria-label="@Strings.PxLan" disabled="@(ro || !CanWrite)" @onclick="() => SetLan(!px.BindLan)"><i></i></button>
+        <span class="muted small">@(px.BindLan ? Strings.PxLanOn : Strings.PxLanOff)</span>
     </div>
-    @if (px.Remotes.Count == 0) { <span class="muted small">@Strings.ProxyRemoteEmpty</span> }
-    else
-    {
-        <table>
-            @foreach (var r in px.Remotes)
-            {
-                <tr><td>@r.Name</td><td class="muted small">@r.Url</td><td class="num"><button class="bad" disabled="@ro" @onclick="() => RemoveRemote(r.Url)">@Strings.BtnProxyRemoveRemote</button></td></tr>
-            }
-        </table>
-    }
-    <div class="small muted">@Strings.ProxyRemoteHint</div>
 
-    @* Cloud-Anbieter: erst mit Name, Basis-URL und Schlüssel – erst dann fragt der Proxy den Anbieter ab (Nr. 46) *@
-    <div class="row" style="margin:8px 0">
-        <span class="small muted">@Strings.ProxyProviderLabel</span>
-        <input placeholder="@Strings.ProxyProviderNameLabel" @bind="_pName" @bind:event="oninput" disabled="@ro" />
-        <input placeholder="@Strings.ProxyProviderUrlLabel" @bind="_pUrl" @bind:event="oninput" disabled="@ro" />
-        <input type="password" placeholder="@Strings.ProxyProviderKeyLabel" @bind="_pKey" @bind:event="oninput" disabled="@ro" />
-        <button class="good" disabled="@ro" @onclick="AddProvider">@Strings.BtnProxyAddProvider</button>
-    </div>
-    @if (Providers.Count == 0) { <span class="muted small">@Strings.ProxyProviderEmpty</span> }
-    else
-    {
-        <table>
-            @foreach (var p in Providers)
+    <div class="subh">@Strings.PxSources</div>
+    <div class="pxs-list">
+        <div class="pxs-item">
+            <Icon Name="host" /><span class="n">@Strings.PxThisPc</span>
+            <span class="muted small">@Strings.PxModels(models.Count(c => !c.Cloud && !c.Value.StartsWith("remote:", StringComparison.Ordinal)))</span>
+        </div>
+        <div class="pxs-grp">
+            <span>@Strings.PxMachines <span class="tip" title="@Strings.ProxyRemoteHint"><Icon Name="info" /></span></span>
+            @if (CanWrite && !ro && _add != "remote") { <button class="ib quiet" title="@Strings.PxAdd" aria-label="@Strings.PxAdd" @onclick='() => _add = "remote"'>+ @Strings.PxAdd</button> }
+        </div>
+        @if (remotes.Count == 0 && _add != "remote") { <div class="muted small pxs-none">@Strings.PxNoMachines</div> }
+        @foreach (var r in remotes)
+        {
+            var rr = r;
+            <div class="pxs-item">
+                <span class="lamp @(r.Ready ? "on" : "bad")" title="@(r.Ready ? Strings.PxReachable : Strings.PxUnreachable)"></span>
+                <span class="n" title="@r.Url">@r.Name</span>
+                <span class="muted small">@Strings.PxModels(r.Models.Length)</span>
+                @if (CanWrite && !ro) { <button class="ib quiet danger" title="@Strings.PxRemove" aria-label="@Strings.PxRemove" @onclick="() => RemoveRemote(rr.Url)"><Icon Name="trash" /></button> }
+            </div>
+        }
+        @if (_add == "remote")
+        {
+            <div class="pxs-form">
+                <input placeholder="@Strings.ProxyRemoteNameLabel" @bind="_rName" @bind:event="oninput" />
+                <input placeholder="@Strings.ProxyRemoteUrlLabel" @bind="_rUrl" @bind:event="oninput" />
+                <div class="row"><button class="primary" @onclick="AddRemote">@Strings.PxAdd</button><button class="ghost" @onclick="() => _add = null">@Strings.PxCancel</button></div>
+            </div>
+        }
+
+        <div class="pxs-grp">
+            <span>@Strings.PxCloud <span class="tip" title="@Strings.ProxyProviderHint"><Icon Name="info" /></span></span>
+            @if (CanWrite && !ro && _add != "provider") { <button class="ib quiet" title="@Strings.PxAdd" aria-label="@Strings.PxAdd" @onclick='() => _add = "provider"'>+ @Strings.PxAdd</button> }
+        </div>
+        @if (provs.Count == 0 && _add != "provider") { <div class="muted small pxs-none">@Strings.PxNoCloud</div> }
+        @foreach (var pv in provs)
+        {
+            var pp = pv;
+            <div class="pxs-item">
+                <span class="lamp @(pv.Ready ? "on" : pv.HasKey ? "bad" : "")" title="@(pv.Error.Length > 0 ? pv.Error : pv.Ready ? Strings.PxReachable : Strings.PxUnreachable)"></span>
+                <span class="n" title="@pv.Url">@pv.Name</span>
+                <span class="muted small" title="@string.Join(", ", pv.Models)">@Strings.PxModels(pv.Models.Length)</span>
+                <span class="small @(pv.HasKey ? "muted" : "warnc")"><Icon Name="lock" Class="sm" /> @(pv.HasKey ? Strings.PxKeyStored : Strings.PxKeyMissing)</span>
+                @if (CanWrite && !ro)
+                {
+                    <button class="ib quiet" title="@Strings.PxSetKey" aria-label="@Strings.PxSetKey" @onclick="() => _keyFor = pp.Url"><Icon Name="edit" /></button>
+                    <button class="ib quiet danger" title="@Strings.PxRemove" aria-label="@Strings.PxRemove" @onclick="() => RemoveProvider(pp.Url)"><Icon Name="trash" /></button>
+                }
+            </div>
+            @if (_keyFor == pv.Url)
             {
-                <tr>
-                    <td>@p.Name<span class="muted small">@p.Url</span></td>
-                    <td class="small">@(p.Ready ? Strings.ProxyProviderModels(p.Models.Length) : Strings.ProxyProviderModelsNone)
-                        @if (p.Models.Length > 0) { <div class="muted small">@string.Join(", ", p.Models)</div> }
-                        @if (p.Error.Length > 0) { <div class="small" style="color:var(--bad)">@p.Error</div> }
-                    </td>
-                    <td class="small">@(p.HasKey ? Strings.ProxyProviderKeyStored : Strings.ProxyProviderKeyMissingShort)</td>
-                    <td class="num" style="white-space:nowrap">
-                        <input type="password" placeholder="@Strings.ProxyProviderKeyLabel" value="@KeyFor(p.Url)" @oninput="e => OnKeyInput(p.Url, e)" disabled="@ro" />
-                        <button disabled="@ro" @onclick="() => SaveKey(p.Url)">@Strings.BtnProxyProviderKey</button>
-                        <button class="bad" disabled="@ro" @onclick="() => RemoveProvider(p.Url)">@Strings.BtnProxyRemoveRemote</button>
-                    </td>
-                </tr>
+                <div class="pxs-form">
+                    <input type="password" placeholder="@Strings.ProxyProviderKeyLabel" value="@KeyFor(pv.Url)" @oninput="e => OnKeyInput(pp.Url, e)" autocomplete="off" />
+                    <div class="row"><button class="primary" @onclick="() => { SaveKey(pp.Url); _keyFor = null; }">@Strings.BtnProxyProviderKey</button><button class="ghost" @onclick="() => _keyFor = null">@Strings.PxCancel</button></div>
+                </div>
             }
-        </table>
+        }
+        @if (_add == "provider")
+        {
+            <div class="pxs-form">
+                <input placeholder="@Strings.ProxyProviderNameLabel" @bind="_pName" @bind:event="oninput" />
+                <input placeholder="@Strings.ProxyProviderUrlLabel" @bind="_pUrl" @bind:event="oninput" />
+                <input type="password" placeholder="@Strings.ProxyProviderKeyLabel" @bind="_pKey" @bind:event="oninput" autocomplete="off" />
+                <div class="row"><button class="primary" @onclick="AddProviderForm">@Strings.PxAdd</button><button class="ghost" @onclick="() => _add = null">@Strings.PxCancel</button></div>
+            </div>
+        }
+    </div>
+
+    @if (models.Count > 0)
+    {
+        <details class="pxp-models">
+            <summary>@Strings.PxModelList(models.Count)</summary>
+            <ul>@foreach (var c in models) { <li title="@c.Value">@c.Display</li> }</ul>
+        </details>
     }
-    <div class="small muted">@Strings.ProxyProviderHint</div>
-</details>
+</div>
 </div>
 </aside>
 </div>
@@ -468,6 +507,33 @@
     private Task SetIdle(Profile p, int minutes) =>
         Web.RunAsync(new ActionRequest { Action = "profile.idleunload", Arg = p.Id.ToString("N"), Number = minutes });
 
+    // Proxy-Panel (U9): welches Formular offen ist ("remote", "provider" oder keins), für welchen Anbieter der Schlüssel
+    private string? _add, _keyFor;
+    private bool _copied;
+
+    // Adresse für Clients: im LAN die erste Netzadresse dieses PCs, sonst 127.0.0.1
+    private static string ProxyBaseUrl(ProxyManager px)
+    {
+        var host = px.BindLan ? NetInfo.Ipv4Addresses().FirstOrDefault() ?? "127.0.0.1" : "127.0.0.1";
+        return $"http://{host}:{px.Port.ToString(CultureInfo.InvariantCulture)}/v1";
+    }
+
+    private async Task Copy(string text)
+    {
+        try { await JS.InvokeVoidAsync("navigator.clipboard.writeText", text); _copied = true; }
+        catch (JSException) { _flash = text; }
+        catch (InvalidOperationException) { }
+        _ = Task.Delay(1500).ContinueWith(_ => InvokeAsync(() => { _copied = false; StateHasChanged(); }));
+    }
+
+    private void SetLan(bool on) { if (CanWrite) Host.Engine.Proxies.SetBindLan(on); }
+
+    private void AddProviderForm()
+    {
+        AddProvider();
+        if (_pName.Length == 0 && _pUrl.Length == 0) _add = null;   // angenommen: Felder sind geleert
+    }
+
     private bool Match(HistoryEntry h) => Library.Matches(h, _q);
 
     // Alles, was hier direkt an Engine, Proxy oder Library geht (nicht über die Aktionen), braucht dieselbe
@@ -485,13 +551,14 @@
 
     private void OnServeChanged(ChangeEventArgs a) { if (CanWrite) Host.Engine.Proxies.SetChoiceValue(a.Value?.ToString() ?? ""); }
 
-    private void OnLanChanged(ChangeEventArgs a) { if (CanWrite) Host.Engine.Proxies.SetBindLan(a.Value?.ToString() == "true"); }
 
     private void AddRemote()
     {
         if (!CanWrite) return;
+        if (string.IsNullOrWhiteSpace(_rUrl)) return;
         Host.Engine.Proxies.AddRemote(_rName, _rUrl);
         _rName = _rUrl = "";
+        _add = null;
     }
 
     private void RemoveRemote(string url) { if (CanWrite) Host.Engine.Proxies.RemoveRemote(url); }

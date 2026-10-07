@@ -237,6 +237,16 @@ public sealed class ProxyManager : IDisposable
 
     // Die Anbieter für die Anzeige: Name, URL, ob ein Schlüssel hinterlegt ist, ob die Modelle kamen, und der letzte Fehler.
     // Der Schlüssel selbst steht nicht in dieser Liste.
+    // Die angehängten Stykker-Rechner mit ihrem letzten Stand (erreichbar, angebotene Modelle)
+    public IReadOnlyList<(string Name, string Url, bool Ready, string[] Models)> RemoteStates()
+        => _settings.RemoteStykkers.Select(r =>
+        {
+            var url = RemoteKey(r);
+            RemoteState? st;
+            lock (_remoteLock) st = _remote.TryGetValue(url, out var cur) ? cur : null;
+            return (string.IsNullOrWhiteSpace(r.Name) ? r.Url : r.Name, url, st?.Ready == true, st?.Models ?? Array.Empty<string>());
+        }).ToList();
+
     public IReadOnlyList<(string Name, string Url, bool HasKey, bool Ready, string[] Models, string Error)> ProviderStates()
         => _settings.ProxyProviders.Select(p =>
         {

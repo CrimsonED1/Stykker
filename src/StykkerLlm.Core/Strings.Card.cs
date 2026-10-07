@@ -32,6 +32,15 @@ public static partial class Strings
     public static string PfForecastTip(double need, double free, bool measured) =>
         $"Needs about {N1(need)} GB VRAM ({(measured ? "measured last run" : "estimated from the model file")}), {N1(free)} GB free now" +
         (need > free ? " – it may not fit, or spill into shared RAM." : ".");
+    // Proxy-Panel (U9)
+    public const string PxTitle = "Stykker-Proxy", PxOn = "on", PxOff = "off", PxCopy = "Copy address", PxCopied = "Copied";
+    public const string PxAnswers = "Answers as \"stykker\"", PxLan = "Reachable in the network", PxLanOn = "LAN", PxLanOff = "this PC only";
+    public const string PxSources = "Sources", PxThisPc = "This PC", PxMachines = "Other Stykker machines", PxCloud = "Cloud providers";
+    public static string PxModels(int n) => n == 1 ? "1 model" : $"{n} models";
+    public const string PxAdd = "Add", PxCancel = "Cancel", PxSetKey = "Set key", PxRemove = "Remove", PxKeyStored = "key stored", PxKeyMissing = "no key";
+    public const string PxReachable = "reachable", PxUnreachable = "not reachable", PxNoMachines = "none attached", PxNoCloud = "none added";
+    public static string PxModelList(int n) => $"{n} models under /v1/models";
+    public const string PxRunning = "running", PxStopped = "stopped";
     public static string StateText(string state) => state switch
     {
         "gen" => CardStateGen, "read" => CardStateRead, "load" => CardStateLoad, "off" => CardStateOff, _ => CardStateIdle,
