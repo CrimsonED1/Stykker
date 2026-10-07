@@ -30,10 +30,12 @@ public sealed record ThemeInfo
     public string Good { get; init; } = "";          // läuft / fertig
     public string Warn { get; init; } = "";          // lädt / knapp
     public string Bad { get; init; } = "";           // Fehler / Stop
+    public double Glow { get; init; } = 1;           // Leuchten (Fenster: Theme.Glow, 0 = keins): Text, Punkte, Balken, Kurve
+    public int Sheen { get; init; }                  // Glanz oben auf der Karte (Fenster: SheenAlpha, 0–255)
 
     public static ThemeInfo CyberGrid => new()
     {
-        Name = "Cyber Grid", Slug = "cyber-grid", Kind = "cyber", Radius = 8,
+        Name = "Cyber Grid", Slug = "cyber-grid", Kind = "cyber", Radius = 8, Glow = 0.8, Sheen = 12,
         Bg = "#030608", BgTop = "#030608", BgBottom = "#04090c",
         Card = "#0a1620", CardTop = "#050a0dd1", CardBottom = "#040809d6",
         Line = "#16303d", Border = "#1fb5d48c", TopLine = "#bff6ff96", Track = "#2bb8d622",
@@ -43,7 +45,7 @@ public sealed record ThemeInfo
 
     public static ThemeInfo SpaceGlass => new()
     {
-        Name = "Space Glass", Slug = "space-glass", Kind = "space", Radius = 12,
+        Name = "Space Glass", Slug = "space-glass", Kind = "space", Radius = 12, Glow = 1, Sheen = 26,
         Bg = "#060916", BgTop = "#0a1026", BgBottom = "#0e0820",
         Card = "#111a33", CardTop = "#96b4ff22", CardBottom = "#0e785a0e",
         Line = "#24325a", Border = "#4fe3ff78", TopLine = "#ffffff3c", Track = "#ffffff1c",
@@ -53,7 +55,7 @@ public sealed record ThemeInfo
 
     public static ThemeInfo Obsidian => new()
     {
-        Name = "Obsidian", Slug = "obsidian", Kind = "flat", Radius = 8,
+        Name = "Obsidian", Slug = "obsidian", Kind = "flat", Radius = 8, Glow = 0.12, Sheen = 0,
         Bg = "#0a0c0f", BgTop = "#0a0c0f", BgBottom = "#0a0c0f",
         Card = "#14161b", CardTop = "#12151af5", CardBottom = "#12151af5",
         Line = "#242932", Border = "#22272e", TopLine = "#ffffff0e", Track = "#ffffff14",
@@ -63,7 +65,7 @@ public sealed record ThemeInfo
 
     public static ThemeInfo DeepSea => new()
     {
-        Name = "Deep Sea", Slug = "deep-sea", Kind = "deep", Radius = 12,
+        Name = "Deep Sea", Slug = "deep-sea", Kind = "deep", Radius = 12, Glow = 0.6, Sheen = 10,
         Bg = "#05070d", BgTop = "#070b15", BgBottom = "#05070d",
         Card = "#0c1320", CardTop = "#0c1320ee", CardBottom = "#0a0f19ee",
         Line = "#1b2b40", Border = "#223350", TopLine = "#aad2ff1a", Track = "#96beff18",
@@ -73,7 +75,7 @@ public sealed record ThemeInfo
 
     public static ThemeInfo Phosphor => new()
     {
-        Name = "Phosphor", Slug = "phosphor", Kind = "phosphor", Radius = 3,
+        Name = "Phosphor", Slug = "phosphor", Kind = "phosphor", Radius = 3, Glow = 0.5, Sheen = 0,
         Bg = "#040605", BgTop = "#040605", BgBottom = "#050906",
         Card = "#08100a", CardTop = "#08100af2", CardBottom = "#08100af2",
         Line = "#12301c", Border = "#173020", TopLine = "#00000000", Track = "#5cff9a18",
@@ -106,6 +108,8 @@ public sealed record ThemeInfo
             "--acc-rgb:" + Rgb(Accent), "--second-rgb:" + Rgb(Second), "--good-rgb:" + Rgb(Good),
             "--warn-rgb:" + Rgb(Warn), "--bad-rgb:" + Rgb(Bad),
             "--font:" + (LowerLabels ? MonoStack : UiStack), "--font-num:" + MonoStack,
+            "--glow:" + Glow.ToString("0.##", CultureInfo.InvariantCulture),
+            "--sheen:" + (Sheen / 255.0).ToString("0.###", CultureInfo.InvariantCulture),
         };
         return ":root{" + string.Join(';', vars) + "}";
     }

@@ -19,7 +19,6 @@ if (args.Contains("--help") || args.Contains("-h"))
           --no-browser          do not open a browser on start
           --no-tray             no tray icon (the window starts the server this way: it has an icon itself)
           --stay                keep running when no window, terminal or web page is open (also a setting)
-          --sim                 simulated servers instead of real ones (demo, screenshots; nothing real is touched)
           --platform basic      no system access (like Linux): no auto-detection, no GPU/system values.
                                 Useful to try that mode on Windows.
           --help                this text
@@ -66,7 +65,11 @@ builder.Logging.SetMinimumLevel(LogLevel.Warning);
 builder.Logging.AddProvider(new AppLogProvider());
 builder.Services.AddSingleton(paths);
 // --sim: simulierte Server (eigene Welt, gleicher Datenordner); sonst die echte Plattform
-var sim = args.Contains("--sim") ? new SimHost(SimServerSpec.Defaults(), dataDir: paths.Root) : null;
+#if DEBUG
+var sim = args.Contains("--sim") ? new SimHost(SimServerSpec.Defaults(), dataDir: paths.Root) : null;   // nur Debug
+#else
+SimHost? sim = null;
+#endif
 sim?.World.Start();
 builder.Services.AddSingleton<EngineHost>(sp => new EngineHost(paths, platform, sim));
 builder.Services.AddSingleton(sp => new EvalQueue(paths));

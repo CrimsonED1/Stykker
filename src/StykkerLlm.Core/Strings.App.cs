@@ -28,5 +28,27 @@ public static partial class Strings
     public const string BugReportEmpty = "Please describe the problem first.";
     public static string BugReportSummary(string zip, int files) => $"Report saved: {zip} ({files} files)";
     public const string BugReportFiles = "Contents";
-    public const string TuiBugReport = "report a bug: zip with logs, settings and state (no secrets) + a GitHub issue link";
+
+    // ── Anzeige im Terminal (stykker): nur ansehen, gesteuert wird im Web ──
+    public const string TuiWebLabel = "Web", TuiNetwork = "network";
+    public const string TuiCtrlCAgain = "Press Ctrl+C again to quit";
+    public const string TuiWebOpened = "Web interface opened in the browser (signed in)";
+    public const string TuiNoGpu = "not available", TuiScanning = "scanning …";
+    public const string TuiKeysTitle = "Keys";
+    public const string TuiKeyWeb = "open the web interface in the browser (signed in) – everything is controlled there";
+    public const string TuiKeyCode = "access code and QR code for the phone";
+    public const string TuiKeyRecent = "recent requests";
+    public const string TuiKeyMemory = "VRAM and RAM per program";
+    public const string TuiKeyDetails = "pick a server and show its details";
+    public const string TuiKeyClose = "close the panel (quits when none is open)";
+    public const string TuiKeyQuit = "quit (the server ends when no window or web page needs it)";
+    public const string TuiWebOnly = "Start, stop, model tests, benchmarks, recordings, nodes and settings are in the web interface.";
+    public const string RecentTitle = "Recent requests", TuiMemoryTitle = "Memory per program", TuiDetailsTitle = "Details";
+    public const string TuiNoCode = "No access code (simulation).";
+    public const string TuiCodeLabel = "Code";
+    public const string TuiCodePhone = "Scan the QR code with the phone, or type the six digits on the pairing page.";
+    public const string TuiRemoteInWeb = "Switch Home/VPN on in the web interface (☰ → Phone access) to use the phone.";
+    public const string TuiModel = "Model", TuiBackend = "Backend", TuiMemory = "Memory", TuiModels = "Loaded";
+    public const string TuiNotRunning = "The StykkerLLM server is not running. Start it with: stykker (display), stykker web (browser) or StykkerUI.";
+    public const string TuiStopped = "The server is shutting down.";
 }

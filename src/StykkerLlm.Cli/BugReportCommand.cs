@@ -12,23 +12,22 @@ public static class BugReportCommand
         if (text.Length == 0)
         {
             Out.Error(Strings.BugReportEmpty + "  (stykker bugreport <what happened>)");
-            return Commands.Usage;
+            return Program.Usage;
         }
         string zip, url;
-        using (var client = ServerCommand.TryConnect(a))
+        using (var client = await ServerLink.ConnectAsync(a, ct).ConfigureAwait(false))
         {
             if (client?.State != null)
             {
                 var r = await client.SendAsync("bugreport.create", text, ct: ct).ConfigureAwait(false);
-                if (!r.Ok || r.Data == null) { Out.Error(r.Message); return Commands.Error; }
+                if (!r.Ok || r.Data == null) { Out.Error(r.Message); return Program.Error; }
                 var parts = r.Data.Split('\n');
                 zip = parts[0];
                 url = parts.Length > 1 ? parts[1] : "";
             }
             else
             {
-                var paths = a.DataDir != null ? new AppPaths(Path.GetFullPath(a.DataDir)) : AppPaths.Default();
-                var report = BugReport.Create(paths, text, null, DateTime.Now);
+                var report = BugReport.Create(a.Paths.Get(), text, null, DateTime.Now);
                 zip = report.ZipPath;
                 url = report.IssueUrl;
             }
@@ -37,6 +36,6 @@ public static class BugReportCommand
         Console.Out.WriteLine($"{Out.Green("saved")}  {zip}");
         Console.Out.WriteLine(Strings.BugReportIssueHint);
         Console.Out.WriteLine(url);
-        return Commands.Ok;
+        return Program.Ok;
     }
 }

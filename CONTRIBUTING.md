@@ -17,6 +17,6 @@ Thank you for considering a contribution!
 
 Project layout: `src/StykkerLlm.Core/` (UI-free logic: discovery, recording, proxy, benchmark, simulation),
 `src/StykkerLlm.Platform.Windows/` (Windows specifics), `src/StykkerLlm.Server/` (the core server with the web UI),
-`src/StykkerLlm.UI/` (the window `StykkerUI`), `src/StykkerLlm.Cli/` (terminal companion `stykker`), `tests/StykkerLlm.Tests/` (MSTest), `build/` (packaging scripts).
+`src/StykkerLlm.UI/` (the window `StykkerUI`), `src/StykkerLlm.Cli/` (terminal display `stykker`), `tests/StykkerLlm.Tests/` (MSTest), `build/` (packaging scripts).
 
 Thank you for helping!

@@ -58,24 +58,7 @@ public static partial class Strings
     public static string EvalSeconds(double sec) => $"{sec.ToString("0", CultureInfo.InvariantCulture)} s";
     public static string EvalSeconds1(double sec) => $"{sec.ToString("0.0", CultureInfo.InvariantCulture)} s";
 
-    // TUI: Zustand der Warteschlange und die Rückmeldungen der Aktionen (das Fenster meldet dasselbe über seinen Toast)
-    public const string EvalRunning = "running", EvalIdle = "idle", EvalTaskNo = "#";
-    public const string EvalQueueHint = "queue: /eval start   ·   stop: /eval stop   ·   the web page /runs does the rest";
-    public const string EvalQueueStops = "the queue stops after the current request";
-    public const string EvalJobsCleared = "finished jobs removed";
     public static string EvalQueued(string msg) => $"{msg} model(s) with the built-in suite";
-    public static string EvalFound(string msg) => $"{msg} model(s) in the library and the model folders";
 
-    // TUI: Katalog (Suiten und ihre Aufgaben)
-    public const string EvalKindBuiltIn = "built-in", EvalKindOwn = "own";
-    public const string EvalCatalogHintTui =
-        "/eval catalog <suite> shows the tasks · /eval try <model> <suite> runs one · /eval all <suite> queues it for all models";
 
-    // TUI: Befehlszeilen (die Hilfe nennt dieselben Wörter)
-    public const string EvalUsage = "usage: /eval [runs|results|models|catalog|start|stop|clear|discover|try <model> <suite>|all <suite>|spread <suite>]";
-    public const string EvalUsageTry = "usage: /eval try <model> <suite>", EvalUsageAll = "usage: /eval all <suite>";
-    public const string EvalUsageSpread = "usage: /eval spread <suite>   (to every model on every paired PC, run where the model lies)";
-    public const string EvalSpread = "Spread to all PCs";
-    public static string EvalNoModelMatches(string query) => $"no model matches '{query}' (see /eval models)";
-    public static string EvalNoSuite(string name) => $"no suite '{name}' (see /eval catalog)";
 }

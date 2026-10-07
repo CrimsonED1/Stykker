@@ -1,58 +1,55 @@
 # Nodes – several PCs paired with one hub
 
 Every installation is a **node** (a server). One of them can act as **hub**: it shows and controls the others.
-Window, TUI, phone and coding tools talk only to the hub. Every node stays fully usable on its own; if the hub is
-gone, the nodes keep running. (The notes below are the original design, in German.)
+The window, the browser, the phone and coding tools talk only to the hub. Every node stays fully usable on its own; if the
+hub is gone, the nodes keep running.
 
 **Status:** pairing (both directions, six digits + QR), node list with live state, search on the LAN (UDP 17501),
 actions on nodes, distributed model tests with result sync, proxy across nodes and the per-node model comparison are
 implemented. Not yet tested with a real second PC. Open: node registers itself at the hub (NAT), HTTPS with a pinned
 fingerprint, Wake-on-LAN.
 
-## Idee
-
-Jede Installation ist ein **Node** (der Server, wie heute). Ein Node wird zusätzlich zum **Hub**: dort sieht und steuert man
-die ganze Flotte. Fenster, TUI, Handy und Coding-Tools sprechen nur mit dem Hub. Jeder Node bleibt allein voll bedienbar;
-fällt der Hub aus, laufen die Nodes einfach weiter.
-
 ```
-Fenster   TUI   Handy   Coding-Tools (Proxy :17500)
-     \     |      |      /
-          Hub (Haupt-PC)          Flotte, Warteschlange, Ergebnisse, Cluster-Proxy
-      /        |         \        Live-Strom + Befehle, Token je Node
- Node A     Node B     Node C     normale Installationen mit Home/VPN an
+Window   Browser   Phone   Coding tools (proxy :17500)
+     \      |        |      /
+          Hub (main PC)           fleet, queue, results, cluster proxy
+      /        |         \        live state + actions, one token per node
+ Node A     Node B     Node C     normal installations with Home/VPN on
 ```
 
-## Warum Hub statt „alle gleich“ (Mesh)
+## Why a hub and not "everyone equal" (mesh)
 
-- Eine Stelle für Ergebnisse, Warteschlange und Proxy: keine Abgleichs- und Konfliktlogik
-- Baut direkt auf dem auf, was es gibt: `/api/state`, `/api/stream` (SSE), `/api/action`, Kopplung mit Code, Rollen
-- Jeder Node kann Hub werden (Schalter), also kein eigenes Programm
+- One place for results, queue and proxy: no syncing or conflict logic.
+- Builds directly on what exists: `/api/state`, `/api/stream` (SSE), `/api/action`, pairing with a code, roles.
+- Every node can become a hub; there is no separate program.
 
-## Kopplung
+## Pairing
 
-1. Der Node zeigt Code und QR wie heute (Fenster ☰ → Phone access, `stykker qr`, Web `/phone`). Home/VPN muss an sein.
-2. Am Hub: **Im Netz suchen** schickt einen UDP-Broadcast (Port 17501, nur LAN); Nodes antworten mit Name, Port, Version, GPU.
-   Ohne Fund (VPN, anderes Netz): Adresse von Hand eingeben.
-3. Der Hub schickt den Code an `POST /node/pair`; der Node antwortet mit einem eigenen **Node-Token** (256 Bit, auf dem Node
-   nur als Hash gespeichert), Rolle `hub`.
-4. Der Hub speichert Adresse, Token und Namen (`nodes.json` im Datenordner) und abonniert `/api/stream` des Nodes.
-5. Der Node zeigt „Gekoppelt mit HAUPT-PC“ unter Geräten, mit **Trennen** (zieht das Token zurück).
+1. The node shows its code and QR as usual (☰ → Phone access in the window or web UI, key `c` in `stykker`). Home/VPN must
+   be on. A node PC without a screen keeps its server running with **Settings → Keep the server running**.
+2. On the hub, **Search network** sends a UDP broadcast (port 17501, LAN only); nodes answer with name, port, version and GPU.
+   Nothing found (VPN, other network): enter the address by hand.
+3. The hub sends the code; the node answers with its own **node token** (256 bit, stored on the node only as a hash) with
+   the role `hub`. The other direction works too: the hub shows a code and the node's owner approves it.
+4. The hub stores address, token and name in `nodes.dat` (data folder, bound to the Windows user) and follows the node's
+   `/api/stream`. Its requests (header `X-Stykker-Device`) also keep the node's server alive.
+5. The node lists the hub under its devices, with **Remove** (revokes the token). A hub may control servers, tests and the
+   proxy of a node, but never its access (code, devices, Home/VPN) and cannot create bug reports there.
 
-Sicherheit: wie beim Handy nur LAN/VPN und ohne HTTPS. Das Token geht im Klartext durchs Heimnetz, das ist dieselbe Annahme
-wie beim Gerätecookie heute. Später möglich: selbst signiertes Zertifikat, dessen Fingerabdruck bei der Kopplung mitkommt
-(Vertrauen beim ersten Mal, danach festgenagelt).
+Security: like the phone, LAN/VPN only and no HTTPS yet. The token crosses the home network in clear text – the same
+assumption as the device cookie. Possible later: a self-signed certificate whose fingerprint comes along with the pairing
+(trust on first use, then pinned).
 
-## Was die Flotte kann (Pakete)
+## What the fleet can do (packages)
 
-| Paket | Inhalt | Nutzen |
+| Package | Content | Benefit |
 |---|---|---|
-| N1 | Kopplung, Suche, Node-Liste, online/offline, Trennen; `nodes.json`; Rolle `hub` im AccessGate | Grundlage |
-| N2 | Seite **Nodes** (Karten: GPU, VRAM, laufende Modelle, t/s, Fehler) in Web, Fenster, TUI; Umschalter oben „Alle / Node …“; Befehle (Start, Stop, VRAM frei) gehen an den gewählten Node | alles auf einen Blick, Fernsteuerung |
-| N3 | Verteilte Tests: die Eval-Warteschlange gibt Aufträge an Nodes, auf denen das Modell liegt und VRAM frei ist; Ergebnisse landen zentral (Spalte Machine) | Rangliste über alle PCs, doppelte Geschwindigkeit |
-| N4 | Cluster-Proxy: `:17500` am Hub leitet nach Modellname zu dem Node, auf dem es läuft (sonst startet es dort, wo es liegt) | Coding-Tools sehen einen Endpunkt für alle Modelle |
-| N5 | Benchmarks und Modell-Liste je Node vergleichen (welche GGUF wo, wer ist schneller) | Hardware-Vergleich |
-| N6 (später) | Node meldet sich selbst beim Hub (für Rechner hinter NAT), HTTPS mit Fingerabdruck, Wake-on-LAN | Komfort |
+| N1 | Pairing, search, node list, online/offline, remove; `nodes.dat`; role `hub` in the AccessGate | foundation |
+| N2 | Page **Nodes** (cards: GPU, VRAM, running models, t/s, errors); actions (start, stop, free VRAM) go to the chosen node | everything at a glance, remote control |
+| N3 | Distributed tests: the eval queue hands jobs to nodes that have the model and free VRAM; results land centrally (column Machine) | one ranking across all PCs, more speed |
+| N4 | Cluster proxy: `:17500` on the hub routes by model name to the node that runs it (`node/model`) | coding tools see one endpoint for all models |
+| N5 | Compare benchmarks and model lists per node (which GGUF where, who is faster) | hardware comparison |
+| N6 (later) | Node registers itself at the hub (machines behind NAT), HTTPS with fingerprint, Wake-on-LAN | comfort |
 
-Alle UIs gleich (UI-SPEC.md): Texte in Strings, Logik in Core (`NodeRegistry`, `NodeClient`, `NodeDiscovery`), Tests für
-Kopplung, Token-Widerruf, Verteilen der Warteschlange und das Routing des Proxys (mit Simulator-Nodes, ohne echtes Netz).
+Text in Strings, logic in Core (`NodeRegistry`, `NodeDiscovery`, `NodeScheduler`, `NodeStateJson`), tests for pairing, token
+revocation, distributing the queue and proxy routing (with simulated nodes, no real network).

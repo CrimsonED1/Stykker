@@ -7,24 +7,36 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## 0.3.1
 
 ### Added
-- **The server lives as long as you use it.** StykkerUI windows and the interactive `stykker` sign in every few seconds,
-  open web pages and hubs count too. When nobody is left (and no model test or benchmark runs), the server ends by itself
-  – about 3 seconds after the last window or terminal closes. *Keep the server running* in the settings,
-  `stykker server keep on`, `--stay` or `stykker server start` keep it up (node PCs, scripts).
+- **The server lives as long as you use it.** StykkerUI windows and the terminal display sign in every few seconds, open
+  web pages and hubs count too. When nobody is left (and no model test or benchmark runs), the server ends by itself –
+  about 3 seconds after the last window or terminal closes. **Settings → Keep the server running** keeps it up (node PCs).
 - **Start screen in StykkerUI**: the window opens at once with a status line ("Starting the server …", "Signing in …") and
   a *Try again* button if something fails – including a clear message when the port is taken by another program.
+- **Glow like the original window**: the big tokens/s numbers and their unit, the brand, status dots, bars and the
+  sparkline (wide soft strokes and a glowing dot at the current value) shine softly, cards get a sheen on top. The strength
+  follows the theme, as in the old window (Space Glass most, Obsidian hardly at all).
 - **One log per program** (`StykkerLLM-Server.log`, `StykkerUI.log`, `stykker.log`) next to the program when it may write
   there, otherwise in the data folder. The server also logs ASP.NET Core warnings, notices and unhandled exceptions.
-- **Bug report**: ☰ → *Report a bug*, `/bugreport` in the TUI or `stykker bugreport <text>` – a zip with logs, settings and
-  state (no keys, access code, devices; API keys, tokens, user and PC name blacked out) plus a prefilled GitHub issue.
+- **Bug report**: ☰ → *Report a bug* or `stykker bugreport <text>` – a zip with logs, settings and state (no keys, access
+  code, devices; API keys, tokens, user and PC name blacked out) plus a prefilled GitHub issue.
 
 ### Changed
+- **`stykker` is now a display, the web UI controls.** No input line and no `/commands` any more: keys show what you want
+  to see – `w` opens the web interface signed in, `c` code + QR, `r` recent requests, `m` memory per program, `↑↓ Enter`
+  details of a server, `?` help. The web address is shown with every network address, Tailscale marked. When no server
+  runs, the display starts one and keeps it alive. Remaining commands: `stykker status`, `web`, `stop`, `bugreport`,
+  `help`, `version` – without any options. Start/stop, model tests, benchmarks, recordings, proxy, nodes, devices and
+  settings are in the web interface only.
+- Developer switches (`--sim`, `--data-dir`, `--port`, `--snapshot`) exist only in Debug builds.
 - Quitting StykkerUI no longer stops the server outright: it signs off, and the server ends when nobody else (a terminal,
   a web page) still needs it.
+- About 340 texts left over from the WinForms window and the old terminal interface were removed.
 
 ### Fixed
 - StykkerUI could crash right after opening (access violation in Photino) when it sent a message before the page was
   ready.
+- StykkerUI now watches its window process: Photino occasionally fails while creating the window (heap corruption inside
+  its native part); the window then simply opens again (up to three times).
 - A second server start no longer opens a browser when `--no-browser` was given.
 
 ## 0.3.0

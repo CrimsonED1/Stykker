@@ -13,13 +13,13 @@ as nodes. **The server is the core.** Every user interface is a client of it:
 |---|---|---|
 | `StykkerLLM-Server.exe` | `src/StykkerLlm.Server` | ASP.NET Core + Blazor Server. Measures, starts/stops, runs tests, serves the web UI on **:8078** |
 | `StykkerUI.exe` | `src/StykkerLlm.UI` | A window around the web UI (Photino: WebView2 / WKWebView / WebKitGTK), draws without GPU by default |
-| `stykker.exe` | `src/StykkerLlm.Cli` | Terminal: one-shot commands (`stykker status`) and an interactive TUI (`stykker`) |
+| `stykker.exe` | `src/StykkerLlm.Cli` | Terminal **display** (read-only, keys only) and `status`, `web`, `stop`, `bugreport` |
 | – | `src/StykkerLlm.Core` | All logic, UI-free and platform-free. Strings, state JSON, actions, eval, proxy, nodes |
 | – | `src/StykkerLlm.Platform.Windows` | `IPlatform` for Windows (processes, ports, NVML, DPAPI, tray icon) |
 | – | `tests/StykkerLlm.Tests` | MSTest, no network, no real servers (fakes and the simulator) |
 
 There is **one UI codebase for the window, the phone and other PCs: the Razor pages** in
-`src/StykkerLlm.Server/Components`. The TUI is the second UI and must offer the same functions (see `docs/ui.md`).
+`src/StykkerLlm.Server/Components`. The web UI is the only interface that controls anything; `stykker` only displays (see `docs/ui.md`).
 
 ## Build, test, run
 
@@ -30,10 +30,12 @@ dotnet test tests/StykkerLlm.Tests -c Release  # all green (2 tray tests skip wi
 
 - Run the server: `src/StykkerLlm.Server/bin/Release/net10.0/StykkerLLM-Server.exe --no-browser` → http://127.0.0.1:8078
 - Run the window: `src/StykkerLlm.UI/bin/Release/net10.0/StykkerUI.exe` (starts the server if none runs)
-- Run the TUI: `src/StykkerLlm.Cli/bin/Release/net10.0/stykker.exe`
+- Run the terminal display: `src/StykkerLlm.Cli/bin/Debug/net10.0/stykker.exe` (starts the server if none runs)
 - Look at the UI without real model servers: `StykkerLLM-Server.exe --sim --no-browser --port 8090 --data-dir <temp folder>`
-  (simulated llama.cpp/Ollama/LM Studio servers; pair a browser with the code from `stykker qr --data-dir <same> --port 8090`).
-  `stykker sim` does the same in the TUI.
+  (Debug build only; simulated llama.cpp/Ollama/LM Studio servers). Pair a browser with the code from the terminal
+  display (`stykker --data-dir <same> --port 8090`, key `c`). `stykker --sim` shows the simulator in the terminal.
+- Developer switches (`--sim`, `--data-dir`, `--port`, `--snapshot`, `--keys`, `--size`) exist **only in Debug builds**
+  (`#if DEBUG`); a release has no options. The server keeps `--data-dir`/`--port` because the window starts it with them.
 - Logs: one per program (`StykkerLLM-Server.log`, `StykkerUI.log`, `stykker.log`) in `logs/` next to the exe when that folder
   is writable, otherwise in the data folder's `logs/` (`Core/AppLog.cs`). Write important events with `AppLog.Write`.
 - Server lifetime: the server runs only while a StykkerUI window, an interactive `stykker`, a web page or a hub needs it
@@ -41,7 +43,7 @@ dotnet test tests/StykkerLlm.Tests -c Release  # all green (2 tray tests skip wi
   When you start a server by hand for testing, pass `--stay`, or it ends about 75 s after start without a client.
 - Bug report: `Core/BugReport.cs` (zip in `bug-reports/`, secrets never included, redaction), action `bugreport.create`,
   web `/bugreport`, `stykker bugreport <text>`.
-- A running server **locks its build output**. Stop it (tray icon, ⏻ in the web UI, `stykker server stop`) before building.
+- A running server **locks its build output**. Stop it (tray icon, ⏻ in the web UI, `stykker stop`) before building.
 - Use a separate data folder for experiments: `--data-dir <folder>` (server, UI and CLI all accept it).
 - Release zip: `powershell -ExecutionPolicy Bypass -File build/make-release.ps1 -Version x.y.z` (publishes nothing).
 
@@ -50,25 +52,26 @@ dotnet test tests/StykkerLlm.Tests -c Release  # all green (2 tray tests skip wi
 | You want to … | Look at |
 |---|---|
 | change what the server knows (servers, GPU, history) | `Core/MonitorEngine.cs`, `Core/ServerWatcher.cs`, `Core/ServerRegistry.cs`, `Core/Backends*.cs` |
-| add a button that changes something | an action in `Core/Server/ActionApi.cs` (`case "my.action"`), then call it from a Razor page (`WebActions.RunAsync`) and from the TUI |
+| add a button that changes something | an action in `Core/Server/ActionApi.cs` (`case "my.action"`), then call it from a Razor page (`WebActions.RunAsync`) |
 | show a new value in all UIs | write it in `Core/Server/ServerState.cs` (`StateJson`), read it back in `StateSnapshot` – **additive only, never rename fields** |
 | add or change UI text | `Core/Strings*.cs` only (English). No literal text in pages or commands |
 | change a web page | `Server/Components/Pages/*.razor`, layout in `Components/Layout/MainLayout.razor`, styles in `wwwroot/app.css` (theme colors come from `Core/ThemeCatalog.cs`) |
-| change the TUI | `Cli/Tui/TuiApp.cs` (command table + dispatch), `Cli/Tui/*Commands.cs`, one-shot commands in `Cli/*Command.cs` |
+| change the terminal display | `Cli/Tui/TuiApp.cs` (frame, keys, panels), `Cli/Tui/StateSource.cs` (server / simulator), commands in `Cli/Program.cs` |
 | access, pairing, roles | `Core/Server/AccessControl.cs` (6-digit codes, devices, roles), `Server/AccessGate.cs` (HTTP entry) |
 | nodes (several PCs) | `Core/Server/Node*.cs`, page `Nodes.razor`, `docs/nodes.md` |
 | model tests (eval) | `Core/Eval/` – suites are JSON (`suite-*.json`, embedded), graders in `EvalGrader.cs`, queue in `EvalQueue.cs` |
-| prompt tester with tools | `Core/PromptHarness.cs`, `Core/PromptTools.cs`, page `PromptPage.razor`, TUI `Cli/Tui/PromptCommand.cs` |
+| prompt tester with tools | `Core/PromptHarness.cs`, `Core/PromptTools.cs`, page `PromptPage.razor` |
 | proxy (one URL for all models) | `Core/ProxyManager.cs`, `Core/RequestProxy.cs`, `Core/ProxyRouter.cs` |
 | fake servers for tests and screenshots | `Core/Simulation/` (`SimWorld`, `SimHandler`) |
 
-Architecture notes: `docs/architecture.md`. UI parity rules: `docs/ui.md`. Nodes: `docs/nodes.md`.
+Architecture notes: `docs/architecture.md`. UI rules: `docs/ui.md`. Nodes: `docs/nodes.md`.
 
 ## Rules
 
-1. **Logic in Core, text in Strings, UI thin.** A page or TUI command calls an action or reads the state; it does not
-   compute. If Web and TUI would need the same code, it belongs in Core.
-2. **Web and TUI stay equal.** A feature in one is a feature in the other (or `docs/ui.md` says why not).
+1. **Logic in Core, text in Strings, UI thin.** A page calls an action or reads the state; it does not
+   compute. If two places would need the same code, it belongs in Core.
+2. **The web UI controls, `stykker` only shows.** New functions go into the web UI; the terminal display only gets
+   things to look at, never buttons or commands (`docs/ui.md`).
 3. **Tests for every logic change**, without network: use `FakeHandler`/`FakePlatform` (`tests/.../Fakes.cs`) or the simulator.
 4. **0 warnings.** Warnings are errors in spirit; do not suppress them without a comment why.
 5. **No new dependencies** (NuGet/npm) without asking the maintainer.

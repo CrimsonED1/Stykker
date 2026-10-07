@@ -10,16 +10,10 @@ public static class Out
     public static bool Color { get; private set; }
     public static bool Unicode { get; private set; } = true;
 
-    public static void Init(CliArgs a)
+    public static void Init()
     {
         bool tty = !Console.IsOutputRedirected;
-        Color = a.Color switch
-        {
-            ColorMode.None => false,
-            ColorMode.Auto => tty && string.IsNullOrEmpty(Environment.GetEnvironmentVariable("NO_COLOR")) && Environment.GetEnvironmentVariable("TERM") != "dumb",
-            _ => true,
-        };
-        Unicode = !a.Ascii;
+        Color = tty && string.IsNullOrEmpty(Environment.GetEnvironmentVariable("NO_COLOR")) && Environment.GetEnvironmentVariable("TERM") != "dumb";
         if (OperatingSystem.IsWindows())
         {
             try { Console.OutputEncoding = new UTF8Encoding(false); } catch { }

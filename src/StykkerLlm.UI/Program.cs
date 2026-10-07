@@ -41,13 +41,19 @@ internal static class Program
         }
 
         // Ein Fenster je Datenordner: ein zweiter Start holt das vorhandene nach vorn (auch aus dem Tray) und endet
-        using var single = new SingleInstance(SingleInstance.NameFor(paths.Root));
-        if (!single.IsFirst)
+        var name = SingleInstance.NameFor(paths.Root);
+        if (!opt.Child)
         {
-            single.SignalFirst();
-            AppLog.Write("start: already open, brought to front");
-            return 0;
+            using var guard = new SingleInstance(name);
+            if (!guard.IsFirst)
+            {
+                guard.SignalFirst();
+                AppLog.Write("start: already open, brought to front");
+                return 0;
+            }
+            return Watch(args, guard, name);
         }
+        using var single = new SingleInstance(name + "-window");
         AppLog.Write($"start: port {opt.Port}, gpu {opt.Gpu}");
 
         var window = new PhotinoWindow()
@@ -58,7 +64,10 @@ internal static class Program
             .SetTemporaryFilesPath(Path.Combine(paths.Root, "web-shell"));   // Cookies und Cache der WebView
         var icon = Path.Combine(AppContext.BaseDirectory, "app.ico");
         if (File.Exists(icon)) window.SetIconFile(icon);
-        if (!opt.Gpu && OperatingSystem.IsWindows()) window.SetBrowserControlInitParameters("--disable-gpu --disable-gpu-compositing");
+        // Ohne GPU über die Umgebungsvariable, die WebView2 selbst liest – nicht über SetBrowserControlInitParameters:
+        // damit stürzte Photino 4.0.16 zeitweise beim Anlegen des Fensters ab (Heap-Beschädigung 0xc0000374 in Photino_ctor).
+        if (!opt.Gpu && OperatingSystem.IsWindows())
+            Environment.SetEnvironmentVariable("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", "--disable-gpu --disable-gpu-compositing");
 
         using var hold = new ServerHold();
         // „Beim Schließen fragen, ob in den Tray": Tray-Symbol und Verstecken gibt es nur unter Windows.
@@ -83,6 +92,34 @@ internal static class Program
         hold.Release();
         AppLog.Write("window: closed");
         return 0;
+    }
+
+    // Der Wächter: startet das eigentliche Fenster als eigenen Prozess und öffnet es neu, wenn es kurz nach dem Start
+    // abstürzt. Photino 4.0.16 stürzt gelegentlich schon beim Anlegen von Fenster und WebView2 ab (Heap-Beschädigung
+    // 0xc0000374 in Photino_ctor, nativ, nicht abfangbar) – meist beim ersten Versuch, beim zweiten klappt es.
+    private const int CrashHeap = unchecked((int)0xC0000374), CrashAccess = unchecked((int)0xC0000005);
+
+    private static int Watch(string[] args, SingleInstance guard, string name)
+    {
+        var exe = Environment.ProcessPath ?? throw new InvalidOperationException("no process path");
+        Process? child = null;
+        // ein zweiter Start meldet sich beim Wächter; er reicht es an das Fenster weiter
+        guard.ActivationRequested += () => { try { using var w = new SingleInstance(name + "-window"); if (!w.IsFirst) w.SignalFirst(); } catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or WaitHandleCannotBeOpenedException) { } };
+        for (int attempt = 1; ; attempt++)
+        {
+            var psi = new ProcessStartInfo(exe) { UseShellExecute = false };
+            foreach (var a in args) psi.ArgumentList.Add(a);
+            psi.ArgumentList.Add(ShellArgs.ChildFlag);
+            var started = DateTime.Now;
+            child = Process.Start(psi);
+            if (child == null) return 1;
+            child.WaitForExit();
+            int code = child.ExitCode;
+            bool crashed = code is CrashHeap or CrashAccess;
+            if (!crashed) return code;
+            AppLog.Write($"window: crashed at start (0x{code:X8}, attempt {attempt})");
+            if (attempt >= 3 || DateTime.Now - started > TimeSpan.FromSeconds(30)) return code;
+        }
     }
 
     // Server finden oder starten, anmelden, Oberfläche laden – im Hintergrund, das Startbild zeigt den Schritt
@@ -208,23 +245,30 @@ internal static class Program
     }
 }
 
-internal sealed record ShellArgs(int Port, string? DataDir, bool Gpu, string Page)
+internal sealed record ShellArgs(int Port, string? DataDir, bool Gpu, string Page, bool Child = false)
 {
+    // intern: der Wächter startet so das eigentliche Fenster
+    public const string ChildFlag = "--window-process";
+
     // StykkerUI [--port 8078] [--data-dir <ordner>] [--gpu] [--page runs]
     public static ShellArgs Parse(string[] args)
     {
-        int port = 8078; string? data = null; bool gpu = false; string page = "";
+        int port = 8078; string? data = null; bool gpu = false; string page = ""; bool child = false;
         for (int i = 0; i < args.Length; i++)
         {
             switch (args[i])
             {
+#if DEBUG
+                // Entwickler-Schalter (nur Debug): anderer Port/Datenordner, gleich eine bestimmte Seite
                 case "--port" when i + 1 < args.Length && int.TryParse(args[i + 1], out var p): port = p; i++; break;
                 case "--data-dir" when i + 1 < args.Length: data = args[++i]; break;
-                case "--gpu": gpu = true; break;
                 case "--page" when i + 1 < args.Length: page = args[++i]; break;
+#endif
+                case "--gpu": gpu = true; break;
+                case ChildFlag: child = true; break;
             }
         }
-        return new ShellArgs(port, data, gpu, page);
+        return new ShellArgs(port, data, gpu, page, child);
     }
 }
 

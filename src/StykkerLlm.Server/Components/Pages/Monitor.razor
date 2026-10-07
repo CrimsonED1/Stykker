@@ -173,7 +173,11 @@
                     </span>
                 }
             </div>
-            <svg class="spark" viewBox="0 0 300 70" preserveAspectRatio="none"><polygon class="area" points="@SparkArea(s)" /><polyline fill="none" stroke="var(--acc)" stroke-width="1.6" points="@Spark(s)" /></svg>
+            var sparkPts = Spark(s);
+            <div class="spark-wrap">
+                <svg class="spark" viewBox="0 0 300 70" preserveAspectRatio="none"><polygon class="area" points="@SparkArea(s)" /><polyline class="glow1" points="@sparkPts" /><polyline class="glow2" points="@sparkPts" /><polyline class="line" fill="none" stroke="var(--acc)" stroke-width="1.6" points="@sparkPts" /></svg>
+                @if (s.Current > 0 && SparkTip(s) is { } tip) { <span class="spark-tip" style="top:@(tip)%"></span> }
+            </div>
             <div class="muted small">@Strings.Stats(s.Peak, s.AverageActive(), s.GeneratedTotal, s.Slots.Count(v => v.Busy), s.Slots.Count)</div>
             <div style="margin:6px 0">
                 <span class="chip">@Strings.ChipGpuVram<b>@Gb(s.VramGb)</b></span><span class="chip">@Strings.ChipRam<b>@Gb(s.RamGb)</b></span>
@@ -358,6 +362,16 @@
         if (ServerWatcher.SpillGb(new[] { m }, null) is double spill) parts.Add(Strings.SharedMemoryNote(spill));
         if (Strings.Until(m.ExpiresAt) is { Length: > 0 } un) parts.Add(un);
         return string.Join("  ·  ", parts);
+    }
+
+    // Höhe des letzten Werts in Prozent der Kurve (für den Leuchtpunkt rechts, wie im Fenster)
+    private static string? SparkTip(ServerWatcher s)
+    {
+        int n = s.HistoryCount;
+        if (n < 2) return null;
+        double max = Math.Max(10, Math.Ceiling(s.Peak / 10) * 10);
+        double y = 68 - 64 * Math.Min(max, s.HistoryAt(n - 1)) / max;
+        return (y / 70 * 100).ToString("0.0", CultureInfo.InvariantCulture);
     }
 
     // Die Fläche unter der Linie: dieselben Punkte, unten geschlossen

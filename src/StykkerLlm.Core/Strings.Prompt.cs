@@ -16,7 +16,6 @@ public static partial class Strings
     public const string PromptNoServer = "No server with a loaded model.";
     public static string PromptHttpError(int code, string text) => $"HTTP {code}: {text}";
     public static string PromptNotReachable(string why) => $"Server not reachable: {why}";
-    public const string PromptUsage = "usage: /prompt <server> <text>   ·   /prompt clear   ·   /prompt system <text>   ·   /prompt temp <0..2>   ·   /prompt tools <folder>|off   ·   /prompt auto on|off";
     // Werkzeuge
     public const string PromptToolsOn = "Tools: read, list, write, edit, cmd/PowerShell";
     public const string PromptWorkdir = "Working folder (tools stay inside)";
@@ -38,5 +37,4 @@ public static partial class Strings
     public static string ToolUnknown(string name) => $"Unknown tool '{name}'.";
     public static string ToolTooManySteps(int n) => $"Stopped after {n} tool rounds.";
 
-    public const string TuiPrompt = "send a prompt to a loaded model and stream the answer (keeps the conversation)";
 }
