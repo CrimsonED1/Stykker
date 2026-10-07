@@ -288,12 +288,15 @@ public class RequestProxyIntegrationTests
     public async Task PassesThroughStreamingAndRecordsNumbersOnly()
     {
         const int up = 18461, px = 19461;
-        string? seenAuth = null; string? seenBody = null;
+        // Nur Anfragen dieses Tests zählen (User-Agent): fremde Proben auf offene Ports (Server-Erkennung eines laufenden
+        // StykkerLLM o. Ä.) erreichen über den Proxy ebenfalls diesen Server und dürfen die Werte nicht überschreiben.
+        var seen = new System.Collections.Concurrent.ConcurrentQueue<(string Path, string? Auth, string Body)>();
         using var upstream = await StartFakeUpstream(up, async c =>
         {
             using var sr = new StreamReader(c.Request.InputStream);
-            seenBody = await sr.ReadToEndAsync();
-            seenAuth = c.Request.Headers["Authorization"];
+            var reqBody = await sr.ReadToEndAsync();
+            if (c.Request.UserAgent?.StartsWith("my-client/2.0", StringComparison.Ordinal) == true)
+                seen.Enqueue((c.Request.Url!.AbsolutePath, c.Request.Headers["Authorization"], reqBody));
             if (c.Request.Url!.AbsolutePath == "/props") { var b = Encoding.UTF8.GetBytes("{\"build_info\":\"x\"}"); c.Response.ContentType = "application/json"; c.Response.ContentLength64 = b.Length; await c.Response.OutputStream.WriteAsync(b); return; }
             c.Response.ContentType = "text/event-stream";
             c.Response.SendChunked = true;
@@ -312,7 +315,8 @@ public class RequestProxyIntegrationTests
         });
         using var proxy = new RequestProxy("127.0.0.1:" + up, $"http://127.0.0.1:{up}", px);
         var records = new List<ProxyRecord>();
-        proxy.Recorded += r => { lock (records) records.Add(r); };
+        var recorded = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        proxy.Recorded += r => { lock (records) records.Add(r); recorded.TrySetResult(); };
         proxy.Start();
         using var client = new HttpClient();
         client.DefaultRequestHeaders.TryAddWithoutValidation("Authorization", "Bearer abc");
@@ -320,18 +324,19 @@ public class RequestProxyIntegrationTests
 
         var props = await client.GetStringAsync($"http://127.0.0.1:{px}/props");
         Assert.IsTrue(props.Contains("build_info"));
-        Assert.AreEqual("Bearer abc", seenAuth);                       // Header unverändert durchgereicht
-        Assert.AreEqual(0, records.Count);                             // /props wird nicht aufgezeichnet
+        Assert.AreEqual("Bearer abc", seen.Single(x => x.Path == "/props").Auth);   // Header unverändert durchgereicht
+        lock (records) Assert.AreEqual(0, records.Count);              // /props wird nicht aufgezeichnet
 
         var req = new HttpRequestMessage(HttpMethod.Post, $"http://127.0.0.1:{px}/v1/chat/completions")
         { Content = new StringContent("{\"stream\":true,\"messages\":[{\"role\":\"user\",\"content\":\"SECRET PROMPT\"}]}", Encoding.UTF8, "application/json") };
         using var resp = await client.SendAsync(req, HttpCompletionOption.ResponseHeadersRead);
         var text = await resp.Content.ReadAsStringAsync();
         Assert.IsTrue(text.Contains("\"content\":\"Hi\"") && text.Contains("[DONE]"));    // Stream unverändert
-        Assert.IsTrue(seenBody!.Contains("SECRET PROMPT"));                                // Anfrage unverändert beim Server
-        var end = DateTime.Now.AddSeconds(5);
-        while (records.Count == 0 && DateTime.Now < end) await Task.Delay(50);
-        var r = records.Single();
+        Assert.IsTrue(seen.Single(x => x.Path == "/v1/chat/completions").Body.Contains("SECRET PROMPT"));   // Anfrage unverändert beim Server
+        // Die Aufzeichnung kommt erst nach dem Schließen der Verbindung (finally im Proxy): auf das Ereignis warten, großzügig unter Last
+        await recorded.Task.WaitAsync(TimeSpan.FromSeconds(30));
+        ProxyRecord r;
+        lock (records) r = records.Single();
         Assert.AreEqual(1, r.ReasoningTokens);
         Assert.AreEqual(1, r.ContentTokens);
         Assert.AreEqual("stop", r.FinishReason);
