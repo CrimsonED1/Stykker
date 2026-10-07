@@ -21,6 +21,9 @@ public static partial class Strings
     public static string CardSlotTip(int id, string state, double tps, long gen, int used, int max) =>
         $"Slot {id}: {state}" + (state == CardStateIdle ? "" : $" · {N1(tps)} t/s · {gen:N0} tokens") + (max > 0 ? $" · ctx {used:N0} / {max:N0}" : "");
     public static string CardSparkAgo(int minutes) => $"−{minutes} min";
+    // Hardware-Karte (U5)
+    public const string SectionHardware = "Hardware", HwDetails = "details";
+    public static string HwFree(double gb) => $"{N1(gb)} free";
     public static string StateText(string state) => state switch
     {
         "gen" => CardStateGen, "read" => CardStateRead, "load" => CardStateLoad, "off" => CardStateOff, _ => CardStateIdle,

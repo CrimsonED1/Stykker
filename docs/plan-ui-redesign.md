@@ -1,6 +1,6 @@
 # Plan: new web interface (Dark + Spacepunk Titan)
 
-Status: **U1–U4 done** (2026-10-07), U5 next. Approved by the owner on 2026-10-07. Work happens on `dev`, package by package; after each package:
+Status: **U1–U5 done** (2026-10-07), U6 next. Approved by the owner on 2026-10-07. Work happens on `dev`, package by package; after each package:
 build, all tests, a screenshot in Dark and Titan, commit.
 
 Reference: the mockups in `docs/design/` (open them in a browser, controls at the bottom left).
@@ -29,7 +29,7 @@ Reference: the mockups in `docs/design/` (open them in a browser, controls at th
 | U2 ✓ | Symbols | One SVG sprite/component (`<Icon Name=… />`) with all symbols from the mockup (VRAM, RAM, CPU, ctx, slots, clients, port, host, draft, restart, idle-unload, tools, thinking, result states, backends) | render test; no missing names |
 | U3 ✓ | Frame | Header as status bar (proxy, GPU/VRAM, RAM, servers, search, Free VRAM, menu), two-column monitor (running left; hardware, profiles right), mobile layout (< 640 px tables become rows) | screenshots wide/375 px |
 | U4 ✓ | Server cards | One card for all backends with the fixed 10-field row, backend stripe, state lamp, slots as tiles (fill = context, click = details), sparkline in a display window, actions (Prompt, details, record with timer, save as profile, stop with popover), queue chip; Ollama table of loaded models; host cards with host badge | bUnit/markup tests per backend; sim screenshots |
-| U5 | Hardware card | GPU and system in one card, VRAM and RAM per program with legend, link to `/gpu` | screenshot |
+| U5 ✓ | Hardware card | GPU and system in one card, VRAM and RAM per program with legend, link to `/gpu` | screenshot |
 | U6 | Profiles | Tiles with the fixed six symbols, running = lit with live t/s, start/stop, menu (edit, idle-unload, delete), command line folded; **VRAM forecast** before start (free vs. needed) | unit test forecast; screenshot |
 | U7 | Recent requests | Fixed columns: client kind, host, model dot, duration bar, t/s colour scale, tools, thinking, result, age. New data: **client kind**, **tool calls**, **thinking tokens**, **result** per request (proxy tap) | unit tests on the tap; screenshot |
 | U8 | History | Grouped by day, run bar, avg/peak t/s, tokens, **end reason** (clean, crashed, stopped from outside – new field), backend filter, `/` search, row actions, forget with undo, link to `/history/{key}` | unit test end reason; screenshot |

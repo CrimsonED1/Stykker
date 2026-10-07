@@ -115,33 +115,35 @@
 </div>
 </div>
 <aside class="mon-side">
-@if (e.Gpu is { } g)
+@* Hardware (U5): GPU und System in einer Karte, je Programm als gestapelter Balken mit Legende; Details auf /gpu *@
+@if (e.Gpu != null || e.Sys != null)
 {
-    <div class="card">
-        <div class="row"><h2>@Strings.Gpu <span class="muted small">@g.Name</span></h2></div>
-        <div class="kpis">
-            <div class="kpi"><div class="muted">@Strings.GpuLoad</div>@g.Util.ToString("0") %<div class="bar"><div style="width:@((int)g.Util)%"></div></div></div>
-            <div class="kpi"><div class="muted">@Strings.GpuVram</div>@g.MemUsedGb.ToString("0.0", CultureInfo.InvariantCulture) / @g.MemTotalGb.ToString("0") GB<div class="bar"><div style="width:@((int)(100 * g.MemUsedGb / Math.Max(1, g.MemTotalGb)))%"></div></div></div>
-            <div class="kpi"><div class="muted">@Strings.GpuPower</div>@g.PowerW.ToString("0") / @g.PowerLimitW.ToString("0") W<div class="bar"><div style="width:@((int)(100 * g.PowerW / Math.Max(1, g.PowerLimitW)))%"></div></div></div>
-            <div class="kpi"><div class="muted">@Strings.GpuTemp</div>@g.TempC.ToString("0") °C<div class="small @(g.Throttled ? "warn" : "good")" title="@g.ThrottleText()">@(g.Throttled ? Strings.GpuClocksLimited + ": " + g.ThrottleText() : Strings.GpuClocksFree)</div></div>
-        </div>
-        <div class="muted small" style="margin:12px 0 4px">@Strings.GpuConsumers</div>
-        <StackBar Items="e.VramTop" UsedGb="g.MemUsedGb" TotalGb="g.MemTotalGb" MoreHref="gpu" />
-    </div>
-}
-
-@if (e.Sys is { } sy)
-{
-    <div class="card">
-        <h2>@Strings.SystemCard <span class="muted small">@Strings.LogicalCores(sy.Cores)</span></h2>
-        <div class="kpis">
-            <div class="kpi"><div class="muted">@Strings.CpuLoad</div>@sy.CpuPercent.ToString("0") %<div class="bar"><div style="width:@((int)sy.CpuPercent)%"></div></div></div>
-            <div class="kpi"><div class="muted">@Strings.Memory</div>@sy.RamUsedGb.ToString("0.0", CultureInfo.InvariantCulture) / @sy.RamTotalGb.ToString("0.0", CultureInfo.InvariantCulture) GB<div class="bar"><div style="width:@((int)(100 * sy.RamFrac))%"></div></div></div>
-        </div>
-        @if (e.RamTop.Count > 0)
+    <h3 class="sec">@Strings.SectionHardware</h3>
+    <div class="card hw">
+        @if (e.Gpu is { } g)
         {
-            <div class="muted small" style="margin:12px 0 4px">@Strings.RamConsumers</div>
-            <StackBar Items="e.RamTop" UsedGb="sy.RamUsedGb" TotalGb="sy.RamTotalGb" />
+            <h2>@Strings.Gpu <small class="muted">@g.Name · @g.MemTotalGb.ToString("0", CultureInfo.InvariantCulture) GB</small><a class="more" href="gpu" title="@Strings.GpuDetails">@Strings.HwDetails <Icon Name="open" /></a></h2>
+            <div class="meters">
+                @Meter(Strings.GpuLoad, g.Util.ToString("0", CultureInfo.InvariantCulture), "%", g.Util / 100, null)
+                @Meter(Strings.GpuVram, g.MemUsedGb.ToString("0.0", CultureInfo.InvariantCulture), "/ " + g.MemTotalGb.ToString("0", CultureInfo.InvariantCulture) + " GB", g.MemUsedGb / Math.Max(1, g.MemTotalGb), Strings.HwFree(Math.Max(0, g.MemTotalGb - g.MemUsedGb)))
+                @Meter(Strings.GpuPower, g.PowerW.ToString("0", CultureInfo.InvariantCulture), "/ " + g.PowerLimitW.ToString("0", CultureInfo.InvariantCulture) + " W", g.PowerW / Math.Max(1, g.PowerLimitW), null)
+                @Meter(Strings.GpuTemp, g.TempC.ToString("0", CultureInfo.InvariantCulture), "°C", Math.Clamp(g.TempC / 90.0, 0, 1), g.Throttled ? g.ThrottleText() : Strings.GpuClocksFree, warnNote: g.Throttled)
+            </div>
+            <div class="subh">@Strings.GpuConsumers</div>
+            <StackBar Items="e.VramTop" UsedGb="g.MemUsedGb" TotalGb="g.MemTotalGb" MoreHref="gpu" />
+        }
+        @if (e.Sys is { } sy)
+        {
+            <h2 class="@(e.Gpu != null ? "hw-sep" : "")">@Strings.SystemCard <small class="muted">@Strings.LogicalCores(sy.Cores)</small></h2>
+            <div class="meters">
+                @Meter(Strings.CpuLoad, sy.CpuPercent.ToString("0", CultureInfo.InvariantCulture), "%", sy.CpuPercent / 100, null)
+                @Meter(Strings.Memory, sy.RamUsedGb.ToString("0.0", CultureInfo.InvariantCulture), "/ " + sy.RamTotalGb.ToString("0", CultureInfo.InvariantCulture) + " GB", sy.RamFrac, Strings.HwFree(Math.Max(0, sy.RamTotalGb - sy.RamUsedGb)))
+            </div>
+            @if (e.RamTop.Count > 0)
+            {
+                <div class="subh">@Strings.RamConsumers</div>
+                <StackBar Items="e.RamTop" UsedGb="sy.RamUsedGb" TotalGb="sy.RamTotalGb" />
+            }
         }
     </div>
 }
@@ -372,6 +374,17 @@
         var r = await Web.RunAsync(new ActionRequest { Action = "host.stop", Arg = hostId, Arg2 = key });
         if (!r.Ok) await Prompt.InformAsync(Strings.ActionFailed, r.Message, warning: true);
     }
+
+    // Eine Messanzeige der Hardware-Karte: Name, rechts eine Notiz (frei, Drosselung), großer Wert, Balken
+    private static RenderFragment Meter(string label, string value, string unit, double frac, string? note, bool warnNote = false) => __builder =>
+    {
+        frac = Math.Clamp(frac, 0, 1);
+        <div class="meter @(frac > .92 ? "hot" : "")">
+            <div class="l"><span>@label</span>@if (note != null) { <span class="@(warnNote ? "warnc" : "")" title="@note">@note</span> }</div>
+            <div class="v"><b>@value</b> <small>@unit</small></div>
+            <div class="bar"><div style="width:@((int)(frac * 100))%"></div></div>
+        </div>
+    };
 
     private bool Match(HistoryEntry h) => Library.Matches(h, _q);
 

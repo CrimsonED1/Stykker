@@ -469,3 +469,20 @@ html.shell[data-theme=titan] .tps b{text-shadow:none!important}
 
 /* Pillen und Chips brechen nie um (sonst zweizeilige Zustände in schmalen Spalten) */
 .pill,.chip,.chipi,.hchip{white-space:nowrap}
+
+/* Hardware-Karte (U5) */
+.hw h2{display:flex;align-items:baseline;gap:8px;margin:0 0 10px}.hw h2 small{font-size:12px;font-weight:400}
+.hw h2 .more{margin-left:auto;font-size:12px;font-weight:400;display:inline-flex;align-items:center;gap:4px}
+.hw h2.hw-sep{margin-top:16px;padding-top:12px;border-top:1px solid var(--line)}
+.meters{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.meter{background:rgb(var(--ink-rgb)/.03);border:1px solid rgb(var(--ink-rgb)/.06);border-radius:10px;padding:8px 10px;min-width:0}
+.meter .l{display:flex;justify-content:space-between;gap:8px;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.meter .l span:last-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-transform:none;letter-spacing:0}
+.meter .l .warnc{color:var(--warn)}
+.meter .v{margin:2px 0 6px}.meter .v b{font:600 18px var(--font-num);font-variant-numeric:tabular-nums;text-shadow:0 0 10px rgb(var(--acc-rgb)/calc(.45*var(--glow)))}
+.meter .v small{color:var(--muted);font-size:12px}
+.meter.hot .bar>div{background:var(--warn)}
+.subh{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin:12px 0 5px}
+html[data-theme=titan] .meter{background:var(--card2);border-color:var(--line);border-radius:var(--radius)}
+html[data-theme=titan] .meter .v b{color:var(--ink)}
+html[data-theme=titan] .hw h2.hw-sep{border-top-color:var(--card-border)}
