@@ -5,7 +5,7 @@
     double total = Math.Max(TotalGb, Math.Max(UsedGb, Items.Sum(i => i.Gb)));
     double sum = Items.Sum(i => i.Gb);
     // Abschnittsfarben aus den CSS-Variablen des gezeigten Themas (Dark oder Titan, auch bei „System“): Akzent, Zweitfarbe,
-    // Grün, Gelb, dann Mischungen – dieselbe Reihenfolge wie ThemeInfo.MemPalette
+    // Grün, Gelb, dann Mischungen
     string[] pal =
     {
         "var(--acc)", "var(--second)", "var(--good)", "var(--warn)",

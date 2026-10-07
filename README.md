@@ -9,6 +9,12 @@ any browser or your phone; keep an eye on it in the terminal. Nothing leaves you
 
 ![StykkerLLM monitor](docs/images/monitor.png)
 
+<details><summary>Spacepunk Titan (light)</summary>
+
+![StykkerLLM monitor – Spacepunk Titan](docs/images/monitor-titan.png)
+
+</details>
+
 <sub>All pictures show the built-in simulator: made-up servers and numbers. The model test ranking is real.</sub>
 
 ## What it does
@@ -32,7 +38,9 @@ any browser or your phone; keep an eye on it in the terminal. Nothing leaves you
   proxy starts a requested model on the host that has the file and room for it.
 - **Phone access**: six-digit code or QR code, roles *Admin* and *Viewer*, Home/VPN switch – works over Tailscale too.
 - **Bug report** in one click: a zip with logs and state, secrets blacked out, plus a prefilled GitHub issue.
-- **Five themes** with the soft glow of the original window: Deep Sea, Cyber Grid, Space Glass, Obsidian, Phosphor.
+- **Two themes**: *Dark* with a soft glow and *Spacepunk Titan*, a matte light theme like a ship console under work
+  light; *System* switches with the light/dark setting of the device. Symbols instead of words, `Ctrl+K` for every page
+  and action.
 
 | Model tests | GPU details |
 |---|---|

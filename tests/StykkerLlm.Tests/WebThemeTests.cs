@@ -115,25 +115,6 @@ public class WebThemeTests
         Assert.IsFalse(css.Contains('"'));
     }
 
-    // ── Speicherbalken: die Farben des Fensters (MainForm.MemBar) ──
-    [TestMethod]
-    public void MemPalette_BeginsWithTheFourThemeColors()
-    {
-        foreach (var t in ThemeCatalog.All)
-        {
-            var pal = t.MemPalette();
-            Assert.AreEqual(8, pal.Length, t.Name);
-            Assert.AreEqual(t.Accent, pal[0]);
-            Assert.AreEqual(t.Second, pal[1]);
-            Assert.AreEqual(t.Good, pal[2]);
-            Assert.AreEqual(t.Warn, pal[3]);
-            foreach (var c in pal)
-                Assert.IsTrue(HexColor.IsMatch(c), $"{t.Name}: Balkenfarbe {c} (dort ohne Deckkraft)");
-        }
-        var deep = ThemeCatalog.Default;
-        Assert.AreEqual(ThemeInfo.Mix(deep.Accent, deep.Bad, 0.5), deep.MemPalette()[4]);
-    }
-
     [TestMethod]
     public void Mix_And_Rgb_FollowTheWindowRules()
     {

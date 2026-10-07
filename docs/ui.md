@@ -44,6 +44,10 @@ feed it from the simulator (`SimSource`).
 - All text from `src/StykkerLlm.Core/Strings*.cs` (English).
 - No logic in pages: actions (`ActionApi`) and state (`StateJson`) only. A new function goes into the web UI; the terminal
   display only gets it if it is something to *look at*.
-- Themes: five themes in `Core/ThemeCatalog.cs` (colors, radius, glow, sheen); the web UI gets them as CSS variables, the
-  terminal as colors (`Tui/Palette.cs`).
+- Themes: *Dark* and *Spacepunk Titan* in `Core/ThemeCatalog.cs` (colors incl. backend, state and display-window colors,
+  radius, glow), plus *System* (`ui.js` picks by `prefers-color-scheme`); the web UI gets both as CSS variables under
+  `html[data-theme]`, the terminal as colors (`Tui/Palette.cs`). Titan's shapes (joints, plates, chamfer, hazard stripes) live
+  in the Titan section of `app.css`. Design reference: `docs/design/mockup-7.html`, plan `docs/plan-ui-redesign.md`.
+- Symbols: one sprite (`Components/IconSprite.razor`), used via `<Icon Name="…" Title="…" />`; a value a backend does not
+  report keeps its place as a muted "–" with the reason in the tooltip. A state is never shown by colour alone.
 - The window renders without GPU (`html.shell`): no endless animations, blur or large soft shadows there; static glow is fine.

@@ -419,7 +419,6 @@
     private readonly Dictionary<string, string> _pKeys = new();
     private Profile? _edit;
     private string _editName = "", _editNote = "", _editArgs = "";
-    private const string RoTip = "The monitor window owns the data folder – use the window for this (the server becomes the core in a later step).";
 
     // Startknopf-Tooltip wie im Fenster: die Vorprüfung (Port, Modelldatei, VRAM, RAM) läuft im Hintergrund,
     // das Ergebnis wird kurz (10 s) zwischengespeichert, damit die Seite nicht bei jedem Takt neu prüft
@@ -463,54 +462,6 @@
     }
 
     private static string IssueLines(IEnumerable<LaunchIssue> issues) => string.Join("\n", issues.Select(i => "• " + i.Message));
-
-    private static string Gb(double? v) => v == null ? "–" : v.Value.ToString("0.0", CultureInfo.InvariantCulture) + " GB";
-
-    // Ollama/LM Studio: Modellname plus, was das Backend selbst meldet (VRAM, Kontext, Entladezeit, Shared Memory)
-    private static string ModelLine(LoadedModel m)
-    {
-        var parts = new List<string> { m.Name };
-        if (m.VramBytes > 0 && m.SizeBytes > 0) parts.Add($"{Gb(m.VramBytes / 1073741824.0)} VRAM of {Gb(m.SizeBytes / 1073741824.0)}");
-        else if (m.SizeBytes > 0) parts.Add(Gb(m.SizeBytes / 1073741824.0));
-        if (m.ContextLength is int c) parts.Add("ctx " + c.ToString("N0", CultureInfo.InvariantCulture));
-        if (ServerWatcher.SpillGb(new[] { m }, null) is double spill) parts.Add(Strings.SharedMemoryNote(spill));
-        if (Strings.Until(m.ExpiresAt) is { Length: > 0 } un) parts.Add(un);
-        return string.Join("  ·  ", parts);
-    }
-
-    // Höhe des letzten Werts in Prozent der Kurve (für den Leuchtpunkt rechts, wie im Fenster)
-    private static string? SparkTip(ServerWatcher s)
-    {
-        int n = s.HistoryCount;
-        if (n < 2) return null;
-        double max = Math.Max(10, Math.Ceiling(s.Peak / 10) * 10);
-        double y = 68 - 64 * Math.Min(max, s.HistoryAt(n - 1)) / max;
-        return (y / 70 * 100).ToString("0.0", CultureInfo.InvariantCulture);
-    }
-
-    // Die Fläche unter der Linie: dieselben Punkte, unten geschlossen
-    private static string SparkArea(ServerWatcher s)
-    {
-        int n = s.HistoryCount;
-        if (n < 2) return "";
-        double x0 = 300.0 * (ServerWatcher.HistoryLength - n) / (ServerWatcher.HistoryLength - 1);
-        return $"{x0.ToString("0.0", CultureInfo.InvariantCulture)},70 {Spark(s)}300,70";
-    }
-
-    private static string Spark(ServerWatcher s)
-    {
-        int n = s.HistoryCount;
-        if (n < 2) return "";
-        double max = Math.Max(10, Math.Ceiling(s.Peak / 10) * 10);
-        var sb = new System.Text.StringBuilder();
-        for (int i = 0; i < n; i++)
-        {
-            double x = 300.0 * (ServerWatcher.HistoryLength - n + i) / (ServerWatcher.HistoryLength - 1);
-            double y = 68 - 64 * Math.Min(max, s.HistoryAt(i)) / max;
-            sb.Append(x.ToString("0.0", CultureInfo.InvariantCulture)).Append(',').Append(y.ToString("0.0", CultureInfo.InvariantCulture)).Append(' ');
-        }
-        return sb.ToString();
-    }
 
     // Beschriftung unten links an der Kurve: wie weit sie zurückreicht (300 Takte)
     private string SparkAgo => Strings.CardSparkAgo(Math.Max(1, (int)Math.Round(ServerWatcher.HistoryLength * Math.Max(500, Host.Engine.Settings.IntervalMs) / 60000.0)));

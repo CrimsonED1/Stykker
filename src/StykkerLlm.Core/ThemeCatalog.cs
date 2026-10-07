@@ -78,13 +78,6 @@ public sealed record ThemeInfo
         Display = "#141819", DisplayInk = "#7cff9e", DisplayUnit = "#ffb347",
     };
 
-    // Die acht Farben des gestapelten Speicherbalkens, ein Abschnitt je Programm
-    public string[] MemPalette() => new[]
-    {
-        Accent, Second, Good, Warn,
-        Mix(Accent, Bad, 0.5), Mix(Second, Good, 0.5), Mix(Warn, Bad, 0.4), Mix(Accent, Ink, 0.4),
-    };
-
     // Die CSS-Variablen dieses Themas (ohne Selektor). Ohne Anführungszeichen, damit Razor nichts escaped.
     public string CssVariables()
     {

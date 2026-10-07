@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Unreleased
 
+### Changed
+- **New web interface** (docs/plan-ui-redesign.md, mockups in docs/design/): only two themes, *Dark* and *Spacepunk
+  Titan* (light, matte, glow only in the dark display windows), plus *System*. The five old themes are gone; a stored old
+  theme becomes Dark.
+- **Monitor**: status bar in the header, two columns; one server card for every backend and for model hosts (backend
+  stripe, state symbol, slot tiles, twelve fixed metrics); hardware card with RAM type and theoretical bandwidth;
+  saved profiles as tiles with a VRAM forecast; recent requests with client kind, tool calls, thinking tokens and result;
+  history grouped by day with how each run ended, filters and forget-with-undo; proxy panel reworked.
+- **Keyboard**: `Ctrl+K` command palette (pages and actions), `/` jumps into the history search.
+- *Server lost* is a banner instead of a dialog; read-only and viewer get a notice bar.
+
 ### Added
 - **Model hosts** (docs/hosts.md): `StykkerHost.exe` runs on PCs that only run models – a tray icon, no window. It
   pairs with the server by a six-digit code and dials in over one WebSocket (no open port on the host).

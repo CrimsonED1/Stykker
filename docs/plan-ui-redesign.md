@@ -1,6 +1,6 @@
 # Plan: new web interface (Dark + Spacepunk Titan)
 
-Status: **U1–U12 and U14 done** (2026-10-08); U13 next. Stop keeps its detailed confirm dialog (process, PID, clients) instead of a small popover. Approved by the owner on 2026-10-07. Work happens on `dev`, package by package; after each package:
+Status: **U1–U14 done** (2026-10-08). README monitor images captured with headless Edge (Dark and Titan); also model tests and GPU; benchmarks, phone and window images still show the old design. Stop keeps its detailed confirm dialog (process, PID, clients) instead of a small popover. Approved by the owner on 2026-10-07. Work happens on `dev`, package by package; after each package:
 build, all tests, a screenshot in Dark and Titan, commit.
 
 Reference: the mockups in `docs/design/` (open them in a browser, controls at the bottom left).
@@ -38,7 +38,7 @@ Reference: the mockups in `docs/design/` (open them in a browser, controls at th
 | U11 ✓ | Hints | "Slower than usual" (compared with the profile's average), VRAM short, hazard stripes in Titan | unit test thresholds |
 | U12 ✓ | Other pages | Hosts, Runs, Results, Catalog, Models, Bench, Recordings, Compare, Prompt, Phone, Settings, GPU, history detail, bug report: new tokens, symbols and controls; no old theme left | screenshot per page, both themes |
 | U14 ✓ | Memory details | Hardware card: RAM type (DDR4/DDR5), configured speed and theoretical bandwidth from SMBIOS (Windows, GetSystemFirmwareTable, no package); logical core count already shown in *CPU load*. per-core load only as tooltip of the CPU meter (owner, 2026-10-08) | unit test SMBIOS type-17 parser with a captured table |
-| U13 | Clean-up and docs | Remove old theme code and unused CSS, update README images, docs/ui.md, CHANGELOG | build, all tests, no dead CSS classes |
+| U13 ✓ | Clean-up and docs | Remove old theme code and unused CSS, update README images, docs/ui.md, CHANGELOG | build, all tests, no dead CSS classes |
 
 Order: U1 → U2 → U3 → U4 → U5 → U6 → U7 → U8 → U9 → U10 → U11 → U12 → U13. U7 and U8 need new data in Core; their data part
 can come first if the UI waits.

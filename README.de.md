@@ -9,6 +9,12 @@ jedem Browser oder auf dem Handy; im Terminal behältst du alles im Blick. Nicht
 
 ![StykkerLLM Monitor](docs/images/monitor.png)
 
+<details><summary>Spacepunk Titan (hell)</summary>
+
+![StykkerLLM Monitor – Spacepunk Titan](docs/images/monitor-titan.png)
+
+</details>
+
 <sub>Alle Bilder zeigen den eingebauten Simulator: ausgedachte Server und Zahlen. Die Rangliste der Modelltests ist echt.</sub>
 
 ## Was es kann
@@ -34,7 +40,8 @@ jedem Browser oder auf dem Handy; im Terminal behältst du alles im Blick. Nicht
 - **Handy-Zugang**: sechsstelliger Code oder QR-Code, Rollen *Admin* und *Viewer*, Schalter Home/VPN – auch über Tailscale.
 - **Fehlerbericht** mit einem Klick: Zip mit Protokollen und Stand, Geheimnisse geschwärzt, dazu ein vorausgefülltes
   GitHub-Issue.
-- **Fünf Themen** mit dem weichen Leuchten des alten Fensters: Deep Sea, Cyber Grid, Space Glass, Obsidian, Phosphor.
+- **Zwei Themen**: *Dark* mit weichem Leuchten und *Spacepunk Titan*, ein mattes helles Thema wie eine Schiffskonsole
+  bei Arbeitslicht; *System* folgt Hell/Dunkel des Geräts. Symbole statt Wörter, `Ctrl+K` für jede Seite und Aktion.
 
 | Modelltests | GPU-Details |
 |---|---|
