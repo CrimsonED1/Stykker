@@ -566,3 +566,29 @@ html[data-theme=titan] .switch.on.warn i{background:var(--l-warn,#d99a1e)}
 html[data-theme=titan] .lamp{box-shadow:0 0 0 1px var(--card-border)}
 html[data-theme=titan] .pxp-url{border-radius:0;background:var(--disp);color:var(--disp-ink)}
 html[data-theme=titan] .pxs-form{border-radius:0;border-color:var(--card-border)}
+
+/* Letzte Anfragen (U7) */
+.spdscale{margin-left:auto;display:inline-flex;align-items:center;gap:3px;font-size:11px;color:var(--muted)}
+.spdscale i{width:12px;height:5px;border-radius:2px;display:inline-block}
+.sp1{--spc:var(--bad)}.sp2{--spc:var(--warn)}.sp3{--spc:var(--good)}.sp4{--spc:var(--acc)}
+.spdscale i.sp1,.spdscale i.sp2,.spdscale i.sp3,.spdscale i.sp4{background:var(--spc)}
+.reqs{display:flex;flex-direction:column;margin-top:8px}
+.req{display:grid;grid-template-columns:22px minmax(0,1.4fr) minmax(64px,.8fr) 92px 52px 56px 56px 44px 52px 34px 40px;gap:8px;align-items:center;padding:5px 4px;border-bottom:1px solid color-mix(in srgb,var(--line) 60%,transparent);font-size:13px;transition:background .15s}
+.req:not(.head):hover{background:rgb(var(--acc-rgb)/.05)}
+.req.head{font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);border-bottom-color:var(--line)}
+.req .r{text-align:right;font-family:var(--font-num);font-variant-numeric:tabular-nums}.req .c{text-align:center;justify-content:center}
+.req .cl{color:var(--muted);display:inline-flex}
+.req .mdl{display:inline-flex;align-items:center;gap:6px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500}
+.req .mdl i{width:8px;height:8px;border-radius:50%;flex:none;box-shadow:0 0 6px currentColor}
+.req .hostc{min-width:0;overflow:hidden}
+.req .dur{display:flex;align-items:center;gap:5px}.req .dur small{font:11px var(--font-num);color:var(--muted);min-width:24px;text-align:right}
+.dbar{flex:1;height:5px;border-radius:3px;background:var(--track);overflow:hidden}.dbar i{display:block;height:100%;background:var(--acc);border-radius:3px}
+.req .spd{color:var(--spc);font-weight:600;text-shadow:0 0 8px color-mix(in srgb,var(--spc) calc(var(--glow)*45%),transparent)}
+.req .ex{display:inline-flex;align-items:center;gap:3px;font:12px var(--font-num)}.req .ex .ic{width:14px;height:14px;color:var(--muted)}
+.req .ex.na{color:color-mix(in srgb,var(--muted) 70%,transparent)}
+.req .res{display:inline-flex}.res-ok{color:var(--good)}.res-full{color:var(--warn)}.res-abort{color:var(--muted)}.res-err{color:var(--bad)}
+@media(max-width:900px){.req{grid-template-columns:22px minmax(0,1fr) 56px 56px 34px 40px}.req>:nth-child(3),.req>:nth-child(4),.req>:nth-child(5),.req>:nth-child(8),.req>:nth-child(9){display:none}}
+html[data-theme=titan] .req .spd{text-shadow:none!important}
+html[data-theme=titan] .dbar,html[data-theme=titan] .dbar i,html[data-theme=titan] .spdscale i{border-radius:0}
+html[data-theme=titan] .dbar{background:var(--disp)}html[data-theme=titan] .dbar i{background:var(--disp-ink)}
+html[data-theme=titan] .req .mdl i{box-shadow:0 0 0 1px var(--card-border);border-radius:0}

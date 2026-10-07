@@ -41,6 +41,17 @@ public static partial class Strings
     public const string PxReachable = "reachable", PxUnreachable = "not reachable", PxNoMachines = "none attached", PxNoCloud = "none added";
     public static string PxModelList(int n) => $"{n} models under /v1/models";
     public const string PxRunning = "running", PxStopped = "stopped";
+    // Letzte Anfragen (U7)
+    public const string ReqModel = "model", ReqHost = "host", ReqTime = "time", ReqPrompt = "prompt", ReqTokens = "tok";
+    public const string ReqTools = "tools", ReqThink = "think", ReqResult = "result", ReqAgo = "ago";
+    public const string ReqSpeedScale = "tokens/s colour: slow to fast", ReqClientUnknown = "client unknown";
+    public const string ReqNoProxy = "only known for requests through the Stykker-Proxy";
+    public static string ReqToolsTip(int n) => n == 1 ? "1 tool call" : $"{n} tool calls";
+    public static string ReqThinkTip(int n) => n == 0 ? "no thinking tokens" : $"{n:N0} thinking tokens";
+    public static string ReqResultText(string r) => r switch
+    {
+        "full" => "stopped at the length or context limit", "abort" => "cancelled by the client", "err" => "error answer", _ => "done",
+    };
     public static string StateText(string state) => state switch
     {
         "gen" => CardStateGen, "read" => CardStateRead, "load" => CardStateLoad, "off" => CardStateOff, _ => CardStateIdle,

@@ -75,23 +75,40 @@
     }
 }
 
+@* Letzte Anfragen (U7): feste Spalten mit Symbolen; Werkzeuge, Denken, Client und Ende aus der Beobachtung des Proxys *@
+@{
+    var finished = e.Registry.Servers.SelectMany(x => x.Finished.Select(f => (F: f, Host: (string?)null)))
+        .Concat(Host.Hosts.List().Where(h => h.Connected && h.State != null)
+            .SelectMany(h => h.State!.Servers.SelectMany(rs => rs.Finished.Select(f => (F: f, Host: (string?)(h.Name.Length > 0 ? h.Name : h.Entry.Name))))));
+    var reqs = RequestRows.Build(finished, e.RecentProxy());
+    double maxSec = reqs.Count > 0 ? Math.Max(1, reqs.Max(r => r.Seconds)) : 1;
+}
 <div class="card">
-    <h2>@Strings.RecentRequests</h2>
-    @{ var fin = e.Registry.Servers.SelectMany(x => x.Finished).OrderByDescending(f => f.Seen ?? DateTime.MinValue).Take(8).ToList(); }
-    @if (fin.Count == 0) { <span class="muted small">@Strings.NoneYet</span> }
+    <div class="row"><h2 style="margin:0">@Strings.RecentRequests</h2>
+        <span class="spdscale" title="@Strings.ReqSpeedScale">t/s <i class="sp1"></i><i class="sp2"></i><i class="sp3"></i><i class="sp4"></i></span></div>
+    @if (reqs.Count == 0) { <span class="muted small">@Strings.NoneYet</span> }
     else
     {
-        <table>
-            <tr><th>@Strings.ColServer</th><th>@Strings.ColTime</th><th>@Strings.ColTask</th><th class="num">@Strings.ColReqPrompt</th><th class="num">@Strings.ColReqGeneration</th><th class="num">@Strings.ColReqTokens</th><th class="num">@Strings.ColReqTime</th><th>@Strings.ColStatus</th></tr>
-            @foreach (var f in fin)
+        <div class="reqs">
+            <div class="req head" aria-hidden="true"><span></span><span>@Strings.ReqModel</span><span>@Strings.ReqHost</span><span>@Strings.ReqTime</span><span class="r">@Strings.ReqPrompt</span><span class="r">t/s</span><span class="r">@Strings.ReqTokens</span><span class="c">@Strings.ReqTools</span><span class="c">@Strings.ReqThink</span><span class="c">@Strings.ReqResult</span><span class="r">@Strings.ReqAgo</span></div>
+            @foreach (var r in reqs)
             {
-                <tr><td>@f.Server</td><td class="muted">@(f.Seen?.ToString("HH:mm:ss") ?? Strings.FromLog)</td>
-                    <td class="muted small">@Strings.TaskName(f.Task)</td>
-                    <td class="num muted">@f.PromptTps.ToString("0") t/s</td><td class="num">@f.GenTps.ToString("0.0", CultureInfo.InvariantCulture) t/s</td>
-                    <td class="num">@f.GenTokens</td><td class="num muted">@(f.Seconds > 0 ? f.Seconds.ToString("0") + " s" : "–")</td>
-                    <td><span class="pill @(f.Status == ReqStatus.Done ? "ok" : f.Status == ReqStatus.Truncated ? "half" : "fail")">@f.Status.ToString().ToLowerInvariant()</span></td></tr>
+                var kind = r.Host == null ? e.Registry.Servers.FirstOrDefault(x => x.Key == r.ServerKey)?.Kind ?? BackendKind.LlamaCpp : BackendKind.LlamaCpp;
+                <div class="req">
+                    <span class="cl" title="@(r.Client.Length > 0 ? r.Client : Strings.ReqClientUnknown)"><Icon Name="@("c-" + r.ClientKind)" Title="@(r.Client.Length > 0 ? r.Client : Strings.ReqClientUnknown)" /></span>
+                    <span class="mdl" title="@r.Model"><i style="background:var(@BackendColor(kind))"></i>@r.Server</span>
+                    <span class="hostc">@if (r.Host != null) { <span class="chipi host"><Icon Name="host" />@r.Host</span> } else { <span class="muted small">@Strings.CardLocal</span> }</span>
+                    <span class="dur" title="@r.Seconds.ToString("0.0", CultureInfo.InvariantCulture) s"><span class="dbar"><i style="width:@((int)(100 * r.Seconds / maxSec))%"></i></span><small>@(r.Seconds > 0 ? r.Seconds.ToString("0", CultureInfo.InvariantCulture) + "s" : "–")</small></span>
+                    <span class="r muted">@(r.PromptTps > 0 ? r.PromptTps.ToString("0", CultureInfo.InvariantCulture) : "–")</span>
+                    <span class="r spd sp@(RequestRows.SpeedLevel(r.GenTps))">@r.GenTps.ToString("0.0", CultureInfo.InvariantCulture)</span>
+                    <span class="r">@r.GenTokens.ToString("N0", CultureInfo.InvariantCulture)</span>
+                    <span class="c ex @(r.Tools is > 0 ? "" : "na")" title="@(r.Tools == null ? Strings.ReqNoProxy : Strings.ReqToolsTip(r.Tools.Value))"><Icon Name="x-tool" />@(r.Tools is int t && t > 0 ? t.ToString(CultureInfo.InvariantCulture) : "–")</span>
+                    <span class="c ex @(r.ThinkTokens is > 0 ? "" : "na")" title="@(r.ThinkTokens == null ? Strings.ReqNoProxy : Strings.ReqThinkTip(r.ThinkTokens.Value))"><Icon Name="x-think" />@(r.ThinkTokens is int k && k > 0 ? (k >= 1000 ? (k / 1000.0).ToString("0.0", CultureInfo.InvariantCulture) + "k" : k.ToString(CultureInfo.InvariantCulture)) : "–")</span>
+                    <span class="c res res-@r.Result" title="@Strings.ReqResultText(r.Result)"><Icon Name="@("r-" + r.Result)" Title="@Strings.ReqResultText(r.Result)" /></span>
+                    <span class="r muted small">@Ago(r.Seen)</span>
+                </div>
             }
-        </table>
+        </div>
     }
 </div>
 
@@ -532,6 +549,19 @@
     {
         AddProvider();
         if (_pName.Length == 0 && _pUrl.Length == 0) _add = null;   // angenommen: Felder sind geleert
+    }
+
+    private static string BackendColor(BackendKind k) => k switch
+    {
+        BackendKind.Ollama => "--b-ollama", BackendKind.LmStudio => "--b-lms", BackendKind.Vllm => "--b-vllm", _ => "--b-llama",
+    };
+
+    // „12s“, „4m“, „2h“ – wie lange die Anfrage her ist
+    private static string Ago(DateTime? t)
+    {
+        if (t == null) return Strings.FromLog;
+        var d = DateTime.Now - t.Value;
+        return d.TotalSeconds < 60 ? $"{Math.Max(0, (int)d.TotalSeconds)}s" : d.TotalMinutes < 60 ? $"{(int)d.TotalMinutes}m" : d.TotalHours < 24 ? $"{(int)d.TotalHours}h" : $"{(int)d.TotalDays}d";
     }
 
     private bool Match(HistoryEntry h) => Library.Matches(h, _q);

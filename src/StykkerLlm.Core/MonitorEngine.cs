@@ -138,8 +138,17 @@ public sealed class MonitorEngine : IDisposable
         });
     }
 
+    // Die letzten Beobachtungen des Proxys (für die Liste „Letzte Anfragen“: Werkzeuge, Denken, Client), neueste zuletzt
+    private readonly Queue<ProxyRecord> _recentProxy = new();
+    public IReadOnlyList<ProxyRecord> RecentProxy() { lock (_recentProxy) return _recentProxy.ToList(); }
+
     private void OnProxyRecord(ProxyRecord px)
     {
+        lock (_recentProxy)
+        {
+            _recentProxy.Enqueue(px);
+            while (_recentProxy.Count > 64) _recentProxy.Dequeue();
+        }
         // Beobachtung des Proxys an alle laufenden Aufnahmen (Sitzungen sperren intern, der Aufruf kommt von einem Hintergrund-Thread)
         var w = Registry.Servers.FirstOrDefault(x => x.Key == px.ServerKey);
         Recorder.OnProxyRecord(px, w?.Name ?? Proxies.DisplayName(px.ServerKey), w?.Model ?? "");
