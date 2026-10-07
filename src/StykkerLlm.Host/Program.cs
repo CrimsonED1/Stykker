@@ -36,8 +36,18 @@ internal static class Program
         using var quit = new ManualResetEventSlim(false);
         AppDomain.CurrentDomain.ProcessExit += (_, _) => quit.Set();
 
+        // Verbindung zum Server (P2): Adresse und Token aus host.json (die Kopplung, P3, schreibt sie)
+        var config = HostConfig.Load(paths, platform);
+        var link = new HostLinkClient(config,
+            () => StateJson.WriteText(engine, null, null, 0, DateTimeOffset.Now, withHistory: false),
+            Environment.MachineName, AppLog.Version());
+        link.Log += AppLog.Write;
+        using var linkStop = new CancellationTokenSource();
+        var linkTask = link.RunAsync(linkStop.Token);
+        if (!config.Paired) AppLog.Write("link: not paired yet (no host.json)");
+
         TrayIcon? tray = null;
-        if (OperatingSystem.IsWindows()) tray = Tray(engine, paths, quit);
+        if (OperatingSystem.IsWindows()) tray = Tray(engine, link, config, quit);
 
         var lastServers = new List<string>();
         bool first = true;
@@ -62,6 +72,8 @@ internal static class Program
 
         quit.Wait();
         loop.Wait(TimeSpan.FromSeconds(3));
+        linkStop.Cancel();
+        try { linkTask.Wait(TimeSpan.FromSeconds(3)); } catch (AggregateException) { }
         if (OperatingSystem.IsWindows()) tray?.Dispose();
         platform.Dispose();
         AppLog.Write("host: stopped");
@@ -70,7 +82,7 @@ internal static class Program
 
     // Tray: Stand (grau), Kopplung (kommt mit P3), Mit Windows starten, Protokoll, Beenden
     [System.Runtime.Versioning.SupportedOSPlatform("windows")]
-    private static TrayIcon? Tray(MonitorEngine engine, AppPaths paths, ManualResetEventSlim quit)
+    private static TrayIcon? Tray(MonitorEngine engine, HostLinkClient link, HostConfig config, ManualResetEventSlim quit)
     {
         var exe = Environment.ProcessPath ?? "";
         IReadOnlyList<TrayIcon.Item> Items()
@@ -79,7 +91,7 @@ internal static class Program
             int id = 100;
             foreach (var line in HostStatus.Lines(engine.Servers, engine.Gpu)) items.Add(new TrayIcon.Item(id++, line, Disabled: true));
             items.Add(new TrayIcon.Item(0, "", Separator: true));
-            items.Add(new TrayIcon.Item(1, Strings.HostNotPaired, Disabled: true));
+            items.Add(new TrayIcon.Item(1, LinkText(link, config), Disabled: true));
             items.Add(new TrayIcon.Item(0, "", Separator: true));
             items.Add(new TrayIcon.Item(MenuAutostart, Autostart.IsOn(Strings.HostName, exe) ? Strings.HostAutostartOn : Strings.HostAutostart));
             items.Add(new TrayIcon.Item(MenuLog, Strings.HostOpenLog));
@@ -108,6 +120,14 @@ internal static class Program
         tray.Dispose();
         return null;
     }
+
+    private static string LinkText(HostLinkClient link, HostConfig config) => link.State switch
+    {
+        HostLinkState.NotPaired => Strings.HostNotPaired,
+        HostLinkState.Connected => Strings.HostConnected(config.ServerName.Length > 0 ? config.ServerName : config.Server),
+        HostLinkState.Connecting => Strings.HostConnecting(config.Server),
+        _ => Strings.HostWaiting(link.LastError),
+    };
 
     private static void Open(string file)
     {

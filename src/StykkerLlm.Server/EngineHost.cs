@@ -29,6 +29,8 @@ public sealed class EngineHost : IDisposable
     public SimHost? Sim { get; }
     // Wer den Server gerade braucht (Fenster, TUI, Webseiten, Hubs) – ist niemand mehr da, beendet er sich
     public ServerHolds Holds { get; } = new(DateTime.Now);
+    // Die Model-Hosts, die sich hier einwählen (docs/plan-hosts-gateway.md)
+    public HostHub Hosts { get; }
 
     // sim != null: simulierte Server statt der echten (--sim, für Vorführung und Bilder der Dokumentation)
     public EngineHost(AppPaths paths, IPlatform? platform = null, SimHost? sim = null)
@@ -52,6 +54,8 @@ public sealed class EngineHost : IDisposable
         };
         Access = new AccessControl(paths, _platform);
         Nodes = new NodeRegistry(paths, _platform);
+        Hosts = new HostHub(new HostRegistry(paths, _platform));
+        Hosts.Log += AppLog.Write;
         // N4: Modelle der Nodes über den eigenen Proxy anbieten ("Node/Modell"), wenn ihr Proxy im Netz erreichbar ist
         Engine.Proxies.NodeRemotes = () => NodeStateJson.FromRegistry(Nodes).List
             .Where(n => n.Online && n.ProxyUrl.Length > 0)

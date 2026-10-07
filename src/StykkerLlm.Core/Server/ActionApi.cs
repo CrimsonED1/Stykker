@@ -66,6 +66,8 @@ public sealed class ActionContext
     public BenchmarkService? Benchmarks { get; init; }
     // Gekoppelte Nodes (dieser Server als Hub)
     public NodeRegistry? Nodes { get; init; }
+    // Model-Hosts, die sich einwählen (docs/plan-hosts-gateway.md)
+    public HostHub? Hosts { get; init; }
     // Server beenden (Web-Kopf, „stykker stop --server“)
     public Func<Task>? Shutdown { get; init; }
     public int ServerPort { get; init; }
@@ -101,7 +103,8 @@ public static class ActionApi
 
     public static bool HubForbidden(string? action) =>
         action is "code.rotate" or "device.remove" or "device.role" or "remote.set" or "pair.approve" or "pair.deny" or "shutdown" or "bugreport.create"
-        || (action?.StartsWith("node.", StringComparison.Ordinal) ?? false);
+        || (action?.StartsWith("node.", StringComparison.Ordinal) ?? false)
+        || (action?.StartsWith("host.", StringComparison.Ordinal) ?? false);
 
     /// <param name="role">Rolle des Aufrufers (AccessRole). null = Admin (Schlüssel aus dem Datenordner, also Fenster/TUI).</param>
     public static async Task<ActionResult> ExecuteAsync(ActionRequest req, ActionContext ctx, IUserPrompt prompt, CancellationToken ct = default, string? role = null)
@@ -490,6 +493,20 @@ public static class ActionApi
                     e.Settings.Save();
                     return Ok();
                 }
+
+                // ── Model-Hosts ──
+#if DEBUG
+                // Bis zur Kopplung (P3) nur im Debug-Build: Host anlegen, Daten = Token (einmal)
+                case "host.add":
+                {
+                    if (ctx.Hosts == null) return ActionResult.Fail("not available");
+                    var (entry, token) = ctx.Hosts.Registry.Add(req.Arg ?? "host", DateTime.Now);
+                    return Ok(entry.Id, token);
+                }
+#endif
+                case "host.remove":
+                    if (ctx.Hosts == null) return ActionResult.Fail("not available");
+                    return await ctx.Hosts.RemoveAsync(req.Arg ?? "").ConfigureAwait(false) ? Ok() : ActionResult.Fail(Strings.HostNotFound);
 
                 // ── Fehlerbericht: Zip im Datenordner, Daten = Pfad und GitHub-Adresse (durch Zeilenumbruch getrennt) ──
                 case "bugreport.create":

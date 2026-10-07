@@ -72,6 +72,17 @@ public sealed class AccessGate(AccessControl access, string key, int port, Func<
             return true;
         }
 
+        // 2b) Model-Hosts wählen sich ein (WebSocket mit Host-Token, geprüft am Endpunkt). Von außen nur mit Home/VPN.
+        if (path.StartsWith("/hosts/", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!loopback && !access.RemoteEnabled)
+            {
+                await Text(ctx, StatusCodes.Status403Forbidden, Strings.RemoteOff);
+                return true;
+            }
+            return false;
+        }
+
         // 3) Die eigenen Messwerte (/api/metrics, see docs/ui.md) brauchen keinen Schlüssel – aber nur von diesem Rechner.
         // Inhalt sind ausschließlich Messwerte: kein Zugangscode, kein Schlüssel, keine Datei. Die Ausnahme gilt nur
         // für genau diesen Pfad und nur auf Loopback; von außen bleibt alles Weitere oben (Home/VPN + Code).

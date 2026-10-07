@@ -81,6 +81,7 @@ builder.Services.AddSingleton(sp => new ActionContext
     Queue = sp.GetRequiredService<EvalQueue>(),
     Benchmarks = sp.GetRequiredService<EngineHost>().Benchmarks,
     Nodes = sp.GetRequiredService<EngineHost>().Nodes,
+    Hosts = sp.GetRequiredService<EngineHost>().Hosts,
     Shutdown = () => { sp.GetRequiredService<IHostApplicationLifetime>().StopApplication(); return Task.CompletedTask; },
     ServerPort = port,
 });
@@ -112,6 +113,19 @@ app.Use(async (ctx, next) =>
         engineHost.Holds.Touch("hub:" + ctx.Connection.RemoteIpAddress, DateTime.Now);
     await next();
 });
+
+// ── Model-Hosts: der Host baut einen WebSocket auf und meldet sich mit seinem Token (docs/plan-hosts-gateway.md) ──
+app.UseWebSockets(new WebSocketOptions { KeepAliveInterval = TimeSpan.FromSeconds(15) });
+app.Map(HostProtocol.Path, async (HttpContext ctx) =>
+{
+    if (!ctx.WebSockets.IsWebSocketRequest) { ctx.Response.StatusCode = StatusCodes.Status400BadRequest; return; }
+    var host = engineHost.Hosts.Registry.Find(ctx.Request.Headers[HostProtocol.TokenHeader].ToString());
+    if (host == null) { ctx.Response.StatusCode = StatusCodes.Status401Unauthorized; return; }
+    using var ws = await ctx.WebSockets.AcceptWebSocketAsync();
+    await engineHost.Hosts.HandleAsync(ws, host, ctx.Connection.RemoteIpAddress?.ToString() ?? "", ctx.RequestAborted);
+});
+app.MapGet("/api/hosts", (HttpContext ctx) =>
+    Results.Text(HostStateJson.Write(engineHost.Hosts.List(), DateTime.Now), "application/json"));
 
 // ── Lebensdauer: Fenster und TUI melden sich alle paar Sekunden (ServerHolds), beim Beenden ab ──
 app.MapPost("/api/hold", (string? id) =>
