@@ -221,7 +221,7 @@ public class EvalTests
     [TestMethod]
     public void MachineOf_RemoteHostIsTakenFromTheUrl_LocalMeansThisPc()
     {
-        Assert.AreEqual("192.168.178.157", EvalTarget.MachineOf("http://192.168.178.157:8081"));
+        Assert.AreEqual("192.168.1.50", EvalTarget.MachineOf("http://192.168.1.50:8081"));
         Assert.AreEqual("alexpc", EvalTarget.MachineOf("http://alexpc:8081/v1"));
         Assert.AreEqual(Environment.MachineName, EvalTarget.MachineOf("http://127.0.0.1:8081"));
         Assert.AreEqual(Environment.MachineName, EvalTarget.MachineOf("http://localhost:8081"));
@@ -237,8 +237,8 @@ public class EvalTests
         h.Responder = (key, body) => key.EndsWith("/props")
             ? (HttpStatusCode.OK, @"{""build_info"":""b"",""model_path"":""C:\\modelle\\bonsai.gguf"",""model_alias"":""bonsai"",""total_slots"":2,""model_ftype"":""Q4_K_M"",""default_generation_settings"":{""n_ctx"":131072}}")
             : null;
-        var info = await EvalTarget.ProbeAsync(new HttpClient(h), "http://192.168.178.157:8081");
-        Assert.AreEqual("192.168.178.157", info.Machine);
+        var info = await EvalTarget.ProbeAsync(new HttpClient(h), "http://192.168.1.50:8081");
+        Assert.AreEqual("192.168.1.50", info.Machine);
         Assert.AreEqual("bonsai", info.Model);
         Assert.AreEqual("bonsai.gguf", info.ModelFile);
         StringAssert.Contains(info.Settings, "ctx 131072");
@@ -251,8 +251,8 @@ public class EvalTests
     public async Task ProbeAsync_SurvivesAServerWithoutProps()
     {
         var h = new FakeHandler();       // antwortet auf nichts
-        var info = await EvalTarget.ProbeAsync(new HttpClient(h), "http://192.168.178.157:8081");
-        Assert.AreEqual("192.168.178.157", info.Machine);
+        var info = await EvalTarget.ProbeAsync(new HttpClient(h), "http://192.168.1.50:8081");
+        Assert.AreEqual("192.168.1.50", info.Machine);
         Assert.AreEqual("", info.ModelFile);
         Assert.AreEqual("", info.Settings);
     }
