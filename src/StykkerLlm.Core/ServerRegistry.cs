@@ -184,7 +184,7 @@ public sealed class ServerRegistry : IDisposable
             {
                 var tail = CrashAnalysis.ReadTail(w.Log);
                 var cause = CrashAnalysis.Guess(tail);
-                if (cause != null) end = "crashed";
+                end = cause != null ? "crashed" : "lost";
                 lost.Add(new ServerLost(w.Name, w.Info.Url, w.Info.Pid, w.Log, tail, cause, DateTime.Now, w.ProfileKey));
             }
             if (w.Kind == BackendKind.LlamaCpp && w.Info.Pid != null) _library?.RecordEnd(w.Info, end, DateTime.Now);

@@ -648,3 +648,20 @@ html[data-theme=titan] nav a{font-family:var(--font);letter-spacing:.02em}
 .theme-seg button{min-width:110px}
 @media(max-width:1560px){.hsearch span:first-child{display:none}.top nav a{padding:5px 10px}.top{gap:12px 16px}}
 html[data-theme=titan] .sp4{--spc:var(--st-read)}   /* schnellste Stufe blau: Orange ist in Titan der Akzent und wirkte wie eine Warnung */
+
+/* Nach der Endprüfung: Kontext fast voll, Startzustand der Profile, Proxy-Port, Fehler der Anbieter */
+.slot.hot{--sc:var(--bad)}.slot.hot{box-shadow:0 0 0 1px var(--bad)}
+.pf-note{margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pf-launch{display:flex;align-items:center;gap:6px;margin-top:7px;color:var(--st-load)}.pf-launch span{flex:1;min-width:0}
+.pf-launch.failed{color:var(--bad)}
+.pxp-port{width:96px}
+.pxs-err{color:var(--bad);padding:0 2px 4px 18px}
+html[data-theme=titan] .slot.hot{box-shadow:inset 0 0 0 2px var(--bad)}
+
+/* Nach der Endprüfung (Verifier): Kopf klebt auf schmalen Geräten nicht (nahm fast die halbe Höhe ein); ohne GPU keine
+   Lichthöfe an Balken, Zahlen und Marke; Lampen der Proxy-Quellen mit Symbol */
+[data-view=small] .top{position:static}
+html.shell .bar>div,html.shell .spark-tip,html.shell .hchip .mini i{box-shadow:none}
+html.shell .big,html.shell .kpi,html.shell .kpi>div,html.shell .brand .logo,html.shell .brand .acc,html.shell td.num b,html.shell .meter .v b,html.shell .req .spd,html.shell .pf-tps b{text-shadow:none!important}
+.lampi{display:inline-flex}.lampi .ic{width:14px;height:14px}.lampi.ok{color:var(--good)}.lampi.bad{color:var(--bad)}.lampi:not(.ok):not(.bad){color:var(--muted)}
+.end-lost{color:var(--bad)}

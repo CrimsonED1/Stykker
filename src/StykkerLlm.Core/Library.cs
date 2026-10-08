@@ -58,7 +58,7 @@ public sealed class HistoryEntry
     public double MaxVramGb { get; set; }
     public double? ModelSizeGb { get; set; }
     // Letzter Lauf (U8): erzeugte Tokens und wie er endete – "" (läuft/unbekannt), clean (über StykkerLLM gestoppt),
-    // crashed (abgestürzt, Ursache im Log erkannt), outside (von außen beendet oder ohne erkennbare Ursache weg)
+    // crashed (abgestürzt, Ursache im Log erkannt), lost (unerwartet weg, Ursache unbekannt), outside (von außen beendet, nicht von StykkerLLM gestartet)
     public long LastRunTokens { get; set; }
     public string LastEnd { get; set; } = "";
     public DateTime? LastEndAt { get; set; }

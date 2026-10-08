@@ -17,8 +17,8 @@ public static class Smbios
     public static MemoryInfo? ParseRaw(byte[] raw)
     {
         if (raw.Length < 8) return null;
-        int len = BitConverter.ToInt32(raw, 4);
-        return ParseTable(raw.AsSpan(8, Math.Min(len, raw.Length - 8)).ToArray());
+        int len = Math.Clamp(BitConverter.ToInt32(raw, 4), 0, raw.Length - 8);
+        return ParseTable(raw.AsSpan(8, len).ToArray());
     }
 
     // Die Strukturen selbst: je Typ 17 (Memory Device) Größe, Typ und Takt; leere Steckplätze zählen nicht
@@ -39,8 +39,8 @@ public static class Smbios
                 {
                     totalGb += sizeMb / 1024.0;
                     types.Add(t[i + 0x12]);
-                    int speed = len >= 0x22 ? BitConverter.ToUInt16(t, i + 0x20) : 0;          // eingestellter Takt (2.7+)
-                    if (speed == 0 && len >= 0x17) speed = BitConverter.ToUInt16(t, i + 0x15);  // sonst Höchsttakt
+                    int speed = len >= 0x22 ? Speed(t, i, len, 0x20, 0x58) : 0;           // eingestellter Takt (2.7+)
+                    if (speed == 0 && len >= 0x17) speed = Speed(t, i, len, 0x15, 0x54);    // sonst Höchsttakt
                     if (speed > 0) speeds.Add(speed);
                 }
             }
@@ -57,6 +57,14 @@ public static class Smbios
         return new MemoryInfo(name, mts, modules, Math.Round(totalGb, 1), modules >= 2 ? 2 : 1);
     }
 
+    // Takt in MT/s; 0xFFFF heißt „steht im erweiterten Feld“ (SMBIOS 3.3), 0 = unbekannt
+    private static int Speed(byte[] t, int i, int len, int off, int extOff)
+    {
+        int v = BitConverter.ToUInt16(t, i + off);
+        if (v != 0xFFFF) return v;
+        return len >= extOff + 4 ? (int)(BitConverter.ToUInt32(t, i + extOff) & 0x7FFFFFFF) : 0;
+    }
+
     private static int SizeMb(byte[] t, int i, int len)
     {
         int size = BitConverter.ToUInt16(t, i + 0x0C);
@@ -68,6 +76,6 @@ public static class Smbios
     public static string TypeName(byte code) => code switch
     {
         0x18 => "DDR3", 0x1A => "DDR4", 0x1B => "LPDDR", 0x1C => "LPDDR2", 0x1D => "LPDDR3", 0x1E => "LPDDR4",
-        0x22 => "DDR5", 0x23 => "LPDDR5", 0x13 => "SDRAM", 0x12 => "DDR", 0x13 + 6 => "DDR2", _ => "RAM",
+        0x22 => "DDR5", 0x23 => "LPDDR5", 0x0F => "SDRAM", 0x12 => "DDR", 0x13 => "DDR2", _ => "RAM",
     };
 }

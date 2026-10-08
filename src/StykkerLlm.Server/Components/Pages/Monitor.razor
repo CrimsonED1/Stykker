@@ -12,7 +12,7 @@
 
 @{ var e = Host.Engine; var px = e.Proxies; bool ro = Host.ReadOnly; }
 
-@if (Host.Engine.CurrentNotice is { } nn)
+@if (Host.Engine.CurrentNotice is { } nn && !_noticeHidden)
 {
     <div class="card" style="margin-bottom:12px">
         <div class="row">
@@ -22,7 +22,7 @@
                 {
                     <a class="btn" href="@($"log?path={Uri.EscapeDataString(nn.LogFile)}")">@Strings.BtnOpenLog</a>
                 }
-                <button disabled="@ro" @onclick='() => Act("notice.dismiss")'>@Strings.BtnDismiss</button>
+                <button disabled="@(!CanWrite)" title="@(CanWrite ? Strings.BtnDismiss : WriteReason)" @onclick="DismissNotice">@Strings.BtnDismiss</button>
             </span>
         </div>
         <div style="margin-top:6px">@nn.Text</div>
@@ -72,7 +72,7 @@
         {
             var r = rs;
             <ServerCard Model="ServerCardModel.From(r, hid, hn)" CanWrite="CanWrite && !ro" SparkAgo="@SparkAgo"
-                        OnStop="() => HostStop(hid, r.Key)" />
+                        OnStop="() => HostStop(hid, r.Key)" OnUnload="m => HostUnload(hid, r.Key, m)" />
         }
     }
 }
@@ -153,7 +153,7 @@
                     <i class="hdot @(live ? "on" : "")" style="--b:var(--b-llama)"></i>
                     <div class="hname">
                         <b title="@(h.ModelPath ?? h.Name)">@(h.Name.Length > 0 ? h.Name : h.ModelPath != null ? ServerInfo.ModelName(h.ModelPath) : "?")</b>
-                        <span class="muted small">@h.LastSeen.ToString(grp.Key == Strings.HistOlder ? "d.M. HH:mm" : "HH:mm", CultureInfo.InvariantCulture) · :@(h.Port?.ToString(CultureInfo.InvariantCulture) ?? "–") · @h.Runs×</span>
+                        <span class="muted small">@h.LastSeen.ToString(grp.Key == Strings.HistOlder ? "d.M. HH:mm" : "HH:mm", CultureInfo.InvariantCulture) · :@(h.Port?.ToString(CultureInfo.InvariantCulture) ?? "–") · @h.Runs×@(h.MaxVramGb > 0 ? " · " + h.MaxVramGb.ToString("0.0", CultureInfo.InvariantCulture) + " GB VRAM" : "")</span>
                     </div>
                     <span class="mc @(h.Ctx == null ? "na" : "")" title="@Strings.CardCtx"><Icon Name="ctx" Title="@Strings.CardCtx" /><b>@(h.Ctx is int c ? (c / 1024).ToString(CultureInfo.InvariantCulture) : "–")</b>@if (h.Ctx != null) { <small>k</small> }</span>
                     <span class="hrun" title="@Strings.HistRunTip(avgRun, h.TotalSeconds)"><span class="dbar"><i style="width:@((int)(100 * avgRun / maxRun))%"></i></span><small>@Dur(avgRun)</small></span>
@@ -161,10 +161,10 @@
                     <span class="mc @(h.LastRunTokens > 0 ? "" : "na")" title="@Strings.HistTokensTip"><Icon Name="sum" Title="@Strings.CardSum" /><b>@(h.LastRunTokens > 0 ? (h.LastRunTokens / 1000.0).ToString("0.0", CultureInfo.InvariantCulture) : "–")</b>@if (h.LastRunTokens > 0) { <small>k</small> }</span>
                     <span class="hend end-@(endState.Length > 0 ? endState : "none")" title="@Strings.HistEndText(endState, h.LastEndAt)"><Icon Name="@EndIcon(endState)" Title="@Strings.HistEndText(endState, h.LastEndAt)" /></span>
                     <span class="hacts">
-                        <button class="ib quiet" disabled="@(ro || !CanWrite || live)" title="@Strings.BtnStartAgain" aria-label="@Strings.BtnStartAgain" @onclick="() => StartHistory(hh)"><Icon Name="play" /></button>
-                        <button class="ib quiet" disabled="@(ro || !CanWrite)" title="@Strings.CardSave" aria-label="@Strings.CardSave" @onclick='() => Act("profile.add-history", hh.Key, hh.Name)'><Icon Name="save" /></button>
+                        <button class="ib quiet" disabled="@(ro || !CanWrite || live)" title="@(CanWrite ? Strings.BtnStartAgain : WriteReason)" aria-label="@Strings.BtnStartAgain" @onclick="() => StartHistory(hh)"><Icon Name="play" /></button>
+                        <button class="ib quiet" disabled="@(ro || !CanWrite)" title="@(CanWrite ? Strings.CardSave : WriteReason)" aria-label="@Strings.CardSave" @onclick='() => Act("profile.add-history", hh.Key, hh.Name)'><Icon Name="save" /></button>
                         <button class="ib quiet" title="@Strings.BtnDetails" aria-label="@Strings.BtnDetails" @onclick="() => OpenDetails(hh)"><Icon Name="info" /></button>
-                        <button class="ib quiet danger" disabled="@(ro || !CanWrite)" title="@Strings.BtnForget" aria-label="@Strings.BtnForget" @onclick="() => Forget(hh)"><Icon Name="trash" /></button>
+                        <button class="ib quiet danger" disabled="@(ro || !CanWrite)" title="@(CanWrite ? Strings.BtnForget : WriteReason)" aria-label="@Strings.BtnForget" @onclick="() => Forget(hh)"><Icon Name="trash" /></button>
                     </span>
                 </div>
             }
@@ -230,7 +230,7 @@
             <div class="pf @(running != null ? "on" : "") @(starting != null ? "starting" : "") @(tight ? "tight" : "")" style="--b:var(--b-llama)">
                 <div class="pf-hd">
                     <span class="bk" title="llama.cpp"><Icon Name="b-llama" Title="llama.cpp" /></span>
-                    <span class="name" title="@(a.Model ?? p.Name)">@p.Name</span>
+                    <span class="name" title="@NameTip(p, a.Model)">@p.Name</span>
                     <span class="st" data-s="@(running != null ? (running.Current > 0 ? "gen" : "idle") : starting != null ? "load" : "off")" title="@(running != null ? Strings.RunningTag : starting != null ? Strings.StartingShort : Strings.CardStateOff)">
                         <Icon Name="@(running != null ? (running.Current > 0 ? "s-gen" : "s-idle") : starting != null ? "s-load" : "s-off")" Class="@(starting != null ? "spin" : null)" />
                     </span>
@@ -244,6 +244,27 @@
                     <span class="mc @(draft ? "" : "na off")" title="@(draft ? Strings.PfDraftOn : Strings.PfDraftOff)"><Icon Name="draft" Title="@Strings.CardDraft" /><b>@(draft ? Strings.PfOn : "–")</b></span>
                     <span class="mc @(p.RestartOnCrash ? "" : "na off")" title="@(p.RestartOnCrash ? Strings.PfRestartOn : Strings.PfRestartOff)"><Icon Name="restart" Title="@Strings.PfRestart" /><b>@(p.RestartOnCrash ? Strings.PfOn : "–")</b></span>
                 </div>
+                @if (!string.IsNullOrWhiteSpace(p.Note)) { <div class="pf-note muted small" title="@p.Note">@p.Note</div> }
+                @if (starting != null)
+                {
+                    <div class="pf-launch @(starting.State == LaunchState.Failed ? "failed" : "")">
+                        <Icon Name="@(starting.State == LaunchState.Failed ? "e-crash" : "s-load")" Class="@(starting.State == LaunchState.Failed ? null : "spin")" />
+                        <span class="small">@(starting.State == LaunchState.Failed ? (starting.FailureReason ?? Strings.PfStartFailed) : Strings.PfStartingFor((int)(DateTime.Now - starting.Started).TotalSeconds))</span>
+                        @if (starting.LogFile.Length > 0) { <a class="btn ib" href="@($"log?path={Uri.EscapeDataString(starting.LogFile)}")" title="@Strings.BtnOpenLog" aria-label="@Strings.BtnOpenLog"><Icon Name="file" /></a> }
+                        @if (CanWrite && !ro)
+                        {
+                            var lid = starting.Id.ToString();
+                            @if (starting.State == LaunchState.Failed)
+                            {
+                                <button class="ib" title="@Strings.BtnDismiss" aria-label="@Strings.BtnDismiss" @onclick='() => Act("launch.dismiss", lid)'><Icon Name="x" /></button>
+                            }
+                            else
+                            {
+                                <button class="ib danger" title="@Strings.PfCancelStart" aria-label="@Strings.PfCancelStart" @onclick='() => Act("launch.stop", lid)'><Icon Name="stop" /></button>
+                            }
+                        }
+                    </div>
+                }
                 @if (running == null && need is double needGb && free is double freeGb)
                 {
                     <div class="pf-fc" title="@Strings.PfForecastTip(needGb, freeGb, hist is { MaxVramGb: > 0 })">
@@ -256,32 +277,36 @@
                     @if (running != null)
                     {
                         <a class="btn ib" href="@($"prompt?server={Uri.EscapeDataString(running.Key)}")" title="@Strings.PromptTitle" aria-label="@Strings.PromptTitle"><Icon Name="chat" /></a>
-                        <button class="ib danger" disabled="@ro" title="@Strings.CardStop" aria-label="@Strings.CardStop" @onclick='() => Act("stop", running.Key)'><Icon Name="stop" /></button>
+                        <button class="ib danger" disabled="@(ro || !CanWrite)" title="@(CanWrite ? Strings.CardStop : Strings.ViewerOnly)" aria-label="@Strings.CardStop" @onclick='() => Act("stop", running.Key)'><Icon Name="stop" /></button>
                     }
                     else if (starting == null)
                     {
-                        <button class="ib txt primary" disabled="@ro" title="@StartTip(p)" @onclick="() => Start(pr)"><Icon Name="play" />@Strings.BtnStart</button>
+                        <button class="ib txt primary" disabled="@(ro || !CanWrite)" title="@(CanWrite ? StartTip(p) : Strings.ViewerOnly)" @onclick="() => Start(pr)"><Icon Name="play" />@Strings.BtnStart</button>
                     }
                     <details class="pf-cmd">
                         <summary title="@Strings.PfCmdLine">@Strings.PfCmdLine</summary>
                         <code>@p.Program @string.Join(" ", p.Args)</code>
                     </details>
+                    @if (CanWrite && !ro)
+                    {
                     <details class="menu" style="margin-left:auto">
                         <summary title="@Strings.BtnMore" aria-label="@Strings.BtnMore"><Icon Name="more" /></summary>
                         <div>
                             <a href="@($"bench?target={p.Id:N}")">@Strings.BtnBench</a>
-                            <button disabled="@ro" @onclick="() => Edit(pr)">@Strings.BtnEdit</button>
+                            <button @onclick="() => Edit(pr)">@Strings.BtnEdit</button>
+                            <button @onclick="() => SetRestart(pr, !pr.RestartOnCrash)">@(p.RestartOnCrash ? Strings.PfRestartTurnOff : Strings.PfRestartTurnOn)</button>
                             <span class="grp">@Strings.PfIdle</span>
                             <div class="seg">
                                 @foreach (var min in new[] { 0, 15, 30, 60 })
                                 {
                                     var mm = min;
-                                    <button class="@(p.UnloadAfterIdleMin == mm ? "on" : "")" disabled="@ro" @onclick="() => SetIdle(pr, mm)">@(mm == 0 ? Strings.PfOff : mm + "m")</button>
+                                    <button class="@(p.UnloadAfterIdleMin == mm ? "on" : "")" @onclick="() => SetIdle(pr, mm)">@(mm == 0 ? Strings.PfOff : mm + "m")</button>
                                 }
                             </div>
-                            <button class="bad" disabled="@ro" @onclick="() => Remove(pr)">@Strings.BtnRemove</button>
+                            <button class="bad" @onclick="() => Remove(pr)">@Strings.BtnRemove</button>
                         </div>
                     </details>
+                    }
                 </div>
             </div>
         }
@@ -312,7 +337,7 @@
         <button class="switch @(px.Running ? "on" : "")" role="switch" aria-checked="@(px.Running ? "true" : "false")" aria-label="@Strings.PxTitle" disabled="@(ro || !CanWrite)" @onclick="ToggleProxy"><i></i></button>
         @if (px.Running)
         {
-            <code class="pxp-url" title="@Strings.ProxyBar(px.Running, px.Port, px.TargetName(), px.BindLan)">@baseUrl</code>
+            <code class="pxp-url" title="@baseUrl · @Strings.ProxyBar(px.Running, px.Port, px.TargetName(), px.BindLan)">@baseUrl.Replace("http://", "")</code>
             <button class="ib quiet" title="@Strings.PxCopy" aria-label="@Strings.PxCopy" @onclick="() => Copy(baseUrl)"><Icon Name="@(_copied ? "r-ok" : "file")" /></button>
         }
     </div>
@@ -324,6 +349,14 @@
             <option value="">@Strings.ProxyTargetAuto</option>
             @foreach (var c in models) { <option value="@c.Value">@c.Display</option> }
         </select>
+    </div>
+    <div class="pxp-row">
+        <span class="pxp-l">@Strings.PxPort <span class="tip" title="@Strings.PxPortTip"><Icon Name="info" /></span></span>
+        <input type="number" min="1024" max="65535" class="pxp-port" value="@(_port ?? px.Port.ToString(CultureInfo.InvariantCulture))" @oninput="e => _port = e.Value?.ToString()" disabled="@(ro || !CanWrite)" aria-label="@Strings.PxPort" />
+        @if (_port != null && _port != px.Port.ToString(CultureInfo.InvariantCulture) && CanWrite && !ro)
+        {
+            <button class="primary" @onclick="SavePort">@Strings.BtnSave</button><button class="ghost" @onclick="() => _port = null">@Strings.PxCancel</button>
+        }
     </div>
     <div class="pxp-row">
         <span class="pxp-l">@Strings.PxLan <span class="tip warnc" title="@Strings.ProxyLanHint"><Icon Name="info" /></span></span>
@@ -346,7 +379,7 @@
         {
             var rr = r;
             <div class="pxs-item">
-                <span class="lamp @(r.Ready ? "on" : "bad")" title="@(r.Ready ? Strings.PxReachable : Strings.PxUnreachable)"></span>
+                <span class="lampi @(r.Ready ? "ok" : "bad")" title="@(r.Ready ? Strings.PxReachable : Strings.PxUnreachable)"><Icon Name="@(r.Ready ? "r-ok" : "r-err")" Title="@(r.Ready ? Strings.PxReachable : Strings.PxUnreachable)" /></span>
                 <span class="n" title="@r.Url">@r.Name</span>
                 <span class="muted small">@Strings.PxModels(r.Models.Length)</span>
                 @if (CanWrite && !ro) { <button class="ib quiet danger" title="@Strings.PxRemove" aria-label="@Strings.PxRemove" @onclick="() => RemoveRemote(rr.Url)"><Icon Name="trash" /></button> }
@@ -370,7 +403,7 @@
         {
             var pp = pv;
             <div class="pxs-item">
-                <span class="lamp @(pv.Ready ? "on" : pv.HasKey ? "bad" : "")" title="@(pv.Error.Length > 0 ? pv.Error : pv.Ready ? Strings.PxReachable : Strings.PxUnreachable)"></span>
+                <span class="lampi @(pv.Ready ? "ok" : pv.HasKey ? "bad" : "")" title="@(pv.Error.Length > 0 ? pv.Error : pv.Ready ? Strings.PxReachable : Strings.PxUnreachable)"><Icon Name="@(pv.Ready ? "r-ok" : pv.HasKey ? "r-err" : "s-idle")" Title="@(pv.Ready ? Strings.PxReachable : Strings.PxUnreachable)" /></span>
                 <span class="n" title="@pv.Url">@pv.Name</span>
                 <span class="muted small" title="@string.Join(", ", pv.Models)">@Strings.PxModels(pv.Models.Length)</span>
                 <span class="small @(pv.HasKey ? "muted" : "warnc")"><Icon Name="lock" Class="sm" /> @(pv.HasKey ? Strings.PxKeyStored : Strings.PxKeyMissing)</span>
@@ -380,6 +413,7 @@
                     <button class="ib quiet danger" title="@Strings.PxRemove" aria-label="@Strings.PxRemove" @onclick="() => RemoveProvider(pp.Url)"><Icon Name="trash" /></button>
                 }
             </div>
+            @if (pv.Error.Length > 0) { <div class="small pxs-err">@pv.Error</div> }
             @if (_keyFor == pv.Url)
             {
                 <div class="pxs-form">
@@ -466,6 +500,15 @@
     // Beschriftung unten links an der Kurve: wie weit sie zurückreicht (300 Takte)
     private string SparkAgo => Strings.CardSparkAgo(Math.Max(1, (int)Math.Round(ServerWatcher.HistoryLength * Math.Max(500, Host.Engine.Settings.IntervalMs) / 60000.0)));
 
+    private async Task HostUnload(string hostId, string key, string model)
+    {
+        if (!CanWrite) return;
+        var req = new ActionRequest { Action = "host.unload", Arg = hostId, Arg2 = key };
+        req.Values["model"] = model;
+        var r = await Web.RunAsync(req);
+        if (!r.Ok) await Prompt.InformAsync(Strings.ActionFailed, r.Message, warning: true);
+    }
+
     private async Task HostStop(string hostId, string key)
     {
         if (!CanWrite) return;
@@ -517,6 +560,12 @@
     private static string Pct(double part, double whole) =>
         (whole > 0 ? Math.Clamp(100 * part / whole, 0, 100) : 0).ToString("0.#", CultureInfo.InvariantCulture) + "%";
 
+    private static string NameTip(Profile p, string? model) =>
+        (model ?? p.Name) + (string.IsNullOrWhiteSpace(p.Note) ? "" : "\n" + p.Note);
+
+    private Task SetRestart(Profile p, bool on) =>
+        Web.RunAsync(new ActionRequest { Action = "profile.restart", Arg = p.Id.ToString("N"), Flag = on });
+
     private Task SetIdle(Profile p, int minutes) =>
         Web.RunAsync(new ActionRequest { Action = "profile.idleunload", Arg = p.Id.ToString("N"), Number = minutes });
 
@@ -540,6 +589,16 @@
     }
 
     private void SetLan(bool on) { if (CanWrite) Host.Engine.Proxies.SetBindLan(on); }
+
+    private string? _port;
+    private async Task SavePort()
+    {
+        if (!CanWrite || _port == null) return;
+        var req = new ActionRequest { Action = "proxy.port" };
+        req.Values["port"] = _port;
+        var r = await Web.RunAsync(req);
+        if (r.Ok) { _port = null; Toast.Show(r.Message); } else _flash = r.Message;
+    }
 
     private void AddProviderForm()
     {
@@ -582,7 +641,7 @@
 
     // Alles, was hier direkt an Engine, Proxy oder Library geht (nicht über die Aktionen), braucht dieselbe
     // Rollenprüfung wie WebActions – sonst könnte ein Viewer über die Weboberfläche doch etwas bedienen.
-    private bool CanWrite => Web.CanWrite;
+    private bool CanWrite => Web.CanWrite && !Host.ReadOnly;
 
     private void ToggleProxy()
     {
@@ -677,6 +736,20 @@
     private readonly HashSet<string> _forgetting = new();
     private string _hfilter = "all";
 
+    // Grund für gesperrte Schreibknöpfe (Viewer oder Read-only)
+    private string WriteReason => Host.ReadOnly ? Strings.ServerReadOnlyHint : Strings.ViewerOnly;
+
+    // Hinweis ausblenden mit Rückgängig: weg ist er sofort, geschlossen wird er erst nach Ablauf der Meldung
+    private bool _noticeHidden;
+    private void DismissNotice()
+    {
+        if (!CanWrite) return;
+        _noticeHidden = true;
+        Toast.ShowUndo(Strings.NoticeDismissed,
+            commit: async () => { await Web.RunAsync(new ActionRequest { Action = "notice.dismiss" }); await InvokeAsync(() => { _noticeHidden = false; StateHasChanged(); }); },
+            undo: () => InvokeAsync(() => { _noticeHidden = false; StateHasChanged(); }));
+    }
+
     private Task Forget(HistoryEntry h)
     {
         if (!CanWrite) return Task.CompletedTask;
@@ -684,7 +757,12 @@
         var key = h.Key;
         _forgetting.Add(key);
         Toast.ShowUndo(Strings.HistForgotten(name),
-            commit: async () => { await InvokeAsync(async () => { await Act("history.forget", key); _forgetting.Remove(key); StateHasChanged(); }); },
+            commit: async () =>
+            {
+                var r = await Web.RunAsync(new ActionRequest { Action = "history.forget", Arg = key });
+                if (!r.Ok) Toast.Show(r.Message, warn: true);
+                await InvokeAsync(() => { _forgetting.Remove(key); StateHasChanged(); });
+            },
             undo: () => InvokeAsync(() => { _forgetting.Remove(key); StateHasChanged(); }));
         return Task.CompletedTask;
     }
@@ -697,7 +775,7 @@
 
     private static string EndIcon(string end) => end switch
     {
-        "live" => "s-gen", "clean" => "r-ok", "crashed" => "e-crash", "outside" => "e-kill", _ => "s-idle",
+        "live" => "s-gen", "clean" => "r-ok", "crashed" => "e-crash", "lost" => "e-crash", "outside" => "e-kill", _ => "s-idle",
     };
 
     private async Task Start(Profile p) { if (CanWrite && await Launcher.StartProfileAsync(p)) _flash = Strings.StartingShort; }

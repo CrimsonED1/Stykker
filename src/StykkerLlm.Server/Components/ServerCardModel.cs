@@ -6,7 +6,7 @@ namespace StykkerLlm.Server.Components;
 // Was eine Serverkarte zeigt (docs/plan-ui-redesign.md, U4), gleich für Server auf diesem PC (ServerWatcher) und auf
 // einem Model-Host (RemoteServer aus dem Stand des Hosts). Ein Wert, den das Backend nicht meldet, bleibt null – die
 // Karte zeigt dann ein gedämpftes „–“ an seinem festen Platz.
-public sealed record CardSlot(int Id, string State, double Frac, double Tps, long Generated, int CtxUsed, int CtxMax);
+public sealed record CardSlot(int Id, string State, double Frac, double Tps, long Generated, int CtxUsed, int CtxMax, bool Full = false);
 
 public sealed class ServerCardModel
 {
@@ -66,8 +66,7 @@ public sealed class ServerCardModel
 
     public static ServerCardModel From(ServerWatcher s, RecordingSession? rec, HistoryEntry? usual = null)
     {
-        var slots = s.Slots.Select(v => new CardSlot(v.Id, SlotState(v.Busy, v.ReadingPrompt),
-            v.Busy && v.CtxMax > 0 ? Math.Clamp((double)v.CtxUsed / v.CtxMax, 0, 1) : 0, v.Tps, v.Generated, v.CtxUsed, v.CtxMax)).ToList();
+        var slots = s.Slots.Select(Slot).ToList();
         var hist = new double[s.HistoryCount];
         for (int i = 0; i < hist.Length; i++) hist[i] = s.HistoryAt(i);
         return new ServerCardModel
@@ -87,8 +86,7 @@ public sealed class ServerCardModel
 
     public static ServerCardModel From(RemoteServer rs, string hostId, string hostName)
     {
-        var slots = rs.Slots.Select(v => new CardSlot(v.Id, SlotState(v.Busy, v.ReadingPrompt),
-            v.Busy && v.CtxMax > 0 ? Math.Clamp((double)v.CtxUsed / v.CtxMax, 0, 1) : 0, v.Tps, v.Generated, v.CtxUsed, v.CtxMax)).ToList();
+        var slots = rs.Slots.Select(Slot).ToList();
         int n = Math.Clamp(rs.HistoryCount, 0, rs.History.Length);
         return new ServerCardModel
         {
@@ -104,6 +102,11 @@ public sealed class ServerCardModel
             Recording = rs.Recording,
         };
     }
+
+    // Eine Slot-Kachel; Full = Kontext fast voll (dieselbe Regel wie überall: CtxPressure)
+    private static CardSlot Slot(SlotView v) => new(v.Id, SlotState(v.Busy, v.ReadingPrompt),
+        v.Busy && v.CtxMax > 0 ? Math.Clamp((double)v.CtxUsed / v.CtxMax, 0, 1) : 0, v.Tps, v.Generated, v.CtxUsed, v.CtxMax,
+        v.Busy && CtxPressure.IsNearlyFull(v));
 
     public static string SlotState(bool busy, bool reading) => !busy ? "idle" : reading ? "read" : "gen";
 

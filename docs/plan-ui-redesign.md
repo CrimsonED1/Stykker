@@ -43,7 +43,22 @@ Reference: the mockups in `docs/design/` (open them in a browser, controls at th
 Order: U1 → U2 → U3 → U4 → U5 → U6 → U7 → U8 → U9 → U10 → U11 → U12 → U13. U7 and U8 need new data in Core; their data part
 can come first if the UI waits.
 
+## Final review (2026-10-08)
+
+Verifier and feature search (Opus) on the finished interface: `docs/design/review-verify-final.de.md` (0 must, 8 should,
+13 minor) and `docs/design/review-features-final.de.md` (10 gaps, 6 ideas). Fixed: all *should* items (stale palette list on
+Enter, viewer/read-only reasons on profile, history and notice buttons, notice dismiss with undo, `Finished` list read under a
+lock, shutdown checked in the handler, header not sticky on phones, host remove asks first, palette roles and focus return),
+most minor items (SMBIOS type codes and 0xFFFF speed, run end "lost" for an unknown cause, no glow in the no-GPU window,
+lamps with symbols, shorter proxy address), and the gaps: stop only for llama.cpp on host cards, context-almost-full on slot
+tiles and the card header, unload on host cards in the monitor, start progress with cancel/dismiss and the restart-on-crash
+switch on profile tiles, profile note shown, proxy port editable, provider errors visible, max VRAM in history rows,
+"Start again" in the server-lost banner, more palette actions (record, save, start again, server details, approve).
+Left on purpose: slot tiles are not clickable (details page has the slots), history has no backend filter (it only holds
+llama.cpp runs), host GPUs are not in the hardware card (they are on the Hosts page and the idle host card).
+
 ## Not now
 
 From the reviews, left for later: failed start with cancel, state "sleeping", energy per 1k tokens, notifications,
-time to first token as a column.
+time to first token as a column. Ideas from the final feature review (TTFT and prompt processing per server, script export
+of a profile, downloadable request log, idle VRAM with unload-now, browser notification on a crash) are candidates for later.

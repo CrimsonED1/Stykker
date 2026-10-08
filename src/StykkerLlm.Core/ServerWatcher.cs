@@ -52,7 +52,10 @@ public sealed class ServerWatcher : IDisposable
     public int HistoryCount { get; private set; }
     private int _historyHead;
     public double Current { get; private set; }
-    public List<FinishedRequest> Finished { get; } = new();
+    // Letzte Anfragen: das Pollen ändert die Liste, die Oberflächen lesen jede Sekunde – deshalb gesperrt, gelesen als Kopie
+    private readonly List<FinishedRequest> _finished = new();
+    public IReadOnlyList<FinishedRequest> Finished { get { lock (_finished) return _finished.ToArray(); } }
+    private void AddFinished(FinishedRequest f) { lock (_finished) { _finished.Insert(0, f); if (_finished.Count > 12) _finished.RemoveAt(_finished.Count - 1); } }
     // Nur für Anfragen, die der Monitor live mitbekommen hat (nicht für das beim Start eingelesene Log)
     public event Action<FinishedRequest>? RequestFinished;
 
@@ -488,8 +491,7 @@ public sealed class ServerWatcher : IDisposable
             var f = new FinishedRequest(++_seqCounter, Name, Model, 0, 0, r.PromptTokens,
                 r.PromptMs > 0 ? r.PromptTokens * 1000.0 / r.PromptMs : 0, r.DecodeTps, r.OutputTokens, r.Seconds,
                 initial ? null : DateTime.Now, StrataApi.Status(r.Finish), initial ? "" : string.Join(" + ", Clients), r.PromptTokens, Key);
-            Finished.Insert(0, f);
-            if (Finished.Count > 12) Finished.RemoveAt(Finished.Count - 1);
+            AddFinished(f);
             if (!initial) { _generatedDone += r.OutputTokens; RequestFinished?.Invoke(f); }
         }
         _strataLast = Math.Max(0, m.Requests.Count > 0 ? m.Requests.Max(r => r.Time) : 0);
@@ -792,8 +794,7 @@ public sealed class ServerWatcher : IDisposable
         var status = cancelled ? ReqStatus.Cancelled : truncated || atLimit ? ReqStatus.Truncated : ReqStatus.Done;
         var f = new FinishedRequest(++_seqCounter, Name, Model, task, slot, r.PromptTok, r.PromptTps, r.GenTps, gen, r.TotalSec,
             fromLog ? null : DateTime.Now, status, fromLog ? "" : string.Join(" + ", Clients), _promptTotal.Remove(task, out var pt) ? pt : 0, Key);
-        Finished.Insert(0, f);
-        if (Finished.Count > 12) Finished.RemoveAt(Finished.Count - 1);
+        AddFinished(f);
         if (_doneTasks.Add(task)) { _doneOrder.Enqueue(task); if (_doneOrder.Count > 256) _doneTasks.Remove(_doneOrder.Dequeue()); }
         if (!fromLog) { _generatedDone += gen; RequestFinished?.Invoke(f); }
     }

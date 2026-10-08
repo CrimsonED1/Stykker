@@ -55,6 +55,18 @@ public class N64_SmbiosTests
         Assert.IsNull(Smbios.ParseRaw(Raw(Other(4), End())));
         Assert.IsNull(Smbios.ParseRaw(new byte[3]));
     }
+
+    [TestMethod]
+    public void TypeCodes_AndUnknownSpeed()
+    {
+        Assert.AreEqual("DDR2", Smbios.TypeName(0x13));
+        Assert.AreEqual("SDRAM", Smbios.TypeName(0x0F));
+        Assert.AreEqual("RAM", Smbios.TypeName(0x19));
+        // 0xFFFF ohne erweitertes Feld (Struktur zu kurz) ist „unbekannt“, nicht 65535 MT/s
+        var m = Smbios.ParseRaw(Raw(Device(8192, 0x22, 0xFFFF, 0xFFFF), End()))!;
+        Assert.AreEqual(0, m.SpeedMts);
+        Assert.AreEqual("DDR5", m.Short);
+    }
 }
 
 // Auf echtem Windows: die Firmware liefert eine Speichertabelle und die Kernzeiten (ohne Windows: inconclusive)

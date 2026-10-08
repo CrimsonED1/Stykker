@@ -7,6 +7,7 @@
 @inject WebActions Web
 @inject LaunchCoordinator Launcher
 @inject IJSRuntime JS
+@inject Toasts Toast
 
 <button id="cmdk-open" class="cmdk-hidden" tabindex="-1" aria-hidden="true" @onclick="Open"></button>
 @if (_open)
@@ -17,15 +18,16 @@
     <div class="cmdk" role="dialog" aria-modal="true" aria-label="@Strings.CmdTitle">
         <div class="cmdk-in">
             <Icon Name="more" />
-            <input id="cmdk-input" placeholder="@Strings.CmdPlaceholder" @bind="_q" @bind:event="oninput" @onkeydown="e => Key(e, items)" autocomplete="off" aria-label="@Strings.CmdPlaceholder" />
+            <input id="cmdk-input" placeholder="@Strings.CmdPlaceholder" @bind="_q" @bind:event="oninput" @bind:after="() => _sel = 0" @onkeydown="Key" autocomplete="off"
+                   aria-label="@Strings.CmdPlaceholder" role="combobox" aria-expanded="true" aria-controls="cmdk-list" aria-activedescendant="@(items.Count > 0 ? $"cmdk-opt-{_sel}" : null)" />
             <span class="kbd">Esc</span>
         </div>
-        <div class="cmdk-list" role="listbox">
+        <div class="cmdk-list" id="cmdk-list" role="listbox">
             @if (items.Count == 0) { <div class="muted small cmdk-none">@Strings.CmdNone</div> }
             @for (int i = 0; i < items.Count; i++)
             {
                 var it = items[i]; var idx = i;
-                <div class="cmdk-item @(i == _sel ? "sel" : "")" role="option" aria-selected="@(i == _sel ? "true" : "false")"
+                <div class="cmdk-item @(i == _sel ? "sel" : "")" id="cmdk-opt-@i" role="option" aria-selected="@(i == _sel ? "true" : "false")"
                      @onclick="() => Run(it)" @onmouseenter="() => _sel = idx">
                     <Icon Name="@it.Icon" /><span>@it.Label</span><small class="muted">@it.Group</small>
                 </div>
@@ -61,16 +63,33 @@
         yield return Page(Strings.SettingsTitle, "settings", "edit");
         yield return Page(Strings.BugReportTitle, "bugreport", "info");
         yield return new(Strings.PxTitle + " · " + Strings.PxSources, Strings.CmdPage, "proxy", () => { Nav.NavigateTo("./#proxy"); return Task.CompletedTask; });
+        yield return Page(Strings.PairApproveTitle, "approve", "lock");
+        foreach (var s in e.Registry.Servers.Where(s => s.Kind == BackendKind.LlamaCpp && !s.Info.Manual))
+            yield return Page(Strings.CmdDetails(s.Name), $"serverdetail/{Uri.EscapeDataString(s.Key)}", "info");
         if (!canWrite) yield break;
         yield return new(Strings.BtnFreeVram, Strings.CmdAction, "eject", () => Launcher.FreeVramAsync(), true);
         yield return new(e.Proxies.Running ? Strings.CmdProxyOff : Strings.CmdProxyOn, Strings.CmdAction, "proxy",
-            () => { e.Proxies.Toggle(out _); return Task.CompletedTask; }, true);
+            () => { if (!e.Proxies.Toggle(out var err) && err != null) Toast.Show(err, warn: true); return Task.CompletedTask; }, true);
         foreach (var t in ThemeCatalog.Choices)
             yield return new(Strings.CmdTheme(t), Strings.CmdAction, "edit", () => Web.RunAsync(new ActionRequest { Action = "theme.set", Arg = t }), true);
         foreach (var p in e.Library.Profiles.Where(p => Launcher.RunningFor(p) == null))
             yield return new(Strings.CmdStart(p.Name), Strings.CmdProfile, "play", () => Launcher.StartProfileAsync(p), true);
         foreach (var s in e.Registry.Servers.Where(s => s.Kind == BackendKind.LlamaCpp && !s.Info.Manual))
             yield return new(Strings.CmdStop(s.Name), Strings.CmdServer, "stop", () => Launcher.StopServerAsync(s), true);
+        foreach (var s in e.Registry.Servers.Where(s => s.Kind == BackendKind.LlamaCpp && !s.Info.Manual && s.Online))
+        {
+            bool rec = e.Recorder.Sessions.Any(r => r.Target == s.Key);
+            var key = s.Key; var name = s.Name;
+            yield return new(rec ? Strings.CmdRecordStop(name) : Strings.CmdRecord(name), Strings.CmdServer, "rec",
+                () => Web.RunAsync(new ActionRequest { Action = rec ? "record.stop" : "record.start", Arg = key }), true);
+            yield return new(Strings.CmdSave(name), Strings.CmdServer, "save", () => Web.RunAsync(new ActionRequest { Action = "save", Arg = key, Name = name }), true);
+        }
+        var running = e.Registry.Servers.Where(x => !string.IsNullOrEmpty(x.Info.Program) && x.Info.Args != null).Select(x => Library.MakeKey(x.Info.Program!, x.Info.Args!)).ToHashSet();
+        foreach (var h in e.Library.History.Where(h => !running.Contains(h.Key)).OrderByDescending(h => h.LastSeen).Take(6))
+        {
+            var hh = h;
+            yield return new(Strings.CmdStartAgain(h.Name.Length > 0 ? h.Name : "?"), Strings.CmdHistory, "play", () => Launcher.StartHistoryAsync(hh), true);
+        }
     }
 
     private bool Hit(string label) => _q.Length == 0 || _q.Split(' ', StringSplitOptions.RemoveEmptyEntries).All(w => label.Contains(w, StringComparison.OrdinalIgnoreCase));
@@ -83,23 +102,29 @@
         try { await JS.InvokeVoidAsync("stykkerFocus", "cmdk-input"); } catch (JSException) { }
     }
 
-    private void Close() => _open = false;
-
-    private async Task Key(KeyboardEventArgs e, List<Item> items)
+    // Schließen gibt den Fokus an das Element zurück, das vor dem Öffnen fokussiert war (ui.js merkt es sich)
+    private async Task Close()
     {
+        _open = false;
+        try { await JS.InvokeVoidAsync("stykkerRestoreFocus"); } catch (JSException) { } catch (InvalidOperationException) { }
+    }
+
+    // Die Liste je Taste neu bauen: sonst gälte bei schnellem Tippen + Enter noch die Liste vom letzten Zeichnen
+    private async Task Key(KeyboardEventArgs e)
+    {
+        var items = Items().Where(i => Hit(i.Label)).Take(12).ToList();
         switch (e.Key)
         {
-            case "Escape": Close(); break;
+            case "Escape": await Close(); break;
             case "ArrowDown": _sel = items.Count == 0 ? 0 : (_sel + 1) % items.Count; break;
             case "ArrowUp": _sel = items.Count == 0 ? 0 : (_sel - 1 + items.Count) % items.Count; break;
             case "Enter": if (items.Count > 0) await Run(items[Math.Clamp(_sel, 0, items.Count - 1)]); break;
-            default: _sel = 0; break;
         }
     }
 
     private async Task Run(Item it)
     {
-        Close();
+        await Close();
         StateHasChanged();
         await it.Run();
     }

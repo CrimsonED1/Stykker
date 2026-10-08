@@ -33,6 +33,10 @@
         {
             <span class="recchip" title="@Strings.CardRecording"><Icon Name="rec" /><b>@RecTime()</b></span>
         }
+        @if (m.Slots.Count(v => v.Full) is int full && full > 0)
+        {
+            <span class="chipi warnc ctxfull" title="@Strings.CtxAlmostFull"><Icon Name="r-full" /><b>@Strings.CardCtxFull(full)</b></span>
+        }
         @if (m.SlowerPct is int slow)
         {
             <span class="chipi warnc slow" title="@Strings.CardSlower(slow)"><Icon Name="down" /><b>−@slow %</b></span>
@@ -62,7 +66,7 @@
             {
                 <a class="btn ib" href="hosts" title="@Strings.CardOpenHost" aria-label="@Strings.CardOpenHost"><Icon Name="open" /></a>
             }
-            @if (CanWrite && !m.Manual && (m.Kind == BackendKind.LlamaCpp || !m.IsLocal))
+            @if (CanWrite && !m.Manual && m.Kind == BackendKind.LlamaCpp)
             {
                 <button class="ib danger" title="@Strings.CardStop" aria-label="@Strings.CardStop" @onclick="OnStop"><Icon Name="stop" /></button>
             }
@@ -115,7 +119,7 @@
                 <div class="tiles">
                     @foreach (var v in m.Slots)
                     {
-                        <span class="slot" data-s="@v.State" style="--f:@((int)(v.Frac * 100))%" title="@Strings.CardSlotTip(v.Id, Strings.StateText(v.State), v.Tps, v.Generated, v.CtxUsed, v.CtxMax)">
+                        <span class="slot @(v.Full ? "hot" : "")" data-s="@v.State" style="--f:@((int)(v.Frac * 100))%" title="@SlotTip(v)">
                             <i></i><Icon Name="@("s-" + v.State)" Class="sm" /><b>@v.Id</b>
                         </span>
                     }
@@ -158,6 +162,9 @@
     [Parameter] public EventCallback OnRecord { get; set; }
     [Parameter] public EventCallback OnStop { get; set; }
     [Parameter] public EventCallback<string> OnUnload { get; set; }
+
+    private static string SlotTip(CardSlot v) =>
+        Strings.CardSlotTip(v.Id, Strings.StateText(v.State), v.Tps, v.Generated, v.CtxUsed, v.CtxMax) + (v.Full ? " · " + Strings.CtxAlmostFull : "");
 
     private string PromptHref => Model.IsLocal ? $"prompt?server={Uri.EscapeDataString(Model.Key)}" : "prompt";
 

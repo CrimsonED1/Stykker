@@ -42,7 +42,7 @@ public static partial class Strings
     public static string PxModelList(int n) => $"{n} models under /v1/models";
     public const string PxRunning = "running", PxStopped = "stopped";
     // Letzte Anfragen (U7)
-    public const string ReqModel = "model", ReqHost = "host", ReqTime = "time", ReqPrompt = "prompt", ReqTokens = "tok";
+    public const string ReqModel = "model", ReqHost = "host", ReqTime = "time", ReqPrompt = "prompt t/s", ReqTokens = "tok";
     public const string ReqTools = "tools", ReqThink = "think", ReqResult = "result", ReqAgo = "ago";
     public const string ReqSpeedScale = "tokens/s colour: slow to fast", ReqClientUnknown = "client unknown";
     public const string ReqNoProxy = "only known for requests through the Stykker-Proxy";
@@ -66,7 +66,8 @@ public static partial class Strings
         "live" => "running now",
         "clean" => "stopped by StykkerLLM" + At(at),
         "crashed" => "crashed" + At(at),
-        "outside" => "ended outside StykkerLLM (closed, killed or crashed without a log hint)" + At(at),
+        "outside" => "ended outside StykkerLLM (closed or killed)" + At(at),
+        "lost" => "ended unexpectedly – cause unknown, see the log" + At(at),
         _ => "end not recorded",
     };
     private static string At(DateTime? t) => t is DateTime d ? $" · {d:g}" : "";
@@ -83,6 +84,21 @@ public static partial class Strings
     public const string ThemeHint = "System follows the light or dark setting of this device: light → Spacepunk Titan, dark → Dark.";
     public static string HwMemTip(int modules, double totalGb, int channels) =>
         $"{modules} module(s), {N1(totalGb)} GB. Bandwidth is theoretical: speed × 8 bytes × {channels} channel(s) (channels estimated from the modules).";
+    // Nach der Endprüfung (Feature-Bericht)
+    public static string CardCtxFull(int slots) => slots == 1 ? "ctx full" : $"ctx full ×{slots}";
+    public const string PfStartFailed = "start failed", PfCancelStart = "Cancel the start";
+    public static string PfStartingFor(int sec) => $"starting … {sec} s";
+    public const string PfRestartTurnOn = "Restart after a crash: turn on", PfRestartTurnOff = "Restart after a crash: turn off";
+    public const string PxPort = "Port", PxPortTip = "Port of the proxy on this PC (1024–65535). Clients then use the new address.";
+    public const string CmdHistory = "history";
+    public static string CmdDetails(string name) => $"Details: {name}";
+    public static string CmdRecord(string name) => $"Record {name}";
+    public static string CmdRecordStop(string name) => $"Stop recording {name}";
+    public static string CmdSave(string name) => $"Save {name} as profile";
+    public static string CmdStartAgain(string name) => $"Start again: {name}";
+    public const string NoticeDismissed = "Notice hidden";
+    public const string HostRemoveTitle = "Remove host";
+    public static string HostRemoveConfirm(string name) => $"Remove the host \"{name}\"? It has to be paired again with a new code.";
     public static string StateText(string state) => state switch
     {
         "gen" => CardStateGen, "read" => CardStateRead, "load" => CardStateLoad, "off" => CardStateOff, _ => CardStateIdle,

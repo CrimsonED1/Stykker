@@ -71,15 +71,15 @@
         <button @onclick="FreeVram" disabled="@(Host.ReadOnly || Viewer.IsViewer)" title="@Strings.FreeVramTitle">@Strings.BtnFreeVram</button>
         @if (_confirm)
         {
-            <button class="bad" @onclick="() => Life.StopApplication()">@Strings.AboutStopReally</button><button @onclick="() => _confirm = false">@Strings.AboutStopCancel</button>
+            <button class="bad" @onclick="StopServer">@Strings.AboutStopReally</button><button @onclick="() => _confirm = false">@Strings.AboutStopCancel</button>
         }
         else
         {
-            <button @onclick="() => _confirm = true" disabled="@Viewer.IsViewer" title="@Strings.ServerStopHint">⏻</button>
+            <button @onclick="() => _confirm = true" disabled="@(Viewer.IsViewer || Host.ReadOnly)" title="@Strings.ServerStopHint" aria-label="@Strings.ServerStopHint">⏻</button>
         }
     </div>
     <details class="menu more @(InMore ? "on" : "")">
-        <summary title="@Strings.NavMore">☰</summary>
+        <summary title="@Strings.NavMore" aria-label="@Strings.NavMore">☰</summary>
         <div>
             <span class="grp">@Strings.NavGroupEval</span>
             <NavLink href="runs">@Strings.EvalRuns</NavLink>
@@ -127,6 +127,10 @@ else if (Viewer.Known && Viewer.IsViewer)
         @if (lost.LogFile is { Length: > 0 } log)
         {
             <a class="btn ib txt" href="@($"log?path={Uri.EscapeDataString(log)}")"><Icon Name="file" />@Strings.BtnOpenLog</a>
+        }
+        @if (Web.CanWrite && !Host.ReadOnly && Host.Engine.Library.Profiles.FirstOrDefault(p => lost.Key.Length > 0 && p.Key == lost.Key) is { } lp)
+        {
+            <button class="ib txt primary" @onclick="() => StartLost(lp)"><Icon Name="play" />@Strings.BtnStartAgain</button>
         }
         <button class="ib" title="@Strings.BtnDismiss" aria-label="@Strings.BtnDismiss" @onclick="DismissLost"><Icon Name="x" /></button>
     </div>
@@ -219,4 +223,19 @@ else if (Viewer.Known && Viewer.IsViewer)
 
     private void DismissLost() => Host.ClearLost();
     public void Dispose() => _t?.Dispose();
+
+    // Server beenden: auch im Handler gesperrt (ein manipulierter Client kann Ereignisse an gesperrte Knöpfe schicken)
+    private async Task StopServer()
+    {
+        if (Viewer.IsViewer || Host.ReadOnly) return;
+        await Web.RunAsync(new ActionRequest { Action = "shutdown" });
+    }
+
+    // „Start again“ im Banner: das Profil des verlorenen Servers neu starten und das Banner schließen
+    [Inject] private LaunchCoordinator Launcher { get; set; } = null!;
+    private async Task StartLost(Profile p)
+    {
+        DismissLost();
+        await Launcher.StartProfileAsync(p);
+    }
 }
