@@ -12,6 +12,8 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 if ($OutDir -eq "") { $OutDir = Join-Path $PSScriptRoot "out" }
+# absolut machen: [IO.File] löst relative Pfade gegen das Prozessverzeichnis auf, nicht gegen den PowerShell-Ort
+$OutDir = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($OutDir)
 
 if ($Version -notmatch '^\d+\.\d+\.\d+(-[0-9A-Za-z.\-]+)?$') { throw "Ungültige Version '$Version'" }
 if ($Sha256 -notmatch '^[0-9a-f]{64}$') {

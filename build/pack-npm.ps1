@@ -16,6 +16,8 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 if ($OutDir -eq "") { $OutDir = Join-Path $PSScriptRoot "out" }
+# absolut machen: npm pack läuft im Paketordner, ein relativer Zielpfad (wie im Release-Workflow) zeigte sonst dorthin
+$OutDir = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($OutDir)
 
 if ($Version -notmatch '^\d+\.\d+\.\d+(-[0-9A-Za-z.\-]+)?$') {
     throw "Ungültige Version '$Version' - erwartet wird SemVer wie 0.1.0 oder 0.0.0-local"
