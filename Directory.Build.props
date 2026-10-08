@@ -4,7 +4,7 @@
        (/p:Version=…), lokal gilt die Vorgabe unten. Nur Metadaten: kein Verhalten. -->
 
   <PropertyGroup>
-    <Version Condition="'$(Version)' == ''">0.3.1</Version>
+    <Version Condition="'$(Version)' == ''">0.4.0</Version>
     <Authors>CrimsonED1</Authors>
     <Company>CrimsonED1</Company>
     <Product>StykkerLLM</Product>
