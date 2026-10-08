@@ -165,6 +165,8 @@ public static partial class Strings
     public const string ProxyNoTarget = "The Stykker-Proxy has no target: no server is running.";
     public const string ProxyTargetLoading = "The target server is still loading its model. Please try again in a moment.";
     public const string ProxyTargetOffline = "The target server is offline.";
+    public const string ProxyAnthropicTimeout = "The target server did not answer in time.";
+    public const string ProxyAnthropicUnreachable = "The target server is not reachable.";
     public const string ProxyTargetNone = "none";
     public static string ProxyBar(bool on, int port, string target) =>
         on ? $"Stykker-Proxy: on · 127.0.0.1:{port} · target: {target}" : "Stykker-Proxy: off";

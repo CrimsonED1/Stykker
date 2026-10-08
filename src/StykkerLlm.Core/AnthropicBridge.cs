@@ -241,6 +241,90 @@ public static class AnthropicBridge
         return Encoding.UTF8.GetBytes(message.ToJsonString(Json));
     }
 
+    // Eine fertige Anthropic-Nachricht als Ereignisfolge ausgeben. Nötig, wenn ein Ziel trotz „stream": true mit einem
+    // ganzen JSON antwortet: die Claude-App liest in diesem Aufruf nur Ereignisse.
+    public static string MessageAsStream(byte[] anthropicMessage)
+    {
+        JsonObject? m = null;
+        try { m = JsonNode.Parse(anthropicMessage.AsSpan()) as JsonObject; } catch { }
+        if (m == null || StrOf(m["type"]) != "message") return "";
+
+        var sb = new StringBuilder();
+        var usage = m["usage"] as JsonObject;
+        string stop = StrOf(m["stop_reason"]);
+        if (stop.Length == 0) stop = "end_turn";
+
+        var start = new JsonObject
+        {
+            ["type"] = "message_start",
+            ["message"] = new JsonObject
+            {
+                ["id"] = StrOf(m["id"]),
+                ["type"] = "message",
+                ["role"] = "assistant",
+                ["model"] = StrOf(m["model"]),
+                ["content"] = new JsonArray(),
+                ["stop_reason"] = null,
+                ["stop_sequence"] = null,
+                ["usage"] = new JsonObject { ["input_tokens"] = LongOf(usage?["input_tokens"]) ?? 0, ["output_tokens"] = 0 },
+            },
+        };
+        sb.Append(Sse("message_start", start.ToJsonString(Json)));
+
+        if (m["content"] is JsonArray blocks)
+        {
+            int index = -1;
+            foreach (var b in blocks)
+            {
+                if (b is not JsonObject bo) continue;
+                index++;
+                string kind = StrOf(bo["type"]);
+                JsonObject block;
+                string deltaType, field, value;
+                if (kind == "thinking")
+                {
+                    block = new JsonObject { ["type"] = "thinking", ["thinking"] = "" };
+                    deltaType = "thinking_delta"; field = "thinking"; value = StrOf(bo["thinking"]);
+                }
+                else if (kind == "tool_use")
+                {
+                    block = new JsonObject { ["type"] = "tool_use", ["id"] = StrOf(bo["id"]), ["name"] = StrOf(bo["name"]), ["input"] = new JsonObject() };
+                    deltaType = "input_json_delta"; field = "partial_json";
+                    value = bo["input"] is { } input ? input.ToJsonString(Json) : "{}";
+                }
+                else
+                {
+                    block = new JsonObject { ["type"] = "text", ["text"] = "" };
+                    deltaType = "text_delta"; field = "text"; value = StrOf(bo["text"]);
+                }
+                sb.Append(Sse("content_block_start", new JsonObject
+                {
+                    ["type"] = "content_block_start",
+                    ["index"] = index,
+                    ["content_block"] = block,
+                }.ToJsonString(Json)));
+                if (value.Length > 0)
+                    sb.Append(Sse("content_block_delta", new JsonObject
+                    {
+                        ["type"] = "content_block_delta",
+                        ["index"] = index,
+                        ["delta"] = new JsonObject { ["type"] = deltaType, [field] = value },
+                    }.ToJsonString(Json)));
+                sb.Append(Sse("content_block_stop", new JsonObject { ["type"] = "content_block_stop", ["index"] = index }.ToJsonString(Json)));
+            }
+        }
+
+        sb.Append(Sse("message_delta", new JsonObject
+        {
+            ["delta"] = new JsonObject { ["stop_reason"] = stop, ["stop_sequence"] = null },
+            ["usage"] = new JsonObject { ["output_tokens"] = LongOf(usage?["output_tokens"]) ?? 0, ["input_tokens"] = LongOf(usage?["input_tokens"]) ?? 0 },
+        }.ToJsonString(Json)));
+        sb.Append(Sse("message_stop", "{\"type\":\"message_stop\"}"));
+        return sb.ToString();
+    }
+
+    private static string Sse(string type, string data) => $"event: {type}\ndata: {data}\n\n";
+
     // Anthropic-Fehlerobjekt: die App wertet „type" und „message" aus und zeigt den Text an
     public static byte[] ErrorJson(int status, string message)
     {

@@ -66,28 +66,12 @@ public class RouterProxy : RequestProxy
         if (method == "GET" && (path.Equals("/v1/models", StringComparison.OrdinalIgnoreCase) || path.Equals("/models", StringComparison.OrdinalIgnoreCase)))
             return Local(200, ModelsJson(targets, StartableModels?.Invoke()));
 
-        string? wanted = ReadModel(body);
-        ProxyTarget? t = null;
-        if (!string.IsNullOrWhiteSpace(wanted) && !wanted.Equals(VirtualModel, StringComparison.OrdinalIgnoreCase))
-            t = targets.FirstOrDefault(x => Matches(x, wanted));
-        if (t == null && HostStart != null && !string.IsNullOrWhiteSpace(wanted) && !wanted.Equals(VirtualModel, StringComparison.OrdinalIgnoreCase))
-        {
-            // Läuft nirgends: auf einem Host mit der Datei und genug Grafikspeicher starten und warten, bis es bereit ist
-            var choice = await HostStart(wanted, ct).ConfigureAwait(false);
-            if (choice.Error != null) return Local(503, ErrorJson(choice.Error));
-            if (choice.Ok)
-            {
-                t = await WaitForModelAsync(wanted, ct).ConfigureAwait(false);
-                if (t == null) return Local(503, ErrorJson(Strings.HostStartTimeout(choice.File.Name, choice.HostName)));
-            }
-        }
-        t ??= DefaultTarget(targets);   // stykker, leer, unbekannt oder nicht gefunden → Standardziel
+        // Die Claude-App schickt /v1/messages und erwartet Anthropic-Ereignisse zurück: übersetzen statt durchreichen
+        if (method == "POST" && AnthropicBridge.IsMessagesPath(path))
+            return await RouteAnthropicAsync(targets, headers, body, ct).ConfigureAwait(false);
 
-        if (t == null) return Local(503, ErrorJson(Strings.ProxyNoTarget));
-        if (t.Cloud && AuthFor?.Invoke(t) is not { Length: > 0 }) return Local(503, ErrorJson(Strings.ProxyProviderNoKey));
-        if (t.Loading) t = await WaitForReadyAsync(t.Key, t, ct).ConfigureAwait(false);
-        if (t == null || !t.Ready) return Local(503, ErrorJson(t != null && t.Cloud ? Strings.ProxyProviderOfflineProxy : Strings.ProxyTargetOffline));
-        if (t.Loading) return Local(503, ErrorJson(Strings.ProxyTargetLoading));   // immer noch am Laden (Zeit abgelaufen)
+        var (t, error, errorStatus) = await ResolveAsync(targets, body, ct).ConfigureAwait(false);
+        if (t == null) return Local(errorStatus, ErrorJson(error!));
 
         // model auf den Namen setzen, den das Ziel erwartet (bei „stykker" → Modell des Ziels)
         var rewritten = t.Model != null ? RewriteModel(body, t.Model) : body;
@@ -96,6 +80,218 @@ public class RouterProxy : RequestProxy
         if (t.HostId.Length == 0) return new ProxyRoute(t.Url, t.RouteKey, rewritten, Headers: own);
         var via = HostClient?.Invoke(t.HostId);
         return via == null ? Local(503, ErrorJson(Strings.HostNotConnected)) : new ProxyRoute(t.Url, t.RouteKey, rewritten, Headers: own, Client: via);
+    }
+
+    // Das Ziel einer Anfrage bestimmen: nach model, sonst das Standardziel, dazu die Zustandsprüfungen.
+    // Bei einem Fehler kommt statt des Ziels die Meldung (und der Status) für die Antwort des Proxys zurück.
+    private async Task<(ProxyTarget? Target, string? Error, int Status)> ResolveAsync(ProxyTarget[] targets, byte[]? body, CancellationToken ct)
+    {
+        string? wanted = ReadModel(body);
+        ProxyTarget? t = null;
+        if (!string.IsNullOrWhiteSpace(wanted) && !wanted.Equals(VirtualModel, StringComparison.OrdinalIgnoreCase))
+            t = targets.FirstOrDefault(x => Matches(x, wanted));
+        if (t == null && HostStart != null && !string.IsNullOrWhiteSpace(wanted) && !wanted.Equals(VirtualModel, StringComparison.OrdinalIgnoreCase))
+        {
+            // Läuft nirgends: auf einem Host mit der Datei und genug Grafikspeicher starten und warten, bis es bereit ist
+            var choice = await HostStart(wanted, ct).ConfigureAwait(false);
+            if (choice.Error != null) return (null, choice.Error, 503);
+            if (choice.Ok)
+            {
+                t = await WaitForModelAsync(wanted, ct).ConfigureAwait(false);
+                if (t == null) return (null, Strings.HostStartTimeout(choice.File.Name, choice.HostName), 503);
+            }
+        }
+        t ??= DefaultTarget(targets);   // stykker, leer, unbekannt oder nicht gefunden → Standardziel
+
+        if (t == null) return (null, Strings.ProxyNoTarget, 503);
+        if (t.Cloud && AuthFor?.Invoke(t) is not { Length: > 0 }) return (null, Strings.ProxyProviderNoKey, 503);
+        if (t.Loading) t = await WaitForReadyAsync(t.Key, t, ct).ConfigureAwait(false);
+        if (t == null || !t.Ready) return (null, t != null && t.Cloud ? Strings.ProxyProviderOfflineProxy : Strings.ProxyTargetOffline, 503);
+        if (t.Loading) return (null, Strings.ProxyTargetLoading, 503);   // immer noch am Laden (Zeit abgelaufen)
+        return (t, null, 200);
+    }
+
+    // ── Anthropic-Brücke (die Claude-App) ──
+
+    // Eine Anfrage in Anthropic-Form: Ziel bestimmen, nach OpenAI übersetzen, weiterleiten und die Antwort wieder als
+    // Anthropic-Ereignisse ausgeben. Die Antwort schreibt der Proxy selbst (auch im Strom), weil er umformen muss;
+    // die Aufzeichnung läuft über den Mitschreiber wie bei jeder anderen Anfrage.
+    private async Task<ProxyRoute> RouteAnthropicAsync(ProxyTarget[] targets, IReadOnlyList<(string Name, string Value)> headers, byte[]? body, CancellationToken ct)
+    {
+        string requested = ReadModel(body) ?? VirtualModel;
+        var (t, error, status) = await ResolveAsync(targets, body, ct).ConfigureAwait(false);
+        if (t == null) return AnthropicError(status, error!);
+
+        var openAi = AnthropicBridge.ToOpenAi(body ?? Array.Empty<byte>(), t.Model ?? "");
+        var own = t.Cloud && AuthFor?.Invoke(t) is { Length: > 0 } key ? new[] { ("Authorization", "Bearer " + key) } : null;
+        HttpClient? via = null;
+        if (t.HostId.Length > 0)
+        {
+            via = HostClient?.Invoke(t.HostId);
+            if (via == null) return AnthropicError(503, Strings.HostNotConnected);
+        }
+
+        // Das Ziel bekommt die Kopfzeilen des Clients (ohne Verbindungs-Kopfzeilen); den Authorization-Kopf eines
+        // Cloud-Ziels setzt der Proxy selbst, der des Clients gehört zu stykker.
+        var send = new List<(string Name, string Value)>();
+        foreach (var (name, value) in headers)
+        {
+            if (RequestProxy.HopHeaders.Contains(name)) continue;
+            if (own != null && name.Equals("Authorization", StringComparison.OrdinalIgnoreCase)) continue;
+            send.Add((name, value));
+        }
+
+        string url = t.Url.TrimEnd('/') + "/v1/chat/completions";
+        return new ProxyRoute("", t.RouteKey, null,
+            LocalStream: (net, tap, token) => BridgeAsync(net, url, send, openAi, requested, own, via, tap, token));
+    }
+
+    private static ProxyRoute AnthropicError(int status, string message)
+        => new("", VirtualModel, null, "application/json; charset=utf-8", AnthropicBridge.ErrorJson(status, message), status);
+
+    // Weiterleiten und umformen: Anthropic-Bytes an das Ziel, die Antwort als Anthropic-Ereignisse an den Client.
+    // Schreibt Kopfzeilen und Rumpf selbst; die Bytes des Ziels bekommt der Mitschreiber, damit die Anfrage gezählt wird.
+    private async Task<int> BridgeAsync(Stream net, string url, IReadOnlyList<(string Name, string Value)> headers, byte[] body,
+        string model, IReadOnlyList<(string Name, string Value)>? own, HttpClient? client, ProxyTap tap, CancellationToken ct)
+    {
+        using var req = new HttpRequestMessage(HttpMethod.Post, url) { Content = new ByteArrayContent(body) };
+        foreach (var (name, value) in headers)
+        {
+            if (RequestProxy.ContentHeaders.Contains(name)) req.Content.Headers.TryAddWithoutValidation(name, value);
+            else req.Headers.TryAddWithoutValidation(name, value);
+        }
+        if (own != null)
+            foreach (var (name, value) in own) req.Headers.TryAddWithoutValidation(name, value);
+
+        HttpResponseMessage resp;
+        try
+        {
+            using var hdr = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            hdr.CancelAfter(HeaderTimeout);
+            resp = await (client ?? UpstreamClient).SendAsync(req, HttpCompletionOption.ResponseHeadersRead, hdr.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }   // der Client ist weg
+        catch (OperationCanceledException)
+        {
+            await WriteJsonAsync(net, 504, AnthropicBridge.ErrorJson(504, Strings.ProxyAnthropicTimeout), ct).ConfigureAwait(false);
+            return 504;
+        }
+        catch (Exception)
+        {
+            await WriteJsonAsync(net, 502, AnthropicBridge.ErrorJson(502, Strings.ProxyAnthropicUnreachable), ct).ConfigureAwait(false);
+            return 502;
+        }
+
+        using (resp)
+        {
+            int status = (int)resp.StatusCode;
+            if (status != 200)
+            {
+                // Fehler unverändert weiterreichen: die App erkennt daran z. B. einen zu kleinen Kontext und verdichtet
+                string text = await ReadStartAsync(resp, 8192, ct).ConfigureAwait(false);
+                int code = status is 400 or 401 or 403 or 404 or 413 or 429 or 529 ? status : 502;
+                string message = ErrorMessage(text) ?? resp.ReasonPhrase ?? "error";
+                await WriteJsonAsync(net, code, AnthropicBridge.ErrorJson(code, message), ct).ConfigureAwait(false);
+                return code;
+            }
+
+            bool sse = resp.Content.Headers.ContentType?.MediaType?.Contains("event-stream", StringComparison.OrdinalIgnoreCase) == true;
+            if (!sse)
+            {
+                // Ziel streamt nicht: das ganze JSON einmal übersetzen und als Ereignisfolge ausgeben
+                var json = await resp.Content.ReadAsByteArrayAsync(ct).ConfigureAwait(false);
+                if (json.Length > 0) tap.Feed(json, DateTime.Now);
+                string events = AnthropicBridge.MessageAsStream(AnthropicBridge.ToAnthropic(json, model));
+                if (events.Length == 0)
+                {
+                    await WriteJsonAsync(net, 200, json, ct).ConfigureAwait(false);
+                    return 200;
+                }
+                await WriteStreamHeadAsync(net, ct).ConfigureAwait(false);
+                await WriteTextAsync(net, events, ct).ConfigureAwait(false);
+                return 200;
+            }
+
+            await WriteStreamHeadAsync(net, ct).ConfigureAwait(false);
+            var stream = new AnthropicBridge.AnthropicStream(model);
+            await WriteTextAsync(net, stream.Begin(), ct).ConfigureAwait(false);
+            try
+            {
+                await using var src = await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+                var buf = new byte[16 * 1024];
+                using var idle = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                while (true)
+                {
+                    idle.CancelAfter(IdleTimeout);
+                    int n;
+                    try { n = await src.ReadAsync(buf, idle.Token).ConfigureAwait(false); }
+                    catch (OperationCanceledException) when (!ct.IsCancellationRequested) { break; }   // still geworden: der Strom endet hier
+                    if (n <= 0) break;
+                    tap.Feed(buf.AsSpan(0, n), DateTime.Now);
+                    string events = stream.Feed(buf.AsSpan(0, n));
+                    if (events.Length > 0) await WriteTextAsync(net, events, ct).ConfigureAwait(false);
+                }
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+            catch { /* Ziel bricht ab: der Abschluss unten beendet den Strom sauber */ }
+            await WriteTextAsync(net, stream.Finish(), ct).ConfigureAwait(false);
+            return 200;
+        }
+    }
+
+    // Die Kopfzeilen eines Ereignisstroms. Kein Content-Length: der Rumpf endet mit der Verbindung (Connection: close).
+    private static Task WriteStreamHeadAsync(Stream net, CancellationToken ct)
+        => net.WriteAsync(Encoding.ASCII.GetBytes(
+            "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nCache-Control: no-cache\r\nConnection: close\r\n\r\n"), ct).AsTask();
+
+    private static async Task WriteJsonAsync(Stream net, int status, byte[] body, CancellationToken ct)
+    {
+        var head = $"HTTP/1.1 {status} {ReasonText(status)}\r\nContent-Type: application/json; charset=utf-8\r\nContent-Length: {body.Length}\r\nConnection: close\r\n\r\n";
+        await net.WriteAsync(Encoding.Latin1.GetBytes(head), ct).ConfigureAwait(false);
+        if (body.Length > 0) await net.WriteAsync(body, ct).ConfigureAwait(false);
+    }
+
+    private static async Task WriteTextAsync(Stream net, string text, CancellationToken ct)
+    {
+        if (text.Length > 0) await net.WriteAsync(Encoding.UTF8.GetBytes(text), ct).ConfigureAwait(false);
+    }
+
+    private static string ReasonText(int status) => status switch
+    {
+        200 => "OK", 400 => "Bad Request", 401 => "Unauthorized", 403 => "Forbidden", 404 => "Not Found", 413 => "Payload Too Large",
+        429 => "Too Many Requests", 500 => "Internal Server Error", 502 => "Bad Gateway", 503 => "Service Unavailable",
+        504 => "Gateway Timeout", 529 => "Overloaded", _ => "Error",
+    };
+
+    // Die ersten Bytes einer Fehlerantwort (begrenzt) – mehr braucht die Meldung nicht
+    private static async Task<string> ReadStartAsync(HttpResponseMessage resp, int limit, CancellationToken ct)
+    {
+        try
+        {
+            await using var s = await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+            var buf = new byte[limit];
+            int got = 0, n;
+            while (got < limit && (n = await s.ReadAsync(buf.AsMemory(got), ct).ConfigureAwait(false)) > 0) got += n;
+            return Encoding.UTF8.GetString(buf, 0, got);
+        }
+        catch { return ""; }
+    }
+
+    // Meldung aus einem Fehlerobjekt des Ziels ({"error":{"message":…}} bzw. {"message":…}), sonst der kurze Text selbst
+    private static string? ErrorMessage(string text)
+    {
+        if (text.Length == 0 || text.Length > 400) return text.Length > 400 ? null : "";
+        try
+        {
+            if (JsonNode.Parse(text) is JsonObject o)
+            {
+                if (o["error"] is JsonObject e && e["message"] is JsonValue em && em.TryGetValue<string>(out var m)) return m;
+                if (o["message"] is JsonValue vm && vm.TryGetValue<string>(out var m2)) return m2;
+                if (o["error"] is JsonValue ev && ev.TryGetValue<string>(out var m3)) return m3;
+            }
+        }
+        catch { }
+        return text;
     }
 
     // Auf ein auf einem Host gestartetes Modell warten, bis es als bereites Ziel auftaucht
