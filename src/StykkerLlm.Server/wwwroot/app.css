@@ -529,6 +529,12 @@ html[data-theme=titan] .pf-cmd code{border-radius:0}
 .pxp-url{font:12px var(--font-num);color:var(--acc);background:var(--card2);padding:3px 8px;border-radius:6px;margin-left:auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:0 1 auto}
 .pxp-hd{flex-wrap:nowrap}.pxp-hd .ib{flex:none}
 .pxp-flash{color:var(--warn);margin-top:6px}
+/* Claude Desktop auf den Stykker-Proxy (Schalter neben dem Proxy-Schalter) */
+.claude{color:var(--muted)}
+.claude.on{color:var(--acc);border-color:rgb(var(--acc-rgb)/.55);background:rgb(var(--acc-rgb)/.12)}
+.claude-ask{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px;padding:7px 9px;border:1px solid rgb(var(--warn-rgb)/.5);border-radius:8px;background:rgb(var(--warn-rgb)/.08)}
+.claude-ask .lamp{background:var(--warn)}
+.claude-ask .t{flex:1;min-width:0;font-size:12px}
 .pxp-row{display:flex;align-items:center;gap:8px;margin-top:10px;flex-wrap:wrap}
 .pxp-row select{flex:1;min-width:0}
 .pxp-l{font-size:12px;color:var(--muted);display:inline-flex;align-items:center;gap:4px;min-width:120px}
