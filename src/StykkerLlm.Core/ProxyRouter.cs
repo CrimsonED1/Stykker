@@ -382,6 +382,9 @@ public class RouterProxy : RequestProxy
         var sb = new StringBuilder();
         sb.Append("{\"object\":\"list\",\"data\":[");
         sb.Append("{\"id\":\"").Append(VirtualModel).Append("\",\"object\":\"model\",\"owned_by\":\"stykker\"}");
+        // Dazu der Name, den die Claude-App anspricht (unbekanntes Modell → Standardziel): so sieht auch die
+        // Modell-Erkennung der App ein Claude-artiges Modell.
+        sb.Append(",{\"id\":\"").Append(ClaudeDesktop.ModelAlias).Append("\",\"object\":\"model\",\"owned_by\":\"stykker\"}");
         // dazu die Modelldateien der Hosts: sie starten bei der ersten Anfrage
         foreach (var m in targets.Select(t => t.EffectiveModel).Concat(startable ?? Array.Empty<string>()).Where(m => !string.IsNullOrEmpty(m)).Distinct(StringComparer.OrdinalIgnoreCase))
             sb.Append(",{\"id\":\"").Append(JsonEscape(m!)).Append("\",\"object\":\"model\",\"owned_by\":\"stykker-proxy\"}");

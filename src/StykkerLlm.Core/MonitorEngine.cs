@@ -28,6 +28,8 @@ public sealed class MonitorEngine : IDisposable
     public ServerRegistry Registry { get; }
     public RecordingManager Recorder { get; }
     public ProxyManager Proxies { get; }
+    // Schalter „Claude Desktop auf den Stykker-Proxy" (3P-Ablage der App)
+    public ClaudeDesktop Claude { get; }
     public RequestLog Csv { get; }
     // Hinweis für die Oberfläche, wenn der Pfad des Anfrageprotokolls außerhalb des Datenordners lag und ersetzt wurde; sonst null
     public string? CsvLogNote { get; }
@@ -124,6 +126,7 @@ public sealed class MonitorEngine : IDisposable
         Csv = new RequestLog(readOnly ? null : csvPath) { MaxBytes = limits.MaxCsvBytes };
         Proxies = new ProxyManager(() => Registry.Servers, settings, OnProxyRecord, factory: proxyFactory, http: _http,
             keys: readOnly ? null : new ProviderKeys(paths.Root, platform));
+        Claude = new ClaudeDesktop(platform, () => Proxies.Port, paths.Root);
         // Hinweise des Proxys (z. B. „Ziel-Kontext zu klein") als anhaltenden Hinweis setzen (bleibt bis „Dismiss")
         Proxies.Hint += text =>
         {
@@ -187,6 +190,7 @@ public sealed class MonitorEngine : IDisposable
             Registry.ObserveLibrary(now);
             CheckIdleUnload(servers, now);
             if (!ReadOnly) Proxies.Maintain();
+            if (!ReadOnly) Claude.Maintain(now);
             // NVML-Aufrufe sind die teuersten Messungen: im Leerlauf nur alle 2 s (bei Aufnahme jede Sekunde)
             if (Gpu == null || GpuEveryTick || (now - _lastGpuRead).TotalSeconds >= 1.9) { Gpu = Platform.ReadGpu(); _lastGpuRead = now; }
             Sys = Platform.ReadSystem();

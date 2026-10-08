@@ -273,6 +273,17 @@ public static class ActionApi
                     e.Proxies.Restart();
                     return Ok(port.ToString(Strings.Inv));
                 }
+                // ── Claude Desktop auf den Stykker-Proxy umschalten (3P-Konfiguration der App) ──
+                case "claude.set":
+                {
+                    var msg = req.Flag ? e.Claude.Enable(out var cerr) : e.Claude.Disable(out cerr);
+                    return cerr == null ? Ok(msg) : ActionResult.Fail(cerr);
+                }
+                case "claude.close":
+                {
+                    int closed = e.Claude.CloseRunning(out var cerr);
+                    return cerr == null ? Ok(closed == 0 ? Strings.ClaudeNoneClosed : Strings.ClaudeClosed(closed)) : ActionResult.Fail(cerr);
+                }
 
                 // ── Andere Rechner und Cloud-Anbieter ──
                 case "remote.add":

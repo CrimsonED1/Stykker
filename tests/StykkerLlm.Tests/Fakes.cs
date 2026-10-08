@@ -31,6 +31,9 @@ internal sealed class FakePlatform : IPlatform
         return StopOutcome.Stopped;
     }
     public string? ProcessName(int pid) => Processes.TryGetValue(pid, out var d) && d.ImagePath != null ? ProcPath.Stem(d.ImagePath) : null;
+    // Alle bekannten Prozesse (PID, Name aus dem Bildpfad) – für die Suche nach der Claude-Desktop-App
+    public IReadOnlyList<(int Pid, string Name)> AllProcesses() =>
+        Processes.Where(p => p.Value.ImagePath != null).Select(p => (p.Key, ProcPath.Stem(p.Value.ImagePath))).ToList();
     public ProcessUsage? ReadUsage(int pid) => null;
     // VRAM je PID (dediziert, geteilt), z. B. für LM-Studio-Kinder
     public Dictionary<int, (double Dedicated, double Shared)> GpuMem { get; } = new();

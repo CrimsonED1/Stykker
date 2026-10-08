@@ -77,6 +77,8 @@ public interface IPlatform : IDisposable
     string? ProcessName(int pid);
     // Direkte Kindprozesse (PID, Programmname ohne Endung). Standard: keine (Simulator, andere Plattformen).
     IReadOnlyList<(int Pid, string Name)> ChildProcesses(int pid) => Array.Empty<(int, string)>();
+    // Alle laufenden Prozesse (PID, Programmname ohne Endung). Standard: keine (andere Plattformen, Simulator).
+    IReadOnlyList<(int Pid, string Name)> AllProcesses() => Array.Empty<(int, string)>();
     // Beendet den Prozess über ein einziges Handle: Startzeit prüfen und beenden ohne Zeitfenster dazwischen.
     // expectedStartTicks == 0: nicht prüfen (der Aufrufer hat das ausdrücklich bestätigen lassen).
     StopOutcome Terminate(int pid, long expectedStartTicks, out string? error);
