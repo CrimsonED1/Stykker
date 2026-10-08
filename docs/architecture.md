@@ -38,9 +38,10 @@
 ## Lifetime of the server
 
 `ServerHolds` (Core) counts who needs the server: StykkerUI windows and interactive `stykker` sessions renew a lease every
-5 s (`POST /api/hold`, 20 s lease, `DELETE` on exit), web pages count while their Blazor connection is up (`HoldCircuits`),
-With nobody left and no model test or benchmark running, the server stops after
-15 s (3 s after the last client signed off; a fresh server waits 60 s for its first client). To keep it up anyway, turn on the setting
+5 s (`POST /api/hold`, 20 s lease, `DELETE` on exit; a window or `stykker` whose process ends without `DELETE`, e.g. crashed
+or with its console closed, counts as signed off at once), web pages count while their Blazor connection is up
+(`CircuitUp`/`CircuitDown`). With nobody left and no model test or benchmark running, the server stops after
+15 s (3 s after the last window or `stykker` signed off or ended; a fresh server waits 60 s for its first client). To keep it up anyway, turn on the setting
 *Keep the server running* (or the server is started with `--stay`).
 
 ## Logs and bug reports
