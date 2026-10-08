@@ -80,6 +80,46 @@ public class N54_LifeLogsBugReportTests
         Assert.AreEqual("none", new ServerHolds(T0).Describe(T0));
     }
 
+    [TestMethod]
+    public void Holds_WindowOrTuiThatEnded_LetsGoAtOnce()
+    {
+        // ui:7 läuft noch, tui:8 endete ohne Abmelden (Absturz, geschlossene Konsole)
+        var h = new ServerHolds(T0, pid => pid == 7);
+        var t = T0.AddMinutes(5);
+        h.Touch("tui:8", t);
+        Assert.AreEqual(0, h.Count(t), "die Miete des beendeten Prozesses zählt nicht mehr");
+        Assert.IsFalse(h.ShouldStop(t, false), "die kurze Frist beginnt");
+        Assert.IsTrue(h.ShouldStop(t + ServerHolds.QuickGrace, false), "nach QuickGrace, nicht erst nach Miete und Grace");
+    }
+
+    [TestMethod]
+    public void Holds_LiveWindowKeepsItsLease_WhileTheDeadOneIsDropped()
+    {
+        var h = new ServerHolds(T0, pid => pid == 7);
+        var t = T0.AddMinutes(5);
+        h.Touch("ui:7", t);
+        h.Touch("tui:8", t);
+        Assert.AreEqual(1, h.Count(t), "ui:7 läuft, tui:8 ist weg");
+        Assert.IsFalse(h.ShouldStop(t, false));
+    }
+
+    [TestMethod]
+    public void Holds_LeaseWithoutProcessNumber_OnlyExpires()
+    {
+        var h = new ServerHolds(T0, _ => false);
+        var t = T0.AddMinutes(5);
+        h.Touch("probe", t);
+        Assert.AreEqual(1, h.Count(t), "ohne Prozessnummer zählt nur die Miete");
+        Assert.AreEqual(0, h.Count(t + ServerHolds.Lease));
+    }
+
+    [TestMethod]
+    public void Holds_ProcessRunning_SeesItselfAndNotUnknownIds()
+    {
+        Assert.IsTrue(ServerHolds.ProcessRunning(Environment.ProcessId));
+        Assert.IsFalse(ServerHolds.ProcessRunning(int.MaxValue));
+    }
+
     // ── AppLog ──
 
     [TestMethod]

@@ -34,9 +34,11 @@
 }
 
 @* Zwei Spalten (docs/plan-ui-redesign.md, U3): links was läuft und was passiert ist, rechts Hardware, Profile und Proxy.
-   Schmal untereinander. *@
+   Schmal in der Reihenfolge von docs/ui.md (Proxy, Saved, laufende Server, Hardware, Anfragen, Verlauf), umgesetzt in
+   app.css (order). *@
 <div class="mon">
 <div class="mon-main">
+<div class="mon-area mon-run">
 <h3 class="sec">@Strings.SectionRunning</h3>
 @if (e.Registry.Servers.Count == 0)
 {
@@ -76,7 +78,9 @@
         }
     }
 }
+</div>
 
+<div class="mon-area mon-rec">
 @* Letzte Anfragen (U7): feste Spalten mit Symbolen; Werkzeuge, Denken, Client und Ende aus der Beobachtung des Proxys *@
 @{
     var finished = e.Registry.Servers.SelectMany(x => x.Finished.Select(f => (F: f, Host: (string?)null)))
@@ -113,7 +117,9 @@
         </div>
     }
 </div>
+</div>
 
+<div class="mon-area mon-hist">
 @* History (U8): nach Tagen gruppiert, je Lauf Laufzeit, Ø/Spitze t/s, Tokens des letzten Laufs und wie er endete;
    Suche (/ springt hinein), Filter, Aktionen als Symbole, Vergessen mit Rückgängig *@
 @{
@@ -172,10 +178,12 @@
     </div>
 </div>
 </div>
+</div>
 <aside class="mon-side">
 @* Hardware (U5): GPU und System in einer Karte, je Programm als gestapelter Balken mit Legende; Details auf /gpu *@
 @if (e.Gpu != null || e.Sys != null)
 {
+    <div class="mon-area mon-hw">
     <h3 class="sec">@Strings.SectionHardware</h3>
     <div class="card hw">
         @if (e.Gpu is { } g)
@@ -209,8 +217,10 @@
             }
         }
     </div>
+    </div>
 }
 
+<div class="mon-area mon-saved">
 <h3 class="sec">@Strings.SectionSaved</h3>
 @* Profile als Kacheln (U6): Backend-Streifen, sechs feste Symbole, laufend = leuchtet mit Live-t/s, darunter die
    VRAM-Vorhersage (gemessen oder aus dem GGUF-Kopf geschätzt) gegen den freien Grafikspeicher *@
@@ -324,17 +334,24 @@
         </div>
     }
 </div>
+</div>
 
 <div id="proxy" class="mon-proxy">
 @* Proxy-Panel (U9): Kopf mit Schalter und Adresse, Ziel „stykker“, LAN, Quellen als kurze Listen; Formulare erst auf
    Klick, lange Hinweise als Tooltip am Info-Symbol *@
-@{ var models = px.Choices(); var remotes = px.RemoteStates(); var provs = Providers; var baseUrl = ProxyBaseUrl(px); }
+@{ var models = px.Choices(); var remotes = px.RemoteStates(); var provs = Providers; var baseUrl = ProxyBaseUrl(px); var cd = e.Claude; }
 <h3 class="sec">@Strings.PxTitle</h3>
 <div class="card pxp @(px.Running ? "on" : "")">
     <div class="pxp-hd">
         <span class="lamp @(px.Running ? "on" : "")"></span>
         <b>@(px.Running ? Strings.PxRunning : Strings.PxStopped)</b>
         <button class="switch @(px.Running ? "on" : "")" role="switch" aria-checked="@(px.Running ? "true" : "false")" aria-label="@Strings.PxTitle" disabled="@(ro || !CanWrite)" @onclick="ToggleProxy"><i></i></button>
+        @if (cd.Supported)
+        {
+            <button class="ib quiet claude @(cd.Enabled ? "on" : "")" role="switch" aria-checked="@(cd.Enabled ? "true" : "false")"
+                    title="@(cd.Enabled ? Strings.ClaudeOnHint : Strings.ClaudeOffHint)" aria-label="@Strings.ClaudeTitle"
+                    disabled="@(ro || !CanWrite)" @onclick="ToggleClaude"><Icon Name="claude" /></button>
+        }
         @if (px.Running)
         {
             <code class="pxp-url" title="@baseUrl · @Strings.ProxyBar(px.Running, px.Port, px.TargetName(), px.BindLan)">@baseUrl.Replace("http://", "")</code>
@@ -342,6 +359,15 @@
         }
     </div>
     @if (_flash.Length > 0) { <div class="small pxp-flash">@_flash</div> }
+    @if (_claudeAsk)
+    {
+        <div class="claude-ask">
+            <span class="lamp bad"></span>
+            <span class="t">@Strings.ClaudeAsk(cd.RunningCount)</span>
+            <button class="primary" @onclick="CloseClaude">@Strings.ClaudeCloseNow</button>
+            <button class="ghost" @onclick="() => _claudeAsk = false">@Strings.ClaudeLater</button>
+        </div>
+    }
 
     <div class="pxp-row">
         <span class="pxp-l">@Strings.PxAnswers <span class="tip" title="@Strings.ProxySwitchHint"><Icon Name="info" /></span></span>
@@ -647,6 +673,29 @@
     {
         if (!CanWrite) return;
         if (!Host.Engine.Proxies.Toggle(out var error) && error != null) _flash = error;
+    }
+
+    // Claude Desktop auf den Stykker-Proxy umschalten (bzw. zurück). Läuft die App, fragt eine Leiste, ob sie
+    // beendet werden soll – sie liest die Konfiguration nur beim Start.
+    private bool _claudeAsk;
+
+    private async Task ToggleClaude()
+    {
+        if (!CanWrite) return;
+        bool on = !Host.Engine.Claude.Enabled;
+        var r = await Web.RunAsync(new ActionRequest { Action = "claude.set", Flag = on });
+        if (!r.Ok) { _flash = r.Message; return; }
+        _flash = "";
+        Toast.Show(r.Message);
+        _claudeAsk = Host.Engine.Claude.Running;
+    }
+
+    private async Task CloseClaude()
+    {
+        if (!CanWrite) return;
+        var r = await Web.RunAsync(new ActionRequest { Action = "claude.close" });
+        _claudeAsk = false;
+        if (r.Ok) Toast.Show(r.Message); else _flash = r.Message;
     }
 
     // Kennung des servierten Modells: „<ServerKey>|<Modell>" oder eine Cloud-Zielkennung, leer = Auto

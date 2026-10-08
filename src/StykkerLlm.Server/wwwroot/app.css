@@ -329,9 +329,16 @@ a.hchip:hover{color:var(--ink);border-color:rgb(var(--acc-rgb)/.5)}
 .hchip .mini i{display:block;height:100%;background:var(--acc);box-shadow:0 0 6px rgb(var(--acc-rgb)/calc(.7*var(--glow)));transition:width .6s}
 .hchip.warn .mini i{background:var(--warn)}
 .mon{display:grid;grid-template-columns:minmax(0,1fr) minmax(300px,380px);gap:16px;align-items:start}
-.mon-main,.mon-side{min-width:0}
-.mon-side>.sec:first-child,.mon-main>.sec:first-child{margin-top:0}
-@media(max-width:1100px){.mon{grid-template-columns:minmax(0,1fr)}}
+.mon-main,.mon-side,.mon-area,.mon-proxy{min-width:0}
+.mon-main>.mon-area:first-child>.sec:first-child,.mon-side>.mon-area:first-child>.sec:first-child{margin-top:0}
+/* schmal in der Reihenfolge von docs/ui.md: Proxy, Saved, laufende Server, Hardware, Anfragen, Verlauf. Die Bereiche
+   werden Geschwister im Raster und per order sortiert; breit bleiben es zwei Spalten */
+@media(max-width:1100px){
+.mon{grid-template-columns:minmax(0,1fr);gap:0}
+.mon-main,.mon-side{display:contents}
+.mon-proxy{order:1}.mon-saved{order:2}.mon-run{order:3}.mon-hw{order:4}.mon-rec{order:5}.mon-hist{order:6}
+.mon-area>.sec:first-child,.mon-proxy>.sec:first-child{margin-top:0}
+}
 /* schmal (< 640 px): breite Tabellen werden zu Zeilen-Blöcken statt seitlich zu scrollen */
 @media(max-width:640px){
   .status{width:100%;flex-wrap:wrap}
@@ -529,6 +536,12 @@ html[data-theme=titan] .pf-cmd code{border-radius:0}
 .pxp-url{font:12px var(--font-num);color:var(--acc);background:var(--card2);padding:3px 8px;border-radius:6px;margin-left:auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:0 1 auto}
 .pxp-hd{flex-wrap:nowrap}.pxp-hd .ib{flex:none}
 .pxp-flash{color:var(--warn);margin-top:6px}
+/* Claude Desktop auf den Stykker-Proxy (Schalter neben dem Proxy-Schalter) */
+.claude{color:var(--muted)}
+.claude.on{color:var(--acc);border-color:rgb(var(--acc-rgb)/.55);background:rgb(var(--acc-rgb)/.12)}
+.claude-ask{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px;padding:7px 9px;border:1px solid rgb(var(--warn-rgb)/.5);border-radius:8px;background:rgb(var(--warn-rgb)/.08)}
+.claude-ask .lamp{background:var(--warn)}
+.claude-ask .t{flex:1;min-width:0;font-size:12px}
 .pxp-row{display:flex;align-items:center;gap:8px;margin-top:10px;flex-wrap:wrap}
 .pxp-row select{flex:1;min-width:0}
 .pxp-l{font-size:12px;color:var(--muted);display:inline-flex;align-items:center;gap:4px;min-width:120px}

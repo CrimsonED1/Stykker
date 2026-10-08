@@ -41,6 +41,21 @@ public static partial class Strings
     public const string PxReachable = "reachable", PxUnreachable = "not reachable", PxNoMachines = "none attached", PxNoCloud = "none added";
     public static string PxModelList(int n) => $"{n} models under /v1/models";
     public const string PxRunning = "running", PxStopped = "stopped";
+    // Claude Desktop als Client des Proxys (3P-Konfiguration der App, Schalter neben dem Proxy)
+    public const string ClaudeTitle = "Claude Desktop via the Stykker-Proxy";
+    public const string ClaudeOffHint = "Point Claude Desktop at the Stykker-Proxy. The app reads its configuration at start, so restart it afterwards.";
+    public const string ClaudeOnHint = "Claude Desktop answers through the Stykker-Proxy – click to switch back to Anthropic.";
+    public const string ClaudeUnsupported = "Only available on Windows with Claude Desktop installed";
+    public static string ClaudeEnabled(string url) => $"Claude Desktop → {url}";
+    public const string ClaudeDisabled = "Claude Desktop back on Anthropic";
+    public static string ClaudeFailed(string message) => $"Claude Desktop could not be switched: {message}";
+    public static string ClaudeAsk(int n) => n == 1
+        ? "Claude Desktop is running. Close it so the change takes effect?"
+        : $"{n} Claude Desktop processes are running. Close them so the change takes effect?";
+    public const string ClaudeCloseNow = "Close now", ClaudeLater = "Later";
+    public static string ClaudeClosed(int n) => n == 1 ? "Claude Desktop closed" : $"{n} Claude Desktop processes closed";
+    public const string ClaudeNoneClosed = "No running Claude Desktop found";
+    public const string ClaudeCloseFailed = "Claude Desktop could not be closed";
     // Letzte Anfragen (U7)
     public const string ReqModel = "model", ReqHost = "host", ReqTime = "time", ReqPrompt = "prompt t/s", ReqTokens = "tok";
     public const string ReqTools = "tools", ReqThink = "think", ReqResult = "result", ReqAgo = "ago";

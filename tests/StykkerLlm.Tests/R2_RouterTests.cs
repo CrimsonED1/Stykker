@@ -41,7 +41,8 @@ public class R2_RouterTests
     {
         string? seenByA = null;
         using var a = Echo("A", b => seenByA = RouterProxy.ReadModel(b));
-        using var b = Echo("B");
+        string? seenByB = null;
+        using var b = Echo("B", body => seenByB = RouterProxy.ReadModel(body));
         using var proxy = new RouterProxy(0);
         proxy.SetTargets(new[]
         {
@@ -63,8 +64,10 @@ public class R2_RouterTests
         Assert.AreEqual("alpha", seenByA);
         // unbekanntes Modell → Standardziel
         StringAssert.Contains(await Post(proxy.ListenPort, "/v1/chat/completions", "{\"model\":\"gibtsnicht\",\"messages\":[]}"), "\"A\"");
-        // Anthropic /v1/messages mit model
-        StringAssert.Contains(await Post(proxy.ListenPort, "/v1/messages", "{\"model\":\"model-b\",\"messages\":[]}"), "\"B\"");
+        // Anthropic /v1/messages: nach Modell weiterleiten, aber als Anthropic-Ereignisse beantworten (R5)
+        var anthropic = await Post(proxy.ListenPort, "/v1/messages", "{\"model\":\"model-b\",\"messages\":[]}");
+        StringAssert.Contains(anthropic, "event: message_start");
+        Assert.AreEqual("model-b", seenByB);
     }
 
     [TestMethod]

@@ -27,7 +27,7 @@ public sealed class EngineHost : IDisposable
     // Die gekoppelten Nodes (dieser Server als Hub, docs/nodes.md)
     public SimHost? Sim { get; }
     // Wer den Server gerade braucht (Fenster, TUI, Webseiten, Hubs) – ist niemand mehr da, beendet er sich
-    public ServerHolds Holds { get; } = new(DateTime.Now);
+    public ServerHolds Holds { get; } = new(DateTime.Now, ServerHolds.ProcessRunning);
     // Die Model-Hosts, die sich hier einwählen (docs/plan-hosts-gateway.md)
     public HostHub Hosts { get; }
     public HostScheduler HostScheduler { get; }

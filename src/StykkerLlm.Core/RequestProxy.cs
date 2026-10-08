@@ -10,9 +10,12 @@ namespace StykkerLlm.Core;
 // ServerKey ist der Server, dem die Aufzeichnung der Anfrage zugeordnet wird (beim Router das tatsächliche Ziel).
 // Headers sind Kopfzeilen, die der Proxy selbst setzt (z. B. der API-Schlüssel eines Cloud-Anbieters); ein Authorization des
 // Clients wird dann nicht weitergereicht. Client: ein eigener Weg zum Ziel (Tunnel zu einem Model-Host), sonst der des Proxys.
+// LocalStream: der Proxy antwortet selbst, schreibt die Antwort aber Stück für Stück (Anthropic-Brücke). Der Handler bekommt
+// den Ausgabestrom und den Mitschreiber, schreibt Kopfzeilen und Rumpf selbst und liefert den Status für die Aufzeichnung.
 public sealed record ProxyRoute(string Upstream, string ServerKey, byte[]? Body,
     string? LocalContentType = null, byte[]? LocalBody = null, int LocalStatus = 200,
-    IReadOnlyList<(string Name, string Value)>? Headers = null, HttpClient? Client = null);
+    IReadOnlyList<(string Name, string Value)>? Headers = null, HttpClient? Client = null,
+    Func<Stream, ProxyTap, CancellationToken, Task<int>>? LocalStream = null);
 
 // Kleiner lokaler Durchreich-Proxy (nur Loopback) vor einem llama-server. Reicht alle Anfragen unverändert weiter (auch Streaming/SSE),
 // liest bei Generierungs-Anfragen mit (ProxyTap) und meldet je Anfrage einen ProxyRecord. Aus: Server bleibt direkt erreichbar.
@@ -27,14 +30,14 @@ public class RequestProxy : IDisposable
     private const int MaxConnections = 64;
 
     // Kopfzeilen, die nur für eine Verbindung gelten (werden nicht weitergereicht, Länge und Kodierung setzt der Proxy selbst)
-    private static readonly HashSet<string> HopHeaders = new(StringComparer.OrdinalIgnoreCase)
+    internal static readonly HashSet<string> HopHeaders = new(StringComparer.OrdinalIgnoreCase)
     {
         "Connection", "Keep-Alive", "Proxy-Connection", "Proxy-Authenticate", "Proxy-Authorization", "Transfer-Encoding", "Upgrade", "TE", "Trailer",
         "Host", "Content-Length", "Expect",
     };
 
     // Kopfzeilen, die zum Inhalt gehören (HttpContent.Headers statt HttpRequestMessage.Headers)
-    private static readonly HashSet<string> ContentHeaders = new(StringComparer.OrdinalIgnoreCase)
+    internal static readonly HashSet<string> ContentHeaders = new(StringComparer.OrdinalIgnoreCase)
     {
         "Allow", "Content-Disposition", "Content-Encoding", "Content-Language", "Content-Location", "Content-MD5", "Content-Range", "Content-Type", "Expires", "Last-Modified",
     };
@@ -60,6 +63,9 @@ public class RequestProxy : IDisposable
     public virtual bool Running => _listeners.Count > 0 && !_disposed;
     public int Requests => Volatile.Read(ref _requests);
     public int ActiveRequests => Volatile.Read(ref _active);
+    // Der Client des Proxys (keine Umleitung, kein System-Proxy, keine Dekompression) – für Antworten, die der Proxy
+    // selbst erzeugt, aber aus einer eigenen Weiterleitung speist (Anthropic-Brücke)
+    protected HttpClient UpstreamClient => _http;
     // Wie lange auf die Antwortköpfe des Servers gewartet wird (Prompt-Verarbeitung), und wie lange der Stream still sein darf
     public TimeSpan HeaderTimeout { get; set; } = TimeSpan.FromMinutes(30);
     public TimeSpan IdleTimeout { get; set; } = TimeSpan.FromMinutes(15);
@@ -402,6 +408,18 @@ public class RequestProxy : IDisposable
                 status = route.LocalStatus;
                 try { await WriteLocalAsync(net, status, route.LocalContentType, localBody, conn.Token); }
                 catch { aborted = true; }
+                return;
+            }
+            // Antwort, die der Proxy selbst schreibt, aber live aus einer Weiterleitung speist (Anthropic-Brücke):
+            // der Handler schreibt Kopfzeilen und Rumpf selbst; der Mitschreiber zählt die Anfrage weiter mit.
+            if (route.LocalStream is { } localStream)
+            {
+                track = req.Method == "POST" && IsGenerationPath(pathOnly);
+                stream = true;
+                tap.Stream = true;
+                try { status = await localStream(net, tap, conn.Token); }
+                catch { aborted = true; }
+                finally { Volatile.Write(ref done, 1); }   // fertig geschrieben: ein Schließen des Clients zählt nicht als Abbruch
                 return;
             }
             track = req.Method == "POST" && IsGenerationPath(pathOnly);

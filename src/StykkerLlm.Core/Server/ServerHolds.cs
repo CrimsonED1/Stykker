@@ -1,3 +1,5 @@
+using System.Diagnostics;
+
 namespace StykkerLlm.Core;
 
 // Der Server lebt nur, solange ihn jemand braucht: ein offenes Fenster (StykkerUI), eine TUI, eine offene Webseite
@@ -6,6 +8,8 @@ namespace StykkerLlm.Core;
 // Ist niemand mehr da und läuft keine Arbeit (Modelltest, Benchmark), beendet sich der Server nach Grace –
 // nach einem ausdrücklichen Abmelden des Letzten schon nach QuickGrace. Ein frisch gestarteter Server wartet
 // StartGrace lang auf den ersten Halter (das Fenster startet ihn und meldet sich danach erst an).
+// Ein Fenster oder eine TUI, deren Prozess ohne Abmelden endet (Absturz, geschlossene Konsole), hält nichts mehr:
+// das zählt wie ein ausdrückliches Abmelden (QuickGrace).
 public sealed class ServerHolds
 {
     public static readonly TimeSpan Lease = TimeSpan.FromSeconds(20);
@@ -16,11 +20,17 @@ public sealed class ServerHolds
     private readonly object _gate = new();
     private readonly Dictionary<string, DateTime> _leases = new(StringComparer.Ordinal);
     private readonly DateTime _started;
+    private readonly Func<int, bool>? _processRunning;
     private int _circuits;
     private DateTime? _emptySince;
     private bool _released;    // der letzte Halter hat sich ausdrücklich abgemeldet
 
-    public ServerHolds(DateTime started) => _started = started;
+    // processRunning prüft, ob der Prozess hinter einer Miete ("ui:1234") noch läuft; ohne Prüfung gilt nur die Miete
+    public ServerHolds(DateTime started, Func<int, bool>? processRunning = null)
+    {
+        _started = started;
+        _processRunning = processRunning;
+    }
 
     // Fenster/TUI: "ui:<id>", "tui:<id>"
     public void Touch(string id, DateTime now)
@@ -42,8 +52,23 @@ public sealed class ServerHolds
         lock (_gate)
         {
             foreach (var k in _leases.Where(p => p.Value <= now).Select(p => p.Key).ToList()) _leases.Remove(k);
+            // Ein Fenster oder eine TUI ohne laufenden Prozess meldet sich nicht mehr ab: das zählt wie ein Abmelden
+            if (_processRunning != null)
+                foreach (var k in _leases.Keys.ToList())
+                    if (ProcessIdOf(k) is { } pid && !_processRunning(pid)) { _leases.Remove(k); _released = true; }
             return _leases.Count + _circuits;
         }
+    }
+
+    // "ui:1234" -> 1234; eine Miete ohne Prozessnummer gilt nur bis zu ihrem Ablauf
+    private static int? ProcessIdOf(string id) => int.TryParse(id.Split(':')[^1], out var pid) ? (int?)pid : null;
+
+    // Läuft der Prozess noch? Unklar (keine Rechte, anderer Fehler) gilt er als laufend: lieber zu lange halten als zu früh beenden
+    public static bool ProcessRunning(int pid)
+    {
+        try { using var p = Process.GetProcessById(pid); return !p.HasExited; }
+        catch (ArgumentException) { return false; }
+        catch (Exception) { return true; }
     }
 
     // Wer gerade hält (für Status und Log): "ui", "tui", "web" mit Anzahl

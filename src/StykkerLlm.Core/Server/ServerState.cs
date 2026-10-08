@@ -136,6 +136,14 @@ public static class StateJson
                 w.WriteEndObject();
             }
             w.WriteEndArray();
+            // Claude Desktop auf den Stykker-Proxy umgeschaltet (Schalter im Proxy-Panel)
+            w.WriteStartObject("claude");
+            w.WriteBoolean("supported", e.Claude.Supported);
+            w.WriteBoolean("enabled", e.Claude.Enabled);
+            w.WriteBoolean("running", e.Claude.Running);
+            w.WriteNumber("runningCount", e.Claude.RunningCount);
+            w.WriteString("url", e.Claude.BaseUrl);
+            w.WriteEndObject();
             w.WriteEndObject();
 
             w.WriteStartObject("recording");
@@ -807,6 +815,17 @@ public sealed class StateSnapshot
         Choices = ReadChoices(p),
         Providers = ReadProviders(p),
         Remotes = ReadRemotes(p),
+        Claude = ReadClaude(p),
+    } : new();
+
+    // Zustand des Schalters „Claude Desktop auf den Stykker-Proxy"
+    private static ClaudeState ReadClaude(JsonElement p) => J.Obj(p, "claude") is { } c ? new ClaudeState
+    {
+        Supported = J.Bool(c, "supported"),
+        Enabled = J.Bool(c, "enabled"),
+        Running = J.Bool(c, "running"),
+        RunningCount = J.Int(c, "runningCount"),
+        Url = J.Str(c, "url") ?? "",
     } : new();
 
     // Die angehängten Stykker-Rechner
@@ -1297,6 +1316,18 @@ public sealed class ProxyState
     public List<ProxyChoiceState> Choices { get; init; } = new();
     public List<ProxyProviderState> Providers { get; init; } = new();
     public List<ProxyRemoteState> Remotes { get; init; } = new();
+    // Claude Desktop auf den Stykker-Proxy umgeschaltet (3P-Konfiguration der App)
+    public ClaudeState Claude { get; init; } = new();
+}
+
+// Zustand des Schalters „Claude Desktop auf den Stykker-Proxy"
+public sealed class ClaudeState
+{
+    public bool Supported { get; init; }
+    public bool Enabled { get; init; }
+    public bool Running { get; init; }
+    public int RunningCount { get; init; }
+    public string Url { get; init; } = "";
 }
 
 // Ein angehängter Stykker-Rechner (Name und Basis-URL seines Proxys)

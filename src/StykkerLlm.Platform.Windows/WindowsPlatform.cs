@@ -261,6 +261,22 @@ public sealed class WindowsPlatform : IPlatform
         return list;
     }
 
+    // Alle Prozesse über denselben Toolhelp-Schnappschuss (nur Namen, kein fremder Speicher)
+    public IReadOnlyList<(int Pid, string Name)> AllProcesses()
+    {
+        var list = new List<(int, string)>();
+        var snap = CreateToolhelp32Snapshot(0x2, 0);   // TH32CS_SNAPPROCESS
+        if (snap == IntPtr.Zero || snap == new IntPtr(-1)) return list;
+        try
+        {
+            var e = new ProcessEntry32 { dwSize = (uint)Marshal.SizeOf<ProcessEntry32>() };
+            for (bool ok = Process32FirstW(snap, ref e); ok; ok = Process32NextW(snap, ref e)) list.Add(((int)e.th32ProcessID, ProcPath.Stem(e.szExeFile)));
+        }
+        catch { }
+        finally { CloseHandle(snap); }
+        return list;
+    }
+
     public GpuSample? ReadGpu() => _nvml.Read();
 
     public string? GpuDriver => _nvml.DriverVersion;
