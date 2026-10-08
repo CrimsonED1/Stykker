@@ -13,8 +13,8 @@ public class S2_AccessQrTests
     [TestMethod]
     public void Qr_PairUrlFitsAndHasFinderPatterns()
     {
-        var url = NetInfo.PairUrl(8078, "ABCD2345", "192.168.178.23");
-        Assert.AreEqual("http://192.168.178.23:8078/pair?code=ABCD2345", url);
+        var url = NetInfo.PairUrl(8078, "ABCD2345", "192.168.1.23");
+        Assert.AreEqual("http://192.168.1.23:8078/pair?code=ABCD2345", url);
         var qr = QrCode.Encode(url);
         Assert.IsTrue(qr.Version is >= 1 and <= 10);
         Assert.AreEqual(qr.Version * 4 + 17, qr.Size);
@@ -52,7 +52,7 @@ public class S2_AccessQrTests
         // Und die Maske steht wirklich in der Matrix: für jede gewählte Maske der passende Wert
         foreach (var level in new[] { QrCode.Ecc.L, QrCode.Ecc.M, QrCode.Ecc.Q, QrCode.Ecc.H })
         {
-            var qr = QrCode.Encode("http://192.168.178.23:8078/pair?code=ABCD2345", level);
+            var qr = QrCode.Encode("http://192.168.1.23:8078/pair?code=ABCD2345", level);
             Assert.AreEqual(table[(int)qr.Level][qr.Mask], ReadFormat(qr), $"Stufe {qr.Level}, Maske {qr.Mask}");
         }
     }
@@ -60,7 +60,7 @@ public class S2_AccessQrTests
     [TestMethod]
     public void Qr_RoundTripsThroughItsOwnMatrix()
     {
-        foreach (var text in new[] { "http://192.168.178.23:8078/pair?code=ABCD2345", "A", "Öffnen Sie die Tür 42 – Grüße" })
+        foreach (var text in new[] { "http://192.168.1.23:8078/pair?code=ABCD2345", "A", "Öffnen Sie die Tür 42 – Grüße" })
             foreach (QrCode.Ecc level in new[] { QrCode.Ecc.L, QrCode.Ecc.M, QrCode.Ecc.Q, QrCode.Ecc.H })
             {
                 var qr = QrCode.Encode(text, level);
@@ -112,17 +112,17 @@ public class S2_AccessQrTests
         Assert.IsFalse(access.RemoteEnabled);
         Assert.AreEqual(0, access.Devices.Count);
 
-        Assert.IsNull(access.Pair("FALSCH1", "Handy", "192.168.178.44"), "falscher Code");
+        Assert.IsNull(access.Pair("FALSCH1", "Handy", "192.168.1.44"), "falscher Code");
         Assert.IsNull(access.Pair(null, null, null), "kein Code");
-        var paired = access.Pair(access.Code, "WaterFox on Android", "192.168.178.44");
+        var paired = access.Pair(access.Code, "WaterFox on Android", "192.168.1.44");
         Assert.IsNotNull(paired);
         var (token, device) = paired!.Value;
         Assert.AreEqual(1, access.Devices.Count);
         Assert.AreEqual("WaterFox on Android", device.Name);
         Assert.IsFalse(string.IsNullOrEmpty(device.Id));
 
-        Assert.IsTrue(access.Validate(token, "192.168.178.44"), "Cookie gültig");
-        Assert.IsFalse(access.Validate(token + "x", "192.168.178.44"), "falsches Cookie");
+        Assert.IsTrue(access.Validate(token, "192.168.1.44"), "Cookie gültig");
+        Assert.IsFalse(access.Validate(token + "x", "192.168.1.44"), "falsches Cookie");
         Assert.IsFalse(access.Validate(null, null), "kein Cookie");
 
         // Neuer Code: alte Cookies bleiben gültig, ein Gerät kann einzeln entfernt werden

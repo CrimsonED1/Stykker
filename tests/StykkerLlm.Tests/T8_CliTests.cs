@@ -163,7 +163,7 @@ public class T8_DisplayTests
         Assert.IsTrue(TuiApp.IsTailscale("100.101.102.103"));
         Assert.IsTrue(TuiApp.IsTailscale("100.64.0.1"));
         Assert.IsFalse(TuiApp.IsTailscale("100.128.0.1"));
-        Assert.IsFalse(TuiApp.IsTailscale("192.168.178.20"));
+        Assert.IsFalse(TuiApp.IsTailscale("192.168.1.20"));
     }
 
     [TestMethod]

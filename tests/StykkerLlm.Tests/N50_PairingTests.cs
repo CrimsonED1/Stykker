@@ -194,12 +194,12 @@ public class N50_PairingTests
     public void Discovery_ParsesOnlyStykkerAnswers_AndMarksItself()
     {
         var reply = NodeDiscovery.Reply(8078, true);
-        var n = NodeDiscovery.Parse(reply, IPAddress.Parse("192.168.178.52"), new[] { "192.168.178.137" });
+        var n = NodeDiscovery.Parse(reply, IPAddress.Parse("192.168.1.52"), new[] { "192.168.1.137" });
         Assert.IsNotNull(n);
-        Assert.AreEqual("http://192.168.178.52:8078", n.Url);
+        Assert.AreEqual("http://192.168.1.52:8078", n.Url);
         Assert.IsTrue(n.Remote);
         Assert.IsFalse(n.Self);
-        Assert.IsTrue(NodeDiscovery.Parse(reply, IPAddress.Parse("192.168.178.137"), new[] { "192.168.178.137" })!.Self);
+        Assert.IsTrue(NodeDiscovery.Parse(reply, IPAddress.Parse("192.168.1.137"), new[] { "192.168.1.137" })!.Self);
         Assert.IsNull(NodeDiscovery.Parse("""{"app":"something else","port":1}""", IPAddress.Loopback, Array.Empty<string>()));
         Assert.IsNull(NodeDiscovery.Parse("kein json", IPAddress.Loopback, Array.Empty<string>()));
         Assert.IsFalse(reply.Contains("code", StringComparison.OrdinalIgnoreCase), "die Antwort verrät keinen Code");
