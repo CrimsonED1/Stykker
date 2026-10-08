@@ -34,9 +34,11 @@
 }
 
 @* Zwei Spalten (docs/plan-ui-redesign.md, U3): links was läuft und was passiert ist, rechts Hardware, Profile und Proxy.
-   Schmal untereinander. *@
+   Schmal in der Reihenfolge von docs/ui.md (Proxy, Saved, laufende Server, Hardware, Anfragen, Verlauf), umgesetzt in
+   app.css (order). *@
 <div class="mon">
 <div class="mon-main">
+<div class="mon-area mon-run">
 <h3 class="sec">@Strings.SectionRunning</h3>
 @if (e.Registry.Servers.Count == 0)
 {
@@ -76,7 +78,9 @@
         }
     }
 }
+</div>
 
+<div class="mon-area mon-rec">
 @* Letzte Anfragen (U7): feste Spalten mit Symbolen; Werkzeuge, Denken, Client und Ende aus der Beobachtung des Proxys *@
 @{
     var finished = e.Registry.Servers.SelectMany(x => x.Finished.Select(f => (F: f, Host: (string?)null)))
@@ -113,7 +117,9 @@
         </div>
     }
 </div>
+</div>
 
+<div class="mon-area mon-hist">
 @* History (U8): nach Tagen gruppiert, je Lauf Laufzeit, Ø/Spitze t/s, Tokens des letzten Laufs und wie er endete;
    Suche (/ springt hinein), Filter, Aktionen als Symbole, Vergessen mit Rückgängig *@
 @{
@@ -172,10 +178,12 @@
     </div>
 </div>
 </div>
+</div>
 <aside class="mon-side">
 @* Hardware (U5): GPU und System in einer Karte, je Programm als gestapelter Balken mit Legende; Details auf /gpu *@
 @if (e.Gpu != null || e.Sys != null)
 {
+    <div class="mon-area mon-hw">
     <h3 class="sec">@Strings.SectionHardware</h3>
     <div class="card hw">
         @if (e.Gpu is { } g)
@@ -209,8 +217,10 @@
             }
         }
     </div>
+    </div>
 }
 
+<div class="mon-area mon-saved">
 <h3 class="sec">@Strings.SectionSaved</h3>
 @* Profile als Kacheln (U6): Backend-Streifen, sechs feste Symbole, laufend = leuchtet mit Live-t/s, darunter die
    VRAM-Vorhersage (gemessen oder aus dem GGUF-Kopf geschätzt) gegen den freien Grafikspeicher *@
@@ -323,6 +333,7 @@
             <textarea @bind="_editArgs" @bind:event="oninput" rows="3" style="width:100%;margin-top:8px;font-family:Consolas,monospace"></textarea>
         </div>
     }
+</div>
 </div>
 
 <div id="proxy" class="mon-proxy">
