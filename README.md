@@ -61,7 +61,7 @@ any browser or your phone; keep an eye on it in the terminal. Nothing leaves you
 ![StykkerUI window](docs/images/window.png)
 
 <table><tr>
-<td width="30%"><img src="docs/images/phone.jpg" alt="phone view"></td>
+<td width="30%"><img src="docs/images/phone.png" alt="phone view"></td>
 <td><img src="docs/images/tui.png" alt="terminal display (stykker)"></td>
 </tr><tr><td>Phone (compact view)</td><td>Terminal: <code>stykker</code>, details of a server open</td></tr></table>
 

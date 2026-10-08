@@ -12,6 +12,8 @@ public sealed class MonitorEngine : IDisposable
     private const double VramWarnGb = 1.0;
 
     private readonly HttpClient _http;
+    // Client für Benchmarks (ohne Zeitgrenze); der Simulator setzt seinen eigenen, damit Benchmarks auch dort laufen
+    public Func<HttpClient>? BenchClient { get; set; }
     private readonly bool _ownsHttp;
     private readonly Func<DateTime> _now;
     private bool _discovered, _polling, _vramLow, _disposed;

@@ -1,6 +1,6 @@
 # Plan: new web interface (Dark + Spacepunk Titan)
 
-Status: **U1–U14 done** (2026-10-08). README monitor images captured with headless Edge (Dark and Titan); also model tests and GPU; benchmarks, phone and window images still show the old design. Stop keeps its detailed confirm dialog (process, PID, clients) instead of a small popover. Approved by the owner on 2026-10-07. Work happens on `dev`, package by package; after each package:
+Status: **U1–U14 done** (2026-10-08). README monitor images captured with headless Edge (Dark and Titan); also model tests, GPU, benchmarks (the simulator now runs benchmarks) and phone; the window image comes from StykkerUI against the simulator. Only the TUI image is older. Stop keeps its detailed confirm dialog (process, PID, clients) instead of a small popover. Approved by the owner on 2026-10-07. Work happens on `dev`, package by package; after each package:
 build, all tests, a screenshot in Dark and Titan, commit.
 
 Reference: the mockups in `docs/design/` (open them in a browser, controls at the bottom left).

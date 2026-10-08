@@ -234,6 +234,7 @@ public static partial class Strings
     public const string BenchRepeats = "Repeats", BenchGenTokens = "Tokens per test";
     public const string BenchRun = "Run benchmark …", BenchResults = "Saved results", BenchWillStart = "(not running: will be started)";
     public const string BenchNoTarget = "There is no running llama.cpp server and no saved profile to measure.";
+    public const string BenchPickTarget = "Pick a running server or a saved profile …";
     public const string BenchNothingSelected = "Select at least one test.";
     public static string BenchStarting(string name) => $"Starting profile \"{name}\" and waiting for the server …";
     public const string BenchStartFailed = "The profile could not be started.", BenchCancelled = "Cancelled. The finished steps were saved.";

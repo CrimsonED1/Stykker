@@ -15,7 +15,7 @@
     <div class="row">
         <span class="muted small">@Strings.BenchTarget</span>
         <select @bind="_target" style="max-width:440px">
-            <option value="">@Strings.BenchNoTarget</option>
+            <option value="">@(e.Servers.Count == 0 && e.Library.Profiles.Count == 0 ? Strings.BenchNoTarget : Strings.BenchPickTarget)</option>
             @foreach (var s in e.Servers)
             {
                 <option value="@s.Key">@s.Name · :@s.Info.Port · @s.Current.ToString("0.0", CultureInfo.InvariantCulture) t/s</option>

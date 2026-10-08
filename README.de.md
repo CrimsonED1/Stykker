@@ -62,7 +62,7 @@ jedem Browser oder auf dem Handy; im Terminal behältst du alles im Blick. Nicht
 ![Fenster StykkerUI](docs/images/window.png)
 
 <table><tr>
-<td width="30%"><img src="docs/images/phone.jpg" alt="Handy-Ansicht"></td>
+<td width="30%"><img src="docs/images/phone.png" alt="Handy-Ansicht"></td>
 <td><img src="docs/images/tui.png" alt="Anzeige im Terminal (stykker)"></td>
 </tr><tr><td>Handy (kompakte Ansicht)</td><td>Terminal: <code>stykker</code>, Details eines Servers offen</td></tr></table>
 
