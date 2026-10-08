@@ -1,0 +1,120 @@
+{
+  "report": {
+    "url": "file:///C:/_AI/StykkerHUD/stykker-hud/docs/design/mockup-1.html",
+    "title": "StykkerHUD mockup 1 — target state",
+    "theme": "dark",
+    "shellClass": false,
+    "spriteIcons": 91,
+    "unresolvedIcons": 0,
+    "cards": 10,
+    "rows": 14,
+    "cores": 16,
+    "metrics": [
+      {
+        "i": 0,
+        "cells": 6,
+        "columns": 3,
+        "maxOverflowPx": 0
+      },
+      {
+        "i": 1,
+        "cells": 2,
+        "columns": 3,
+        "maxOverflowPx": 0
+      },
+      {
+        "i": 2,
+        "cells": 6,
+        "columns": 5,
+        "maxOverflowPx": 0
+      },
+      {
+        "i": 3,
+        "cells": 6,
+        "columns": 7,
+        "maxOverflowPx": 0
+      }
+    ],
+    "app": {
+      "header": {
+        "cpu": "5",
+        "ram": "14.4",
+        "gpu": "36",
+        "vram": "12.8",
+        "procs": "204",
+        "uptime": "3h 12m",
+        "gpuName": null
+      },
+      "gpuCard": {
+        "util": "36",
+        "vram": "12.8",
+        "temp": "57",
+        "power": "128",
+        "clock": "2505"
+      },
+      "bars": {
+        "cpu": "2.04688px",
+        "ram": "94.5px",
+        "commit": "109.188px",
+        "vram": "166.391px"
+      },
+      "notes": 1,
+      "lampStates": [
+        "gen",
+        "read",
+        "read",
+        "read",
+        "read",
+        "idle"
+      ],
+      "firstRow": "llama-server 12908 46.2% 1.9 GB 72% 12960 4.1 / 0.6 0.1 / 1.2 3:08 ⋯"
+    },
+    "spark": {
+      "cpu": 3870,
+      "second": 0,
+      "peak": "peak 40%"
+    },
+    "colours": {
+      "body": "rgb(6, 9, 22)",
+      "accent": "rgb(79, 227, 255)",
+      "ink": "rgb(232, 238, 255)",
+      "gradient": "linear-gradient(rgba(255, 255, 255, 0.08), rgba(0, 0, 0, 0) "
+    },
+    "fonts": {
+      "body": "\"Segoe UI Variable Text\", \"Segoe UI\", system-ui, sans-serif",
+      "figure": "\"Cascadia Mono\", \"Cascadia Code\", Consolas, ui-monospace, monospace"
+    },
+    "layout": {
+      "top": {
+        "x": 1,
+        "y": 45,
+        "w": 1398,
+        "h": 46
+      },
+      "layoutColumns": "976px 340px",
+      "left": {
+        "x": 36,
+        "y": 199,
+        "w": 976,
+        "h": 839
+      },
+      "rail": {
+        "x": 1024,
+        "y": 199,
+        "w": 340,
+        "h": 598
+      },
+      "table": {
+        "x": 36,
+        "y": 526,
+        "w": 976,
+        "h": 512
+      },
+      "tableOverflowX": 0,
+      "pageOverflowX": 0,
+      "pageHeight": 1610,
+      "chosenSegments": 2
+    }
+  },
+  "problems": []
+}

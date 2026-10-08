@@ -1,0 +1,19 @@
+<Project>
+
+  <!-- Gemeinsame Metadaten aller Projekte. Nur Metadaten: kein Verhalten. -->
+  <PropertyGroup>
+    <Version Condition="'$(Version)' == ''">0.1.0</Version>
+    <Authors>CrimsonED1</Authors>
+    <Company>CrimsonED1</Company>
+    <Product>StykkerHUD</Product>
+    <Copyright>Copyright (c) CrimsonED1</Copyright>
+    <Description>Live resource monitor for this machine: processes, GPU, CPU and memory.</Description>
+    <Deterministic>true</Deterministic>
+    <!-- keine Commit-Kennung in der Produktversion (0.1.0 statt 0.1.0+hash) -->
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+  </PropertyGroup>
+
+  <!-- Das Design-System der Stykker-Familie liegt neben diesem Ordner (C:\_AI\StykkerLLM-Design-System). Es wird
+       weder kopiert noch eingebunden: der Server liefert es zur Laufzeit unter /ds aus seiner Quelle. -->
+
+</Project>

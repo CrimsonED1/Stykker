@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Windows-Umsetzung der Messwerte: CPU/RAM (kernel32/ntdll), GPU (nvml.dll), GPU je Prozess (PDH),
+       Tray-Symbol. Ohne Oberfläche; Core kennt diese Schicht nicht. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>StykkerHud.Platform.Windows</AssemblyName>
+    <RootNamespace>StykkerHud.Platform.Windows</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\StykkerHud.Core\StykkerHud.Core.csproj" />
+  </ItemGroup>
+
+</Project>
