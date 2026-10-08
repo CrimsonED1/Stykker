@@ -9,10 +9,10 @@ namespace StykkerLlm.Core;
 // Ziel einer weitergeleiteten Anfrage. LocalBody != null: der Proxy antwortet selbst (kein Weiterleiten).
 // ServerKey ist der Server, dem die Aufzeichnung der Anfrage zugeordnet wird (beim Router das tatsächliche Ziel).
 // Headers sind Kopfzeilen, die der Proxy selbst setzt (z. B. der API-Schlüssel eines Cloud-Anbieters); ein Authorization des
-// Clients wird dann nicht weitergereicht.
+// Clients wird dann nicht weitergereicht. Client: ein eigener Weg zum Ziel (Tunnel zu einem Model-Host), sonst der des Proxys.
 public sealed record ProxyRoute(string Upstream, string ServerKey, byte[]? Body,
     string? LocalContentType = null, byte[]? LocalBody = null, int LocalStatus = 200,
-    IReadOnlyList<(string Name, string Value)>? Headers = null);
+    IReadOnlyList<(string Name, string Value)>? Headers = null, HttpClient? Client = null);
 
 // Kleiner lokaler Durchreich-Proxy (nur Loopback) vor einem llama-server. Reicht alle Anfragen unverändert weiter (auch Streaming/SSE),
 // liest bei Generierungs-Anfragen mit (ProxyTap) und meldet je Anfrage einen ProxyRecord. Aus: Server bleibt direkt erreichbar.
@@ -428,7 +428,7 @@ public class RequestProxy : IDisposable
             {
                 using var hdr = CancellationTokenSource.CreateLinkedTokenSource(conn.Token);
                 hdr.CancelAfter(HeaderTimeout);
-                resp = await _http.SendAsync(up, HttpCompletionOption.ResponseHeadersRead, hdr.Token);
+                resp = await (route.Client ?? _http).SendAsync(up, HttpCompletionOption.ResponseHeadersRead, hdr.Token);
             }
             catch (OperationCanceledException) when (conn.IsCancellationRequested) { aborted = true; return; }   // Client weg (oder Proxy beendet): Upstream ist abgebrochen
             catch (OperationCanceledException) { status = 504; await WriteSimpleAsync(net, 504, "The server did not answer in time"); return; }

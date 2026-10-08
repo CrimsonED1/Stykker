@@ -12,20 +12,18 @@ public static class StateJson
     public const int Schema = 1;
     public const string KeyHeader = "X-Stykker-Key";      // interner Schlüssel für Fenster und TUI auf diesem Rechner
     public const string CookieName = "stykker_device";       // Gerätecookie für Browser (Fenster und Web)
-    public const string DeviceHeader = "X-Stykker-Device";  // dasselbe Gerätetoken als Kopf: ein Hub fragt so seine Nodes ab
+    public const string DeviceHeader = "X-Stykker-Device";  // dasselbe Gerätetoken als Kopf (StykkerUI prüft so sein gespeichertes Gerät) ab
 
     // Zwei bis drei hundert Zeilen pro Server, einmal je Takt: deshalb Historie und Rohdaten (/props) nur, wenn gebraucht
     private static double R2(double v) => Math.Round(v, 2);
     private static double? R2(double? v) => v is double d && double.IsFinite(d) ? Math.Round(d, 2) : null;
 
-    public static string WriteText(MonitorEngine e, AccessControl? access, EvalQueue? queue, int serverPort, DateTimeOffset now, bool withHistory = true, bool withCode = true,
-        NodeRegistry? nodes = null) =>
-        Write(e, access, queue, serverPort, now, withHistory, indented: false, withCode, nodes);
+    public static string WriteText(MonitorEngine e, AccessControl? access, EvalQueue? queue, int serverPort, DateTimeOffset now, bool withHistory = true, bool withCode = true) =>
+        Write(e, access, queue, serverPort, now, withHistory, indented: false, withCode);
 
     // withCode = false für ein Gerät mit der Rolle Viewer: der Zugangscode würde ihm erlauben, sich als Admin
     // anzumelden. Die Geräteliste bleibt stehen (nur ohne Rolle ändern kann sie ohnehin nichts).
-    public static string Write(MonitorEngine e, AccessControl? access, EvalQueue? queue, int serverPort, DateTimeOffset now, bool withHistory, bool indented, bool withCode = true,
-        NodeRegistry? nodes = null)
+    public static string Write(MonitorEngine e, AccessControl? access, EvalQueue? queue, int serverPort, DateTimeOffset now, bool withHistory, bool indented, bool withCode = true)
     {
         using var ms = new MemoryStream();
         using (var w = new Utf8JsonWriter(ms, new JsonWriterOptions { Indented = indented, SkipValidation = false }))
@@ -416,9 +414,6 @@ public static class StateJson
             w.WriteEndArray();
             w.WriteEndObject();
 
-            // Die gekoppelten Nodes, wenn dieser Server ein Hub ist (docs/nodes.md)
-            NodeStateJson.Write(w, nodes);
-
             w.WriteStartArray("notices");
             foreach (var n in Notices.TakeLast(8)) w.WriteStringValue(n);
             w.WriteEndArray();
@@ -715,7 +710,6 @@ public sealed class StateSnapshot
     public EvalState? Eval { get; set; }
     public SettingsState Settings { get; init; } = new();
     public AccessStateView Access { get; init; } = new();
-    public NodesState Nodes { get; init; } = new();
     public List<string> Notices { get; init; } = new();
 
     // Der anhaltende Hinweis (Bereich 2): bleibt stehen, bis ihn eine Oberfläche wegklickt
@@ -752,7 +746,6 @@ public sealed class StateSnapshot
             Proxy = ReadProxy(J.Obj(r, "proxy")),
             Recording = ReadRecording(J.Obj(r, "recording")),
             Access = ReadAccess(J.Obj(r, "access")),
-            Nodes = NodeStateJson.Read(r),
             Settings = ReadSettings(J.Obj(r, "settings")),
         };
         var servers = new List<RemoteServer>();

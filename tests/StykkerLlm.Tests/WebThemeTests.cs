@@ -12,35 +12,25 @@ public class WebThemeTests
 {
     private static readonly Regex HexColor = new("^#[0-9a-f]{6}([0-9a-f]{2})?$");
 
-    // ── Farben wie im Fenster (Theme.cs: MakeSpaceGlass, MakeCyberGrid, …) ──
+    // ── Nur noch Dark und Spacepunk Titan (docs/plan-ui-redesign.md); Werte wie im Mockup docs/design/mockup-7.html ──
     [TestMethod]
-    public void Themes_MatchTheWindowPalette()
+    public void Themes_AreDarkAndTitan_WithTheMockupColors()
     {
-        var expected = new (string Name, string Kind, int Radius, string Bg, string BgTop, string BgBottom, string Ink,
-            string Muted, string Accent, string Second, string Good, string Warn, string Bad)[]
-        {
-            ("Space Glass", "space", 12, "#060916", "#0a1026", "#0e0820", "#e8eeff", "#8292b8", "#4fe3ff", "#a77bff", "#6cffb0", "#ffc857", "#ff5c7a"),
-            ("Cyber Grid", "cyber", 8, "#030608", "#030608", "#04090c", "#e8fbff", "#5f8792", "#4fe3ff", "#ff5c74", "#5bffb0", "#ffc857", "#ff5c74"),
-            ("Obsidian", "flat", 8, "#0a0c0f", "#0a0c0f", "#0a0c0f", "#e6eaf0", "#7c8696", "#4fd1e8", "#7c8696", "#5cdca0", "#e8b44a", "#e5596b"),
-            ("Deep Sea", "deep", 12, "#05070d", "#070b15", "#05070d", "#dce9fa", "#6f86a6", "#6cb8ff", "#7c9cd6", "#6ce8c0", "#ffc16c", "#ff6f8a"),
-            ("Phosphor", "phosphor", 3, "#040605", "#040605", "#050906", "#b8ffd0", "#4c8a62", "#5cff9a", "#2fbf6e", "#5cff9a", "#ffb000", "#ff5c5c"),
-        };
-
-        Assert.AreEqual(expected.Length, ThemeCatalog.All.Length);
-        foreach (var e in expected)
-        {
-            var t = ThemeCatalog.Find(e.Name);
-            Assert.AreEqual(e.Name, t.Name);
-            Assert.AreEqual(e.Kind, t.Kind, $"{e.Name}: Art des Hintergrunds");
-            Assert.AreEqual(e.Radius, t.Radius, $"{e.Name}: Ecken der Karten");
-            foreach (var (label, got, want) in new[]
-            {
-                ("Bg", t.Bg, e.Bg), ("BgTop", t.BgTop, e.BgTop), ("BgBottom", t.BgBottom, e.BgBottom),
-                ("Ink", t.Ink, e.Ink), ("Muted", t.Muted, e.Muted), ("Accent", t.Accent, e.Accent),
-                ("Second", t.Second, e.Second), ("Good", t.Good, e.Good), ("Warn", t.Warn, e.Warn), ("Bad", t.Bad, e.Bad),
-            })
-                Assert.AreEqual(want, got, $"{e.Name}: {label}");
-        }
+        CollectionAssert.AreEqual(new[] { "Dark", "Spacepunk Titan" }, ThemeCatalog.Names);
+        CollectionAssert.AreEqual(new[] { "Dark", "Spacepunk Titan", "System" }, ThemeCatalog.Choices);
+        var dark = ThemeCatalog.Find("Dark");
+        Assert.IsFalse(dark.Light);
+        Assert.AreEqual("#060916", dark.Bg);
+        Assert.AreEqual("#4fe3ff", dark.Accent);
+        var titan = ThemeCatalog.Find("Spacepunk Titan");
+        Assert.IsTrue(titan.Light);
+        Assert.AreEqual("titan", titan.Kind);
+        Assert.AreEqual("#d9dcdb", titan.Bg);
+        Assert.AreEqual("#cbd0cf", titan.Card);
+        Assert.AreEqual("#e0601f", titan.Signal);
+        Assert.AreEqual("#bd5017", titan.Accent, "Hauptknopf: dunklere Stufe, damit Weiß darauf AA hat");
+        Assert.AreEqual("#141819", titan.Display);
+        Assert.AreEqual("#7cff9e", titan.DisplayInk);
     }
 
     // ── Die CSS-Variablen, die MainLayout bei jedem Takt in den Kopf schreibt ──
@@ -51,6 +41,8 @@ public class WebThemeTests
         {
             "--bg", "--bg-top", "--bg-bottom", "--card", "--card-top", "--card-bottom", "--line", "--card-border",
             "--top-line", "--track", "--ink", "--muted", "--acc", "--second", "--good", "--warn", "--bad",
+            "--card2", "--signal", "--b-llama", "--b-ollama", "--b-lms", "--b-vllm", "--b-host",
+            "--st-idle", "--st-read", "--st-gen", "--st-load", "--st-off", "--disp", "--disp-ink", "--disp-unit",
         };
         string[] triples =
         {
@@ -60,10 +52,9 @@ public class WebThemeTests
         foreach (var t in ThemeCatalog.All)
         {
             var css = t.CssVariables();
-            Assert.IsTrue(css.StartsWith(":root{") && css.EndsWith("}"), $"{t.Name}: kein :root-Block");
             Assert.IsFalse(css.Contains('"'), $"{t.Name}: Anführungszeichen escaped Razor als &quot;");
 
-            var map = css[6..^1].Split(';').Select(p => p.Split(':', 2)).ToDictionary(p => p[0], p => p[1]);
+            var map = css.Split(';').Select(p => p.Split(':', 2)).ToDictionary(p => p[0], p => p[1]);
             foreach (var name in colors)
             {
                 Assert.IsTrue(map.ContainsKey(name), $"{t.Name}: {name} fehlt");
@@ -96,35 +87,32 @@ public class WebThemeTests
     }
 
     [TestMethod]
-    public void Find_AcceptsSlugSpacingCaseAndTheOldGermanNames()
+    public void Find_MapsOldThemesToDark_AndSystemHasItsOwnMode()
     {
-        Assert.AreEqual("Phosphor", ThemeCatalog.Find("phosphor").Name);
-        Assert.AreEqual("Cyber Grid", ThemeCatalog.Find("cyber-grid").Name);
-        Assert.AreEqual("Cyber Grid", ThemeCatalog.Find("CYBER GRID").Name);
-        Assert.AreEqual("Deep Sea", ThemeCatalog.Find("tiefsee").Name);          // alte deutsche Namen
-        Assert.AreEqual("Space Glass", ThemeCatalog.Find("Weltraumglas").Name);
-        Assert.AreEqual("Deep Sea", ThemeCatalog.Find("gibt es nicht").Name);    // unbekannt heißt Vorgabe, nicht "nichts"
-        Assert.AreEqual("Deep Sea", ThemeCatalog.Find(null).Name);
-        Assert.AreEqual("Deep Sea", ThemeCatalog.Default.Name);
+        Assert.AreEqual("Spacepunk Titan", ThemeCatalog.Find("titan").Name);
+        Assert.AreEqual("Spacepunk Titan", ThemeCatalog.Find("SPACEPUNK-TITAN").Name);
+        foreach (var old in new[] { "Deep Sea", "Cyber Grid", "Space Glass", "Obsidian", "Phosphor", "tiefsee", "Weltraumglas", "gibt es nicht" })
+        {
+            Assert.AreEqual("Dark", ThemeCatalog.Find(old).Name, old);
+            Assert.AreEqual("Dark", ThemeCatalog.Normalize(old), old);
+        }
+        Assert.AreEqual("System", ThemeCatalog.Normalize("system"));
+        Assert.AreEqual("System", ThemeCatalog.Normalize(null));
+        Assert.AreEqual("Dark", ThemeCatalog.Find("System").Name, "wo nur eines gezeichnet werden kann: Dark");
+        Assert.AreEqual("system", ThemeCatalog.Mode("System"));
+        Assert.AreEqual("titan", ThemeCatalog.Mode("Spacepunk Titan"));
+        Assert.AreEqual("dark", ThemeCatalog.Mode("Obsidian"));
+        Assert.AreEqual("Dark", ThemeCatalog.Default.Name);
+        Assert.AreEqual("System", new AppSettings().Theme, "neue Installationen folgen dem System");
     }
 
-    // ── Speicherbalken: die Farben des Fensters (MainForm.MemBar) ──
     [TestMethod]
-    public void MemPalette_BeginsWithTheFourThemeColors()
+    public void Css_HasDarkAtTheRoot_AndTitanBehindTheAttribute()
     {
-        foreach (var t in ThemeCatalog.All)
-        {
-            var pal = t.MemPalette();
-            Assert.AreEqual(8, pal.Length, t.Name);
-            Assert.AreEqual(t.Accent, pal[0]);
-            Assert.AreEqual(t.Second, pal[1]);
-            Assert.AreEqual(t.Good, pal[2]);
-            Assert.AreEqual(t.Warn, pal[3]);
-            foreach (var c in pal)
-                Assert.IsTrue(HexColor.IsMatch(c), $"{t.Name}: Balkenfarbe {c} (dort ohne Deckkraft)");
-        }
-        var deep = ThemeCatalog.Default;
-        Assert.AreEqual(ThemeInfo.Mix(deep.Accent, deep.Bad, 0.5), deep.MemPalette()[4]);
+        var css = ThemeCatalog.Css();
+        StringAssert.StartsWith(css, ":root{color-scheme:dark");
+        StringAssert.Contains(css, "html[data-theme=titan]{color-scheme:light");
+        Assert.IsFalse(css.Contains('"'));
     }
 
     [TestMethod]

@@ -80,7 +80,7 @@ builder.Services.AddSingleton(sp => new ActionContext
     Access = sp.GetRequiredService<EngineHost>().Access,
     Queue = sp.GetRequiredService<EvalQueue>(),
     Benchmarks = sp.GetRequiredService<EngineHost>().Benchmarks,
-    Nodes = sp.GetRequiredService<EngineHost>().Nodes,
+    Hosts = sp.GetRequiredService<EngineHost>().Hosts,
     Shutdown = () => { sp.GetRequiredService<IHostApplicationLifetime>().StopApplication(); return Task.CompletedTask; },
     ServerPort = port,
 });
@@ -89,6 +89,7 @@ builder.Services.AddScoped<WebPrompt>();
 builder.Services.AddScoped(sp => new LaunchCoordinator(sp.GetRequiredService<EngineHost>().Engine, sp.GetRequiredService<WebPrompt>()));
 builder.Services.AddScoped<ViewerSession>();
 builder.Services.AddScoped<WebActions>();
+builder.Services.AddScoped<Toasts>();
 builder.Services.AddHttpContextAccessor();   // für die Rolle beim Vorab-Rendern (ViewerSession)
 builder.Services.AddRazorComponents().AddInteractiveServerComponents();
 builder.Services.AddScoped<Microsoft.AspNetCore.Components.Server.Circuits.CircuitHandler, HoldCircuits>();
@@ -107,11 +108,39 @@ var gate = new AccessGate(engineHost.Access, engineHost.Key, port, () => ThemeCa
 app.Use(async (ctx, next) =>
 {
     if (await gate.TryHandleAsync(ctx)) return;
-    // Ein Hub, der diesen PC als Node abfragt, hält den Server am Leben (seine Anfragen kommen regelmäßig)
-    if (AccessGate.RoleOf(ctx) == AccessRole.Hub)
-        engineHost.Holds.Touch("hub:" + ctx.Connection.RemoteIpAddress, DateTime.Now);
     await next();
 });
+
+// ── Model-Hosts: der Host baut einen WebSocket auf und meldet sich mit seinem Token (docs/plan-hosts-gateway.md) ──
+app.UseWebSockets(new WebSocketOptions { KeepAliveInterval = TimeSpan.FromSeconds(15) });
+app.Map(HostProtocol.Path, async (HttpContext ctx) =>
+{
+    if (!ctx.WebSockets.IsWebSocketRequest) { ctx.Response.StatusCode = StatusCodes.Status400BadRequest; return; }
+    var host = engineHost.Hosts.Registry.Find(ctx.Request.Headers[HostProtocol.TokenHeader].ToString());
+    if (host == null) { ctx.Response.StatusCode = StatusCodes.Status401Unauthorized; return; }
+    using var ws = await ctx.WebSockets.AcceptWebSocketAsync();
+    await engineHost.Hosts.HandleAsync(ws, host, ctx.Connection.RemoteIpAddress?.ToString() ?? "", ctx.RequestAborted);
+});
+// Kopplung: der Host schickt den Code der Seite Hosts und bekommt sein Token (einmal). Fehlversuche verbrauchen den Code.
+app.MapPost("/hosts/pair", async (HttpContext ctx) =>
+{
+    Dictionary<string, string>? body = null;
+    try { body = await ctx.Request.ReadFromJsonAsync<Dictionary<string, string>>(ctx.RequestAborted); }
+    catch (System.Text.Json.JsonException) { }
+    var paired = engineHost.Hosts.Pairing.TryPair(body?.GetValueOrDefault("code"), body?.GetValueOrDefault("name"));
+    if (paired is not { } p)
+    {
+        AppLog.Write($"host pairing refused from {ctx.Connection.RemoteIpAddress}");
+        return Results.Json(new Dictionary<string, object> { ["ok"] = false, ["message"] = Strings.HostPairWrongCode }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+    AppLog.Write($"host paired: {p.Entry.Name} ({ctx.Connection.RemoteIpAddress})");
+    return Results.Json(new Dictionary<string, object> { ["ok"] = true, ["token"] = p.Token, ["id"] = p.Entry.Id, ["serverName"] = Environment.MachineName });
+});
+// Die frühere Seite Nodes (ersetzt durch Model-Hosts): alte Lesezeichen landen auf Hosts
+app.MapGet("/nodes", () => Results.Redirect("/hosts"));
+
+app.MapGet("/api/hosts", (HttpContext ctx) =>
+    Results.Text(HostStateJson.Write(engineHost.Hosts.List(), DateTime.Now), "application/json"));
 
 // ── Lebensdauer: Fenster und TUI melden sich alle paar Sekunden (ServerHolds), beim Beenden ab ──
 app.MapPost("/api/hold", (string? id) =>
@@ -209,21 +238,6 @@ app.MapPost("/api/action", async (HttpContext ctx, ActionContext actions) =>
 });
 
 app.UseAntiforgery();
-
-// Läufe der Modelltests für einen Hub (docs/nodes.md, N3): erst die Liste der Dateinamen, dann je Datei der Inhalt.
-// Nur die eigenen Läufe (oberste Ebene), nicht die schon von anderen Nodes eingesammelten.
-app.MapGet("/api/eval/runs", () =>
-{
-    var dir = paths.EvalResultsDir;
-    var names = Directory.Exists(dir) ? Directory.GetFiles(dir, "*.json").Select(Path.GetFileName).ToList() : new List<string?>();
-    return Results.Text(JsonSerializer.Serialize(names), "application/json");
-});
-app.MapGet("/api/eval/runs/{name}", (string name) =>
-{
-    if (!NodeRegistry.IsRunFileName(name)) return Results.NotFound();
-    var file = Path.Combine(paths.EvalResultsDir, name);
-    return File.Exists(file) ? Results.Text(File.ReadAllText(file), "application/json") : Results.NotFound();
-});
 
 // Benchmark als Markdown oder CSV (der Knopf im Fenster macht dasselbe)
 app.MapGet("/api/bench/{id}", (string id, EngineHost host) =>

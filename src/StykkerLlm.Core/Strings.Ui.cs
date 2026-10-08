@@ -3,6 +3,10 @@ namespace StykkerLlm.Core;
 // Texte für Saved/Running/History, Bearbeiten-Fenster und Start (AP4)
 public static partial class Strings
 {
+    // Statusleiste im Kopf (U3)
+    public const string HdrProxy = "Proxy", HdrProxyOff = "off";
+    public static string HdrServers(int n, int busy) => busy > 0 ? $"{n} · {busy} busy" : n.ToString(Inv);
+    public const string HdrServersTip = "Model servers running · busy right now", HdrProxyTip = "Stykker-Proxy: one address for all models";
     public const string Ok = "OK", Cancel = "Cancel", Close = "Close", Back = "Back";
     public const string Cancelled = "cancelled";
 
@@ -230,6 +234,7 @@ public static partial class Strings
     public const string BenchRepeats = "Repeats", BenchGenTokens = "Tokens per test";
     public const string BenchRun = "Run benchmark …", BenchResults = "Saved results", BenchWillStart = "(not running: will be started)";
     public const string BenchNoTarget = "There is no running llama.cpp server and no saved profile to measure.";
+    public const string BenchPickTarget = "Pick a running server or a saved profile …";
     public const string BenchNothingSelected = "Select at least one test.";
     public static string BenchStarting(string name) => $"Starting profile \"{name}\" and waiting for the server …";
     public const string BenchStartFailed = "The profile could not be started.", BenchCancelled = "Cancelled. The finished steps were saved.";

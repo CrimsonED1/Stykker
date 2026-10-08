@@ -179,11 +179,15 @@ public sealed class ServerRegistry : IDisposable
             var w = _byKey[key];
             _byKey.Remove(key);
             bool expected = _expectedStops.Remove(key, out var at) && DateTime.Now - at < ExpectedStopWindow;
+            string end = expected ? "clean" : "outside";
             if (!expected && w.Kind == BackendKind.LlamaCpp && !w.Info.Manual && w.Info.Pid != null)
             {
                 var tail = CrashAnalysis.ReadTail(w.Log);
-                lost.Add(new ServerLost(w.Name, w.Info.Url, w.Info.Pid, w.Log, tail, CrashAnalysis.Guess(tail), DateTime.Now, w.ProfileKey));
+                var cause = CrashAnalysis.Guess(tail);
+                end = cause != null ? "crashed" : "lost";
+                lost.Add(new ServerLost(w.Name, w.Info.Url, w.Info.Pid, w.Log, tail, cause, DateTime.Now, w.ProfileKey));
             }
+            if (w.Kind == BackendKind.LlamaCpp && w.Info.Pid != null) _library?.RecordEnd(w.Info, end, DateTime.Now);
             w.RequestFinished -= OnRequestFinished;
             w.Dispose();
             changed = true;
@@ -212,7 +216,7 @@ public sealed class ServerRegistry : IDisposable
         foreach (var w in _servers)
         {
             if (w.Info.Pid == null || w.Kind != BackendKind.LlamaCpp) continue;
-            _library.Observe(w.Info, new Observation(w.Current, w.VramGb, w.ModelFileGb, w.Props?.NCtx), now);
+            _library.Observe(w.Info, new Observation(w.Current, w.VramGb, w.ModelFileGb, w.Props?.NCtx, w.GeneratedTotal), now);
         }
         _library.SaveIfDirty(TimeSpan.FromSeconds(30));
     }

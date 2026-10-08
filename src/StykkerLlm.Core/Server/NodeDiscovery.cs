@@ -9,7 +9,7 @@ namespace StykkerLlm.Core;
 // Ein Stykker im Heimnetz, gefunden über die Suche (UDP-Broadcast)
 public sealed record DiscoveredNode(string Name, string Url, bool Remote, bool Self);
 
-// Suche nach anderen Stykker-Servern im Heimnetz (docs/nodes.md, N1). Der Hub ruft einmal laut in alle Netze
+// Suche nach anderen Stykker-Servern im Heimnetz (StykkerHost sucht so beim Koppeln seinen Server). Wer sucht, ruft einmal laut in alle Netze
 // ("STYKKER-DISCOVER/1" an Port 17501), jeder Server mit eingeschaltetem Home/VPN antwortet mit Name und Port.
 // Nur Name, Port und Schalter – kein Code, kein Schlüssel. Über VPN kommt ein Broadcast meist nicht an: dann hilft
 // die Adresse von Hand.

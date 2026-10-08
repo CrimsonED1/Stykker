@@ -46,12 +46,18 @@ public sealed class BenchmarkService
                 options.ContextPerSlot = Math.Max(1, (server.Props?.NCtx ?? options.ContextPerSlot * options.Slots) / Math.Max(1, options.Slots));
                 options.Slots = Math.Max(1, server.Props?.TotalSlots ?? options.Slots);
             }
+            // Kontext je Slot unbekannt (Seite ohne /props-Angabe): aus den Slots des Servers, sonst entfiele die Kontext-Leiter
+            if (options.ContextPerSlot <= 0)
+            {
+                int perSlot = server.Slots.Count > 0 ? server.Slots.Max(v => v.CtxMax) : (server.Props?.NCtx ?? 0) / Math.Max(1, server.Props?.TotalSlots ?? 1);
+                if (perSlot > 0) { options.ContextPerSlot = perSlot; options.Slots = Math.Max(options.Slots, server.Slots.Count); }
+            }
             options.ApiKey = server.Info.ApiKey;
             if (!engine.Recorder.IsRecording(server.Key))
                 session = engine.Recorder.Start(server.Key, engine.Servers, engine.Gpu?.Name ?? "", false);
             result = BenchmarkRunner.Describe(server, engine.Library, engine.Gpu?.Name ?? "", engine.Platform.GpuDriver);
             Current = result;
-            using var http = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
+            using var http = engine.BenchClient?.Invoke() ?? new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
             await BenchmarkRunner.RunAsync(http, server.Url, options, result,
                 msg => Say(msg),
                 step => Progress?.Invoke("", step),

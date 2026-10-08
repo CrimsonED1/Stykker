@@ -310,13 +310,13 @@ internal static class Html
 {
     private static string Esc(string s) => s.Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;").Replace("\"", "&quot;");
 
-    // Ladebild in den Farben der Vorgabe (Deep Sea): Rhombus mit Lichthof, darunter ein wandernder Balken
-    private const string Style = "body{margin:0;background:radial-gradient(60% 50% at 50% 40%,#0d1830,#05070d 70%);color:#dce9fa;font:15px Segoe UI,system-ui,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;text-align:center}"
-        + ".logo{font-size:44px;color:#6cb8ff;text-shadow:0 0 24px #6cb8ffaa;animation:p 1.6s ease-in-out infinite;display:inline-block}"
-        + ".name{letter-spacing:.18em;font-weight:600;margin-top:10px}.name b{color:#6cb8ff}"
-        + ".load{width:160px;height:3px;margin:16px auto 0;border-radius:3px;background:#96beff18;overflow:hidden}"
-        + ".load i{display:block;width:40%;height:100%;background:linear-gradient(90deg,transparent,#6cb8ff,transparent);animation:m 1.2s ease-in-out infinite}"
-        + "@keyframes p{50%{transform:scale(1.15) rotate(45deg);text-shadow:0 0 40px #6cb8ff}}@keyframes m{from{transform:translateX(-100%)}to{transform:translateX(250%)}}";
+    // Ladebild in den Farben von Dark: Rhombus mit Lichthof, darunter ein wandernder Balken
+    private const string Style = "body{margin:0;background:radial-gradient(60% 50% at 50% 40%,#0e1430,#060916 70%);color:#e8eeff;font:15px Segoe UI,system-ui,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;text-align:center}"
+        + ".logo{font-size:44px;color:#4fe3ff;text-shadow:0 0 24px #4fe3ffaa;animation:p 1.6s ease-in-out infinite;display:inline-block}"
+        + ".name{letter-spacing:.18em;font-weight:600;margin-top:10px}.name b{color:#4fe3ff}"
+        + ".load{width:160px;height:3px;margin:16px auto 0;border-radius:3px;background:#ffffff1c;overflow:hidden}"
+        + ".load i{display:block;width:40%;height:100%;background:linear-gradient(90deg,transparent,#4fe3ff,transparent);animation:m 1.2s ease-in-out infinite}"
+        + "@keyframes p{50%{transform:scale(1.15) rotate(45deg);text-shadow:0 0 40px #4fe3ff}}@keyframes m{from{transform:translateX(-100%)}to{transform:translateX(250%)}}";
 
     public static string Adopt(string baseUrl, string token, string page) => $$"""
         <!doctype html><html><head><meta charset="utf-8"><style>{{Style}}</style></head><body>

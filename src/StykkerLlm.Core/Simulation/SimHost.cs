@@ -44,6 +44,7 @@ public sealed class SimHost : IDisposable
         foreach (var s in specs) World.Add(s);
         Engine = new MonitorEngine(Platform, Paths, Settings, Http, simulation: World,
             proxyFactory: port => new SimRouterProxy(port));
+        Engine.BenchClient = () => new HttpClient(new SimHandler(World)) { Timeout = Timeout.InfiniteTimeSpan };
         World.Observed += (key, rec) =>
         {
             if (Engine.Proxies.Proxy is SimRouterProxy p) p.Observe(rec);

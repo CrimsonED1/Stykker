@@ -89,20 +89,16 @@ else
                 <tbody>
                     @foreach (var d in Host.Access.Devices)
                     {
-                        var viewer = d.Role == AccessRole.Viewer;
-                        var hub = d.Role == AccessRole.Hub;
+                        var viewer = AccessRole.Normalize(d.Role) == AccessRole.Viewer;
                         <tr>
                             <td>@d.Name</td>
-                            <td><span class="pill @(viewer ? "wait" : "ok")">@(hub ? Strings.RoleHub : viewer ? Strings.RoleViewer : Strings.RoleAdmin)</span></td>
+                            <td><span class="pill @(viewer ? "wait" : "ok")">@(viewer ? Strings.RoleViewer : Strings.RoleAdmin)</span></td>
                             <td class="muted">@(string.IsNullOrEmpty(d.Address) ? "–" : d.Address)</td>
                             <td class="muted">@(d.LastSeen?.ToString("g") ?? "–")</td>
                             <td class="actions">
-                                @if (!hub)
-                                {
-                                    <button @onclick="() => SetRole(d.Id, viewer ? AccessRole.Admin : AccessRole.Viewer)" title="@Strings.RemoteRoleHint">
-                                        @(viewer ? Strings.RemoteMakeAdmin : Strings.RemoteMakeViewer)
-                                    </button>
-                                }
+                                <button @onclick="() => SetRole(d.Id, viewer ? AccessRole.Admin : AccessRole.Viewer)" title="@Strings.RemoteRoleHint">
+                                    @(viewer ? Strings.RemoteMakeAdmin : Strings.RemoteMakeViewer)
+                                </button>
                                 <button class="bad" @onclick="() => Remove(d.Id)">@Strings.RemoteRemoveDevice</button>
                             </td>
                         </tr>

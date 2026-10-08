@@ -12,6 +12,8 @@ public sealed class MonitorEngine : IDisposable
     private const double VramWarnGb = 1.0;
 
     private readonly HttpClient _http;
+    // Client für Benchmarks (ohne Zeitgrenze); der Simulator setzt seinen eigenen, damit Benchmarks auch dort laufen
+    public Func<HttpClient>? BenchClient { get; set; }
     private readonly bool _ownsHttp;
     private readonly Func<DateTime> _now;
     private bool _discovered, _polling, _vramLow, _disposed;
@@ -33,6 +35,9 @@ public sealed class MonitorEngine : IDisposable
     public IReadOnlyList<ServerWatcher> Servers => Registry.Servers;
     public GpuSample? Gpu { get; private set; }
     public SystemSample? Sys { get; private set; }
+    // Arbeitsspeicher laut Firmware: ändert sich im Betrieb nicht, deshalb einmal gelesen (U14)
+    private MemoryInfo? _memory; private bool _memoryRead;
+    public MemoryInfo? Memory { get { if (!_memoryRead) { _memoryRead = true; try { _memory = Platform.ReadMemoryInfo(); } catch (Exception ex) when (ex is not OutOfMemoryException) { _memory = null; } } return _memory; } }
     public IReadOnlyList<(string Name, double Gb)> VramTop => _vramTop;
     private volatile List<(string Name, double Gb)> _ramTop = new();
     // größte RAM-Belegungen je Programm (alle 5 s, Hintergrund-Task)
@@ -138,8 +143,17 @@ public sealed class MonitorEngine : IDisposable
         });
     }
 
+    // Die letzten Beobachtungen des Proxys (für die Liste „Letzte Anfragen“: Werkzeuge, Denken, Client), neueste zuletzt
+    private readonly Queue<ProxyRecord> _recentProxy = new();
+    public IReadOnlyList<ProxyRecord> RecentProxy() { lock (_recentProxy) return _recentProxy.ToList(); }
+
     private void OnProxyRecord(ProxyRecord px)
     {
+        lock (_recentProxy)
+        {
+            _recentProxy.Enqueue(px);
+            while (_recentProxy.Count > 64) _recentProxy.Dequeue();
+        }
         // Beobachtung des Proxys an alle laufenden Aufnahmen (Sitzungen sperren intern, der Aufruf kommt von einem Hintergrund-Thread)
         var w = Registry.Servers.FirstOrDefault(x => x.Key == px.ServerKey);
         Recorder.OnProxyRecord(px, w?.Name ?? Proxies.DisplayName(px.ServerKey), w?.Model ?? "");

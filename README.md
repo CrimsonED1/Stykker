@@ -9,6 +9,12 @@ any browser or your phone; keep an eye on it in the terminal. Nothing leaves you
 
 ![StykkerLLM monitor](docs/images/monitor.png)
 
+<details><summary>Spacepunk Titan (light)</summary>
+
+![StykkerLLM monitor – Spacepunk Titan](docs/images/monitor-titan.png)
+
+</details>
+
 <sub>All pictures show the built-in simulator: made-up servers and numbers. The model test ranking is real.</sub>
 
 ## What it does
@@ -26,20 +32,23 @@ any browser or your phone; keep an eye on it in the terminal. Nothing leaves you
 - **Recordings** with a timeline per request, compare two recordings, Markdown/CSV export.
 - **Benchmarks**: context ladder, tool call test, parallel requests, with a regression alert.
 - **Model tests**: suites *basic*, *hard*, *creative* and *agent* (the model works with real tools in a throwaway folder),
-  scored automatically, ranked per model, spread over paired PCs if you like.
+  scored automatically, ranked per model.
 - **Prompt tester** on every loaded model, with tools (read, list, write, edit, cmd/PowerShell), each call approved by you.
-- **Nodes**: pair other PCs running StykkerLLM, see and control their servers.
+- **Model hosts**: other PCs run only models (StykkerHost, a tray icon); the server shows and controls them, and its
+  proxy starts a requested model on the host that has the file and room for it.
 - **Phone access**: six-digit code or QR code, roles *Admin* and *Viewer*, Home/VPN switch – works over Tailscale too.
 - **Bug report** in one click: a zip with logs and state, secrets blacked out, plus a prefilled GitHub issue.
-- **Five themes** with the soft glow of the original window: Deep Sea, Cyber Grid, Space Glass, Obsidian, Phosphor.
+- **Two themes**: *Dark* with a soft glow and *Spacepunk Titan*, a matte light theme like a ship console under work
+  light; *System* switches with the light/dark setting of the device. Symbols instead of words, `Ctrl+K` for every page
+  and action.
 
 | Model tests | GPU details |
 |---|---|
 | ![model test ranking](docs/images/model-tests.png) | ![GPU details](docs/images/gpu.png) |
 
-| Benchmarks | Nodes |
-|---|---|
-| ![benchmarks](docs/images/benchmarks.png) | ![nodes](docs/images/nodes.png) |
+| Benchmarks |
+|---|
+| ![benchmarks](docs/images/benchmarks.png) |
 
 ## One core, three views
 
@@ -52,13 +61,13 @@ any browser or your phone; keep an eye on it in the terminal. Nothing leaves you
 ![StykkerUI window](docs/images/window.png)
 
 <table><tr>
-<td width="30%"><img src="docs/images/phone.jpg" alt="phone view"></td>
+<td width="30%"><img src="docs/images/phone.png" alt="phone view"></td>
 <td><img src="docs/images/tui.png" alt="terminal display (stykker)"></td>
 </tr><tr><td>Phone (compact view)</td><td>Terminal: <code>stykker</code>, details of a server open</td></tr></table>
 
 **The server lives as long as you use it.** Every window, terminal display and open web page keeps it alive; a few seconds
-after the last one closes it ends by itself (unless a model test or benchmark is still running). For a PC that other PCs
-use as a node, turn on **Settings → Keep the server running**.
+after the last one closes it ends by itself (unless a model test or benchmark is still running). To keep it up without any
+window, turn on **Settings → Keep the server running**.
 
 ## Install
 
@@ -118,8 +127,8 @@ stykker help | version
   ☰ → Phone access and in the terminal display (`c`). Or the new device shows a code and you approve it on a device that is
   already signed in.
 - **Roles**: *Admin* may do everything, *Viewer* only looks (no actions, no access code).
-- **Nodes** (☰ → Nodes): search the network, pair another PC with its code, then see its servers, start and stop them,
-  and run model tests on it. Its models also appear in your Stykker-Proxy as `node/model`. See [docs/nodes.md](docs/nodes.md).
+- **Model hosts** (☰ → Hosts): pair a PC running `StykkerHost.exe` with a six-digit code, then see its GPU, start and
+  stop its models; the proxy uses them like local ones. See [docs/hosts.md](docs/hosts.md).
 - **Metrics** for status bars and dashboards: `http://127.0.0.1:8078/api/metrics` (Prometheus text, this machine only).
 
 There is no HTTPS yet: use it in your own network or over a VPN such as Tailscale, not on the open internet.
@@ -129,7 +138,8 @@ There is no HTTPS yet: use it in your own network or over a VPN such as Tailscal
 - One local proxy on port **17500** (loopback by default). Switch it on at the top of the monitor.
 - OpenAI-compatible clients (Qwen Code, Aider, …): `http://127.0.0.1:17500/v1`, model **`stykker`** or any model from
   `/v1/models`. Anthropic-compatible clients (Claude Code, …): `http://127.0.0.1:17500`.
-- `/v1/models` lists all local models, the models of paired nodes and other Stykker machines, and cloud providers you add
+- `/v1/models` lists all local models, the models of paired hosts (running ones and GGUF files that start on the first
+  request) and other Stykker machines, and cloud providers you add
   with name, URL and key (stored with Windows DPAPI, never shown again). Requests are routed by the `model` field.
 - The proxy forwards requests unchanged and only counts numbers and names. Prompt and answer texts are never stored.
 
@@ -137,8 +147,7 @@ There is no HTTPS yet: use it in your own network or over a VPN such as Tailscal
 
 *Model tests* in the web interface. Categories: **coding** (the model's Python is run against tests in a temporary folder,
 after asking; not a sandbox), **reasoning**, **format**, **tools**, **long context**, **creative**, and **agent** (multi-step
-tasks with real file and shell tools). Results are saved in the data folder and ranked per model; runs can be spread over
-paired nodes. Own suites: JSON files under `eval\` in the data folder.
+tasks with real file and shell tools). Results are saved in the data folder and ranked per model. Own suites: JSON files under `eval\` in the data folder.
 
 ## Logs and bug reports
 

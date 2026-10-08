@@ -30,7 +30,7 @@ public sealed class TuiApp
         _source = source;
         _openUrl = openUrl ?? ServerLink.OpenBrowser;
         _intervalMs = intervalMs;
-        _p = new Paint(TuiTheme.DeepSea, Paint.Detect(ColorMode.Auto));
+        _p = new Paint(TuiTheme.Dark, Paint.Detect(ColorMode.Auto));
     }
 
     public async Task RunAsync(CancellationToken ct)
@@ -141,7 +141,7 @@ public sealed class TuiApp
         var app = new TuiApp(new VirtualTerminal(w, 10), new FixedSource(state, port))
         {
             _state = state,
-            _p = new Paint(TuiTheme.Find(state.Settings.Theme) ?? TuiTheme.DeepSea, color ? Paint.Detect(ColorMode.Auto) : ColorMode.None),
+            _p = new Paint(TuiTheme.Find(state.Settings.Theme) ?? TuiTheme.Dark, color ? Paint.Detect(ColorMode.Auto) : ColorMode.None),
         };
         var lines = new List<string>();
         app.Header(lines, w);

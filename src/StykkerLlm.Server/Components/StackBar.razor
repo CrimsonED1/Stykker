@@ -4,8 +4,14 @@
 @{
     double total = Math.Max(TotalGb, Math.Max(UsedGb, Items.Sum(i => i.Gb)));
     double sum = Items.Sum(i => i.Gb);
-    // Abschnittsfarben aus dem Theme, im Fenster MainForm.MemBar (Akzent, Zweitfarbe, Grün, Gelb, dann Mischungen)
-    string[] pal = ThemeCatalog.Find(Host.Engine.Settings.Theme).MemPalette();
+    // Abschnittsfarben aus den CSS-Variablen des gezeigten Themas (Dark oder Titan, auch bei „System“): Akzent, Zweitfarbe,
+    // Grün, Gelb, dann Mischungen
+    string[] pal =
+    {
+        "var(--acc)", "var(--second)", "var(--good)", "var(--warn)",
+        "color-mix(in srgb,var(--acc),var(--bad))", "color-mix(in srgb,var(--second),var(--good))",
+        "color-mix(in srgb,var(--warn) 60%,var(--bad))", "color-mix(in srgb,var(--acc) 60%,var(--ink))",
+    };
     var rest = Items.Skip(3).ToList();
     string restTip = string.Join("\n", rest.Select(t => Strings.MemSegmentTip(t.Name, t.Gb, TotalGb)));
 }

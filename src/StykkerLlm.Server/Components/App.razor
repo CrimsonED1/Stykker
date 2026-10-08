@@ -1,5 +1,7 @@
+@inject EngineHost Host
 <!DOCTYPE html>
-<html lang="en">
+@* Erstes Bild schon im richtigen Thema; bei „System“ entscheidet ui.js sofort im Kopf *@
+<html lang="en" data-theme="@(ThemeCatalog.Mode(Host.Engine.Settings.Theme) == "titan" ? "titan" : "dark")" data-theme-choice="@ThemeCatalog.Mode(Host.Engine.Settings.Theme)">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />

@@ -7,9 +7,9 @@ namespace StykkerLlm.Core;
 // Ein Backend, an das der Router weiterleiten kann. Model ist der Name, den das Backend selbst führt (alias bzw. Modellname);
 // PublicModel ist der Name, unter dem der Client es sieht (bei Namensgleichheit bzw. Cloud „<Anbieter>/<Modell>"). ServerKey ist der
 // besitzende lokale Server (für die Aufnahme), Remote markiert Modelle eines angehängten Rechners, Cloud die eines Anbieters im Netz,
-// DisplayName dient der Anzeige.
+// DisplayName dient der Anzeige. HostId: das Ziel läuft auf einem Model-Host (Url ist dort lokal, Weg über den Tunnel).
 public sealed record ProxyTarget(string Key, string Url, string? Model, BackendKind Kind, bool Ready, bool Loading,
-    string ServerKey = "", bool Remote = false, string? PublicModel = null, string DisplayName = "", bool Cloud = false)
+    string ServerKey = "", bool Remote = false, string? PublicModel = null, string DisplayName = "", bool Cloud = false, string HostId = "")
 {
     // Name, unter dem das Modell angeboten wird (Adressierung durch den Client)
     public string? EffectiveModel => string.IsNullOrEmpty(PublicModel) ? Model : PublicModel;
@@ -39,6 +39,14 @@ public class RouterProxy : RequestProxy
     // wird dabei nicht weitergereicht (er gehört zu stykker, nicht zum Anbieter). Der Wert verlässt diese Schicht nicht.
     public Func<ProxyTarget, string?>? AuthFor { get; set; }
 
+    // Model-Hosts (docs/plan-hosts-gateway.md, P6): der Weg zu einem Host (Tunnel) und der Start eines Modells, das noch
+    // nirgends läuft. HostStart liefert NoHostHasIt, wenn kein Host die Datei hat – dann gilt wie bisher das Standardziel.
+    public Func<string, HttpClient?>? HostClient { get; set; }
+    public Func<string, CancellationToken, Task<HostChoice>>? HostStart { get; set; }
+    public Func<IReadOnlyList<string>>? StartableModels { get; set; }
+    // So lange auf ein auf einem Host gestartetes Modell warten (Laden großer Modelle dauert)
+    public TimeSpan HostStartWait { get; set; } = TimeSpan.FromSeconds(240);
+
     public RouterProxy(int listenPort) : base(VirtualModel, "", listenPort) { }
 
     // Wird im Takt der Oberfläche neu gesetzt (Server können kommen und gehen)
@@ -56,12 +64,23 @@ public class RouterProxy : RequestProxy
 
         // Modellliste zusammenfassen (der Client sieht so alle Backends auf einmal)
         if (method == "GET" && (path.Equals("/v1/models", StringComparison.OrdinalIgnoreCase) || path.Equals("/models", StringComparison.OrdinalIgnoreCase)))
-            return Local(200, ModelsJson(targets));
+            return Local(200, ModelsJson(targets, StartableModels?.Invoke()));
 
         string? wanted = ReadModel(body);
         ProxyTarget? t = null;
         if (!string.IsNullOrWhiteSpace(wanted) && !wanted.Equals(VirtualModel, StringComparison.OrdinalIgnoreCase))
             t = targets.FirstOrDefault(x => Matches(x, wanted));
+        if (t == null && HostStart != null && !string.IsNullOrWhiteSpace(wanted) && !wanted.Equals(VirtualModel, StringComparison.OrdinalIgnoreCase))
+        {
+            // Läuft nirgends: auf einem Host mit der Datei und genug Grafikspeicher starten und warten, bis es bereit ist
+            var choice = await HostStart(wanted, ct).ConfigureAwait(false);
+            if (choice.Error != null) return Local(503, ErrorJson(choice.Error));
+            if (choice.Ok)
+            {
+                t = await WaitForModelAsync(wanted, ct).ConfigureAwait(false);
+                if (t == null) return Local(503, ErrorJson(Strings.HostStartTimeout(choice.File.Name, choice.HostName)));
+            }
+        }
         t ??= DefaultTarget(targets);   // stykker, leer, unbekannt oder nicht gefunden → Standardziel
 
         if (t == null) return Local(503, ErrorJson(Strings.ProxyNoTarget));
@@ -74,7 +93,22 @@ public class RouterProxy : RequestProxy
         var rewritten = t.Model != null ? RewriteModel(body, t.Model) : body;
         var own = t.Cloud && AuthFor?.Invoke(t) is { Length: > 0 } key
             ? new[] { ("Authorization", "Bearer " + key) } : null;
-        return new ProxyRoute(t.Url, t.RouteKey, rewritten, Headers: own);
+        if (t.HostId.Length == 0) return new ProxyRoute(t.Url, t.RouteKey, rewritten, Headers: own);
+        var via = HostClient?.Invoke(t.HostId);
+        return via == null ? Local(503, ErrorJson(Strings.HostNotConnected)) : new ProxyRoute(t.Url, t.RouteKey, rewritten, Headers: own, Client: via);
+    }
+
+    // Auf ein auf einem Host gestartetes Modell warten, bis es als bereites Ziel auftaucht
+    private async Task<ProxyTarget?> WaitForModelAsync(string wanted, CancellationToken ct)
+    {
+        var end = DateTime.UtcNow + HostStartWait;
+        while (DateTime.UtcNow < end)
+        {
+            var cur = _targets.FirstOrDefault(x => Matches(x, wanted));
+            if (cur is { Ready: true, Loading: false }) return cur;
+            await Task.Delay(500, ct).ConfigureAwait(false);
+        }
+        return null;
     }
 
     // Ein Modellname passt auf das angebotene Modell oder auf den Namen, den das Backend selbst führt
@@ -147,12 +181,13 @@ public class RouterProxy : RequestProxy
 
     private static ProxyRoute Local(int status, string json) => new("", VirtualModel, null, "application/json; charset=utf-8", Encoding.UTF8.GetBytes(json), status);
 
-    private static string ModelsJson(IReadOnlyList<ProxyTarget> targets)
+    private static string ModelsJson(IReadOnlyList<ProxyTarget> targets, IReadOnlyList<string>? startable = null)
     {
         var sb = new StringBuilder();
         sb.Append("{\"object\":\"list\",\"data\":[");
         sb.Append("{\"id\":\"").Append(VirtualModel).Append("\",\"object\":\"model\",\"owned_by\":\"stykker\"}");
-        foreach (var m in targets.Select(t => t.EffectiveModel).Where(m => !string.IsNullOrEmpty(m)).Distinct(StringComparer.OrdinalIgnoreCase))
+        // dazu die Modelldateien der Hosts: sie starten bei der ersten Anfrage
+        foreach (var m in targets.Select(t => t.EffectiveModel).Concat(startable ?? Array.Empty<string>()).Where(m => !string.IsNullOrEmpty(m)).Distinct(StringComparer.OrdinalIgnoreCase))
             sb.Append(",{\"id\":\"").Append(JsonEscape(m!)).Append("\",\"object\":\"model\",\"owned_by\":\"stykker-proxy\"}");
         sb.Append("]}");
         return sb.ToString();

@@ -86,10 +86,9 @@ public sealed class AppSettings
     public int IntervalMs { get; set; } = 1000;
     // Protokoll abgeschlossener Anfragen (CSV); leer = aus. null = Standardpfad im Datenordner.
     public string? CsvLog { get; set; }
-    // Cyber Grid, Space Glass, Obsidian, Deep Sea, Phosphor
-    public string Theme { get; set; } = "Deep Sea";
+    public string Theme { get; set; } = ThemeCatalog.SystemName;   // Dark, Spacepunk Titan oder System
     public bool OverlayVisible { get; set; }
-    // Server weiterlaufen lassen, auch wenn kein Fenster, keine TUI und keine Webseite mehr offen ist (Node-PC)
+    // Server weiterlaufen lassen, auch wenn kein Fenster, keine TUI und keine Webseite mehr offen ist
     public bool KeepServerRunning { get; set; }
     public int? OverlayX { get; set; }
     public int? OverlayY { get; set; }
@@ -168,6 +167,8 @@ public sealed class AppSettings
         if (portMoved) s.ProxyPort = 17500;
         s.ProxyTarget ??= "";
         if (s.GpuTopCount <= 0) s.GpuTopCount = 8;
+        // Nur noch Dark, Spacepunk Titan und System: ein früheres Thema (Deep Sea, Obsidian …) wird zu Dark
+        s.Theme = ThemeCatalog.Normalize(s.Theme);
         // Einmalige Migration: war irgendein Proxy je Server an, läuft jetzt der eine Stykker-Proxy
         bool migrated = s.ProxyKeys.Count > 0;
         if (migrated) { s.ProxyEnabled = true; s.ProxyKeys.Clear(); }
@@ -222,16 +223,8 @@ public sealed class AppSettings
         catch { return null; }
     }
 
-    // Die deutschen Theme-Namen der alten Konfiguration auf die englischen abbilden
-    public static string LegacyThemeName(string? name) => (name ?? "").Replace("-", "").Replace(" ", "").ToLowerInvariant() switch
-    {
-        "cybergrid" => "Cyber Grid",
-        "weltraumglas" => "Space Glass",
-        "tiefsee" => "Deep Sea",
-        "obsidian" => "Obsidian",
-        "phosphor" => "Phosphor",
-        _ => name ?? "Deep Sea",
-    };
+    // Alte Namen (die fünf früheren Themen, die deutschen Namen der alten Konfiguration) auf Dark, Titan oder System
+    public static string LegacyThemeName(string? name) => ThemeCatalog.Normalize(name);
 
     public void Save()
     {

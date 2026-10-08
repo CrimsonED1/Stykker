@@ -16,6 +16,42 @@
     apply();
     window.addEventListener('resize', apply);
 
+    // Thema: html[data-theme] = dark | titan. Die Wahl kommt vom Server (data-theme-choice beim ersten Bild, danach
+    // <meta name="stykker-theme"> im Kopf, den Blazor bei einem Wechsel neu schreibt); „system“ folgt dem Hell/Dunkel
+    // des Systems und wechselt mit, wenn es sich ändert.
+    const light = window.matchMedia ? window.matchMedia('(prefers-color-scheme: light)') : null;
+    function choice() {
+        const m = document.querySelector('meta[name="stykker-theme"]');
+        return (m && m.content) || root.dataset.themeChoice || 'system';
+    }
+    function theme() {
+        const c = choice();
+        const t = c === 'titan' || (c === 'system' && light && light.matches) ? 'titan' : 'dark';
+        if (root.dataset.theme !== t) root.dataset.theme = t;
+    }
+    theme();
+    if (light && light.addEventListener) light.addEventListener('change', theme);
+    // nicht jede Umgebung meldet den Wechsel (WebView, Emulation): zusätzlich beim Zurückkehren und alle 3 s nachsehen
+    document.addEventListener('visibilitychange', theme);
+    setInterval(theme, 3000);
+    new MutationObserver(theme).observe(document.head, { childList: true, subtree: true, attributes: true, attributeFilter: ['content'] });
+
+    // Tastatur (U10): Ctrl+K öffnet das Befehlsfenster, „/“ springt in die Suche der History (sonst Befehlsfenster);
+    // im offenen Befehlsfenster bleibt der Fokus im Eingabefeld (Tab springt nicht hinaus)
+    let lastFocus = null;
+    window.stykkerRestoreFocus = function () { if (lastFocus && document.contains(lastFocus)) lastFocus.focus(); lastFocus = null; };
+    window.stykkerFocus = function (id) { const el = document.getElementById(id); if (el) { el.focus(); if (el.select) el.select(); } };
+    document.addEventListener('keydown', function (e) {
+        const t = e.target, typing = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
+        const open = () => { lastFocus = document.activeElement; const b = document.getElementById('cmdk-open'); if (b) b.click(); };
+        if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')) { e.preventDefault(); open(); return; }
+        if (document.querySelector('.cmdk') && e.key === 'Tab') { e.preventDefault(); window.stykkerFocus('cmdk-input'); return; }
+        if (!typing && e.key === '/' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+            e.preventDefault();
+            if (document.getElementById('hsearch')) window.stykkerFocus('hsearch'); else open();
+        }
+    });
+
     // Im Fenster StykkerUI gibt es keine Browser-Knöpfe und -Tasten: Photino baut in jede Seite
     // window.external ein – daran ist die Hülle zu erkennen.
     const inShell = () => !!(window.external && typeof window.external.receiveMessage === 'function');

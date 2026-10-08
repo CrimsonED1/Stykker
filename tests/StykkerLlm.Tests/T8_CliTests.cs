@@ -73,7 +73,7 @@ public class T8_AnsiTests
         var c = new Rgb(255, 0, 0);
         Assert.AreEqual(196, Paint.To256(c));
         Assert.AreEqual(31, Paint.To16(c));
-        Assert.AreEqual("", new Paint(TuiTheme.DeepSea, ColorMode.None).Fg(c));
+        Assert.AreEqual("", new Paint(TuiTheme.Dark, ColorMode.None).Fg(c));
     }
 }
 
@@ -163,7 +163,7 @@ public class T8_DisplayTests
         Assert.IsTrue(TuiApp.IsTailscale("100.101.102.103"));
         Assert.IsTrue(TuiApp.IsTailscale("100.64.0.1"));
         Assert.IsFalse(TuiApp.IsTailscale("100.128.0.1"));
-        Assert.IsFalse(TuiApp.IsTailscale("192.168.178.20"));
+        Assert.IsFalse(TuiApp.IsTailscale("192.168.1.20"));
     }
 
     [TestMethod]

@@ -6,7 +6,7 @@ public static partial class Strings
     // ── Server an Fenster/TUI gebunden ──
     public const string KeepServerLabel = "Keep the server running when no window, terminal or web page is open";
     public const string KeepServerHint = "Off (default): the server ends about 15 seconds after the last StykkerUI window, stykker terminal " +
-        "or web page closes – unless a model test or benchmark is still running. Turn it on for a PC that other PCs use as a node.";
+        "or web page closes – unless a model test or benchmark is still running. Turn it on to keep it up without any window.";
     public static string ServerAutoStop(string why) => $"server: nobody needs it any more ({why}), shutting down";
     public static string ServerHolders(string who) => $"in use by: {who}";
 
@@ -42,7 +42,7 @@ public static partial class Strings
     public const string TuiKeyDetails = "pick a server and show its details";
     public const string TuiKeyClose = "close the panel (quits when none is open)";
     public const string TuiKeyQuit = "quit (the server ends when no window or web page needs it)";
-    public const string TuiWebOnly = "Start, stop, model tests, benchmarks, recordings, nodes and settings are in the web interface.";
+    public const string TuiWebOnly = "Start, stop, model tests, benchmarks, recordings, model hosts and settings are in the web interface.";
     public const string RecentTitle = "Recent requests", TuiMemoryTitle = "Memory per program", TuiDetailsTitle = "Details";
     public const string TuiNoCode = "No access code (simulation).";
     public const string TuiCodeLabel = "Code";

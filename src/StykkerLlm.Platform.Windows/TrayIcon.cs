@@ -9,14 +9,14 @@ namespace StykkerLlm.Platform.Windows;
 public sealed class TrayIcon : IDisposable
 {
     // Ein Eintrag im Rechtsklick-Menü. Separator = true ergibt einen Trennstrich ohne Aktion.
-    public sealed record Item(int Id, string Text, bool Separator = false);
+    public sealed record Item(int Id, string Text, bool Separator = false, bool Disabled = false);
 
     private const int WmClose = 0x0010, WmDestroy = 0x0002, WmNull = 0x0281, WmCommand = 0x0111;
     private const int WmLButtonUp = 0x0202, WmLButtonDblClk = 0x0203, WmRButtonUp = 0x0205;
     private const int WmApp = 0x8000 + 1;            // eigene Nachricht: die Maus auf dem Symbol
-    private const int NimAdd = 0, NimDelete = 2;
+    private const int NimAdd = 0, NimModify = 1, NimDelete = 2;
     private const int NifMessage = 1, NifIcon = 2, NifTip = 4;
-    private const uint MfSeparator = 0x00000800;
+    private const uint MfSeparator = 0x00000800, MfGrayed = 0x00000001;
     private const uint TpmRightButton = 0x0002, TpmReturnCmd = 0x0100, TpmNonotify = 0x0080;
 
     private static readonly IntPtr HwndMessage = new(-3);        // HWND_MESSAGE: Fenster ohne Rahmen, nur für Nachrichten
@@ -26,7 +26,7 @@ public sealed class TrayIcon : IDisposable
     private readonly object _gate = new();
     private readonly Action<int> _onMenu;
     private readonly Action _onOpen;
-    private readonly IReadOnlyList<Item> _items;
+    private readonly Func<IReadOnlyList<Item>> _items;   // beim Öffnen des Menüs neu gebaut (Status, Schalter)
     private Thread? _thread;
     private WndProc? _wndProc;
     private IntPtr _window, _icon;
@@ -51,7 +51,7 @@ public sealed class TrayIcon : IDisposable
 
     public TrayIcon(IReadOnlyList<Item> items, Action<int> onMenu, Action onOpen)
     {
-        _items = items;
+        _items = () => items;
         _onMenu = onMenu;
         _onOpen = onOpen;
     }
@@ -166,10 +166,10 @@ public sealed class TrayIcon : IDisposable
     {
         var menu = CreatePopupMenu();
         if (menu == IntPtr.Zero) return;
-        foreach (var it in _items)
+        foreach (var it in _items())
         {
             if (it.Separator) AppendMenu(menu, MfSeparator, 0, null);
-            else AppendMenu(menu, 0, new IntPtr(it.Id), it.Text);
+            else AppendMenu(menu, it.Disabled ? MfGrayed : 0, new IntPtr(it.Id), it.Text);
         }
         GetCursorPos(out var pt);
         var hwnd = Handle;
@@ -209,6 +209,25 @@ public sealed class TrayIcon : IDisposable
             if (_icon != IntPtr.Zero) { DestroyIcon(_icon); _icon = IntPtr.Zero; }
         }
         if (registered) UnregisterClass(cls, Instance);
+    }
+
+    // Menü, das sich ändert (Statuszeile, Schalter mit Zustand): wird bei jedem Rechtsklick neu gebaut
+    public TrayIcon(Func<IReadOnlyList<Item>> items, Action<int> onMenu, Action onOpen)
+    {
+        _items = items;
+        _onMenu = onMenu;
+        _onOpen = onOpen;
+    }
+
+    // Tooltip ändern, während das Symbol steht (höchstens 63 Zeichen)
+    public void SetTip(string tooltip)
+    {
+        lock (_gate)
+        {
+            if (!_added) return;
+            var data = new NOTIFYICONDATA { cbSize = Marshal.SizeOf<NOTIFYICONDATA>(), hWnd = _window, uID = 1, uFlags = NifTip, szTip = ShortTip(tooltip) };
+            Shell_NotifyIcon(NimModify, ref data);
+        }
     }
 
     public void Dispose()

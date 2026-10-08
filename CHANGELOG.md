@@ -4,6 +4,33 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## 0.4.0
+
+### Changed
+- **New web interface** (docs/plan-ui-redesign.md, mockups in docs/design/): only two themes, *Dark* and *Spacepunk
+  Titan* (light, matte, glow only in the dark display windows), plus *System*. The five old themes are gone; a stored old
+  theme becomes Dark.
+- **Monitor**: status bar in the header, two columns; one server card for every backend and for model hosts (backend
+  stripe, state symbol, slot tiles, twelve fixed metrics); hardware card with RAM type and theoretical bandwidth;
+  saved profiles as tiles with a VRAM forecast; recent requests with client kind, tool calls, thinking tokens and result;
+  history grouped by day with how each run ended, filters and forget-with-undo; proxy panel reworked.
+- **Keyboard**: `Ctrl+K` command palette (pages and actions), `/` jumps into the history search.
+- *Server lost* is a banner instead of a dialog; read-only and viewer get a notice bar.
+
+### Added
+- **Model hosts** (docs/hosts.md): `StykkerHost.exe` runs on PCs that only run models – a tray icon, no window. It
+  pairs with the server by a six-digit code and dials in over one WebSocket (no open port on the host).
+- **☰ → Hosts**: a card per host with GPU, VRAM and RAM, its model servers (stop, unload) and GGUF files (start).
+  The monitor lists the servers of all hosts with a host badge.
+- **Proxy on hosts**: models running on a host are offered and reached through the host connection. A requested model
+  that is not running but lies on a host starts there (most free VRAM wins; a clear error when no host has room).
+- **StykkerHost as a Windows service**: `StykkerHost install-service`, `pair-service <server> <code>`, `unpair-service`,
+  `uninstall-service` (as administrator). Starts with Windows, restarts after a crash, data in `%ProgramData%`.
+
+### Removed
+- **Nodes** (pairing whole Stykker servers as nodes of a hub, spreading model tests, `/api/eval/runs`). Model hosts
+  replace them. Devices that were paired as a hub keep read-only access; remove them in ☰ → Phone access.
+
 ## 0.3.1
 
 ### Added

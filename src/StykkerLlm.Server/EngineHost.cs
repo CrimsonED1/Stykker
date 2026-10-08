@@ -25,10 +25,12 @@ public sealed class EngineHost : IDisposable
     // Die Modelltests des Servers gehören in den Zustand: Fenster, TUI und Telefon lesen sonst eine leere Warteschlange
     public EvalQueue? Queue { get; set; }
     // Die gekoppelten Nodes (dieser Server als Hub, docs/nodes.md)
-    public NodeRegistry Nodes { get; }
     public SimHost? Sim { get; }
     // Wer den Server gerade braucht (Fenster, TUI, Webseiten, Hubs) – ist niemand mehr da, beendet er sich
     public ServerHolds Holds { get; } = new(DateTime.Now);
+    // Die Model-Hosts, die sich hier einwählen (docs/plan-hosts-gateway.md)
+    public HostHub Hosts { get; }
+    public HostScheduler HostScheduler { get; }
 
     // sim != null: simulierte Server statt der echten (--sim, für Vorführung und Bilder der Dokumentation)
     public EngineHost(AppPaths paths, IPlatform? platform = null, SimHost? sim = null)
@@ -51,11 +53,16 @@ public sealed class EngineHost : IDisposable
             TryRestartAfterCrash(lost);
         };
         Access = new AccessControl(paths, _platform);
-        Nodes = new NodeRegistry(paths, _platform);
-        // N4: Modelle der Nodes über den eigenen Proxy anbieten ("Node/Modell"), wenn ihr Proxy im Netz erreichbar ist
-        Engine.Proxies.NodeRemotes = () => NodeStateJson.FromRegistry(Nodes).List
-            .Where(n => n.Online && n.ProxyUrl.Length > 0)
-            .Select(n => new RemoteStykker { Name = n.Name, Url = n.ProxyUrl });
+        Hosts = new HostHub(new HostRegistry(paths, _platform));
+        Hosts.Log += AppLog.Write;
+        HostScheduler = new HostScheduler(Hosts);
+        HostScheduler.Log += AppLog.Write;
+        // P6: Server der Hosts über den eigenen Proxy anbieten, fehlende Modelle auf einem passenden Host starten
+        Engine.Proxies.HostSources = () => Hosts.List().Where(h => h.Connected && h.State != null)
+            .Select(h => new HostServers(h.Entry.Id, h.Name.Length > 0 ? h.Name : h.Entry.Name, h.State!.Servers));
+        Engine.Proxies.HostClient = Hosts.ClientFor;
+        Engine.Proxies.HostStart = (model, ct) => HostScheduler.StartAsync(model, ct);
+        Engine.Proxies.StartableModels = () => { HostScheduler.Refresh(); return HostScheduler.KnownModels(); };
         Key = ServerClient.ReadKey(paths, _platform) ?? ServerClient.WriteKey(paths, _platform);
         Engine.IdleUnloadDue += OnIdleUnload;
     }
@@ -119,7 +126,7 @@ public sealed class EngineHost : IDisposable
 
     // withCode = false für ein Gerät mit der Rolle Viewer: ohne Zugangscode kann es sich nicht als Admin anmelden.
     public string StateJsonText(int port, bool withHistory = true, bool withCode = true) =>
-        StateJson.WriteText(Engine, Access, Queue, port, DateTimeOffset.Now, withHistory, withCode, Nodes);
+        StateJson.WriteText(Engine, Access, Queue, port, DateTimeOffset.Now, withHistory, withCode);
 
     public void ClearLost() => LastLost = null;
 
@@ -130,32 +137,15 @@ public sealed class EngineHost : IDisposable
         if (Engine.ReadOnly) StateJson.Notice(Strings.ServerReadOnlyHint);
         _cts = new CancellationTokenSource();
         var ct = _cts.Token;
-        Nodes.Start();
         _ = Task.Run(async () =>
         {
             while (!ct.IsCancellationRequested)
             {
                 try { await Engine.TickAsync(); Ticked?.Invoke(); } catch { }
                 Access.Maintain();          // abgelaufenen Code ersetzen, alte Kopplungsanfragen aufräumen
-                SyncNodeResults();
                 Access.WriteThrottled();
                 try { await Task.Delay(Math.Max(500, Engine.Settings.IntervalMs), ct); } catch { break; }
             }
-        });
-    }
-
-    // Testergebnisse der Nodes höchstens einmal je Minute einsammeln (N3), nie zweimal gleichzeitig
-    private DateTime _nextResultSync = DateTime.MinValue;
-    private int _syncing;
-
-    private void SyncNodeResults()
-    {
-        if (Nodes.Nodes.Count == 0 || DateTime.Now < _nextResultSync || Interlocked.Exchange(ref _syncing, 1) == 1) return;
-        _nextResultSync = DateTime.Now.AddMinutes(1);
-        _ = Task.Run(async () =>
-        {
-            try { await Nodes.SyncResultsAsync(_paths.EvalResultsDir); }
-            finally { Interlocked.Exchange(ref _syncing, 0); }
         });
     }
 
@@ -163,7 +153,6 @@ public sealed class EngineHost : IDisposable
     {
         _cts?.Cancel();
         Access.Write();
-        Nodes.Dispose();
         try { Engine.Dispose(); } catch { }
         _platform.Dispose();
     }

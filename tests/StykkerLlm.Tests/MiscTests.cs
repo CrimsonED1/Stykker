@@ -60,7 +60,7 @@ public class SettingsTests
                 "\"IntervalMs\":2000,\"CsvLog\":\"D:\\\\r.csv\",\"Theme\":\"Tiefsee\",\"OverlayVisible\":true,\"OverlayX\":10,\"OverlayY\":20}");
             var path = Path.Combine(dir, "data", "settings.json");
             var s = AppSettings.Load(path, legacy);
-            Assert.AreEqual("Deep Sea", s.Theme);
+            Assert.AreEqual("Dark", s.Theme);   // Tiefsee gibt es nicht mehr: frühere Themen werden zu Dark
             Assert.AreEqual(2000, s.IntervalMs);
             Assert.AreEqual("D:\\r.csv", s.CsvLog);
             Assert.IsTrue(s.OverlayVisible);
@@ -69,8 +69,8 @@ public class SettingsTests
             Assert.AreEqual("Box", s.ManualServers[0].Name);
             Assert.IsTrue(File.Exists(path));
             // zweiter Start: settings.json gewinnt, die alte Datei wird nicht erneut gelesen
-            File.WriteAllText(legacy, "{\"Theme\":\"Phosphor\"}");
-            Assert.AreEqual("Deep Sea", AppSettings.Load(path, legacy).Theme);
+            File.WriteAllText(legacy, "{\"Theme\":\"Spacepunk Titan\"}");
+            Assert.AreEqual("Dark", AppSettings.Load(path, legacy).Theme);
         }
         finally { Directory.Delete(dir, true); }
     }
@@ -95,9 +95,11 @@ public class SettingsTests
     [TestMethod]
     public void LegacyThemeNames()
     {
-        Assert.AreEqual("Space Glass", AppSettings.LegacyThemeName("Weltraum-Glas"));
-        Assert.AreEqual("Cyber Grid", AppSettings.LegacyThemeName("Cyber-Grid"));
-        Assert.AreEqual("Obsidian", AppSettings.LegacyThemeName("Obsidian"));
+        // die früheren Themen gibt es nicht mehr: alle werden zu Dark
+        Assert.AreEqual("Dark", AppSettings.LegacyThemeName("Weltraum-Glas"));
+        Assert.AreEqual("Dark", AppSettings.LegacyThemeName("Cyber-Grid"));
+        Assert.AreEqual("Dark", AppSettings.LegacyThemeName("Obsidian"));
+        Assert.AreEqual("Spacepunk Titan", AppSettings.LegacyThemeName("titan"));
     }
 }
 

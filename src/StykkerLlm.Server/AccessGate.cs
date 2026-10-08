@@ -8,7 +8,7 @@ namespace StykkerLlm.Server;
 // Wer darf was (S2). Drei Wege hinein:
 //  1. Der Schlüssel aus dem Datenordner (server.key, an den Benutzer gebunden) – Fenster, TUI und Skripte auf diesem Rechner.
 //     Eine Webseite im Browser kann ihn nicht lesen; ein Schreibzugriff aus dem Browser kommt so nicht durch.
-//  2. Das Gerätetoken – als Cookie (Browser, Handy) oder als Kopf X-Stykker-Device (ein Hub, der diesen PC als Node führt).
+//  2. Das Gerätetoken – als Cookie (Browser, Handy) oder als Kopf X-Stykker-Device (StykkerUI).
 //  3. Ohne alles: nur /api/ping (für die Erkennung) und /pair… (die Anmeldung selbst).
 // Zusätzlich: von außerhalb nur, wenn der Schalter Home/VPN an ist; und der Host-Kopf muss zur eigenen Adresse passen
 // (sonst könnte eine fremde Webseite über ihren Domainnamen auf 127.0.0.1 zugreifen).
@@ -17,7 +17,7 @@ namespace StykkerLlm.Server;
 //  /pair?code=…           der PC zeigt den Code, das neue Gerät bringt ihn mit (QR-Code oder abgetippt)
 //  /pair/request          das neue Gerät holt sich einen eigenen Code und zeigt ihn; ein angemeldetes Gerät gibt frei
 //  /pair/poll             … und das neue Gerät fragt nach, bis das Token bereitliegt
-//  /pair/token            wie /pair?code=…, aber mit JSON-Antwort (ein Hub, der den Code des Nodes kennt)
+//  /pair/token            wie /pair?code=…, aber mit JSON-Antwort (Programme, die den Code kennen)
 public sealed class AccessGate(AccessControl access, string key, int port, Func<ThemeInfo>? theme = null)
 {
     // Rolle des angemeldeten Aufrufers. Der Schlüssel aus dem Datenordner ist immer Admin (Fenster, TUI, Skripte),
@@ -40,7 +40,7 @@ public sealed class AccessGate(AccessControl access, string key, int port, Func<
         var remote = ctx.Connection.RemoteIpAddress ?? IPAddress.None;
         var loopback = NetAddr.IsLoopback(remote.ToString());
 
-        // 1) Erkennung: läuft der Server, und ist er fürs Heimnetz freigegeben? (der Name hilft beim Koppeln von Nodes)
+        // 1) Erkennung: läuft der Server, und ist er fürs Heimnetz freigegeben? (der Name hilft beim Koppeln eines Hosts)
         if (path.StartsWith("/api/ping", StringComparison.OrdinalIgnoreCase))
         {
             await Json(ctx, StatusCodes.Status200OK,
@@ -70,6 +70,17 @@ public sealed class AccessGate(AccessControl access, string key, int port, Func<
                 default: await PairAsync(ctx); break;
             }
             return true;
+        }
+
+        // 2b) Model-Hosts wählen sich ein (WebSocket mit Host-Token, geprüft am Endpunkt). Von außen nur mit Home/VPN.
+        if (path.StartsWith("/hosts/", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!loopback && !access.RemoteEnabled)
+            {
+                await Text(ctx, StatusCodes.Status403Forbidden, Strings.RemoteOff);
+                return true;
+            }
+            return false;
         }
 
         // 3) Die eigenen Messwerte (/api/metrics, see docs/ui.md) brauchen keinen Schlüssel – aber nur von diesem Rechner.
@@ -110,7 +121,7 @@ public sealed class AccessGate(AccessControl access, string key, int port, Func<
     }
 
     // null = nicht angemeldet. Der Schlüssel aus dem Datenordner ist immer Admin; beim Gerätetoken zählt die Rolle
-    // aus access.dat (ein Viewer darf alles lesen, aber nichts verändern; ein Hub alles außer dem Zugang selbst).
+    // aus access.dat (ein Viewer darf alles lesen, aber nichts verändern).
     private static (string Role, string Kind)? Auth(AccessControl access, HttpContext? ctx, string key = "")
     {
         if (ctx == null) return null;
@@ -148,7 +159,7 @@ public sealed class AccessGate(AccessControl access, string key, int port, Func<
             Secure = false,   // kein HTTPS vorerst (docs/architecture.md)
         });
 
-    // Formularfelder oder Query – beides geht (das Formular schickt GET, ein Hub POST)
+    // Formularfelder oder Query – beides geht (das Formular schickt GET, Programme POST)
     private static async Task<Dictionary<string, string>> ArgsAsync(HttpContext ctx)
     {
         var d = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -242,7 +253,7 @@ public sealed class AccessGate(AccessControl access, string key, int port, Func<
         await Json(ctx, StatusCodes.Status200OK, body);
     }
 
-    // Anmelden mit dem Code dieses PCs, Antwort als JSON (ein Hub, dem man den Code des Nodes gesagt hat)
+    // Anmelden mit dem Code dieses PCs, Antwort als JSON (ein Programm, dem man den Code gesagt hat)
     private async Task TokenAsync(HttpContext ctx)
     {
         var args = await ArgsAsync(ctx);
@@ -287,7 +298,7 @@ public sealed class AccessGate(AccessControl access, string key, int port, Func<
         ctx.Response.Redirect(target);
     }
 
-    // Ein Hub entkoppelt sich: sein eigenes Token aus der Geräteliste streichen (nur das, mit dem er kommt)
+    // Ein Gerät meldet sich ab: sein eigenes Token aus der Geräteliste streichen (nur das, mit dem er kommt)
     private async Task ForgetAsync(HttpContext ctx)
     {
         var token = ctx.Request.Headers.TryGetValue(StateJson.DeviceHeader, out var dev) ? dev.ToString() : ctx.Request.Cookies[StateJson.CookieName];

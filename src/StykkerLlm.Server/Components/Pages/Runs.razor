@@ -52,16 +52,6 @@
 
     <div class="card">
         <h2>@Strings.EvalAddToQueue</h2>
-        @* Mit gekoppelten Nodes: wo der Test läuft – hier, auf einem Node, oder automatisch dort, wo das Modell liegt (N3) *@
-        @if (_nodes.Count > 0)
-        {
-            <label>@Strings.NodeTarget</label>
-            <select @bind="Target">
-                <option value="">@Strings.NodeTargetHere</option>
-                <option value="auto">@Strings.NodeTargetAuto</option>
-                @foreach (var n in _nodes.Where(n => n.Online)) { <option value="@n.Id">@n.Name</option> }
-            </select>
-        }
         <label>@Strings.EvalModels</label>
         @if (Choices.Count == 0)
         {
@@ -115,38 +105,15 @@
     private List<EvalSuite> _suites = new();
     private readonly HashSet<string> _models = new(), _pick = new() { "basic" };
     private int _repeat = 1;
-    private string _target = "", _msg = "";
-    private List<RemoteNode> _nodes = new();
-
-    // Ziel wechseln heißt: andere Modelle zur Auswahl, die alte Auswahl gilt nicht mehr
-    private string Target { get => _target; set { _target = value; _models.Clear(); _msg = ""; } }
+    private string _msg = "";
 
     private sealed record Choice(string Id, string Name, string Extra);
 
-    // Hier: die eigenen Modelle; Node: dessen Modelle; automatisch: jede Datei, die irgendwo liegt
-    private List<Choice> Choices
-    {
-        get
-        {
-            if (_target.Length == 0)
-                return Queue.Models.Where(m => m.Enabled).Select(m => new Choice(m.Id, m.Name, m.SizeGb.ToString("0.0", CultureInfo.InvariantCulture) + " GB")).ToList();
-            if (_target == "auto")
-            {
-                var self = Self();
-                return NodeScheduler.Files(self, _nodes).Select(f => new Choice(f, f,
-                    string.Join(", ", new[] { self }.Concat(_nodes.Where(n => n.Online)).Where(n => n.Models.Any(m => m.Enabled && m.File.Equals(f, StringComparison.OrdinalIgnoreCase))).Select(n => n.Name)))).ToList();
-            }
-            var node = _nodes.FirstOrDefault(n => n.Id == _target);
-            return node?.Models.Where(m => m.Enabled).Select(m => new Choice(m.Id, m.Name, m.SizeGb.ToString("0.0", CultureInfo.InvariantCulture) + " GB")).ToList() ?? new();
-        }
-    }
+    private List<Choice> Choices =>
+        Queue.Models.Where(m => m.Enabled).Select(m => new Choice(m.Id, m.Name, m.SizeGb.ToString("0.0", CultureInfo.InvariantCulture) + " GB")).ToList();
 
-    private RemoteNode Self() =>
-        NodeStateJson.Self(StateSnapshot.Parse(StateJson.WriteText(Host.Engine, null, Queue, Actions.ServerPort, DateTimeOffset.Now, withHistory: false)),
-            NetAddr.Url("127.0.0.1", Actions.ServerPort));
     private Timer? _t;
     private volatile bool _dirty;
-    private int _ticks;
     private bool AllowCode { get => Queue.AllowCode; set { if (Web.CanWrite) Queue.AllowCode = value; } }
 
     // Die Warteschlange bedienen die Web-Seiten direkt (nicht über die Aktionen) – die Rolle entscheidet mit
@@ -160,11 +127,8 @@
     {
         _suites = EvalSuites.All(Paths.EvalSuitesDir);
         Queue.Changed += OnChanged;
-        _nodes = NodeStateJson.FromRegistry(Host.Nodes).List;
         _t = new Timer(_ =>
         {
-            // Nodes ändern sich ohne Ereignis der Warteschlange (online, neue Modelle): alle zwei Sekunden neu lesen
-            if (++_ticks % 4 == 0) { _nodes = NodeStateJson.FromRegistry(Host.Nodes).List; _dirty = true; }
             if (_dirty) { _dirty = false; InvokeAsync(StateHasChanged); }
         }, null, 500, 500);
     }
@@ -174,16 +138,10 @@
 
     private static void Toggle(HashSet<string> set, string id, ChangeEventArgs e) { if (e.Value is true) set.Add(id); else set.Remove(id); }
 
-    private async Task Add()
+    private void Add()
     {
         if (!CanWrite) return;
-        if (_target.Length == 0) { Queue.Enqueue(Queue.Models.Where(m => _models.Contains(m.Id)), _pick, _repeat); return; }
-        var req = _target == "auto"
-            ? new ActionRequest { Action = "eval.distribute", Ids = _models.ToList(), Number = _repeat, Flag = AllowCode }
-            : new ActionRequest { Action = "node.do", Arg = _target, Name = "eval.enqueue", Ids = _models.ToList(), Number = _repeat, Flag = AllowCode };
-        req.Values["suites"] = string.Join(',', _pick);
-        var r = await Web.RunAsync(req);
-        _msg = _target == "auto" || !r.Ok ? r.Message : Strings.NodeQueued(_nodes.FirstOrDefault(n => n.Id == _target)?.Name ?? "");
+        Queue.Enqueue(Queue.Models.Where(m => _models.Contains(m.Id)), _pick, _repeat);
     }
 
     private static IEnumerable<EvalTaskResult> Live(EvalJob j) { lock (j.Live) return j.Live.TakeLast(14).ToList(); }

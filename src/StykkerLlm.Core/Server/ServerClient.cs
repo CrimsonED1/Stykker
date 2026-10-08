@@ -25,7 +25,7 @@ public sealed class ServerClient : IDisposable
 
     public ServerClient(string baseUrl, string key) : this(baseUrl, key, null, null) { }
 
-    // Ein Hub fragt seine Nodes mit dem Gerätetoken ab (Kopf X-Stykker-Device) statt mit dem Schlüssel des Datenordners.
+    // Mit einem Gerätetoken (Kopf X-Stykker-Device) statt mit dem Schlüssel des Datenordners anfragen.
     // handler: für Tests (ohne Netz)
     private ServerClient(string baseUrl, string key, string? deviceToken, HttpMessageHandler? handler)
     {
