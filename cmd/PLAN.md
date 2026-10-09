@@ -49,4 +49,4 @@ Abhängigkeiten zeigen nur nach innen (UI → Platform → Core). Muster aus Sty
 - Avalonia-Blog 12.1: https://avaloniaui.net/blog/release-12-1
 - Release-Notes 12.1.1 (nennen `UseWaylandWithFallback` ohne Erklärung): https://github.com/AvaloniaUI/Avalonia/releases/tag/12.1.1
 - Papierkorb Linux: FreeDesktop Trash Specification 1.0 (2014): https://specifications.freedesktop.org/trash/1.0
-- Design: lokal `C:\_AI\Stykker\StykkerLLM-Design-System\tokens.json` (Stand 2026-10-07; Pfad seit dem Umzug unter `C:\_AI\Stykker`).
+- Design: lokal `C:\_AI\Stykker\MonoRepo\shared\design-system\tokens.json` (Stand 2026-10-07; Pfad seit dem Umzug unter `C:\_AI\Stykker`).
