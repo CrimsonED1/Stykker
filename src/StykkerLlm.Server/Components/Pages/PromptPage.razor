@@ -75,7 +75,7 @@ else
                 }
                 else
                 {
-                    <button class="good" disabled="@(Server == null || _input.Trim().Length == 0)" @onclick="Send">@Strings.BtnSend</button>
+                    <button class="good" disabled="@(!CanSend || _input.Trim().Length == 0)" @onclick="Send">@Strings.BtnSend</button>
                 }
                 <button disabled="@_session.Busy" @onclick="Clear">@Strings.BtnClear</button>
             </div>
@@ -85,27 +85,60 @@ else
             <label>@Strings.ColServer</label>
             <select @bind="ServerKey">
                 @foreach (var s in Servers) { <option value="@s.Key">@s.Name · @s.Url.Replace("http://", "")</option> }
+                @foreach (var c in Clouds) { <option value="@c.Key">@c.Display</option> }
             </select>
-            @if (Servers.Count == 0) { <p class="small warn">@Strings.PromptNoServer</p> }
+            @if (Servers.Count == 0 && Clouds.Count == 0) { <p class="small warn">@Strings.PromptNoServer</p> }
+            @if (ChosenCloud != null && !Host.Engine.Proxies.Running) { <p class="small warn">@Strings.PromptCloudNeedsProxy</p> }
             <label>@Strings.PromptModel</label>
             <input @bind="_session.Options.Model" />
-            <label>@Strings.PromptSystem</label>
-            <textarea rows="4" @bind="_session.Options.System"></textarea>
-            <div class="row">
-                <label style="margin:0">@Strings.PromptTemperature</label><input type="number" step="0.1" min="0" max="2" style="width:80px" @bind="_session.Options.Temperature" />
-                <label style="margin:0">@Strings.PromptMaxTokens</label><input type="number" min="1" max="32768" style="width:90px" @bind="_session.Options.MaxTokens" />
-            </div>
-            <label>@Strings.PromptApiKey</label>
-            <input type="password" autocomplete="off" @bind="_session.Options.ApiKey" />
-            <label style="color:var(--ink);margin-top:14px"><input type="checkbox" @bind="_tools" /> @Strings.PromptToolsOn</label>
+            <label style="color:var(--ink);margin-top:14px"><input type="checkbox" @bind="ToolsOn" /> @Strings.PromptToolsOn</label>
             @if (_tools)
             {
                 <label>@Strings.PromptWorkdir</label>
-                <input @bind="_workdir" placeholder="C:\…" />
+                <div class="row" style="flex-wrap:nowrap">
+                    <input @bind="Workdir" placeholder="C:\…" style="flex:1;min-width:0" />
+                    <button @onclick="OpenPicker">@Strings.PromptChooseFolder</button>
+                </div>
+                @if (_picker is { } pick)
+                {
+                    <div style="border:1px solid var(--card-border);border-radius:var(--radius);padding:8px;margin-top:8px">
+                        <div class="row" style="flex-wrap:nowrap">
+                            <button title="@Strings.PromptFolderUp" disabled="@(pick.Parent == null)" @onclick="() => OpenFolder(pick.Parent)">↑</button>
+                            <span class="small muted" style="overflow-wrap:anywhere">@(pick.Current.Length > 0 ? pick.Current : Strings.PromptFolderDrives)</span>
+                        </div>
+                        @if (pick.Failed) { <p class="small warn">@Strings.PromptFolderFailed</p> }
+                        <div style="max-height:220px;overflow:auto;margin:6px 0">
+                            @if (pick.Current.Length == 0)
+                            {
+                                @foreach (var d in pick.Drives) { <button style="display:block;width:100%;text-align:left;margin:2px 0" @onclick="() => OpenFolder(d)">@d</button> }
+                            }
+                            else
+                            {
+                                @foreach (var f in pick.Folders) { <button style="display:block;width:100%;text-align:left;margin:2px 0" @onclick="() => OpenFolder(SubFolder(pick.Current, f))">@f</button> }
+                                @if (!pick.Failed && pick.Folders.Count == 0) { <p class="small muted">@Strings.PromptFolderEmpty</p> }
+                            }
+                        </div>
+                        <div class="row">
+                            <button class="good" disabled="@(pick.Current.Length == 0 || pick.Failed)" @onclick="UseFolder">@Strings.PromptUseFolder</button>
+                            <button @onclick="CloseFolders">@Strings.PromptFolderCancel</button>
+                        </div>
+                    </div>
+                }
                 <label style="color:var(--ink)"><input type="checkbox" @bind="_session.Options.AutoApprove" /> @Strings.PromptAutoApprove</label>
                 <p class="muted small">@Strings.PromptToolsHint</p>
                 @if (_toolMsg.Length > 0) { <p class="small warn">@_toolMsg</p> }
             }
+            <details class="small" style="margin-top:14px">
+                <summary class="muted">@Strings.PromptAdvanced</summary>
+                <label>@Strings.PromptSystem</label>
+                <textarea rows="4" @bind="_session.Options.System"></textarea>
+                <div class="row">
+                    <label style="margin:0">@Strings.PromptTemperature</label><input type="number" step="0.1" min="0" max="2" style="width:80px" @bind="_session.Options.Temperature" />
+                    <label style="margin:0">@Strings.PromptMaxTokens</label><input type="number" min="1" max="32768" style="width:90px" @bind="_session.Options.MaxTokens" />
+                </div>
+                <label>@Strings.PromptApiKey</label>
+                <input type="password" autocomplete="off" @bind="_session.Options.ApiKey" />
+            </details>
         </div>
     </div>
 }
@@ -122,9 +155,44 @@ else
     private DateTime _lastPaint;
     private bool _tools;
     private string _workdir = "", _toolMsg = "";
+    private FolderListing? _picker;   // der Ordner-Wähler, solange er offen ist
     private TaskCompletionSource<bool>? _approval;
 
     private static string Cut(string s) => s.Length <= 600 ? s : s[..600] + " …";
+
+    // Arbeitsordner und Werkzeug-Schalter gelten für den Server und überleben einen Neustart (settings.json). AutoApprove und
+    // der API-Schlüssel bleiben bewusst nur für diese Sitzung. Gespeichert wird nur mit Schreibrecht und nicht im Nur-Lesen-Modus.
+    private bool ToolsOn { get => _tools; set { _tools = value; Remember(); } }
+    private string Workdir { get => _workdir; set { _workdir = value; Remember(); } }
+
+    private void Remember()
+    {
+        if (!Viewer.CanWrite || Host.ReadOnly) return;
+        var settings = Host.Engine.Settings;
+        settings.PromptToolsOn = _tools;
+        settings.PromptWorkdir = _workdir.Trim();
+        settings.Save();
+    }
+
+    // Ordner-Wähler: blättert die Ordner des Servers durch (der Browser kann dessen Ordner nicht öffnen). Startet beim
+    // eingetragenen Arbeitsordner, wenn der existiert, sonst bei den Laufwerken
+    private void OpenPicker()
+    {
+        var start = _workdir.Trim();
+        _picker = FolderBrowser.Browse(Directory.Exists(start) ? start : "");
+    }
+
+    private void OpenFolder(string? path) => _picker = FolderBrowser.Browse(path);
+
+    private void UseFolder()
+    {
+        if (_picker is { Failed: false, Current.Length: > 0 } pick) Workdir = pick.Current;
+        _picker = null;
+    }
+
+    private void CloseFolders() => _picker = null;
+
+    private static string SubFolder(string parent, string name) => Path.Combine(parent, name);
 
     // Freigabe eines Werkzeugaufrufs: die Schleife wartet, bis hier geklickt wird
     private Task<bool> AskAsync(ToolCall call)
@@ -137,19 +205,39 @@ else
     private void Answer(bool ok) { _approval?.TrySetResult(ok); _approval = null; }
 
     private List<ServerWatcher> Servers => Host.Engine.Registry.Servers.Where(s => s.Online).ToList();
-    private ServerWatcher? Server => Servers.FirstOrDefault(s => s.Key == _serverKey) ?? Servers.FirstOrDefault();
+    // Cloud-Modelle, die der Assistent angeboten hat: sie laufen über den Proxy, der den Schlüssel selbst dazusetzt
+    private List<ProxyChoice> Clouds => Host.Engine.Proxies.Choices().Where(c => c.Cloud).ToList();
 
-    // Server wechseln heißt: sein Modell eintragen und neu anfangen (ein Gespräch mit zwei Modellen ergibt nichts)
+    // Was gerade gewählt ist: der Eintrag mit diesem Schlüssel, sonst der erste lokale Server, sonst das erste Cloud-Modell
+    private (ServerWatcher? Server, ProxyChoice? Cloud) Chosen()
+    {
+        var cloud = Clouds.FirstOrDefault(c => c.Key == _serverKey);
+        if (cloud != null) return (null, cloud);
+        var server = Servers.FirstOrDefault(s => s.Key == _serverKey) ?? Servers.FirstOrDefault();
+        return server != null ? (server, null) : (null, Clouds.FirstOrDefault());
+    }
+    private ServerWatcher? Server => Chosen().Server;
+    private ProxyChoice? ChosenCloud => Chosen().Cloud;
+
+    // Wohin die Anfrage geht: an einen lokalen Server direkt, an ein Cloud-Modell über den Proxy auf diesem PC
+    private string? BaseUrl => ChosenCloud != null ? $"http://127.0.0.1:{Host.Engine.Proxies.Port}" : Server?.Url;
+    private bool CanSend => ChosenCloud != null ? Host.Engine.Proxies.Running : Server != null;
+
+    private string DefaultModel() => ChosenCloud is { } c ? c.Model : Server is { } s ? PromptHarness.ModelFor(s) : "";
+
+    // Auswahl wechseln heißt: ihr Modell eintragen und neu anfangen (ein Gespräch mit zwei Modellen ergibt nichts)
     private string ServerKey
     {
-        get => Server?.Key ?? "";
-        set { _serverKey = value; _session.Clear(); _session.Options.Model = Server is { } s ? PromptHarness.ModelFor(s) : ""; }
+        get => ChosenCloud?.Key ?? Server?.Key ?? "";
+        set { _serverKey = value; _session.Clear(); _session.Options.Model = DefaultModel(); }
     }
 
     protected override void OnInitialized()
     {
         _serverKey = Initial ?? "";
-        if (Server is { } s) _session.Options.Model = PromptHarness.ModelFor(s);
+        _session.Options.Model = DefaultModel();
+        _tools = Host.Engine.Settings.PromptToolsOn;
+        _workdir = Host.Engine.Settings.PromptWorkdir;
     }
 
     private async Task Key(KeyboardEventArgs e)
@@ -159,7 +247,7 @@ else
 
     private async Task Send()
     {
-        if (Server is not { } s || _input.Trim().Length == 0 || _session.Busy) return;
+        if (!CanSend || BaseUrl is not { } baseUrl || _input.Trim().Length == 0 || _session.Busy) return;
         _toolMsg = "";
         if (_tools)
         {
@@ -170,7 +258,7 @@ else
         var text = _input.Trim();
         _input = "";
         _cts = new CancellationTokenSource();
-        var task = _session.SendAsync(Http, s.Url, text, () =>
+        var task = _session.SendAsync(Http, baseUrl, text, () =>
         {
             // höchstens zehnmal je Sekunde neu zeichnen, sonst kommt die Leitung zum Browser nicht nach
             if ((DateTime.Now - _lastPaint).TotalMilliseconds < 100) return;
