@@ -1,0 +1,107 @@
+{
+  "report": {
+    "url": "file:///C:/_AI/StykkerHUD/stykker-hud/docs/design/mockup-2-onepager.html",
+    "title": "",
+    "shellClass": false,
+    "spriteIcons": 79,
+    "unresolvedIcons": 0,
+    "cards": 5,
+    "rows": 14,
+    "cores": 16,
+    "metrics": [
+      {
+        "i": 0,
+        "cells": 5,
+        "columns": 3,
+        "maxOverflowPx": 0
+      },
+      {
+        "i": 1,
+        "cells": 3,
+        "columns": 3,
+        "maxOverflowPx": 0
+      }
+    ],
+    "app": {
+      "header": {
+        "cpu": "18",
+        "ram": "14.4",
+        "gpu": "42",
+        "vram": "12.4",
+        "procs": "204",
+        "uptime": "3h 12m",
+        "gpuName": "RTX 5070 Ti"
+      },
+      "gpuCard": {
+        "util": "42",
+        "vram": "12.4",
+        "temp": "60",
+        "power": "160",
+        "clock": "2505"
+      },
+      "bars": {
+        "cpu": "7.46875px",
+        "ram": "94.5px",
+        "commit": null,
+        "vram": "162.234px"
+      },
+      "notes": 1,
+      "lampStates": [
+        "gen",
+        "read",
+        "read",
+        "read",
+        "read",
+        "idle"
+      ],
+      "firstRow": "llama-server 12908 46.2% 1.9 GB 72% 12960 4.1 / 0.6 0.1 / 1.2 3:08 ⋯"
+    },
+    "spark": {
+      "cpu": 3870,
+      "second": 0,
+      "peak": "peak 39%"
+    },
+    "colours": {
+      "body": "rgb(6, 9, 22)",
+      "accent": "rgb(79, 227, 255)",
+      "ink": "rgb(232, 238, 255)",
+      "gradient": "linear-gradient(rgba(255, 255, 255, 0.08), rgba(0, 0, 0, 0) "
+    },
+    "fonts": {
+      "body": "\"Segoe UI Variable Text\", \"Segoe UI\", system-ui, sans-serif",
+      "figure": "\"Cascadia Mono\", \"Cascadia Code\", Consolas, ui-monospace, monospace"
+    },
+    "layout": {
+      "top": {
+        "x": 0,
+        "y": 0,
+        "w": 1400,
+        "h": 46
+      },
+      "layoutColumns": "976px 340px",
+      "left": {
+        "x": 36,
+        "y": 116,
+        "w": 976,
+        "h": 867
+      },
+      "rail": {
+        "x": 1024,
+        "y": 116,
+        "w": 340,
+        "h": 803
+      },
+      "table": {
+        "x": 36,
+        "y": 471,
+        "w": 976,
+        "h": 512
+      },
+      "tableOverflowX": 0,
+      "pageOverflowX": 0,
+      "pageHeight": 1120,
+      "chosenSegments": 2
+    }
+  },
+  "problems": []
+}
