@@ -1,0 +1,88 @@
+{
+  "report": {
+    "url": "http://127.0.0.1:8079/",
+    "title": "StykkerHUD",
+    "theme": "dark",
+    "shellClass": false,
+    "spriteIcons": 7,
+    "unresolvedIcons": 0,
+    "cards": 5,
+    "cores": 0,
+    "metrics": [
+      {
+        "i": 0,
+        "cells": 5,
+        "rows": [
+          3,
+          2
+        ],
+        "cellWidth": 97,
+        "maxOverflowPx": 0
+      }
+    ],
+    "app": {
+      "header": {
+        "cpu": "100",
+        "ram": "13.5",
+        "gpu": "12",
+        "vram": "0.0",
+        "uptime": "3m",
+        "gpuName": "Intel(R) UHD Graphics 630"
+      },
+      "gpuCard": {
+        "util": "12",
+        "vram": "0.0",
+        "temp": "–",
+        "power": "–",
+        "clock": "–"
+      },
+      "bars": {
+        "cpu": "42px",
+        "ram": "718.25px",
+        "commit": "545.656px",
+        "vram": "0px"
+      },
+      "notes": 1
+    },
+    "spark": {
+      "cpu": 297,
+      "gpu": 322,
+      "peak": "peak 100%"
+    },
+    "colours": {
+      "body": "rgb(6, 9, 22)",
+      "accent": "rgb(79, 227, 255)",
+      "ink": "rgb(232, 238, 255)",
+      "gradient": "linear-gradient(rgba(255, 255, 255, 0.08), rgba(0, 0, 0, 0) "
+    },
+    "fonts": {
+      "body": "\"Segoe UI Variable Text\", \"Segoe UI\", system-ui, sans-serif",
+      "figure": "\"Cascadia Mono\", \"Cascadia Code\", Consolas, ui-monospace, monospace"
+    },
+    "layout": {
+      "top": {
+        "x": 0,
+        "y": 0,
+        "w": 1400,
+        "h": 46
+      },
+      "layoutColumns": "976px 340px",
+      "left": {
+        "x": 36,
+        "y": 107,
+        "w": 976,
+        "h": 383
+      },
+      "right": {
+        "x": 1024,
+        "y": 107,
+        "w": 340,
+        "h": 397
+      },
+      "pageOverflowX": 0,
+      "pageHeight": 950,
+      "chosenSegments": 1
+    }
+  },
+  "problems": []
+}
