@@ -1,0 +1,51 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:panels="clr-namespace:StykkerCmd.UI.Panels"
+             x:Class="StykkerCmd.UI.Panels.PanelView"
+             x:DataType="panels:PanelViewModel">
+
+    <Border x:Name="Frame" Classes="panel" CornerRadius="{DynamicResource PanelRadius}" ClipToBounds="True">
+        <Grid RowDefinitions="Auto,Auto,*,Auto">
+            <!-- Kopfzeile: Pfad und Sortierung -->
+            <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="14,10">
+                <TextBlock Text="{Binding DisplayPath}" FontFamily="{DynamicResource MonoFont}" FontSize="12"
+                           Foreground="{DynamicResource muted}" TextTrimming="CharacterEllipsis" />
+                <TextBlock Grid.Column="1" Text="{Binding SortLabel}" FontFamily="{DynamicResource MonoFont}" FontSize="11"
+                           Foreground="{DynamicResource muted}" Margin="10,0,0,0" />
+            </Grid>
+
+            <!-- Filter: Teiltreffer, mit * und ? auch Muster -->
+            <!-- Nicht in der Tab-Reihenfolge: sonst bekäme das Filterfeld beim Start den Fokus statt der Liste. -->
+            <TextBox x:Name="FilterBox" Grid.Row="1" Margin="10,0,10,8" IsTabStop="False" PlaceholderText="Filter, z. B. *.txt"
+                     Text="{Binding Filter, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+
+            <!-- Liste -->
+            <ListBox x:Name="List" Grid.Row="2" Margin="6,0" Background="Transparent" BorderThickness="0" Padding="0"
+                     ItemsSource="{Binding Rows}"
+                     SelectedIndex="{Binding CursorIndex, Mode=TwoWay}">
+                <ListBox.ItemTemplate>
+                    <DataTemplate x:DataType="panels:EntryRow">
+                        <Grid ColumnDefinitions="4,24,*,96,150" Height="26">
+                            <Border Grid.Column="0" Background="{DynamicResource acc}" CornerRadius="2"
+                                    IsVisible="{Binding IsMarked}" Margin="0,4" />
+                            <TextBlock Grid.Column="1" Text="{Binding Icon}" Foreground="{DynamicResource muted}"
+                                       VerticalAlignment="Center" HorizontalAlignment="Center" />
+                            <TextBlock Grid.Column="2" Text="{Binding Name}" VerticalAlignment="Center"
+                                       TextTrimming="CharacterEllipsis" />
+                            <TextBlock Grid.Column="3" Text="{Binding SizeText}" FontFamily="{DynamicResource MonoFont}"
+                                       FontSize="12" Foreground="{DynamicResource muted}" TextAlignment="Right"
+                                       VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="4" Text="{Binding DateText}" FontFamily="{DynamicResource MonoFont}"
+                                       FontSize="12" Foreground="{DynamicResource muted}" VerticalAlignment="Center"
+                                       Margin="14,0,0,0" />
+                        </Grid>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+
+            <!-- Fuß: Zählung, Markierungen, Fehler -->
+            <TextBlock Grid.Row="3" Text="{Binding Summary}" FontSize="12" Foreground="{DynamicResource muted}"
+                       TextTrimming="CharacterEllipsis" Margin="14,8" />
+        </Grid>
+    </Border>
+</UserControl>

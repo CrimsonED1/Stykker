@@ -1,0 +1,34 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="StykkerCmd.UI.Dialogs.InputDialog"
+        Width="460" SizeToContent="Height" CanResize="False"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource card}"
+        Foreground="{DynamicResource ink}"
+        FontFamily="{DynamicResource SansFont}"
+        FontSize="13">
+
+    <Window.Styles>
+        <Style Selector="Button">
+            <Setter Property="Padding" Value="16,7" />
+            <Setter Property="MinWidth" Value="120" />
+            <Setter Property="Background" Value="{DynamicResource card-2}" />
+            <Setter Property="Foreground" Value="{DynamicResource ink}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource line}" />
+        </Style>
+        <Style Selector="Button.primary">
+            <Setter Property="Background" Value="{DynamicResource acc}" />
+            <Setter Property="Foreground" Value="{DynamicResource bg}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource acc}" />
+        </Style>
+    </Window.Styles>
+
+    <StackPanel Margin="22" Spacing="12">
+        <TextBlock x:Name="Prompt" Foreground="{DynamicResource muted}" TextWrapping="Wrap" />
+        <TextBox x:Name="Input" />
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="10" Margin="0,8,0,0">
+            <Button x:Name="CancelButton" Content="Abbrechen" IsCancel="True" />
+            <Button x:Name="OkButton" Content="OK" Classes="primary" IsDefault="True" />
+        </StackPanel>
+    </StackPanel>
+</Window>
