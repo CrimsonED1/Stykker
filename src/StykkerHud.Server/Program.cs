@@ -1,6 +1,7 @@
 using Microsoft.Extensions.FileProviders;
 using StykkerHud.Core;
 using StykkerHud.Platform.Windows;
+using StykkerHud.Server;
 using StykkerHud.Server.Components;
 
 // StykkerHUD-Server: die Messwerte dieser Maschine als Web-Oberfläche auf http://127.0.0.1:8079.
@@ -52,6 +53,8 @@ builder.Services.AddSingleton<ISystemProbe>(_ => CreateProbe(basic));
 builder.Services.AddSingleton(sp => new MetricsSampler(sp.GetRequiredService<ISystemProbe>()));
 builder.Services.AddSingleton<HudService>();
 builder.Services.AddRazorComponents();
+// Alle Zahlen der Antworten auf eine Nachkommastelle (siehe OneDecimalJson).
+builder.Services.ConfigureHttpJsonOptions(options => options.SerializerOptions.Converters.Add(new OneDecimalJson()));
 
 var app = builder.Build();
 
