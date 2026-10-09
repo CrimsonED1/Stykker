@@ -25,6 +25,15 @@ public enum UiCommand
     Reload,
     FocusFilter,
     ClearFilter,
+    ContextMenu,
+    Zip,
+    Unzip,
+    CopyPath,
+    Reveal,
+    ShellMenu,
+    ShowHelp,
+    About,
+    Quit,
 }
 
 public static class KeyRouter
@@ -50,6 +59,12 @@ public static class KeyRouter
                 return UiCommand.DeletePermanent;
             case Key.F9 when modifiers == KeyModifiers.None:
                 return UiCommand.ToggleTheme;
+            case Key.F1 when modifiers == KeyModifiers.None:
+                return UiCommand.ShowHelp;
+            case Key.F10 when modifiers == KeyModifiers.Shift:
+                return UiCommand.ContextMenu;
+            case Key.Apps when modifiers == KeyModifiers.None:
+                return UiCommand.ContextMenu;
         }
 
         if (textInputFocused)

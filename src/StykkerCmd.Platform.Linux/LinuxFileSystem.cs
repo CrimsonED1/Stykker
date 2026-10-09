@@ -96,6 +96,27 @@ public sealed class LinuxFileSystem : IFileSystem
     public string IdentityOf(string directory)
         => LinuxNative.CanonicalPath(directory) ?? throw new DirectoryNotFoundException(directory);
 
+    // Das Wurzelsystem und die Medien, die unter den üblichen Einhängeorten des Benutzers hängen.
+    public IReadOnlyList<VolumeInfo> Volumes()
+    {
+        var volumes = new List<VolumeInfo> { new("/", "Dateisystem") };
+        foreach (var parent in new[] { $"/run/media/{Environment.UserName}", $"/media/{Environment.UserName}", "/mnt" })
+        {
+            if (!Directory.Exists(parent))
+                continue;
+            try
+            {
+                foreach (var folder in Directory.EnumerateDirectories(parent))
+                    volumes.Add(new VolumeInfo(folder, Path.GetFileName(folder)));
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                // Ohne Zugriff auf diesen Ordner taucht er nicht in der Leiste auf.
+            }
+        }
+        return volumes;
+    }
+
     private static long SizeOf(FileSystemInfo item)
     {
         if (item is not FileInfo file)

@@ -34,6 +34,15 @@ public interface IElevation
 public interface IShell
 {
     void Open(string path);
+
+    // Zeigt den Eintrag im Dateimanager des Systems: Windows öffnet den Ordner mit markiertem Eintrag.
+    void Reveal(string path);
+
+    // Ob das native Kontextmenü des Systems verfügbar ist (Windows: ja, Linux: nein).
+    bool SupportsNativeMenu { get; }
+
+    // Zeigt das native Kontextmenü für Einträge aus demselben Ordner, am Mauszeiger.
+    void ShowNativeMenu(IReadOnlyList<string> paths, IntPtr owner);
 }
 
 // Holt ein Fenster nach einem Dialog in den Vordergrund. Windows verweigert das gelegentlich, wenn ein anderes Programm aktiv ist.

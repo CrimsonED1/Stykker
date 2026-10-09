@@ -127,6 +127,26 @@ public sealed class WindowsFileSystem : IFileSystem
         return $"{info.VolumeSerialNumber:X8}:{info.FileIndexHigh:X8}{info.FileIndexLow:X8}";
     }
 
+    public IReadOnlyList<VolumeInfo> Volumes()
+        => DriveInfo.GetDrives()
+            .Where(drive => drive.IsReady)
+            .Select(drive => new VolumeInfo(drive.RootDirectory.FullName, VolumeName(drive)))
+            .ToList();
+
+    private static string VolumeName(DriveInfo drive)
+    {
+        if (!string.IsNullOrWhiteSpace(drive.VolumeLabel))
+            return drive.VolumeLabel;
+
+        return drive.DriveType switch
+        {
+            DriveType.Removable => "Wechseldatenträger",
+            DriveType.Network => "Netzlaufwerk",
+            DriveType.CDRom => "CD/DVD",
+            _ => "Lokaler Datenträger",
+        };
+    }
+
     private static string Extended(string path) => WindowsPath.ToExtended(WindowsPath.Absolute(path));
 
     private static long SizeOf(FileSystemInfo item)
