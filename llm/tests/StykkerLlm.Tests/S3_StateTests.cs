@@ -34,11 +34,11 @@ public class S3_StateTests
                 await e.TickAsync();
             }
 
-            string json = StateJson.WriteText(e, access, queue, 8078, DateTimeOffset.Now);
+            string json = StateJson.WriteText(e, access, queue, 17400, DateTimeOffset.Now);
             var state = StateSnapshot.Parse(json);
 
             Assert.AreEqual(StateJson.Schema, state.Schema);
-            Assert.AreEqual(8078, state.ServerPort);
+            Assert.AreEqual(17400, state.ServerPort);
             Assert.IsTrue(state.Ticks > 0, "der Server schreibt mit, wie viele Takte er schon hatte");
             Assert.IsTrue(state.Servers.Count >= 2, $"Server im Zustand: {state.Servers.Count}");
 
@@ -57,7 +57,7 @@ public class S3_StateTests
 
             // Zugang: Code und Geräteliste stehen im Zustand, der Hash des Cookies nie
             var paired = access.Pair(access.Code, "Handy", "192.168.1.9")!.Value;
-            state = StateSnapshot.Parse(StateJson.WriteText(e, access, queue, 8078, DateTimeOffset.Now));
+            state = StateSnapshot.Parse(StateJson.WriteText(e, access, queue, 17400, DateTimeOffset.Now));
             Assert.AreEqual(access.Code, state.Access.Code);
             StringAssert.Contains(state.Access.PairUrl, "/pair?code=" + access.Code);
             Assert.AreEqual(1, state.Access.Devices.Count);
@@ -71,7 +71,7 @@ public class S3_StateTests
             Assert.AreEqual("sim", state.Eval.Models[0].Name);
 
             // und noch einmal mit Verlauf aus (der Fehler, den nur der zweite Takt zeigte)
-            string indented = StateJson.Write(e, access, queue, 8078, DateTimeOffset.Now, withHistory: true, indented: true);
+            string indented = StateJson.Write(e, access, queue, 17400, DateTimeOffset.Now, withHistory: true, indented: true);
             Assert.IsTrue(indented.Contains('\n'), "eingerückte Fassung für den Blick auf die Datei");
             Assert.AreEqual(state.Servers.Count, StateSnapshot.Parse(indented).Servers.Count);
         }
@@ -115,7 +115,7 @@ public class S3_StateTests
             while (broken.State != LaunchState.Failed && DateTime.Now < end) await Task.Delay(50);
             Assert.AreEqual(LaunchState.Failed, broken.State, "der Prozess ist sofort fertig, also gescheitert");
 
-            var state = StateSnapshot.Parse(StateJson.WriteText(e, null, null, 8078, DateTimeOffset.Now));
+            var state = StateSnapshot.Parse(StateJson.WriteText(e, null, null, 17400, DateTimeOffset.Now));
             Assert.AreEqual(2, state.Launches.Count);
 
             var f = state.Launches.Single(l => l.Name == "broken");
@@ -166,7 +166,7 @@ public class S3_StateTests
         using var e = new MonitorEngine(p, paths, new AppSettings(), new HttpClient(new FakeHandler()));
         await e.Registry.RefreshNowAsync();
 
-        var state = StateSnapshot.Parse(StateJson.WriteText(e, null, null, 8078, DateTimeOffset.Now));
+        var state = StateSnapshot.Parse(StateJson.WriteText(e, null, null, 17400, DateTimeOffset.Now));
         var sv = state.Servers.Single(s => s.Port == 8095);
         Assert.AreEqual("8", sv.Env["GGML_CUDA_K_QUANT"]);
         Assert.IsFalse(sv.Env.ContainsKey("PATH"), "nur die gemerkten Variablen (Whitelist)");
@@ -202,7 +202,7 @@ public class S3_StateTests
         await e.TickAsync();
         for (int i = 0; i < 50 && e.GpuUtilTop.Count == 0; i++) await Task.Delay(20);   // der erste Takt liest im Hintergrund
 
-        var state = StateSnapshot.Parse(StateJson.WriteText(e, null, null, 8078, DateTimeOffset.Now));
+        var state = StateSnapshot.Parse(StateJson.WriteText(e, null, null, 17400, DateTimeOffset.Now));
         Assert.AreEqual(111, state.Servers.Single(s => s.Port == 8090).StartTicks, "Startzeit des Prozesses für die Laufzeit im Dialog");
         CollectionAssert.AreEqual(new[] { "llama-server.exe", "python.exe" }, state.GpuUtilTop.Select(x => x.Name).ToArray());
         Assert.AreEqual(37.5, state.GpuUtilTop[0].Percent);

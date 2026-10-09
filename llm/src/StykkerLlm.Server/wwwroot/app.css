@@ -555,6 +555,8 @@ html[data-theme=titan] .pf-cmd code{border-radius:0}
 .pxs-none{padding:2px}
 .pxs-form{display:flex;flex-direction:column;gap:6px;padding:8px;margin:4px 0;border:1px dashed var(--line);border-radius:8px}
 .pxs-form .row{justify-content:flex-end}
+.pxs-models{max-height:260px;overflow:auto;display:flex;flex-direction:column;gap:2px;padding:4px 2px}
+.pxs-models .check{font-size:13px;overflow-wrap:anywhere}
 .warnc{color:var(--warn)}
 .pxp-models{margin-top:10px;font-size:12px}.pxp-models summary{cursor:pointer;color:var(--muted)}
 .pxp-models ul{margin:6px 0 0;padding-left:16px;font-family:var(--font-num)}

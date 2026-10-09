@@ -75,7 +75,7 @@ public sealed class SimSource : IStateSource
 
     public SimSource() => _sim.World.Start();
     public string Status => "";
-    public int Port => 8078;
+    public int Port => 17400;
     public MonitorEngine Engine => _sim.Engine;
 
     public async Task<StateSnapshot?> PollAsync(CancellationToken ct)

@@ -79,6 +79,8 @@ public sealed class ProxyProvider
 {
     public string Name { get; set; } = "";
     public string BaseUrl { get; set; } = "";
+    // Die angebotenen Modelle (aus dem Einrichtungs-Assistenten): null = alle, die der Anbieter liefert
+    public List<string>? Models { get; set; }
 }
 
 public sealed class AppSettings
@@ -121,6 +123,9 @@ public sealed class AppSettings
     public int BenchRegressionPct { get; set; } = 10;        // ab diesem Rückgang in % meldet ein Benchmark-Lauf (0 = nie)
     // Port des StykkerLLM-Servers, mit dem Fenster und TUI arbeiten (0 = keiner eingeschaltet: alles selbst messen)
     public int ServerPort { get; set; }
+    // Prompt-Seite: letzter Arbeitsordner und ob die Werkzeuge an waren. AutoApprove und der API-Schlüssel bleiben aus Absicht draußen
+    public string PromptWorkdir { get; set; } = "";
+    public bool PromptToolsOn { get; set; }
 
     [JsonIgnore] public StorageLimits Limits => StorageLimits.FromMb(MaxLogFiles, MaxLogsMb, MaxRecordings, MaxRecordingsMb, MaxRecordingMb, MaxCsvMb);
     [JsonIgnore] public TimeSpan StartTimeout => TimeSpan.FromMinutes(StartTimeoutMin > 0 ? StartTimeoutMin : 10);
@@ -166,6 +171,7 @@ public sealed class AppSettings
         bool portMoved = s.ProxyPort == 8079;
         if (portMoved) s.ProxyPort = 17500;
         s.ProxyTarget ??= "";
+        s.PromptWorkdir ??= "";
         if (s.GpuTopCount <= 0) s.GpuTopCount = 8;
         // Nur noch Dark, Spacepunk Titan und System: ein früheres Thema (Deep Sea, Obsidian …) wird zu Dark
         s.Theme = ThemeCatalog.Normalize(s.Theme);

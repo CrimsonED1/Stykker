@@ -82,20 +82,20 @@ public class S2_AccessRoleTests
             access.SetRole(paired.Device.Id, AccessRole.Viewer);
 
             // Admin (Fenster, TUI, Skript mit dem Schlüssel): alles im Zustand
-            var admin = StateSnapshot.Parse(StateJson.WriteText(host.Engine, access, null, 8078, DateTimeOffset.Now));
+            var admin = StateSnapshot.Parse(StateJson.WriteText(host.Engine, access, null, 17400, DateTimeOffset.Now));
             Assert.AreEqual(access.Code, admin.Access.Code);
             StringAssert.Contains(admin.Access.PairUrl, access.Code);
             Assert.AreEqual(1, admin.Access.Devices.Count);
             Assert.AreEqual(AccessRole.Viewer, admin.Access.Devices[0].Role);
 
             // Viewer: Werte ja, Zugangscode nein – sonst wäre die Rolle wirkungslos
-            var viewer = StateSnapshot.Parse(StateJson.WriteText(host.Engine, access, null, 8078, DateTimeOffset.Now, withHistory: true, withCode: false));
+            var viewer = StateSnapshot.Parse(StateJson.WriteText(host.Engine, access, null, 17400, DateTimeOffset.Now, withHistory: true, withCode: false));
             Assert.AreEqual("", viewer.Access.Code, "ein Viewer darf den Code nicht lesen");
             Assert.AreEqual("", viewer.Access.PairUrl);
             Assert.IsTrue(viewer.Access.Remote, "der Schalter Home/VPN bleibt sichtbar");
             Assert.AreEqual(1, viewer.Access.Devices.Count, "die Geräteliste bleibt sichtbar");
             Assert.AreEqual(AccessRole.Viewer, viewer.Access.Devices[0].Role);
-            StringAssert.Contains(StateJson.WriteText(host.Engine, access, null, 8078, DateTimeOffset.Now, withCode: false), "\"role\":\"viewer\"");
+            StringAssert.Contains(StateJson.WriteText(host.Engine, access, null, 17400, DateTimeOffset.Now, withCode: false), "\"role\":\"viewer\"");
         }
         finally { try { Directory.Delete(paths.Root, true); } catch { } }
     }
@@ -116,7 +116,7 @@ public class S2_AccessRoleTests
                 Engine = engine,
                 Launcher = new LaunchCoordinator(engine, new RemotePrompt()),
                 Access = access,
-                ServerPort = 8078,
+                ServerPort = 17400,
             };
             var set = new ActionRequest { Action = "settings.set", Values = { ["intervalMs"] = "2000" } };
 

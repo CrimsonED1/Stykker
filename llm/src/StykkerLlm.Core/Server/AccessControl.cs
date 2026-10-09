@@ -42,6 +42,7 @@ public sealed class AccessDevice
 public sealed class AccessState
 {
     public bool RemoteEnabled { get; set; }
+    public bool TailscaleEnabled { get; set; }
     public string Code { get; set; } = "";
     public DateTime CodeCreated { get; set; }     // der Code gilt CodeLifetime lang und nur für eine Anmeldung
     public List<AccessDevice> Devices { get; set; } = new();
@@ -118,6 +119,8 @@ public sealed class AccessControl
     }
 
     public bool RemoteEnabled { get { lock (_lock) return _state.RemoteEnabled; } }
+    // Schalter Tailscale: lässt von außen nur Geräte im Tailnet zu, nicht das ganze Netz (dafür ist Home/VPN da)
+    public bool TailscaleEnabled { get { lock (_lock) return _state.TailscaleEnabled; } }
 
     public string Code
     {
@@ -147,6 +150,7 @@ public sealed class AccessControl
                 if (loaded != null)
                 {
                     _state.RemoteEnabled = loaded.RemoteEnabled;
+                    _state.TailscaleEnabled = loaded.TailscaleEnabled;
                     _state.Code = loaded.Code?.Trim() ?? "";
                     _state.CodeCreated = loaded.CodeCreated;
                     _state.Devices = loaded.Devices ?? new List<AccessDevice>();
@@ -192,6 +196,22 @@ public sealed class AccessControl
         else if (pruned) Changed?.Invoke();
         return rotate || pruned;
     }
+
+    public void SetTailscale(bool on)
+    {
+        bool changed;
+        lock (_lock)
+        {
+            changed = _state.TailscaleEnabled != on;
+            _state.TailscaleEnabled = on;
+            if (changed) _dirty = true;
+        }
+        if (changed) { Write(); Changed?.Invoke(); }
+    }
+
+    // Darf dieser Absender von außen auf die Oberfläche? Home/VPN: alle Geräte im Netz. Tailscale: nur das Tailnet.
+    public bool AllowsRemote(System.Net.IPAddress address) =>
+        RemoteEnabled || (TailscaleEnabled && NetAddr.IsTailscale(address.ToString()));
 
     // Schalter "Home/VPN": aus = nur dieser PC (der Server nimmt dann nur Zugriffe von 127.0.0.1 an), an = ganzes Netz
     public void SetRemote(bool on)

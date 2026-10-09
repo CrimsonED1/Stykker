@@ -155,14 +155,14 @@ public class N50_PairingTests
         var access = new AccessControl(paths, new FakePlatform());
         var (req, _) = access.RequestPairing("Tablet", PairKinds.Browser, "10.0.0.9")!.Value;
 
-        var json = StateJson.WriteText(engine, access, null, 8078, DateTimeOffset.Now);
+        var json = StateJson.WriteText(engine, access, null, 17400, DateTimeOffset.Now);
         Assert.IsFalse(json.Contains(req.Code, StringComparison.Ordinal), "der Code der Anfrage steht nicht im Zustand");
         var state = StateSnapshot.Parse(json);
         Assert.AreEqual("Tablet", state.Access.Requests.Single().Name);
         Assert.AreEqual(req.Id, state.Access.Requests.Single().Id);
         Assert.IsNotNull(state.Access.CodeExpires);
 
-        var viewerJson = StateJson.WriteText(engine, access, null, 8078, DateTimeOffset.Now, withCode: false);
+        var viewerJson = StateJson.WriteText(engine, access, null, 17400, DateTimeOffset.Now, withCode: false);
         Assert.AreEqual(0, StateSnapshot.Parse(viewerJson).Access.Requests.Count, "ein Viewer sieht keine Anfragen");
     }
 
@@ -173,7 +173,7 @@ public class N50_PairingTests
         var settings = AppSettings.Load(paths.SettingsFile);
         using var engine = new MonitorEngine(new FakePlatform(), paths, settings, readOnly: false);
         var access = new AccessControl(paths, new FakePlatform());
-        var ctx = new ActionContext { Engine = engine, Launcher = new LaunchCoordinator(engine, new RemotePrompt()), Access = access, ServerPort = 8078 };
+        var ctx = new ActionContext { Engine = engine, Launcher = new LaunchCoordinator(engine, new RemotePrompt()), Access = access, ServerPort = 17400 };
 
         var (req, secret) = access.RequestPairing("Tablet", null, null)!.Value;
         var ok = await ActionApi.ExecuteAsync(new ActionRequest { Action = "pair.approve", Arg = req.Code }, ctx, new RemotePrompt());
@@ -193,10 +193,10 @@ public class N50_PairingTests
     [TestMethod]
     public void Discovery_ParsesOnlyStykkerAnswers_AndMarksItself()
     {
-        var reply = NodeDiscovery.Reply(8078, true);
+        var reply = NodeDiscovery.Reply(17400, true);
         var n = NodeDiscovery.Parse(reply, IPAddress.Parse("192.168.1.52"), new[] { "192.168.1.137" });
         Assert.IsNotNull(n);
-        Assert.AreEqual("http://192.168.1.52:8078", n.Url);
+        Assert.AreEqual("http://192.168.1.52:17400", n.Url);
         Assert.IsTrue(n.Remote);
         Assert.IsFalse(n.Self);
         Assert.IsTrue(NodeDiscovery.Parse(reply, IPAddress.Parse("192.168.1.137"), new[] { "192.168.1.137" })!.Self);

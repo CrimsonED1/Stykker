@@ -13,8 +13,8 @@ public class S2_AccessQrTests
     [TestMethod]
     public void Qr_PairUrlFitsAndHasFinderPatterns()
     {
-        var url = NetInfo.PairUrl(8078, "ABCD2345", "192.168.1.23");
-        Assert.AreEqual("http://192.168.1.23:8078/pair?code=ABCD2345", url);
+        var url = NetInfo.PairUrl(17400, "ABCD2345", "192.168.1.23");
+        Assert.AreEqual("http://192.168.1.23:17400/pair?code=ABCD2345", url);
         var qr = QrCode.Encode(url);
         Assert.IsTrue(qr.Version is >= 1 and <= 10);
         Assert.AreEqual(qr.Version * 4 + 17, qr.Size);
@@ -52,7 +52,7 @@ public class S2_AccessQrTests
         // Und die Maske steht wirklich in der Matrix: für jede gewählte Maske der passende Wert
         foreach (var level in new[] { QrCode.Ecc.L, QrCode.Ecc.M, QrCode.Ecc.Q, QrCode.Ecc.H })
         {
-            var qr = QrCode.Encode("http://192.168.1.23:8078/pair?code=ABCD2345", level);
+            var qr = QrCode.Encode("http://192.168.1.23:17400/pair?code=ABCD2345", level);
             Assert.AreEqual(table[(int)qr.Level][qr.Mask], ReadFormat(qr), $"Stufe {qr.Level}, Maske {qr.Mask}");
         }
     }
@@ -60,7 +60,7 @@ public class S2_AccessQrTests
     [TestMethod]
     public void Qr_RoundTripsThroughItsOwnMatrix()
     {
-        foreach (var text in new[] { "http://192.168.1.23:8078/pair?code=ABCD2345", "A", "Öffnen Sie die Tür 42 – Grüße" })
+        foreach (var text in new[] { "http://192.168.1.23:17400/pair?code=ABCD2345", "A", "Öffnen Sie die Tür 42 – Grüße" })
             foreach (QrCode.Ecc level in new[] { QrCode.Ecc.L, QrCode.Ecc.M, QrCode.Ecc.Q, QrCode.Ecc.H })
             {
                 var qr = QrCode.Encode(text, level);
@@ -88,7 +88,7 @@ public class S2_AccessQrTests
     [TestMethod]
     public void Qr_SvgAndAsciiCarryTheMatrix()
     {
-        var qr = QrCode.Encode("http://127.0.0.1:8078/pair?code=ABCD2345");
+        var qr = QrCode.Encode("http://127.0.0.1:17400/pair?code=ABCD2345");
         var svg = qr.ToSvg();
         StringAssert.Contains(svg, "<svg");
         Assert.AreEqual(qr.DarkCount, System.Text.RegularExpressions.Regex.Matches(svg, "<rect x=\"\\d+\" y=\"\\d+\" width=\"1\"").Count);
@@ -184,7 +184,7 @@ public class S2_AccessQrTests
         Assert.IsFalse(ips.Any(ip => ip.StartsWith("127.")), "Loopback gehört nicht in den QR-Code");
         Assert.IsFalse(ips.Any(ip => ip.StartsWith("169.254.")), "APIPA ist keine Adresse zum Freigeben");
         Assert.IsTrue(NetInfo.LanAddressOrLoopback()?.Length > 0);
-        StringAssert.Contains(NetInfo.PairUrl(8078, "482913", "10.1.2.3"), "/pair?code=482913");
+        StringAssert.Contains(NetInfo.PairUrl(17400, "482913", "10.1.2.3"), "/pair?code=482913");
     }
 
     // Temporärer Ordner für die Dateien von access.dat

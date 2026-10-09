@@ -7,6 +7,7 @@
 @inject NavigationManager Nav
 @inject IJSRuntime JS
 @inject Toasts Toast
+@using System.Text.Json
 
 @* Monitor wie im Fenster (docs/ui.md, Bereiche 2–8): Proxy, Saved, Running, GPU, System, Recent requests, History *@
 
@@ -423,6 +424,7 @@
         <div class="pxs-grp">
             <span>@Strings.PxCloud <span class="tip" title="@Strings.ProxyProviderHint"><Icon Name="info" /></span></span>
             @if (CanWrite && !ro && _add != "provider") { <button class="ib quiet" title="@Strings.PxAdd" aria-label="@Strings.PxAdd" @onclick='() => _add = "provider"'>+ @Strings.PxAdd</button> }
+            @if (CanWrite && !ro && _wiz == null) { <button class="ib quiet" @onclick="OpenWizardNew">@Strings.ProxyWizardOpen</button> }
         </div>
         @if (provs.Count == 0 && _add != "provider") { <div class="muted small pxs-none">@Strings.PxNoCloud</div> }
         @foreach (var pv in provs)
@@ -431,11 +433,12 @@
             <div class="pxs-item">
                 <span class="lampi @(pv.Ready ? "ok" : pv.HasKey ? "bad" : "")" title="@(pv.Error.Length > 0 ? pv.Error : pv.Ready ? Strings.PxReachable : Strings.PxUnreachable)"><Icon Name="@(pv.Ready ? "r-ok" : pv.HasKey ? "r-err" : "s-idle")" Title="@(pv.Ready ? Strings.PxReachable : Strings.PxUnreachable)" /></span>
                 <span class="n" title="@pv.Url">@pv.Name</span>
-                <span class="muted small" title="@string.Join(", ", pv.Models)">@Strings.PxModels(pv.Models.Length)</span>
+                <span class="muted small" title="@string.Join(", ", pv.Models)">@ModelsLabel(pv.Url, pv.Models.Length)</span>
                 <span class="small @(pv.HasKey ? "muted" : "warnc")"><Icon Name="lock" Class="sm" /> @(pv.HasKey ? Strings.PxKeyStored : Strings.PxKeyMissing)</span>
                 @if (CanWrite && !ro)
                 {
                     <button class="ib quiet" title="@Strings.PxSetKey" aria-label="@Strings.PxSetKey" @onclick="() => _keyFor = pp.Url"><Icon Name="edit" /></button>
+                    <button class="ib quiet" title="@Strings.ProxyWizardEditModels" aria-label="@Strings.ProxyWizardEditModels" @onclick="() => OpenWizardEdit(pp.Url, pp.Name)"><Icon Name="layers" /></button>
                     <button class="ib quiet danger" title="@Strings.PxRemove" aria-label="@Strings.PxRemove" @onclick="() => RemoveProvider(pp.Url)"><Icon Name="trash" /></button>
                 }
             </div>
@@ -447,6 +450,53 @@
                     <div class="row"><button class="primary" @onclick="() => { SaveKey(pp.Url); _keyFor = null; }">@Strings.BtnProxyProviderKey</button><button class="ghost" @onclick="() => _keyFor = null">@Strings.PxCancel</button></div>
                 </div>
             }
+        }
+        @if (_wiz != null)
+        {
+            <div class="pxs-form">
+                <div class="small muted">@Strings.ProxyWizardHint</div>
+                @if (_wiz == "key")
+                {
+                    <div class="small"><b>@Strings.ProxyWizardKeyStep</b></div>
+                    <input placeholder="@Strings.ProxyProviderNameLabel" value="@_wName" @oninput='e => _wName = e.Value?.ToString() ?? ""' />
+                    <input placeholder="@Strings.ProxyProviderUrlLabel" value="@_wUrl" @oninput='e => _wUrl = e.Value?.ToString() ?? ""' />
+                    <input type="password" placeholder="@Strings.ProxyProviderKeyLabel" value="@_wKey" @oninput='e => _wKey = e.Value?.ToString() ?? ""' autocomplete="off" />
+                    @if (_wError.Length > 0) { <div class="small pxs-err">@_wError</div> }
+                    <div class="row"><button class="primary" @onclick="LoadWizardModels">@Strings.ProxyWizardLoad</button><button class="ghost" @onclick="CloseWizard">@Strings.PxCancel</button></div>
+                }
+                else
+                {
+                    <div class="small"><b>@Strings.ProxyWizardModelStep</b> · @Strings.ProxyWizardFound(_wList.Count) · @Strings.ProxyWizardChosen(_wList.Count(x => x.On), _wList.Count)</div>
+                    <input placeholder="@Strings.ProxyWizardFilter" @bind="_wFilter" @bind:event="oninput" />
+                    <div class="row"><button class="ghost" @onclick="() => SetAllWizard(true)">@Strings.ProxyWizardAll</button><button class="ghost" @onclick="() => SetAllWizard(false)">@Strings.ProxyWizardNone</button></div>
+                    @if (_wUsable)
+                    {
+                        <div class="small muted">@(_wList.Any(x => x.Usable) ? Strings.ProxyWizardUsableGroup(WizardShown.Count(x => x.Usable)) : Strings.ProxyWizardNoneUsable)</div>
+                    }
+                    else if (_wUsableFailed)
+                    {
+                        <div class="small muted">@Strings.ProxyWizardUsableUnknown</div>
+                    }
+                    <div class="pxs-models">
+                        @foreach (var m in WizardShown.Where(x => x.Usable))
+                        {
+                            var id = m.Id;
+                            <label class="check"><input type="checkbox" checked="@m.On" @onchange="e => TickWizard(id, e.Value)" /> @id</label>
+                        }
+                        @if (_wUsable && WizardShown.Any(x => x.Usable) && WizardShown.Any(x => !x.Usable))
+                        {
+                            <div class="small muted">@Strings.ProxyWizardOtherGroup(WizardShown.Count(x => !x.Usable))</div>
+                        }
+                        @foreach (var m in WizardShown.Where(x => !x.Usable))
+                        {
+                            var id = m.Id;
+                            <label class="check"><input type="checkbox" checked="@m.On" @onchange="e => TickWizard(id, e.Value)" /> @id</label>
+                        }
+                    </div>
+                    @if (_wError.Length > 0) { <div class="small pxs-err">@_wError</div> }
+                    <div class="row"><button class="ghost" @onclick="BackWizard">@Strings.ProxyWizardBack</button><button class="primary" @onclick="SaveWizard">@Strings.ProxyWizardSave</button></div>
+                }
+            </div>
         }
         @if (_add == "provider")
         {
@@ -716,6 +766,124 @@
     private void RemoveRemote(string url) { if (CanWrite) Host.Engine.Proxies.RemoveRemote(url); }
 
     // ── Cloud-Anbieter: der Schlüssel geht nur an den Proxy (dort DPAPI-geschützt) und wird nie wieder angezeigt *─
+    // Einrichtungs-Assistent für Cloud-Anbieter (z. B. OpenRouter): Schlüssel eingeben, Modelle abfragen, ankreuzen, speichern.
+    // _wiz: null (zu), "key" (Schlüssel) oder "models" (Auswahl). Bei einem vorhandenen Anbieter (_wEditUrl) wird nur die
+    // Auswahl geändert, dann gilt der gespeicherte Schlüssel. Der Schlüssel bleibt nur hier im Speicher, bis gespeichert ist.
+    private string? _wiz;
+    private string _wName = "OpenRouter", _wUrl = "https://openrouter.ai/api/v1", _wKey = "", _wFilter = "", _wError = "";
+    private string? _wEditUrl;
+    // Die Liste kommt vom Anbieter. _wUsable: der Abruf der Modelle, die dieser Schlüssel nutzen darf, hat eine Liste geliefert;
+    // _wUsableFailed: der Abruf ist fehlgeschlagen. Die nutzbaren Modelle stehen oben (ShowWizardModels).
+    private List<(string Id, bool On, bool Usable)> _wList = new();
+    private bool _wUsable, _wUsableFailed;
+
+    private void OpenWizardNew()
+    {
+        if (!CanWrite) return;
+        CloseWizard();
+        _wiz = "key";
+    }
+
+    private async Task OpenWizardEdit(string url, string name)
+    {
+        if (!CanWrite) return;
+        CloseWizard();
+        _wEditUrl = url;
+        _wUrl = url;
+        _wName = name;
+        _wiz = "models";
+        await LoadWizardModels();
+    }
+
+    private void CloseWizard()
+    {
+        _wiz = null;
+        _wEditUrl = null;
+        _wKey = "";
+        _wFilter = "";
+        _wError = "";
+        _wList = new();
+        _wUsable = _wUsableFailed = false;
+    }
+
+    private void BackWizard()
+    {
+        if (_wEditUrl != null) { CloseWizard(); return; }
+        _wiz = "key";
+        _wError = "";
+    }
+
+    // Die Modelle abfragen (nichts wird gespeichert): mit dem eingegebenen Schlüssel, bei einem vorhandenen Anbieter mit dem
+    // gespeicherten
+    private async Task LoadWizardModels()
+    {
+        if (!CanWrite) return;
+        _wError = "";
+        var r = await Web.RunAsync(new ActionRequest { Action = "provider.probe", Arg = _wUrl.Trim(), Secret = _wEditUrl == null ? _wKey.Trim() : null });
+        if (!r.Ok) { _wError = r.Message; if (_wEditUrl != null) _wiz = "models"; return; }
+        ShowWizardModels(r.Data);
+    }
+
+    // Die gefundenen Modelle anzeigen. Ein neuer Anbieter startet mit nichts angehakt; bei einem vorhandenen zählt seine Auswahl
+    // (ohne Auswahl sind alle Modelle angeboten, dann sind alle angehakt)
+    private void ShowWizardModels(string? data)
+    {
+        using var doc = JsonDocument.Parse(data ?? "{}");
+        var root = doc.RootElement;
+        var found = root.TryGetProperty("models", out var m) && m.ValueKind == JsonValueKind.Array
+            ? m.EnumerateArray().Select(x => x.GetString() ?? "").Where(x => x.Length > 0).ToList()
+            : new List<string>();
+        var enabled = root.TryGetProperty("enabled", out var en) && en.ValueKind == JsonValueKind.Array
+            ? en.EnumerateArray().Select(x => x.GetString() ?? "").ToHashSet(StringComparer.OrdinalIgnoreCase)
+            : null;
+        // Die Modelle, die dieser Schlüssel nutzen darf (laut Anbieter), stehen oben; die übrigen darunter. Ohne Liste: alle gleich
+        var usable = root.TryGetProperty("usable", out var us) && us.ValueKind == JsonValueKind.Array
+            ? us.EnumerateArray().Select(x => x.GetString() ?? "").Where(x => x.Length > 0).ToList()
+            : null;
+        _wUsable = usable != null;
+        _wUsableFailed = usable == null && root.TryGetProperty("usableFailed", out var uf) && uf.ValueKind == JsonValueKind.True;
+        _wList = ProxyManager.OrderForWizard(found, usable)
+            .Select(x => (x.Id, _wEditUrl != null && (enabled == null || enabled.Contains(x.Id)), x.Usable)).ToList();
+        _wiz = "models";
+        _wError = "";
+    }
+
+    // Die Modelle, die der Filter zeigt (in der Reihenfolge der Liste)
+    private List<(string Id, bool On, bool Usable)> WizardShown =>
+        _wList.Where(x => _wFilter.Length == 0 || x.Id.Contains(_wFilter, StringComparison.OrdinalIgnoreCase)).ToList();
+
+    private void TickWizard(string id, object? value)
+    {
+        var i = _wList.FindIndex(x => x.Id == id);
+        if (i >= 0) _wList[i] = (id, value is true || value is "true", _wList[i].Usable);
+    }
+
+    private void SetAllWizard(bool on)
+    {
+        for (int i = 0; i < _wList.Count; i++) _wList[i] = (_wList[i].Id, on, _wList[i].Usable);
+    }
+
+    // Speichern: ein neuer Anbieter mit Schlüssel und Auswahl, sonst nur die neue Auswahl. Mindestens ein Modell.
+    private async Task SaveWizard()
+    {
+        if (!CanWrite) return;
+        var chosen = _wList.Where(x => x.On).Select(x => x.Id).ToList();
+        if (chosen.Count == 0) { _wError = Strings.ProxyProviderNoModelsChosen; return; }
+        var r = _wEditUrl == null
+            ? await Web.RunAsync(new ActionRequest { Action = "provider.add", Values = { ["name"] = _wName.Trim(), ["url"] = _wUrl.Trim() }, Secret = _wKey.Trim(), Ids = chosen })
+            : await Web.RunAsync(new ActionRequest { Action = "provider.models", Arg = _wEditUrl, Ids = chosen });
+        if (!r.Ok) { _wError = r.Message; return; }
+        _flash = r.Message;
+        CloseWizard();
+    }
+
+    // „2 von 3 gewählt“, wenn eine Auswahl gilt, sonst die Zahl aller Modelle des Anbieters
+    private string ModelsLabel(string url, int total)
+    {
+        var chosen = Host.Engine.Proxies.EnabledModelsFor(url);
+        return chosen == null ? Strings.PxModels(total) : Strings.ProxyWizardChosen(chosen.Count, total);
+    }
+
     private IReadOnlyList<(string Name, string Url, bool HasKey, bool Ready, string[] Models, string Error)> Providers
         => Host.Engine.Proxies.ProviderStates();
 

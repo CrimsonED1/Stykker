@@ -34,7 +34,7 @@ public class S3_NoticeProxyTests
         var e = host.Engine;
 
         host.Engine.SetNotice(Strings.ProxyContextTooSmallGeneric, @"C:\logs\sim-a.log");
-        var json = StateJson.WriteText(e, null, null, 8078, DateTimeOffset.Now);
+        var json = StateJson.WriteText(e, null, null, 17400, DateTimeOffset.Now);
         var state = StateSnapshot.Parse(json);
         Assert.IsNotNull(state.Notice, "der Hinweis gehört in den Zustand");
         Assert.AreEqual(Strings.ProxyContextTooSmallGeneric, state.Notice!.Text);
@@ -43,7 +43,7 @@ public class S3_NoticeProxyTests
         StringAssert.Contains(json, "\"notice\":{", "das Feld steht als Objekt im JSON");
 
         e.DismissNotice();
-        Assert.IsNull(StateSnapshot.Parse(StateJson.WriteText(e, null, null, 8078, DateTimeOffset.Now)).Notice,
+        Assert.IsNull(StateSnapshot.Parse(StateJson.WriteText(e, null, null, 17400, DateTimeOffset.Now)).Notice,
             "weggeklickter Hinweis: kein Feld mehr, damit die Oberfläche nichts anzeigt");
     }
 
@@ -53,7 +53,7 @@ public class S3_NoticeProxyTests
     {
         using var host = new SimHost(Servers(), seed: 3, autoStep: false);
         host.Engine.SetNotice("Hinweis");
-        var n = StateSnapshot.Parse(StateJson.WriteText(host.Engine, null, null, 8078, DateTimeOffset.Now)).Notice;
+        var n = StateSnapshot.Parse(StateJson.WriteText(host.Engine, null, null, 17400, DateTimeOffset.Now)).Notice;
         Assert.IsNotNull(n);
         Assert.AreEqual("", n!.LogFile);
     }
@@ -110,14 +110,14 @@ public class S3_NoticeProxyTests
         Assert.IsTrue(host.Engine.Proxies.BindLan);
         Assert.AreEqual(Strings.ProxyLanOn, on.Message);
 
-        var state = StateSnapshot.Parse(StateJson.WriteText(host.Engine, null, null, 8078, DateTimeOffset.Now));
+        var state = StateSnapshot.Parse(StateJson.WriteText(host.Engine, null, null, 17400, DateTimeOffset.Now));
         Assert.IsTrue(state.Proxy.BindLan, "die TUI und das Telefon lesen das aus dem Zustand");
 
         var off = await ActionApi.ExecuteAsync(new ActionRequest { Action = "proxy.lan", Flag = false }, ctx, new RemotePrompt());
         Assert.IsTrue(off.Ok);
         Assert.IsFalse(host.Engine.Settings.ProxyBindLan);
         Assert.AreEqual(Strings.ProxyLanOff, off.Message);
-        Assert.IsFalse(StateSnapshot.Parse(StateJson.WriteText(host.Engine, null, null, 8078, DateTimeOffset.Now)).Proxy.BindLan);
+        Assert.IsFalse(StateSnapshot.Parse(StateJson.WriteText(host.Engine, null, null, 17400, DateTimeOffset.Now)).Proxy.BindLan);
     }
 
     // Der Server-Key des servierten Ziels steht im Zustand (für den Proxy-Chip auf der Serverkarte); ohne laufenden Proxy ist er leer
@@ -127,11 +127,11 @@ public class S3_NoticeProxyTests
         using var host = new SimHost(Servers(), seed: 3, autoStep: false);
         var e = host.Engine;
 
-        Assert.AreEqual("", StateSnapshot.Parse(StateJson.WriteText(e, null, null, 8078, DateTimeOffset.Now)).Proxy.ServedKey,
+        Assert.AreEqual("", StateSnapshot.Parse(StateJson.WriteText(e, null, null, 17400, DateTimeOffset.Now)).Proxy.ServedKey,
             "ohne laufenden Proxy dient der Chip keinem Server");
 
         e.Proxies.Toggle(out _);
-        var state = StateSnapshot.Parse(StateJson.WriteText(e, null, null, 8078, DateTimeOffset.Now));
+        var state = StateSnapshot.Parse(StateJson.WriteText(e, null, null, 17400, DateTimeOffset.Now));
         Assert.IsTrue(state.Proxy.Running, "der Proxy läuft jetzt");
         Assert.AreEqual("", state.Proxy.ServedKey, "ohne gemessenen Server noch kein Ziel");
     }

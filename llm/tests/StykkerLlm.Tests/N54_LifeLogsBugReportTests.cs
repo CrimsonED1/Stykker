@@ -148,7 +148,7 @@ public class N54_LifeLogsBugReportTests
         File.WriteAllText(Path.Combine(appDir, "logs", "StykkerLLM-Server.log"),
             $"start llama-server -m x.gguf --api-key sk-geheim123 --port 8081\nuser {Environment.UserName} on {Environment.MachineName}\n");
         Directory.CreateDirectory(paths.LogsDir);
-        File.WriteAllText(Path.Combine(paths.LogsDir, "stykker.log"), "pair http://pc:8078/pair?code=123456 ok\nAuthorization: Bearer abc.def-ghi\n");
+        File.WriteAllText(Path.Combine(paths.LogsDir, "stykker.log"), "pair http://pc:17400/pair?code=123456 ok\nAuthorization: Bearer abc.def-ghi\n");
         File.WriteAllText(paths.SettingsFile, "{\"Theme\":\"Deep Sea\",\"ProviderKey\":\"sk-provider\"}");
         foreach (var secret in new[] { "access.dat", "server.key", "nodes.dat", "confirm.key", "web-shell.dat" })
             File.WriteAllText(Path.Combine(paths.Root, secret), "SECRET-" + secret);

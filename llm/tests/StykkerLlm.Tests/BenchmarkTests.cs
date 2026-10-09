@@ -265,7 +265,7 @@ public class BenchmarkTests
             dropped.Regression = new BenchRegression(100, 70, 30);
             engine.Library.AddBenchmark(dropped);
 
-            var json = StateJson.WriteText(engine, null, null, 8078, DateTimeOffset.Now);
+            var json = StateJson.WriteText(engine, null, null, 17400, DateTimeOffset.Now);
             StringAssert.Contains(json, "\"regression\"");
             var back = StateSnapshot.Parse(json).Benchmarks.Single().Regression;
             Assert.IsNotNull(back);
@@ -278,7 +278,7 @@ public class BenchmarkTests
 
             // Ohne Rückgang bleibt das Feld weg (additiv, Schema 1)
             engine.Library.AddBenchmark(Bench("p2", "s", 50, new DateTime(2026, 1, 3)));
-            Assert.IsNull(StateSnapshot.Parse(StateJson.WriteText(engine, null, null, 8078, DateTimeOffset.Now))
+            Assert.IsNull(StateSnapshot.Parse(StateJson.WriteText(engine, null, null, 17400, DateTimeOffset.Now))
                 .Benchmarks.Single(b => b.Model == "m" && b.Started == new DateTime(2026, 1, 3)).Regression);
         }
         finally { Directory.Delete(dir, true); }
@@ -316,7 +316,7 @@ public class BenchmarkTests
             Assert.AreEqual(25, AppSettings.Load(paths.SettingsFile).BenchRegressionPct);
 
             using var engine = new MonitorEngine(new FakePlatform(), paths, settings, new HttpClient(new FakeHandler()));
-            Assert.AreEqual(25, StateSnapshot.Parse(StateJson.WriteText(engine, null, null, 8078, DateTimeOffset.Now)).Settings.BenchRegressionPct);
+            Assert.AreEqual(25, StateSnapshot.Parse(StateJson.WriteText(engine, null, null, 17400, DateTimeOffset.Now)).Settings.BenchRegressionPct);
         }
         finally { Directory.Delete(dir, true); }
     }

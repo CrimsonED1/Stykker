@@ -59,7 +59,7 @@ public class N56_HostLinkTests
     [TestMethod, Timeout(20000)]
     public void ConnectUri_UsesWsOrWss()
     {
-        Assert.AreEqual("ws://pc:8078/hosts/connect", HostConfig.ConnectUri("http://pc:8078").ToString());
+        Assert.AreEqual("ws://pc:17400/hosts/connect", HostConfig.ConnectUri("http://pc:17400").ToString());
         Assert.AreEqual("wss://gw.example/hosts/connect", HostConfig.ConnectUri("https://gw.example/").ToString());
     }
 
@@ -76,7 +76,7 @@ public class N56_HostLinkTests
         var (serverWs, clientWs) = await SocketPair();
         using var stop = new CancellationTokenSource();
         var serving = hub.HandleAsync(serverWs, entry, "127.0.0.1", stop.Token);
-        var config = new HostConfig { Server = "http://pc:8078", Token = token };
+        var config = new HostConfig { Server = "http://pc:17400", Token = token };
         var client = new HostLinkClient(config, () => StateJson.WriteText(sim.Engine, null, null, 0, DateTimeOffset.Now, withHistory: false),
             "GPU-BOX", "0.3.1", TimeSpan.FromMilliseconds(100), _ => Task.FromResult(clientWs));
         var running = client.RunAsync(stop.Token);
@@ -128,7 +128,7 @@ public class N56_HostLinkTests
     [TestMethod, Timeout(20000)]
     public async Task RefusedToken_IsReported_AndNotHammered()
     {
-        var config = new HostConfig { Server = "http://pc:8078", Token = "stale" };
+        var config = new HostConfig { Server = "http://pc:17400", Token = "stale" };
         int tries = 0;
         var client = new HostLinkClient(config, () => "{}", "x", "1", connect: _ => { tries++; throw new HostRefusedException(); });
         using var stop = new CancellationTokenSource();
@@ -145,7 +145,7 @@ public class N56_HostLinkTests
     public void BrokenHostJson_WithNulls_IsNotPaired_AndDoesNotCrash()
     {
         var paths = TempPaths("nulls");
-        File.WriteAllText(Path.Combine(paths.Root, HostConfig.FileName), "{\"server\":\"http://pc:8078\",\"token\":null}");
+        File.WriteAllText(Path.Combine(paths.Root, HostConfig.FileName), "{\"server\":\"http://pc:17400\",\"token\":null}");
         var config = HostConfig.Load(paths, new FakePlatform());
         Assert.IsFalse(config.Paired);
         Assert.AreEqual(HostLinkState.NotPaired, new HostLinkClient(config, () => "{}", "x", "1").State);

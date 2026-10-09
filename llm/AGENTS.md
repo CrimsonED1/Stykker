@@ -11,7 +11,7 @@ that only run models). **The server is the core.** Every user interface is a cli
 
 | Program | Project | What it is |
 |---|---|---|
-| `StykkerLLM-Server.exe` | `src/StykkerLlm.Server` | ASP.NET Core + Blazor Server. Measures, starts/stops, runs tests, serves the web UI on **:8078** |
+| `StykkerLLM-Server.exe` | `src/StykkerLlm.Server` | ASP.NET Core + Blazor Server. Measures, starts/stops, runs tests, serves the web UI on **:17400** |
 | `StykkerUI.exe` | `src/StykkerLlm.UI` | A window around the web UI (Photino: WebView2 / WKWebView / WebKitGTK), draws without GPU by default |
 | `StykkerHost.exe` | `src/StykkerLlm.Host` | Model host without UI (tray only): measures this PC, later runs models for a server (`docs/plan-hosts-gateway.md`) |
 | `stykker.exe` | `src/StykkerLlm.Cli` | Terminal **display** (read-only, keys only) and `status`, `web`, `stop`, `bugreport` |
@@ -35,7 +35,7 @@ dotnet build StykkerLlm.slnx -c Release        # must end with 0 warnings, 0 err
 dotnet test tests/StykkerLlm.Tests -c Release  # all green (2 tray tests skip without a desktop)
 ```
 
-- Run the server: `src/StykkerLlm.Server/bin/Release/net10.0/StykkerLLM-Server.exe --no-browser` → http://127.0.0.1:8078
+- Run the server: `src/StykkerLlm.Server/bin/Release/net10.0/StykkerLLM-Server.exe --no-browser` → http://127.0.0.1:17400
 - Run the window: `src/StykkerLlm.UI/bin/Release/net10.0/StykkerUI.exe` (starts the server if none runs)
 - Run the terminal display: `src/StykkerLlm.Cli/bin/Debug/net10.0/stykker.exe` (starts the server if none runs)
 - Look at the UI without real model servers: `StykkerLLM-Server.exe --sim --no-browser --port 8090 --data-dir <temp folder>`
@@ -67,8 +67,9 @@ dotnet test tests/StykkerLlm.Tests -c Release  # all green (2 tray tests skip wi
 | access, pairing, roles | `Core/Server/AccessControl.cs` (6-digit codes, devices, roles), `Server/AccessGate.cs` (HTTP entry) |
 | model hosts (several PCs) | `Core/Host/*.cs`, `src/StykkerLlm.Host`, page `Hosts.razor`, `docs/hosts.md` |
 | model tests (eval) | `Core/Eval/` – suites are JSON (`suite-*.json`, embedded), graders in `EvalGrader.cs`, queue in `EvalQueue.cs` |
-| prompt tester with tools | `Core/PromptHarness.cs`, `Core/PromptTools.cs`, page `PromptPage.razor` |
+| prompt tester with tools | `Core/PromptHarness.cs`, `Core/PromptTools.cs`, `Core/FolderBrowser.cs` (folder picker), page `PromptPage.razor` |
 | proxy (one URL for all models) | `Core/ProxyManager.cs`, `Core/RequestProxy.cs`, `Core/ProxyRouter.cs` |
+| cloud providers (OpenRouter …): wizard, key, model choice | `Core/ProxyManager.cs` (Anbieter, Auswahl, Modellabfrage), `Core/ProviderKeys.cs` (Schlüssel), actions `provider.*` in `Core/Server/ActionApi.cs`, wizard in `Server/Components/Pages/Monitor.razor` |
 | fake servers for tests and screenshots | `Core/Simulation/` (`SimWorld`, `SimHandler`) |
 
 Architecture notes: `docs/architecture.md`. UI rules: `docs/ui.md`. Model hosts: `docs/hosts.md`; plan and next steps (gateway): `docs/plan-hosts-gateway.md`.
@@ -91,7 +92,8 @@ Architecture notes: `docs/architecture.md`. UI rules: `docs/ui.md`. Model hosts:
 
 ## Ports and files
 
-- 8078 web/API, 17500 proxy, 17501 UDP server discovery (used by StykkerHost's pairing page).
+- 17400 web/API, 17500 proxy, 17501 UDP server discovery (used by StykkerHost's pairing page). Tailscale access: the switch
+  on the phone page (only the tailnet, not the whole network); the proxy is not opened by it.
 - Data folder: `settings.json`, `access.dat` (devices, code; DPAPI on Windows), `server.key`, `hosts.dat`, `eval-*.json`,
   `eval-results/`, recordings, logs.
 

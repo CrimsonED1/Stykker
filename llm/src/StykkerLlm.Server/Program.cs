@@ -6,7 +6,7 @@ using StykkerLlm.Platform.Windows;
 using StykkerLlm.Server;
 using StykkerLlm.Server.Components;
 
-// StykkerLLM-Server: Web-Oberfläche auf http://127.0.0.1:8078, lokal immer, aus dem Heimnetz mit dem Schalter Home/VPN
+// StykkerLLM-Server: Web-Oberfläche auf http://127.0.0.1:17400, lokal immer, aus dem Heimnetz mit dem Schalter Home/VPN
 // und dem Zugangscode. Der Server hält die Engine; Fenster, TUI und Telefon sind Clients (S3/S4/S5).
 // Ein Server je Datenordner: läuft schon einer, öffnet ein zweiter Start nur den Browser.
 if (args.Contains("--help") || args.Contains("-h"))
@@ -15,7 +15,7 @@ if (args.Contains("--help") || args.Contains("-h"))
         StykkerLLM-Server - the web interface and the engine behind it
 
           --data-dir <folder>   other data folder (default: the one of the app)
-          --port <number>       web port (default 8078; the Stykker-Proxy uses 17500)
+          --port <number>       web port (default 17400; the Stykker-Proxy uses 17500)
           --no-browser          do not open a browser on start
           --no-tray             no tray icon (the window starts the server this way: it has an icon itself)
           --stay                keep running when no window, terminal or web page is open (also a setting)
@@ -34,7 +34,7 @@ if (args.Contains("--help") || args.Contains("-h"))
 var dataDir = args.SkipWhile(a => a != "--data-dir").Skip(1).FirstOrDefault();
 var paths = dataDir != null ? new AppPaths(Path.GetFullPath(dataDir)) : AppPaths.Default();
 Directory.CreateDirectory(paths.Root);
-int port = int.TryParse(args.SkipWhile(a => a != "--port").Skip(1).FirstOrDefault(), out var pp) ? pp : 8078;
+int port = int.TryParse(args.SkipWhile(a => a != "--port").Skip(1).FirstOrDefault(), out var pp) ? pp : 17400;
 bool noBrowser = args.Contains("--no-browser");
 AppLog.Init("StykkerLLM-Server", paths);
 AppLog.CatchUnhandled();

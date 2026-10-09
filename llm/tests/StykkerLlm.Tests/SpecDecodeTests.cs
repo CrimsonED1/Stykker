@@ -86,7 +86,7 @@ public class SpecDecodeTests
         Assert.IsTrue(draft.Spec.Accepted <= draft.Spec.Drafted, "nicht mehr angenommen als entworfen");
         Assert.IsFalse(plain.SpecActive, "ohne Entwurfsmodell bleibt alles null");
 
-        var json = StateJson.WriteText(host.Engine, null, null, 8078, DateTimeOffset.Now);
+        var json = StateJson.WriteText(host.Engine, null, null, 17400, DateTimeOffset.Now);
         var state = StateSnapshot.Parse(json);
         var mitImZustand = state.Servers.First(s => s.Name == "draft");
         var ohneImZustand = state.Servers.First(s => s.Name == "normal");

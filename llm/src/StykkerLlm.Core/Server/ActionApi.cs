@@ -295,13 +295,28 @@ public static class ActionApi
                 // ── Cloud-Anbieter (Nr. 46): Opt-in je Anbieter, der Schlüssel kommt im Feld „secret" und bleibt dort ──
                 case "provider.add":
                 {
-                    e.Proxies.AddProvider(req.Get("name") ?? "", req.Get("url") ?? "", req.Secret ?? "", out var perr);
+                    e.Proxies.AddProvider(req.Get("name") ?? "", req.Get("url") ?? "", req.Secret ?? "", out var perr, req.Ids.Count > 0 ? req.Ids : null);
                     return perr == null ? Ok(Strings.ProxyProviderAdded) : ActionResult.Fail(perr);
                 }
                 case "provider.key":
                 {
                     e.Proxies.SetProviderKey(req.Arg ?? "", req.Secret ?? "", out var kerr);
                     return kerr == null ? Ok(Strings.ProxyProviderKeySet) : ActionResult.Fail(kerr);
+                }
+                case "provider.probe":
+                {
+                    // Die Modelle des Anbieters mit diesem Schlüssel (sonst dem hinterlegten), ohne etwas zu speichern
+                    var (found, probeErr) = await e.Proxies.ProbeProviderAsync(req.Arg ?? "", req.Secret, ct);
+                    if (probeErr != null) return ActionResult.Fail(probeErr);
+                    // Dazu, welche davon dieser Schlüssel nutzen darf: usable = null, wenn der Anbieter keine solche Liste hat
+                    // (oder sie nicht geholt werden konnte, dann usableFailed)
+                    var (usable, usableFailed) = await e.Proxies.UsableModelsAsync(req.Arg ?? "", req.Secret, ct);
+                    return Ok("ok", JsonSerializer.Serialize(new { models = found, enabled = e.Proxies.EnabledModelsFor(req.Arg ?? ""), usable, usableFailed }));
+                }
+                case "provider.models":
+                {
+                    e.Proxies.SetProviderModels(req.Arg ?? "", req.Ids, out var modelsErr);
+                    return modelsErr == null ? Ok(Strings.ProxyProviderModelsSaved) : ActionResult.Fail(modelsErr);
                 }
                 case "provider.remove":
                 {
@@ -509,6 +524,12 @@ public static class ActionApi
                 }
 
                 // ── Heimnetz und Geräte ──
+                case "tailscale.set":
+                {
+                    if (ctx.Access == null) return ActionResult.Fail("not available");
+                    ctx.Access.SetTailscale(req.Flag);
+                    return Ok(req.Flag ? Strings.TailscaleOn : Strings.TailscaleOff);
+                }
                 case "remote.set":
                 {
                     if (ctx.Access == null) return ActionResult.Fail("not available");

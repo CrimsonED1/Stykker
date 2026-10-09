@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
 
-  <!-- StykkerLLM-Server: der Kern (Engine, Eval-Warteschlange) mit Web-Oberfläche (Blazor Server, Port 8078) und Tray-Symbol.
+  <!-- StykkerLLM-Server: der Kern (Engine, Eval-Warteschlange) mit Web-Oberfläche (Blazor Server, Port 17400) und Tray-Symbol.
        Fenster (StykkerUI.exe, zeigt diese Weboberfläche) und TUI (stykker.exe) sind Bedienoberflächen dieses Servers. -->
   <PropertyGroup>
     <!-- net10.0 statt net10.0-windows: nur so bindet das SDK blazor.web.js ein (Tray-Symbol folgt ohne WinForms) -->

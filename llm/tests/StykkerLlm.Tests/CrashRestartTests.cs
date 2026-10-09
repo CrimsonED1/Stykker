@@ -114,7 +114,7 @@ public class CrashRestartTests
             // denselben Datenordner und damit die gerade gespeicherte Bibliothek.
             using (var host = new SimHost(new List<SimServerSpec>(), dataDir: dir, seed: 2, autoStep: false))
             {
-                var json = StateJson.WriteText(host.Engine, null, null, 8078, DateTimeOffset.Now);
+                var json = StateJson.WriteText(host.Engine, null, null, 17400, DateTimeOffset.Now);
                 StringAssert.Contains(json, "\"restartOnCrash\":true");
                 StringAssert.Contains(json, "\"maxRestarts\":0");
                 var state = StateSnapshot.Parse(json);

@@ -5,7 +5,7 @@
 ```
  StykkerUI (window)   phone / other PC (browser)   stykker (display)   coding tools
         \                    |                          |                  |
-         \------------- HTTP :8078 (web UI, /api) ------/            proxy :17500
+         \------------- HTTP :17400 (web UI, /api) ------/            proxy :17500
                               |                                            |
                      StykkerLLM-Server  ───────────────────────────────────┘
                      MonitorEngine · LaunchCoordinator · EvalQueue · BenchmarkService · NodeRegistry
