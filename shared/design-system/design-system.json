@@ -1,0 +1,423 @@
+{
+ "v": 3,
+ "layout": "files",
+ "createdOnFiles": {
+  "v": 1,
+  "at": "2026-10-07T23:40:00Z"
+ },
+ "title": "StykkerLLM",
+ "namespace": "Stykker",
+ "libraries": [],
+ "sections": {},
+ "groups": [
+  "Logos",
+  "Icons"
+ ],
+ "assetGroups": {
+  "Logos": {
+   "name": "Logos",
+   "tile": "m",
+   "order": [
+    "app-icon.png"
+   ],
+   "files": {
+    "app-icon.png": {
+     "name": "app-icon.png",
+     "blob": "aafb5b46370904a17f91d9c67685b557",
+     "size": 659,
+     "type": "image/png"
+    }
+   }
+  },
+  "Icons": {
+   "name": "Icons",
+   "tile": "xs",
+   "order": [
+    "i-vram.svg",
+    "i-ram.svg",
+    "i-cpu.svg",
+    "i-file.svg",
+    "i-port.svg",
+    "i-ctx.svg",
+    "i-peak.svg",
+    "i-avg.svg",
+    "i-sum.svg",
+    "i-draft.svg",
+    "i-users.svg",
+    "i-host.svg",
+    "i-proxy.svg",
+    "i-chat.svg",
+    "i-info.svg",
+    "i-more.svg",
+    "i-stop.svg",
+    "i-rec.svg",
+    "s-idle.svg",
+    "s-read.svg",
+    "s-gen.svg",
+    "s-load.svg",
+    "s-off.svg",
+    "r-ok.svg",
+    "r-abort.svg",
+    "r-err.svg",
+    "r-full.svg",
+    "c-cli.svg",
+    "c-editor.svg",
+    "c-web.svg",
+    "c-agent.svg",
+    "x-tool.svg",
+    "x-think.svg",
+    "b-llama.svg",
+    "b-ollama.svg",
+    "b-lms.svg",
+    "b-vllm.svg",
+    "i-layers.svg",
+    "i-timer.svg",
+    "i-restart.svg",
+    "i-play.svg",
+    "i-open.svg",
+    "i-edit.svg",
+    "i-trash.svg",
+    "i-save.svg",
+    "e-crash.svg",
+    "e-kill.svg",
+    "i-slots.svg",
+    "i-queue.svg",
+    "i-down.svg",
+    "i-eject.svg",
+    "i-lock.svg",
+    "i-x.svg"
+   ],
+   "files": {
+    "i-vram.svg": {
+     "name": "i-vram.svg",
+     "blob": "2622f0dfb958a68e61832de555d42ef0",
+     "size": 311,
+     "type": "image/svg+xml"
+    },
+    "i-ram.svg": {
+     "name": "i-ram.svg",
+     "blob": "3b053750523d290b20ffeb1059239dbf",
+     "size": 321,
+     "type": "image/svg+xml"
+    },
+    "i-cpu.svg": {
+     "name": "i-cpu.svg",
+     "blob": "49a5f095357355e71ce7c1bd2d2e424f",
+     "size": 349,
+     "type": "image/svg+xml"
+    },
+    "i-file.svg": {
+     "name": "i-file.svg",
+     "blob": "d217a9ba464b0fb100786aa0979362c7",
+     "size": 283,
+     "type": "image/svg+xml"
+    },
+    "i-port.svg": {
+     "name": "i-port.svg",
+     "blob": "318e95660e6112bd5565d10e7fb744dd",
+     "size": 254,
+     "type": "image/svg+xml"
+    },
+    "i-ctx.svg": {
+     "name": "i-ctx.svg",
+     "blob": "0d768da9e707dc2c92764885b1bc02f6",
+     "size": 241,
+     "type": "image/svg+xml"
+    },
+    "i-peak.svg": {
+     "name": "i-peak.svg",
+     "blob": "15fc5e89cfbc32fc3e14863cb14ac525",
+     "size": 250,
+     "type": "image/svg+xml"
+    },
+    "i-avg.svg": {
+     "name": "i-avg.svg",
+     "blob": "827e3b1048af237f2f522bf465950bfa",
+     "size": 278,
+     "type": "image/svg+xml"
+    },
+    "i-sum.svg": {
+     "name": "i-sum.svg",
+     "blob": "4891f89abb7b9b7e03b2eae2595ab7cf",
+     "size": 218,
+     "type": "image/svg+xml"
+    },
+    "i-draft.svg": {
+     "name": "i-draft.svg",
+     "blob": "cb40836d3cf3d413a1c8cee52ffc0d50",
+     "size": 229,
+     "type": "image/svg+xml"
+    },
+    "i-users.svg": {
+     "name": "i-users.svg",
+     "blob": "f1a96ae45a755fee02d4d255eeb77581",
+     "size": 341,
+     "type": "image/svg+xml"
+    },
+    "i-host.svg": {
+     "name": "i-host.svg",
+     "blob": "19bdab9fb6c9ef8c69f2f1a8efe20253",
+     "size": 266,
+     "type": "image/svg+xml"
+    },
+    "i-proxy.svg": {
+     "name": "i-proxy.svg",
+     "blob": "5403db4f09381115d7f53c873acdb0c8",
+     "size": 255,
+     "type": "image/svg+xml"
+    },
+    "i-chat.svg": {
+     "name": "i-chat.svg",
+     "blob": "1dba0126b8f20584b962d46c1039bf7a",
+     "size": 230,
+     "type": "image/svg+xml"
+    },
+    "i-info.svg": {
+     "name": "i-info.svg",
+     "blob": "a84bce2263f5c073e15ad11a119e6e60",
+     "size": 250,
+     "type": "image/svg+xml"
+    },
+    "i-more.svg": {
+     "name": "i-more.svg",
+     "blob": "c9cb0342c2d02e97dc8017b739442c56",
+     "size": 246,
+     "type": "image/svg+xml"
+    },
+    "i-stop.svg": {
+     "name": "i-stop.svg",
+     "blob": "77939f663b61f5cdc2c79c5de4c0f29e",
+     "size": 235,
+     "type": "image/svg+xml"
+    },
+    "i-rec.svg": {
+     "name": "i-rec.svg",
+     "blob": "7cbd7c1391bbf5ed63b1b733bbb6f167",
+     "size": 249,
+     "type": "image/svg+xml"
+    },
+    "s-idle.svg": {
+     "name": "s-idle.svg",
+     "blob": "fa6699a851a69747d64b476b51110f85",
+     "size": 244,
+     "type": "image/svg+xml"
+    },
+    "s-read.svg": {
+     "name": "s-read.svg",
+     "blob": "43235536fb04ae84f0d11f7e583aa6ed",
+     "size": 291,
+     "type": "image/svg+xml"
+    },
+    "s-gen.svg": {
+     "name": "s-gen.svg",
+     "blob": "f13d4d1092d322a2db54c41fc16f7e5a",
+     "size": 245,
+     "type": "image/svg+xml"
+    },
+    "s-load.svg": {
+     "name": "s-load.svg",
+     "blob": "389a540d0d8cb0516a544715b0074326",
+     "size": 240,
+     "type": "image/svg+xml"
+    },
+    "s-off.svg": {
+     "name": "s-off.svg",
+     "blob": "557dc20692ebaffc74ee5aabcfc9f7eb",
+     "size": 243,
+     "type": "image/svg+xml"
+    },
+    "r-ok.svg": {
+     "name": "r-ok.svg",
+     "blob": "6f6ffecf13c792c05a4e9a00fcbd76c9",
+     "size": 250,
+     "type": "image/svg+xml"
+    },
+    "r-abort.svg": {
+     "name": "r-abort.svg",
+     "blob": "6c302fc4e51ef09898cdaa2de65f1051",
+     "size": 258,
+     "type": "image/svg+xml"
+    },
+    "r-err.svg": {
+     "name": "r-err.svg",
+     "blob": "4c53edf6766ccc810c4f2da6f8fe03cc",
+     "size": 248,
+     "type": "image/svg+xml"
+    },
+    "r-full.svg": {
+     "name": "r-full.svg",
+     "blob": "5a948fd5bd6d75441b6c7507d76fe8d5",
+     "size": 281,
+     "type": "image/svg+xml"
+    },
+    "c-cli.svg": {
+     "name": "c-cli.svg",
+     "blob": "832d416dfc1f5ca69b7d7f4307713781",
+     "size": 288,
+     "type": "image/svg+xml"
+    },
+    "c-editor.svg": {
+     "name": "c-editor.svg",
+     "blob": "46dd43acb88328a4015f7f397feac084",
+     "size": 249,
+     "type": "image/svg+xml"
+    },
+    "c-web.svg": {
+     "name": "c-web.svg",
+     "blob": "ff2ff060ee260fdb43539e0cc0c1b41a",
+     "size": 305,
+     "type": "image/svg+xml"
+    },
+    "c-agent.svg": {
+     "name": "c-agent.svg",
+     "blob": "be7a31348f79f6b36e1645e62d2a1923",
+     "size": 305,
+     "type": "image/svg+xml"
+    },
+    "x-tool.svg": {
+     "name": "x-tool.svg",
+     "blob": "13ac07210194521f9a4ee1f9f2fe07da",
+     "size": 285,
+     "type": "image/svg+xml"
+    },
+    "x-think.svg": {
+     "name": "x-think.svg",
+     "blob": "e8fdd797328ddca0b0f81206074f6dfd",
+     "size": 296,
+     "type": "image/svg+xml"
+    },
+    "b-llama.svg": {
+     "name": "b-llama.svg",
+     "blob": "ac9992f908d9d84d98a15364ca9a51ac",
+     "size": 273,
+     "type": "image/svg+xml"
+    },
+    "b-ollama.svg": {
+     "name": "b-ollama.svg",
+     "blob": "506220925ee12cb088d3d5112c49a3a3",
+     "size": 250,
+     "type": "image/svg+xml"
+    },
+    "b-lms.svg": {
+     "name": "b-lms.svg",
+     "blob": "b345df92398cb547537cd9caf2cf0485",
+     "size": 270,
+     "type": "image/svg+xml"
+    },
+    "b-vllm.svg": {
+     "name": "b-vllm.svg",
+     "blob": "361812830803f8663afa93117c732a4e",
+     "size": 244,
+     "type": "image/svg+xml"
+    },
+    "i-layers.svg": {
+     "name": "i-layers.svg",
+     "blob": "e26da338d413458f356d1358e8fb576d",
+     "size": 253,
+     "type": "image/svg+xml"
+    },
+    "i-timer.svg": {
+     "name": "i-timer.svg",
+     "blob": "4e4187b1969e1253b1b22226a19dd37b",
+     "size": 259,
+     "type": "image/svg+xml"
+    },
+    "i-restart.svg": {
+     "name": "i-restart.svg",
+     "blob": "3608a799281e6a672af4c8a2cfd5297e",
+     "size": 257,
+     "type": "image/svg+xml"
+    },
+    "i-play.svg": {
+     "name": "i-play.svg",
+     "blob": "0626803b7d689f13f5c74b1ff909c98f",
+     "size": 217,
+     "type": "image/svg+xml"
+    },
+    "i-open.svg": {
+     "name": "i-open.svg",
+     "blob": "b069a51c826abd27417ab14a81a03592",
+     "size": 246,
+     "type": "image/svg+xml"
+    },
+    "i-edit.svg": {
+     "name": "i-edit.svg",
+     "blob": "8d62d574cdbf59c1f05068afc85706a5",
+     "size": 225,
+     "type": "image/svg+xml"
+    },
+    "i-trash.svg": {
+     "name": "i-trash.svg",
+     "blob": "0ca1e258b89bc9bc763d5f9fe1acbfaf",
+     "size": 240,
+     "type": "image/svg+xml"
+    },
+    "i-save.svg": {
+     "name": "i-save.svg",
+     "blob": "8ae3240dcc9363200f98cde8e5ba5bd9",
+     "size": 217,
+     "type": "image/svg+xml"
+    },
+    "e-crash.svg": {
+     "name": "e-crash.svg",
+     "blob": "66fd588a8705bd016a2b98762ba2e7b2",
+     "size": 263,
+     "type": "image/svg+xml"
+    },
+    "e-kill.svg": {
+     "name": "e-kill.svg",
+     "blob": "2702569f5c55baad25f12966634e8066",
+     "size": 280,
+     "type": "image/svg+xml"
+    },
+    "i-slots.svg": {
+     "name": "i-slots.svg",
+     "blob": "e82faf5936d5ae9395b73f9bb926c7ed",
+     "size": 382,
+     "type": "image/svg+xml"
+    },
+    "i-queue.svg": {
+     "name": "i-queue.svg",
+     "blob": "a3150c72d7e55df83994a5b21a897a4f",
+     "size": 283,
+     "type": "image/svg+xml"
+    },
+    "i-down.svg": {
+     "name": "i-down.svg",
+     "blob": "7de6842b1d930507bf5eb9f1e2c3d6d8",
+     "size": 293,
+     "type": "image/svg+xml"
+    },
+    "i-eject.svg": {
+     "name": "i-eject.svg",
+     "blob": "96bb2fe1cd767352181a2417421eba8d",
+     "size": 235,
+     "type": "image/svg+xml"
+    },
+    "i-lock.svg": {
+     "name": "i-lock.svg",
+     "blob": "6a56c9d1058432dc3424717b37754664",
+     "size": 276,
+     "type": "image/svg+xml"
+    },
+    "i-x.svg": {
+     "name": "i-x.svg",
+     "blob": "2b72fed08120197f202f4a08030fe8bc",
+     "size": 216,
+     "type": "image/svg+xml"
+    }
+   }
+  }
+ },
+ "blobs": {},
+ "docs": {
+  "readme": "project/README.md",
+  "sections": []
+ },
+ "lastChange": {
+  "by": "Karsten",
+  "at": "2026-10-07T23:40:00Z",
+  "via": "GitHub · CrimsonED1/stykker-llm@166d57c",
+  "note": "Built from docs/design/mockup-7.html (Dark + Spacepunk Titan), the plan-ui-redesign and the app icon."
+ }
+}

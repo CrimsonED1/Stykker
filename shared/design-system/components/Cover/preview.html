@@ -1,0 +1,66 @@
+<!-- @dsCard height=288 -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>StykkerLLM</title>
+<style>
+  html, body { margin:0; height:100%; }
+  body { background:var(--bg); color:var(--ink); font-family:var(--font-sans); overflow:hidden; }
+  .cv-cover { position:relative; width:960px; height:288px; overflow:hidden; }
+  .cv-art { position:absolute; top:0; left:480px; width:480px; height:288px; overflow:hidden; }
+  .cv-art svg { display:block; width:480px; height:288px; }
+  .cv-acc { fill:var(--acc); }
+  .cv-lms { fill:var(--b-lms); }
+  .cv-oll { fill:var(--b-ollama); }
+  .cv-vllm { fill:var(--b-vllm); }
+  .cv-blk { rx:var(--radius); }
+  .cv-tile { fill:none; stroke:var(--muted); stroke-width:1px; rx:var(--radius-xs); }
+  .cv-fill-gen { fill:var(--st-gen); fill-opacity:.55; }
+  .cv-fill-acc { fill:var(--acc); fill-opacity:.55; }
+  .cv-words { position:absolute; left:var(--space-gutter); bottom:24px; max-width:440px; }
+  .cv-name { margin:0; font-size:72px; line-height:.95; font-weight:600; letter-spacing:-.01em; color:var(--ink); }
+  .cv-tag { margin:var(--gap) 0 0 3px; font-size:14px; line-height:20px; color:var(--muted); }
+</style>
+</head>
+<body>
+<div class="cv-cover">
+<div class="cv-art" aria-hidden="true">
+<svg viewBox="0 0 480 288" width="480" height="288">
+<!--
+  blocks      acc 150×176 slab bled off the top (the one accent, largest) · b-lms 260×128 bled off the right · b-vllm 38×104 and b-ollama 38×48 as one-tile-wide strips — the backend lacquers, ≈30% of 960×288
+  arrangement one tall accent slab with the backend colours stacked beside it, bottoms on one line at y=168; gutters 16px (space-gutter)
+  pattern     slot tiles, from the system's own SlotTile ("fill height = context, colour = state"): ten 38×64 tiles at a 43px pitch (tile + 5px gap), outlined in muted, filled from the bottom in st-gen and acc
+  scales      gutters space-gutter 16; tile 38×64 and gap 5 from SlotTile; corners radius (12 Dark / 2 Titan) on blocks, radius-xs on tiles
+-->
+<rect class="cv-acc cv-blk" x="16" y="-12" width="150" height="180" rx="12"/>
+<rect class="cv-vllm cv-blk" x="182" y="-12" width="38" height="116" rx="12"/>
+<rect class="cv-oll cv-blk" x="182" y="120" width="38" height="48" rx="12"/>
+<rect class="cv-lms cv-blk" x="236" y="40" width="260" height="128" rx="12"/>
+<rect class="cv-fill-gen" x="16" y="216" width="38" height="40"/>
+<rect class="cv-fill-gen" x="59" y="200" width="38" height="56"/>
+<rect class="cv-fill-acc" x="102" y="232" width="38" height="24"/>
+<rect class="cv-fill-gen" x="145" y="208" width="38" height="48"/>
+<rect class="cv-fill-acc" x="231" y="240" width="38" height="16"/>
+<rect class="cv-fill-gen" x="274" y="196" width="38" height="60"/>
+<rect class="cv-fill-gen" x="360" y="224" width="38" height="32"/>
+<rect class="cv-fill-acc" x="403" y="212" width="38" height="44"/>
+<rect class="cv-tile" x="16" y="192" width="38" height="64" rx="4"/>
+<rect class="cv-tile" x="59" y="192" width="38" height="64" rx="4"/>
+<rect class="cv-tile" x="102" y="192" width="38" height="64" rx="4"/>
+<rect class="cv-tile" x="145" y="192" width="38" height="64" rx="4"/>
+<rect class="cv-tile" x="188" y="192" width="38" height="64" rx="4"/>
+<rect class="cv-tile" x="231" y="192" width="38" height="64" rx="4"/>
+<rect class="cv-tile" x="274" y="192" width="38" height="64" rx="4"/>
+<rect class="cv-tile" x="317" y="192" width="38" height="64" rx="4"/>
+<rect class="cv-tile" x="360" y="192" width="38" height="64" rx="4"/>
+<rect class="cv-tile" x="403" y="192" width="38" height="64" rx="4"/>
+</svg>
+</div>
+<div class="cv-words">
+<h1 class="cv-name">StykkerLLM</h1>
+<p class="cv-tag">Local model servers on one instrument panel.</p>
+</div>
+</div>
+</body>
+</html>
