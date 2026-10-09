@@ -60,7 +60,8 @@ public static class ProcessState
     public static string Of(double cpuPercent) => cpuPercent >= 25 ? Gen : cpuPercent >= 2 ? Read : Idle;
 }
 
-public sealed record HistoryPoint(DateTime At, double Cpu, double Gpu, double Ram);
+// Ein Punkt des Verlaufs. Ohne Zeitstempel: die Kurve ist ein Sekundentakt, die Oberfläche braucht keine Uhrzeit.
+public sealed record HistoryPoint(double Cpu, double Gpu, double Ram);
 
 // Durchsatz in Byte je Sekunde: Datenträger und Netzwerk der ganzen Maschine.
 public sealed record IoRates(double DiskReadBps, double DiskWriteBps, double NetRxBps, double NetTxBps);

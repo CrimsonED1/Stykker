@@ -63,7 +63,7 @@ public sealed class MetricsSampler
                 Peak(_peaks.NetRxBps, io?.NetRxBps, Floors.NetRxBps),
                 Peak(_peaks.NetTxBps, io?.NetTxBps, Floors.NetTxBps));
 
-            _points.Add(new HistoryPoint(now, system?.CpuPercent ?? -1, gpu?.UtilPercent ?? -1,
+            _points.Add(new HistoryPoint(system?.CpuPercent ?? -1, gpu?.UtilPercent ?? -1,
                 system is { RamTotalGb: > 0 } s ? 100.0 * s.RamUsedGb / s.RamTotalGb : -1));
             while (_points.Count > _history) _points.RemoveAt(0);
 
