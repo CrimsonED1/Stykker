@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- StykkerSys.Core: die Prozessliste und ihre Aktionen. Kennt kein Betriebssystem und keine Oberfläche – die Sonde
+       (IProcessProbe) liefert die Zähler von außen herein. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>StykkerSys.Core</AssemblyName>
+    <RootNamespace>StykkerSys.Core</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\shared\src\Stykker.Shared\Stykker.Shared.csproj" />
+  </ItemGroup>
+
+</Project>

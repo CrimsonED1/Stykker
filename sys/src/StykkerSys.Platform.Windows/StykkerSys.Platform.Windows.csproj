@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Windows-Umsetzung der Prozessliste: GPU je Prozess über die Leistungsindikatoren (Stykker.Shared), Dateipfade
+       über den Prozessgriff, der Aufruf des Explorers. Core kennt diese Schicht nicht. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>StykkerSys.Platform.Windows</AssemblyName>
+    <RootNamespace>StykkerSys.Platform.Windows</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\StykkerSys.Core\StykkerSys.Core.csproj" />
+    <ProjectReference Include="..\..\..\shared\src\Stykker.Shared\Stykker.Shared.csproj" />
+  </ItemGroup>
+
+</Project>

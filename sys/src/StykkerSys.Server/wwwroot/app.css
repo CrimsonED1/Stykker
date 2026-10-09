@@ -1,0 +1,22 @@
+/* StykkerSYS — nur was das Design-System nicht hergibt: die Werkzeugzeile über der Liste, die Spaltenbreiten der
+   Prozessliste und die Zeilenmenüs. Farben, Maße, Schriften und Formen kommen ausschließlich aus tokens.css/bundle.css. */
+.sys-tools{display:flex;align-items:center;gap:8px;margin:8px 0 2px}
+.sys-tools .search{flex:1}
+.sys-note{margin:0 0 10px}
+
+/* Die Liste hat zehn Spalten: Zeichen, Name, PID, CPU, Speicher, GPU, VRAM und Threads, Zustand, CPU-Zeit, Aktionen.
+   Die Aktionen sind die zehnte Spalte; die Priorität steht als kleines Zeichen neben dem Namen, wenn sie nicht Normal ist. */
+#procs .req{grid-template-columns:20px minmax(0,1.3fr) 72px minmax(50px,1fr) 52px 52px 86px 22px 40px 26px}
+#procs .req .act{padding:0;height:20px;width:22px;justify-content:center;font-size:12px}
+#procs .req .menu>div{right:0;left:auto;min-width:240px}
+#procs .req .mdl .chipi{height:18px;padding:0 5px}
+/* Die Kopfzeile hat keine Symbole, die VRAM und Threads trennen: der Abstand kommt von hier. */
+#procs .req.head .ex>span+span{margin-left:10px;white-space:nowrap}
+
+/* Gruppenzeile: Winkel zum Aufklappen, „×N" statt Prioritätszeichen, und die Mitglieder leicht eingerückt. */
+#procs .req.grp{background:color-mix(in srgb,var(--acc) 4%,transparent)}
+#procs .req .chev{padding:0;width:18px;height:18px;min-width:18px;border:0;background:transparent;color:var(--muted);cursor:pointer;font-size:var(--t-xs);line-height:1}
+#procs .req .chev:hover{color:var(--ink);background:transparent}
+#procs .req .mdl .chipi.cnt{color:var(--acc)}
+#procs .req.child .cl{margin-left:14px}
+#procs .req.child .mdl{opacity:.9}
