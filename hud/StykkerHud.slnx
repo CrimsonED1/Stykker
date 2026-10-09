@@ -5,4 +5,7 @@
     <Project Path="src/StykkerHud.Server/StykkerHud.Server.csproj" />
     <Project Path="src/StykkerHud.UI/StykkerHud.UI.csproj" />
   </Folder>
+  <Folder Name="/shared/">
+    <Project Path="../shared/src/Stykker.Shared/Stykker.Shared.csproj" />
+  </Folder>
 </Solution>

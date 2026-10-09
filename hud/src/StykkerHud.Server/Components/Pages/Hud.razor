@@ -7,13 +7,13 @@
     <div class="brand"><span class="logo">◆</span> STYKKER <span class="acc">HUD</span></div>
     <nav>
         <a class="active" href="/">Overview</a>
+        <a href="http://127.0.0.1:8077/" title="StykkerSYS: the process list (it has to be running)">Processes</a>
     </nav>
     <div class="strip">
         <span class="stat" title="Processor load">CPU <span class="mini"><i id="t-cpu"></i></span><b id="v-cpu">–</b>%</span>
         <span class="stat" title="Memory in use">RAM <b id="v-ram">–</b> GB</span>
         <span class="stat" title="Graphics processor">GPU <span class="mini"><i id="t-gpu"></i></span><b id="v-gpu">–</b>%</span>
         <span class="stat" title="Graphics memory in use">VRAM <b id="v-vram">–</b> GB</span>
-        <span class="stat" title="Processes">Processes <b id="v-procs">–</b></span>
         <span class="stat" title="Time since the service started">Up <b id="v-uptime">–</b></span>
         <div class="seg" role="group" aria-label="Theme">
             <button type="button" data-theme-choice="dark" class="on">Dark</button>
@@ -49,34 +49,29 @@
                 </details>
             </div>
 
-            <div class="sec">Processes<span class="right mono" id="v-proc-shown">–</span></div>
-            @* Die Rückfrage vor einer Aktion steht als Leiste über der Liste; das Ergebnis kommt als Toast. *@
-            <div id="confirm"></div>
-            <div class="hud-tools">
-                <div class="search">
-                    <input id="q" placeholder="Filter processes" aria-label="Filter processes" />
+            <div class="sec">Memory</div>
+            <div class="card">
+                <div class="ctx">
+                    <div class="bar"><i id="t-ram"></i></div>
+                    <span class="num" id="v-ram-text">– / – GB</span>
                 </div>
-                <div class="seg" role="group" aria-label="Sort by">
-                    <button type="button" class="on" data-sort="cpu">CPU</button>
-                    <button type="button" data-sort="ram">Memory</button>
-                    <button type="button" data-sort="gpu">GPU</button>
-                    <button type="button" data-sort="name">Name</button>
+                <div class="ctx" style="margin-top:6px">
+                    <div class="bar"><i id="t-commit"></i></div>
+                    <span class="num" id="v-commit-text">– / – GB</span>
                 </div>
             </div>
-            <div class="reqs" id="procs">
-                <div class="req head">
-                    <span></span>
-                    <span>Name</span>
-                    <span class="hostc">PID</span>
-                    <span>CPU</span>
-                    <span class="pp">Memory</span>
-                    <span class="pp">GPU</span>
-                    <span class="ex"><span>VRAM</span><span>Threads</span></span>
-                    <span></span>
-                    <span class="ago">CPU time</span>
-                    <span></span>
+
+            @* Durchsatz als Balken: der Balken zeigt den Wert am bisher größten der Sitzung, daneben steht beides. *@
+            <div class="sec">Storage<span class="right mono">all drives</span></div>
+            <div class="card">
+                <div class="ctx">
+                    <div class="bar"><i id="t-disk-read"></i></div>
+                    <span class="num"><svg class="ic"><use href="#i-arrow-down" /></svg> <span id="v-disk-read">–</span></span>
                 </div>
-                <div id="proc-rows"></div>
+                <div class="ctx" style="margin-top:6px">
+                    <div class="bar"><i id="t-disk-write"></i></div>
+                    <span class="num"><svg class="ic"><use href="#i-arrow-up" /></svg> <span id="v-disk-write">–</span></span>
+                </div>
             </div>
         </div>
 
@@ -110,31 +105,6 @@
                 </div>
             </div>
 
-            <div class="sec">Memory</div>
-            <div class="card">
-                <div class="ctx">
-                    <div class="bar"><i id="t-ram"></i></div>
-                    <span class="num" id="v-ram-text">– / – GB</span>
-                </div>
-                <div class="ctx" style="margin-top:6px">
-                    <div class="bar"><i id="t-commit"></i></div>
-                    <span class="num" id="v-commit-text">– / – GB</span>
-                </div>
-            </div>
-
-            @* Durchsatz als Balken: der Balken zeigt den Wert am bisher größten der Sitzung, daneben steht beides. *@
-            <div class="sec">Storage<span class="right mono">all drives</span></div>
-            <div class="card">
-                <div class="ctx">
-                    <div class="bar"><i id="t-disk-read"></i></div>
-                    <span class="num"><svg class="ic"><use href="#i-arrow-down" /></svg> <span id="v-disk-read">–</span></span>
-                </div>
-                <div class="ctx" style="margin-top:6px">
-                    <div class="bar"><i id="t-disk-write"></i></div>
-                    <span class="num"><svg class="ic"><use href="#i-arrow-up" /></svg> <span id="v-disk-write">–</span></span>
-                </div>
-            </div>
-
             <div class="sec">Network<span class="right mono">all adapters</span></div>
             <div class="card">
                 <div class="ctx">
@@ -148,6 +118,4 @@
             </div>
         </div>
     </div>
-
-    <div id="toast"></div>
 </main>

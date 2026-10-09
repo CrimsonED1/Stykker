@@ -4,13 +4,12 @@
 // (auch file:///…), damit Entwurf und gebaute Fassung dieselbe Messung bekommen.
 //
 //   node tools/shot.mjs [--port 8079] [--url <adresse>] [--out docs] [--name hud] [--format jpeg|png]
-//                       [--width 1400] [--height 950]
-import { createRequire } from "node:module";
+//                       [--width 1400] [--height 950] [--wait 2.5]
+// --wait: Sekunden, die die Seite vor der Messung offen bleibt. Die Kurve braucht ein paar Dutzend Sekunden, sonst
+// zeigt sie nur den ersten Punkt.
+import { chromium } from "playwright-core";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-
-const require = createRequire("C:/_AI/llama.cpp-prism/build/tools/ui/ui-src/node_modules/");
-const { chromium } = require("playwright-core");
 
 const args = process.argv.slice(2);
 const value = (name, fallback) => {
@@ -23,15 +22,13 @@ const name = value("--name", "hud");
 const format = value("--format", "jpeg");
 const width = Number(value("--width", "1400"));
 const height = Number(value("--height", "950"));
+const wait = Number(value("--wait", "2.5")) * 1000;
 const target = value("--url", `http://127.0.0.1:${port}/`);
-const ext = format === "png" ? "png" : "jpg";
 const image = (file) => ({ path: join(out, file), type: format === "png" ? "png" : "jpeg", ...(format === "png" ? {} : { quality: 72 }) });
+const ext = format === "png" ? "png" : "jpg";
 mkdirSync(out, { recursive: true });
 
-const browser = await chromium.launch({
-    executablePath: "C:/Program Files (x86)/Google/Chrome/Application/chrome.exe",
-    headless: true,
-});
+const browser = await chromium.launch({ channel: "chrome", headless: true });
 
 try {
     const context = await browser.newContext({ viewport: { width, height }, deviceScaleFactor: 1 });
@@ -43,7 +40,7 @@ try {
     page.on("response", (r) => { if (r.status() >= 400) problems.push(`${r.status()} ${r.url()}`); });
 
     await page.goto(target, { waitUntil: "load" });
-    await page.waitForTimeout(2500);   // die erste Messung kommt per fetch bzw. der erste Takt des Entwurfs
+    await page.waitForTimeout(wait);   // die erste Messung kommt per fetch bzw. der erste Takt des Entwurfs
 
     const report = await page.evaluate(() => {
         const text = (sel) => document.querySelector(sel)?.textContent?.trim() ?? null;
@@ -67,11 +64,10 @@ try {
             }
             return [...byTop.entries()].sort((a, b) => a[0] - b[0]).map(([, count]) => count);
         };
-        const table = document.querySelector("#procs");
         const app = {
             header: {
                 cpu: text("#v-cpu"), ram: text("#v-ram"), gpu: text("#v-gpu"), vram: text("#v-vram"),
-                procs: text("#v-procs"), uptime: text("#v-uptime"), gpuName: text("#v-gpu-name"),
+                uptime: text("#v-uptime"), gpuName: text("#v-gpu-name"),
             },
             gpuCard: {
                 util: text("#v-gpu-big"), vram: text("#v-gpu-vram"), temp: text("#v-gpu-temp"),
@@ -82,8 +78,6 @@ try {
                 commit: style("#t-commit", "width"), vram: style("#t-vram", "width"),
             },
             notes: document.querySelectorAll("#notes .notice").length,
-            lampStates: [...document.querySelectorAll("#proc-rows .st")].slice(0, 6).map((el) => el.dataset.s),
-            firstRow: document.querySelector("#proc-rows .req")?.innerText.replace(/\s+/g, " ").trim() ?? null,
         };
         return {
             url: location.href,
@@ -96,7 +90,6 @@ try {
                 return id && !document.getElementById(id);
             }).length,
             cards: document.querySelectorAll(".card").length,
-            rows: document.querySelectorAll("#proc-rows .req").length,
             cores: document.querySelectorAll("#cores .ctx").length,
             // Kennzahlen-Zeilen: läuft eine Zelle über ihre Spalte hinaus, schreibt sie über die Nachbarzelle.
             metrics: [...document.querySelectorAll(".mgrid")].map((grid, i) => {
@@ -114,7 +107,7 @@ try {
             app: document.getElementById("v-cpu") ? app : null,
             spark: {
                 cpu: document.querySelector("#cpu-line")?.getAttribute("d")?.length ?? 0,
-                second: document.querySelector("#gpu-line")?.getAttribute("d")?.length ?? 0,
+                gpu: document.querySelector("#gpu-line")?.getAttribute("d")?.length ?? 0,
                 peak: text("#cpu-peak"),
             },
             colours: {
@@ -128,9 +121,7 @@ try {
                 top: box(".top"),
                 layoutColumns: style(".layout", "gridTemplateColumns"),
                 left: box(".layout > .col:first-child"),
-                rail: box(".layout > .col:last-child"),
-                table: box("#procs"),
-                tableOverflowX: table ? table.scrollWidth - table.clientWidth : null,
+                right: box(".layout > .col:last-child"),
                 pageOverflowX: document.documentElement.scrollWidth - window.innerWidth,
                 pageHeight: document.documentElement.scrollHeight,
                 chosenSegments: document.querySelectorAll(".seg button.on").length,

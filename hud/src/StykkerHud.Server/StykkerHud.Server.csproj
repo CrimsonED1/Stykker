@@ -19,6 +19,7 @@
   <ItemGroup>
     <ProjectReference Include="..\StykkerHud.Core\StykkerHud.Core.csproj" />
     <ProjectReference Include="..\StykkerHud.Platform.Windows\StykkerHud.Platform.Windows.csproj" />
+    <ProjectReference Include="..\..\..\shared\src\Stykker.Shared\Stykker.Shared.csproj" />
   </ItemGroup>
 
   <!-- Das Design-System wird nicht kopiert und nicht eingebunden: der Server liefert es zur Laufzeit unter /ds aus

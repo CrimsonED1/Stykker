@@ -1,7 +1,7 @@
-using Microsoft.Extensions.FileProviders;
+using Stykker.Shared.Web;
+using Stykker.Shared.Windows;
 using StykkerHud.Core;
 using StykkerHud.Platform.Windows;
-using StykkerHud.Server;
 using StykkerHud.Server.Components;
 
 // StykkerHUD-Server: die Messwerte dieser Maschine als Web-Oberfläche auf http://127.0.0.1:8079.
@@ -10,7 +10,7 @@ using StykkerHud.Server.Components;
 if (args.Contains("--help") || args.Contains("-h"))
 {
     Console.WriteLine("""
-        StykkerHUD-Server - processes, GPU, CPU and memory of this machine
+        StykkerHUD-Server - CPU, memory, GPU, storage and network of this machine
 
           --port <number>   web port (default 8079)
           --no-tray         no tray icon (the window starts the server this way: it has an icon itself)
@@ -36,10 +36,10 @@ bool basic = args.Contains("--basic");
 string url = $"http://127.0.0.1:{port}/";
 
 // Ein Server je Port: läuft schon einer, öffnet ein zweiter Start nur die Oberfläche.
-using var single = new Mutex(true, @"Local\StykkerHUD-server-" + port, out bool first);
+using var single = ToolHost.ClaimPort("StykkerHUD", port, out bool first);
 if (!first)
 {
-    if (!noBrowser) OpenBrowser(url);
+    if (!noBrowser) ToolHost.OpenBrowser(url);
     return;
 }
 
@@ -61,43 +61,11 @@ var app = builder.Build();
 // Die Messschleife wird hier absichtlich NICHT angefasst: sie entsteht beim ersten Abruf und liest nur, solange
 // jemand zusieht (siehe HudService). So ist der Server nach dem Start sofort da, auch wenn noch kein Fenster offen ist.
 app.UseStaticFiles();
-
-// Das Design-System der Stykker-Familie liegt außerhalb dieses Projekts. Es wird nicht kopiert, sondern unter /ds
-// aus seiner Quelle geliefert: eine Änderung dort wirkt beim nächsten Laden, und es gibt genau eine Fassung für
-// die ganze Familie. --design-system <Ordner> oder STYKKERHUD_DESIGN_SYSTEM zeigen auf eine andere Stelle.
-var designSystem = args.SkipWhile(a => a != "--design-system").Skip(1).FirstOrDefault()
-    ?? Environment.GetEnvironmentVariable("STYKKERHUD_DESIGN_SYSTEM")
-    ?? @"C:\_AI\Stykker\MonoRepo\shared\design-system";
-if (Directory.Exists(designSystem))
-{
-    app.UseStaticFiles(new StaticFileOptions
-    {
-        FileProvider = new PhysicalFileProvider(designSystem),
-        RequestPath = "/ds",
-    });
-}
-else
-{
-    Console.Error.WriteLine($"[design] not found: {designSystem} – the page will load without its styles. Use --design-system <folder>.");
-}
+DesignSystemHost.Map(app, DesignSystemHost.Resolve(args, "STYKKERHUD_DESIGN_SYSTEM"));
 
 // Die Seiten der Razor-Komponenten tragen Anti-Fälschungs-Metadaten: ohne diese Middleware antwortet "/" mit 500.
 app.UseAntiforgery();
 app.MapGet("/api/snapshot", (HudService service) => Results.Json(service.Snapshot()));
-
-// ── Prozess-Aktionen ──
-// Drei Türen, alle nur für diese Maschine und nur für die eigene Seite: der Rumpf muss JSON sein (ein fremdes
-// Formular kann das ohne CORS-Prüfung nicht senden) und die Herkunft muss die eigene sein. Zusätzlich bleiben
-// System-PIDs und dieser Server selbst gesperrt (siehe ProcessActions).
-app.MapPost("/api/process/end", (HttpContext ctx, ProcessEndRequest body) => Guarded(ctx, () => ProcessActions.End(body.Pid, body.Tree)));
-app.MapPost("/api/process/priority", (HttpContext ctx, ProcessPriorityRequest body) => Guarded(ctx, () => ProcessActions.SetPriority(body.Pid, body.Level ?? "")));
-app.MapPost("/api/process/open", (HttpContext ctx, ProcessOpenRequest body) => Guarded(ctx, () =>
-{
-    string? path = ProcessActions.ExecutablePath(body.Pid);
-    if (path == null) return new ActionResult(false, $"Windows gave no file path for PID {body.Pid} (protected process).");
-    if (!OperatingSystem.IsWindows()) return new ActionResult(false, "Opening a folder is a Windows-only helper.");
-    return Shell.RevealFile(path) ? new ActionResult(true, $"Shown in the Explorer: {path}") : new ActionResult(false, "The Explorer did not take the request.");
-}));
 
 app.MapRazorComponents<App>();
 
@@ -109,10 +77,10 @@ catch (IOException ex)
     Environment.ExitCode = 1;
     return;
 }
-if (!noBrowser) OpenBrowser(url);
+if (!noBrowser) ToolHost.OpenBrowser(url);
 
-// Tray-Symbol: ohne Fenster wäre der Server sonst nur über die Prozessliste erreichbar. Fehler sind kein Grund
-// für einen Abbruch – dann läuft er eben ohne Symbol.
+// Tray-Symbol: ohne Fenster wäre der Server sonst nur über seine Adresse zu finden. Fehler sind kein Grund für
+// einen Abbruch – dann läuft er eben ohne Symbol.
 TrayIcon? tray = null;
 if (OperatingSystem.IsWindows() && !args.Contains("--no-tray") && TrayIcon.Possible)
 {
@@ -124,16 +92,15 @@ if (OperatingSystem.IsWindows() && !args.Contains("--no-tray") && TrayIcon.Possi
         },
         id =>
         {
-            if (id == 1) OpenBrowser(url);
+            if (id == 1) ToolHost.OpenBrowser(url);
             else if (id == 2) app.Services.GetRequiredService<IHostApplicationLifetime>().StopApplication();
         },
-        () => OpenBrowser(url));
+        () => ToolHost.OpenBrowser(url));
     if (!tray.TryShow($"StykkerHUD – {url}", out var trayError)) Console.Error.WriteLine($"[tray] {trayError}");
 }
 
 await app.WaitForShutdownAsync();
 if (tray != null && OperatingSystem.IsWindows()) tray.Dispose();
-// Den Messdienst gibt es nur, wenn ihn jemand angefordert hat; er endet mit dem Prozess.
 
 // Die Windows-Sonde nur auf Windows; sonst (oder mit --basic) antwortet die Anzeige überall „–".
 static ISystemProbe CreateProbe(bool basic)
@@ -142,31 +109,3 @@ static ISystemProbe CreateProbe(bool basic)
     if (!OperatingSystem.IsWindows()) return new BasicProbe();
     return new WindowsProbe();
 }
-
-// Nur die eigene Seite darf handeln: ein POST von einer fremden Seite trägt einen anderen Origin und fällt hier
-// raus. Fehlt beides (kein Browser, z. B. curl), bleibt der JSON-Zwang als Schutz.
-static bool SameOrigin(HttpContext ctx)
-{
-    string origin = ctx.Request.Headers.Origin.ToString();
-    if (!string.IsNullOrEmpty(origin)) return origin == $"{ctx.Request.Scheme}://{ctx.Request.Host}";
-    string site = ctx.Request.Headers["Sec-Fetch-Site"].ToString();
-    return site.Length == 0 || site == "same-origin";
-}
-
-static IResult Guarded(HttpContext ctx, Func<ActionResult> action)
-{
-    if (!SameOrigin(ctx))
-        return Results.Json(new ActionResult(false, "Refused: that request did not come from this page."), statusCode: StatusCodes.Status403Forbidden);
-    var result = action();
-    return Results.Json(result, statusCode: result.Ok ? StatusCodes.Status200OK : StatusCodes.Status409Conflict);
-}
-
-static void OpenBrowser(string target)
-{
-    try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(target) { UseShellExecute = true }); }
-    catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or PlatformNotSupportedException) { }
-}
-
-internal sealed record ProcessEndRequest(int Pid, bool Tree);
-internal sealed record ProcessPriorityRequest(int Pid, string? Level);
-internal sealed record ProcessOpenRequest(int Pid);
