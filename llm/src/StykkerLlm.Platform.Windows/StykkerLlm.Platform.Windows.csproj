@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Windows-Umsetzung von IPlatform (TCP-Tabellen, PEB, PDH, NVML, Systemwerte). Ohne UI; Core kennt diese Schicht nicht. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>StykkerLlm.Platform.Windows</AssemblyName>
+    <RootNamespace>StykkerLlm.Platform.Windows</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../StykkerLlm.Core/StykkerLlm.Core.csproj" />
+  </ItemGroup>
+
+</Project>

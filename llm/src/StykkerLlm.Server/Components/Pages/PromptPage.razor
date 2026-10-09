@@ -1,0 +1,191 @@
+@page "/prompt"
+@rendermode InteractiveServer
+@inject EngineHost Host
+@inject ViewerSession Viewer
+@implements IDisposable
+
+@* Mini-Harness: ein geladenes Modell direkt anprompten (Knopf „Prompt“ an der Serverkarte). Das Gespräch gehört
+   dieser Browser-Sitzung; der Server merkt sich nichts davon. *@
+<h2>@Strings.PromptTitle</h2>
+<p class="muted small">@Strings.PromptHint</p>
+
+@if (!Viewer.Known)
+{
+    <p class="muted small">@Strings.RemoteCheckRole</p>
+}
+else if (!Viewer.CanWrite)
+{
+    <div class="card"><p class="muted small">@Strings.ViewerOnly</p></div>
+}
+else
+{
+    <div class="grid2">
+        <div class="card">
+            <div class="chat">
+                @foreach (var t in _session.Turns)
+                {
+                    if (t.Role == "tool")
+                    {
+                        <div class="turn tool"><div class="msg tool-out">@Cut(t.Content)</div></div>
+                    }
+                    else if (t.ToolCalls is { Count: > 0 } calls)
+                    {
+                        <div class="turn assistant">
+                            @if (t.Content.Length > 0) { <div class="msg">@t.Content</div> }
+                            @foreach (var c in calls) { <div class="msg tool-call">⚙ @c.Summary</div> }
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="turn @t.Role"><div class="who">@(t.Role == "user" ? Strings.PromptYou : Strings.PromptModelSays)</div><div class="msg">@t.Content</div></div>
+                    }
+                }
+                @if (_session.Waiting is { } w)
+                {
+                    <div class="approve">
+                        <div class="small"><b>@Strings.ToolApproveTitle</b></div>
+                        <div class="msg tool-call">⚙ @w.Summary</div>
+                        <pre class="small">@w.Arguments</pre>
+                        <button class="good" @onclick="() => Answer(true)">@Strings.BtnAllow</button>
+                        <button class="bad" @onclick="() => Answer(false)">@Strings.BtnRefuse</button>
+                    </div>
+                }
+                @if (_session.Busy && _session.Waiting == null)
+                {
+                    <div class="turn assistant">
+                        <div class="who">@Strings.PromptModelSays …</div>
+                        @if (_session.LiveReasoning.Length > 0) { <div class="msg think">@_session.LiveReasoning</div> }
+                        <div class="msg">@_session.LiveText</div>
+                    </div>
+                }
+                else if (_session.Last is { } last)
+                {
+                    @if (last.Reasoning.Trim().Length > 0)
+                    {
+                        <details class="small"><summary class="muted">@Strings.PromptThinking</summary><div class="msg think">@last.Reasoning</div></details>
+                    }
+                    <p class="small @(last.Ok ? "muted" : "warn")">@(last.Ok ? PromptHarness.Stats(last) : last.Error)</p>
+                }
+            </div>
+            <textarea class="prompt-in" rows="3" @bind="_input" @bind:event="oninput" @onkeydown="Key" placeholder="@Strings.PromptInput"></textarea>
+            <div class="row" style="margin-top:8px">
+                @if (_session.Busy)
+                {
+                    <button class="bad" @onclick="Stop">@Strings.BtnStopAnswer</button>
+                }
+                else
+                {
+                    <button class="good" disabled="@(Server == null || _input.Trim().Length == 0)" @onclick="Send">@Strings.BtnSend</button>
+                }
+                <button disabled="@_session.Busy" @onclick="Clear">@Strings.BtnClear</button>
+            </div>
+        </div>
+
+        <div class="card opts">
+            <label>@Strings.ColServer</label>
+            <select @bind="ServerKey">
+                @foreach (var s in Servers) { <option value="@s.Key">@s.Name · @s.Url.Replace("http://", "")</option> }
+            </select>
+            @if (Servers.Count == 0) { <p class="small warn">@Strings.PromptNoServer</p> }
+            <label>@Strings.PromptModel</label>
+            <input @bind="_session.Options.Model" />
+            <label>@Strings.PromptSystem</label>
+            <textarea rows="4" @bind="_session.Options.System"></textarea>
+            <div class="row">
+                <label style="margin:0">@Strings.PromptTemperature</label><input type="number" step="0.1" min="0" max="2" style="width:80px" @bind="_session.Options.Temperature" />
+                <label style="margin:0">@Strings.PromptMaxTokens</label><input type="number" min="1" max="32768" style="width:90px" @bind="_session.Options.MaxTokens" />
+            </div>
+            <label>@Strings.PromptApiKey</label>
+            <input type="password" autocomplete="off" @bind="_session.Options.ApiKey" />
+            <label style="color:var(--ink);margin-top:14px"><input type="checkbox" @bind="_tools" /> @Strings.PromptToolsOn</label>
+            @if (_tools)
+            {
+                <label>@Strings.PromptWorkdir</label>
+                <input @bind="_workdir" placeholder="C:\…" />
+                <label style="color:var(--ink)"><input type="checkbox" @bind="_session.Options.AutoApprove" /> @Strings.PromptAutoApprove</label>
+                <p class="muted small">@Strings.PromptToolsHint</p>
+                @if (_toolMsg.Length > 0) { <p class="small warn">@_toolMsg</p> }
+            }
+        </div>
+    </div>
+}
+
+@code {
+    [SupplyParameterFromQuery(Name = "server")] public string? Initial { get; set; }
+
+    // Eine Verbindung für alle Seiten: lange Antworten dürfen dauern, gestoppt wird über den Knopf
+    private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromMinutes(10) };
+
+    private readonly PromptSession _session = new();
+    private string _input = "", _serverKey = "";
+    private CancellationTokenSource? _cts;
+    private DateTime _lastPaint;
+    private bool _tools;
+    private string _workdir = "", _toolMsg = "";
+    private TaskCompletionSource<bool>? _approval;
+
+    private static string Cut(string s) => s.Length <= 600 ? s : s[..600] + " …";
+
+    // Freigabe eines Werkzeugaufrufs: die Schleife wartet, bis hier geklickt wird
+    private Task<bool> AskAsync(ToolCall call)
+    {
+        _approval = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _ = InvokeAsync(StateHasChanged);
+        return _approval.Task;
+    }
+
+    private void Answer(bool ok) { _approval?.TrySetResult(ok); _approval = null; }
+
+    private List<ServerWatcher> Servers => Host.Engine.Registry.Servers.Where(s => s.Online).ToList();
+    private ServerWatcher? Server => Servers.FirstOrDefault(s => s.Key == _serverKey) ?? Servers.FirstOrDefault();
+
+    // Server wechseln heißt: sein Modell eintragen und neu anfangen (ein Gespräch mit zwei Modellen ergibt nichts)
+    private string ServerKey
+    {
+        get => Server?.Key ?? "";
+        set { _serverKey = value; _session.Clear(); _session.Options.Model = Server is { } s ? PromptHarness.ModelFor(s) : ""; }
+    }
+
+    protected override void OnInitialized()
+    {
+        _serverKey = Initial ?? "";
+        if (Server is { } s) _session.Options.Model = PromptHarness.ModelFor(s);
+    }
+
+    private async Task Key(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && e.CtrlKey && !_session.Busy) await Send();
+    }
+
+    private async Task Send()
+    {
+        if (Server is not { } s || _input.Trim().Length == 0 || _session.Busy) return;
+        _toolMsg = "";
+        if (_tools)
+        {
+            if (!Directory.Exists(_workdir.Trim())) { _toolMsg = Strings.PromptNoWorkdir; return; }
+            if (_session.Options.Tools?.Root.TrimEnd('\\') != Path.GetFullPath(_workdir.Trim()).TrimEnd('\\')) _session.Options.Tools = new PromptTools(_workdir.Trim());
+        }
+        else _session.Options.Tools = null;
+        var text = _input.Trim();
+        _input = "";
+        _cts = new CancellationTokenSource();
+        var task = _session.SendAsync(Http, s.Url, text, () =>
+        {
+            // höchstens zehnmal je Sekunde neu zeichnen, sonst kommt die Leitung zum Browser nicht nach
+            if ((DateTime.Now - _lastPaint).TotalMilliseconds < 100) return;
+            _lastPaint = DateTime.Now;
+            _ = InvokeAsync(StateHasChanged);
+        }, _cts.Token, AskAsync);
+        StateHasChanged();
+        await task;
+        _cts.Dispose();
+        _cts = null;
+    }
+
+    private void Stop() { _approval?.TrySetResult(false); _cts?.Cancel(); }
+
+    private void Clear() { if (!_session.Busy) _session.Clear(); }
+
+    public void Dispose() { _approval?.TrySetResult(false); _cts?.Cancel(); }
+}

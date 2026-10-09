@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Terminal-Oberfläche (CLI "stykker"): Einzelbefehle und später das Dashboard. Nutzt Core wie die GUIs, kein zweiter Kern.
+       net10.0 (nicht -windows): läuft auch unter Linux; die Windows-Plattform wird nur unter Windows benutzt. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>stykker</AssemblyName>
+    <RootNamespace>StykkerLlm.Cli</RootNamespace>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <ServerGarbageCollection>false</ServerGarbageCollection>
+    <ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>
+    <TieredPGO>true</TieredPGO>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="StykkerLlm.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../StykkerLlm.Core/StykkerLlm.Core.csproj" />
+    <ProjectReference Include="../StykkerLlm.Platform.Windows/StykkerLlm.Platform.Windows.csproj" />
+  </ItemGroup>
+
+</Project>

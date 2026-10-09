@@ -1,0 +1,966 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>StykkerLLM Monitor v3</title>
+<style>
+/* ── Themes: same colors as ThemeCatalog.cs; only a subset is needed for the mockup ── */
+/* v3: two themes only. Dark = former Space Glass (strongest glow), Light = new. Backend, state and speed colours per theme. */
+:root,[data-theme=dark]{color-scheme:dark;--bg:#060916;--bg-top:#0e1430;--card:#111a33;--card-2:#0e0f26;--border:#4fe3ff40;--line:#24325a;--track:#ffffff1c;
+  --ink:#e8eeff;--muted:#8292b8;--acc:#4fe3ff;--second:#a77bff;--good:#6cffb0;--warn:#ffc857;--bad:#ff5c7a;--radius:12px;--glow:1.25;--sheen:.08;
+  --b-llama:#4fe3ff;--b-ollama:#b18cff;--b-lms:#ffb35c;--b-vllm:#ff6fb5;
+  --st-idle:#8292b8;--st-read:#ffc857;--st-gen:#6cffb0;--st-load:#7ab8ff;--st-off:#ff5c7a;
+  --sp-1:#ff7a6b;--sp-2:#ffc857;--sp-3:#6cffb0;--sp-4:#4fe3ff;--shadow:0 0 0 transparent}
+[data-theme=light]{color-scheme:light;--bg:#eef1f6;--bg-top:#f6f8fb;--card:#ffffff;--card-2:#f6f8fb;--border:#d6dde8;--line:#e2e7ef;--track:#1b2a4414;
+  --ink:#172030;--muted:#566275;--acc:#0a6bbd;--second:#6a4bd1;--good:#11744b;--warn:#955700;--bad:#bd2a40;--radius:10px;--glow:.6;--sheen:0;
+  --b-llama:#0a6bbd;--b-ollama:#7444d0;--b-lms:#a35500;--b-vllm:#b02f74;
+  --st-idle:#566275;--st-read:#955700;--st-gen:#11744b;--st-load:#2a5fc4;--st-off:#bd2a40;
+  --sp-1:#bd2a40;--sp-2:#955700;--sp-3:#11744b;--sp-4:#0a6bbd;--shadow:0 1px 2px rgb(20 30 50/.05),0 6px 18px rgb(20 30 50/.06)}
+:root{--gk:1;--g:calc(var(--glow)*var(--gk))}
+/* soft colour cross-fade on theme switch: registered colour properties can transition */
+@property --bg{syntax:'<color>';inherits:true;initial-value:#05070d}
+@property --bg-top{syntax:'<color>';inherits:true;initial-value:#070b15}
+@property --card{syntax:'<color>';inherits:true;initial-value:#0c1320}
+@property --card-2{syntax:'<color>';inherits:true;initial-value:#0a0f19}
+@property --border{syntax:'<color>';inherits:true;initial-value:#223350}
+@property --line{syntax:'<color>';inherits:true;initial-value:#1b2b40}
+@property --ink{syntax:'<color>';inherits:true;initial-value:#dce9fa}
+@property --muted{syntax:'<color>';inherits:true;initial-value:#6f86a6}
+@property --acc{syntax:'<color>';inherits:true;initial-value:#6cb8ff}
+@property --second{syntax:'<color>';inherits:true;initial-value:#7c9cd6}
+@property --good{syntax:'<color>';inherits:true;initial-value:#6ce8c0}
+@property --glow{syntax:'<number>';inherits:true;initial-value:.9}
+html{transition:--bg .6s,--bg-top .6s,--card .6s,--card-2 .6s,--border .6s,--line .6s,--ink .6s,--muted .6s,--acc .6s,--second .6s,--good .6s,--glow .6s}
+
+:root{color-scheme:dark;
+  /* [1] type scale: five steps instead of ad-hoc 11/12/13/14/15/16/34px */
+  --t-xs:11px;--t-sm:12px;--t-md:13px;--t-lg:15px;--t-xl:26px;
+  --mono:"Cascadia Mono","Cascadia Code",Consolas,ui-monospace,monospace;
+  --sans:"Segoe UI Variable Text","Segoe UI",system-ui,sans-serif;
+  --gap:12px}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:linear-gradient(180deg,var(--bg-top),var(--bg) 900px) fixed,var(--bg);color:var(--ink);font:var(--t-md)/1.45 var(--sans);
+  font-variant-numeric:tabular-nums}   /* [1] tabular digits everywhere: columns stop jittering on each tick */
+a{color:var(--acc);text-decoration:none}a:hover{text-decoration:underline}
+.mono{font-family:var(--mono)}
+.muted{color:var(--muted)}
+.glow{text-shadow:0 0 10px color-mix(in srgb,var(--acc) calc(var(--g)*70%),transparent)}
+
+/* ── header ── */
+.top{position:sticky;top:0;z-index:10;display:flex;align-items:center;gap:10px 18px;flex-wrap:wrap;padding:8px 16px;
+  background:color-mix(in srgb,var(--bg) 96%,transparent);border-bottom:1px solid var(--line)}
+.brand{font-weight:600;letter-spacing:.06em;white-space:nowrap}.brand .acc{color:var(--acc)}
+.brand .logo{color:var(--acc);text-shadow:0 0 8px color-mix(in srgb,var(--acc) calc(var(--g)*100%),transparent)}
+nav{display:flex;gap:2px}
+nav a{padding:5px 10px;border-radius:6px;color:var(--muted);font-size:var(--t-md);position:relative}
+nav a:hover{color:var(--ink);background:color-mix(in srgb,var(--ink) 5%,transparent);text-decoration:none}
+nav a.active{color:var(--ink)}
+nav a.active::after{content:"";position:absolute;left:10px;right:10px;bottom:-9px;height:2px;border-radius:2px;background:var(--acc);
+  box-shadow:0 0 8px color-mix(in srgb,var(--acc) calc(var(--g)*100%),transparent)}
+.strip{display:flex;align-items:center;gap:6px;margin-left:auto;flex-wrap:wrap}
+.stat{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 9px;border:1px solid var(--line);border-radius:6px;font-size:var(--t-sm);color:var(--muted);white-space:nowrap;background:color-mix(in srgb,var(--ink) 2%,transparent)}
+.stat b{color:var(--ink);font-weight:600;font-family:var(--mono);font-size:var(--t-sm)}
+.stat .mini{width:42px;height:4px;border-radius:2px;background:var(--track);overflow:hidden}.stat .mini i{display:block;height:100%;background:var(--acc)}
+.stat.on{border-color:color-mix(in srgb,var(--good) 45%,transparent);color:var(--good)}
+.kbd{font:var(--t-xs) var(--mono);padding:1px 5px;border:1px solid var(--line);border-bottom-width:2px;border-radius:4px;color:var(--muted)}
+
+/* ── buttons: [5] three clear levels, square-ish so they never look like status badges ── */
+button,.btn{font:inherit;font-size:var(--t-sm);height:28px;padding:0 11px;border-radius:6px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;
+  color:var(--ink);background:color-mix(in srgb,var(--ink) 4%,transparent);border:1px solid var(--line);transition:background .12s,border-color .12s}
+button:hover,.btn:hover{background:color-mix(in srgb,var(--ink) 9%,transparent);border-color:color-mix(in srgb,var(--line) 50%,var(--muted));text-decoration:none}
+button.primary{background:color-mix(in srgb,var(--acc) 16%,transparent);border-color:color-mix(in srgb,var(--acc) 55%,transparent);color:var(--ink)}
+button.primary:hover{background:color-mix(in srgb,var(--acc) 26%,transparent)}
+button.danger{color:var(--bad);border-color:color-mix(in srgb,var(--bad) 35%,transparent);background:transparent}
+button.danger:hover{background:color-mix(in srgb,var(--bad) 12%,transparent)}
+button.quiet{background:transparent;border-color:transparent;color:var(--muted)}button.quiet:hover{color:var(--ink);background:color-mix(in srgb,var(--ink) 6%,transparent)}
+button.sq{width:28px;padding:0;justify-content:center}
+button[aria-busy=true]{opacity:.7;cursor:progress}
+:focus-visible{outline:2px solid var(--acc);outline-offset:2px}   /* [11] one visible focus ring for everything */
+
+/* status badges: dot + text, no border-radius 999 so they read as state, not as a button */
+.badge{display:inline-flex;align-items:center;gap:5px;font-size:var(--t-xs);padding:1px 7px;border-radius:4px;background:color-mix(in srgb,var(--ink) 5%,transparent);color:var(--muted);white-space:nowrap;letter-spacing:.02em}
+.badge::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+.badge.good{color:var(--good);background:color-mix(in srgb,var(--good) 10%,transparent)}
+.badge.acc{color:var(--acc);background:color-mix(in srgb,var(--acc) 10%,transparent)}
+.badge.warn{color:var(--warn);background:color-mix(in srgb,var(--warn) 10%,transparent)}
+.badge.bad{color:var(--bad);background:color-mix(in srgb,var(--bad) 10%,transparent)}
+.badge.plain::before{display:none}
+.tag{font:var(--t-xs) var(--mono);padding:1px 6px;border:1px solid var(--line);border-radius:4px;color:var(--muted)}
+
+/* ── layout ── */
+main{max-width:1360px;margin:0 auto;padding:14px 16px 40px}
+.layout{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:var(--gap);align-items:start}
+@media(max-width:1020px){.layout{grid-template-columns:minmax(0,1fr)}}
+.col{display:flex;flex-direction:column;gap:var(--gap);min-width:0}
+.sec{display:flex;align-items:center;gap:8px;margin:6px 2px -2px;font-size:var(--t-xs);letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}
+.sec .n{font-family:var(--mono);color:var(--ink)}
+.sec::after{content:"";flex:1;height:1px;background:var(--line)}
+.sec .right{order:3;text-transform:none;letter-spacing:0}
+
+/* [2] card: one flat surface, one border, sheen at the top; no rise animation, no hover lift */
+.card{background:linear-gradient(180deg,rgb(255 255 255/var(--sheen)),transparent 40px),linear-gradient(180deg,var(--card),var(--card-2));
+  border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px;min-width:0}
+.card.busy{border-color:color-mix(in srgb,var(--good) 45%,var(--border))}
+.card.busy .hd .dot{box-shadow:0 0 0 3px color-mix(in srgb,var(--good) 20%,transparent)}
+.card h2{font-size:var(--t-lg);font-weight:600;margin:0;display:flex;align-items:baseline;gap:8px}
+.card h2 small{font-weight:400;font-size:var(--t-sm);color:var(--muted)}
+
+/* notice line */
+.notice{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:8px 12px;border:1px solid color-mix(in srgb,var(--warn) 40%,transparent);
+  border-left-width:3px;border-radius:var(--radius);background:color-mix(in srgb,var(--warn) 6%,var(--card));font-size:var(--t-md)}
+.notice .txt{flex:1 1 300px;min-width:0}
+.notice .acts{display:flex;gap:6px;margin-left:auto}
+
+/* ── server card ── */
+.hd{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--good);flex:none}
+.dot.off{background:var(--warn)}
+.name{font-size:var(--t-lg);font-weight:600}
+.sub{font:var(--t-sm) var(--mono);color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:0 1 auto}
+.tps{margin-left:auto;display:flex;align-items:baseline;gap:5px}
+.tps b{font:600 var(--t-xl)/1 var(--mono);color:color-mix(in srgb,var(--ink) 88%,white);
+  text-shadow:0 0 4px color-mix(in srgb,var(--acc) calc(var(--g)*90%),transparent),0 0 14px color-mix(in srgb,var(--acc) calc(var(--g)*55%),transparent)}
+.tps span{font-size:var(--t-sm);color:var(--muted)}
+.card.idle .tps b{color:var(--muted);text-shadow:none}
+.acts{display:flex;gap:6px;flex-wrap:wrap}
+.toolbar{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:8px}
+.toolbar .clients{font-size:var(--t-sm);color:var(--muted);margin-right:auto}
+
+/* [3] key figures as a labelled grid instead of a sentence + chips */
+.figs{display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:1px;margin:10px 0 8px;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--line)}
+.figs div{background:var(--card-2);padding:5px 9px;min-width:0}
+.figs dt{font-size:var(--t-xs);color:var(--muted);letter-spacing:.04em;text-transform:uppercase;white-space:nowrap}
+.figs dd{margin:0;font:var(--t-md) var(--mono);color:var(--ink);white-space:nowrap}
+.figs dd.warn{color:var(--warn)}
+.figs dd small{color:var(--muted);font-size:var(--t-xs)}
+
+/* sparkline with scale and time axis */
+.spark{position:relative;height:64px;border-radius:6px;background:linear-gradient(180deg,color-mix(in srgb,var(--acc) 6%,transparent),transparent);border:1px solid color-mix(in srgb,var(--ink) 5%,transparent)}
+.spark svg{position:absolute;inset:0;width:100%;height:100%}
+.spark .area{fill:color-mix(in srgb,var(--acc) 14%,transparent)}
+.spark .g1{fill:none;stroke:var(--acc);stroke-width:8px;opacity:calc(.2*var(--g));vector-effect:non-scaling-stroke;stroke-linejoin:round}
+.spark .ln{fill:none;stroke:var(--acc);stroke-width:1.6px;vector-effect:non-scaling-stroke;stroke-linejoin:round}
+.spark .ref{stroke:color-mix(in srgb,var(--ink) 12%,transparent);stroke-dasharray:3 3;vector-effect:non-scaling-stroke}
+.spark .lbl{position:absolute;font:var(--t-xs) var(--mono);color:var(--muted);padding:0 4px}
+.spark .lbl.tl{left:2px;top:1px}.spark .lbl.bl{left:2px;bottom:1px}.spark .lbl.br{right:2px;bottom:1px}
+
+/* ── tables [6] ── */
+table{width:100%;border-collapse:collapse;font-size:var(--t-md)}
+th{font-size:var(--t-xs);font-weight:500;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);text-align:left;padding:5px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
+th small{text-transform:none;letter-spacing:0;opacity:.8}
+td{padding:5px 8px;border-bottom:1px solid color-mix(in srgb,var(--line) 60%,transparent);vertical-align:middle}
+tr:last-child td{border-bottom:0}
+tbody tr:hover td{background:color-mix(in srgb,var(--acc) 5%,transparent)}
+.num{text-align:right;font-family:var(--mono);white-space:nowrap}
+td.dim,.num.dim{color:var(--muted)}
+.ctx{display:flex;align-items:center;gap:8px}
+.bar{flex:1;height:6px;min-width:60px;border-radius:3px;background:var(--track);overflow:hidden}
+.bar i{display:block;height:100%;border-radius:3px;background:linear-gradient(90deg,var(--second),var(--acc));
+  box-shadow:0 0 6px color-mix(in srgb,var(--acc) calc(var(--g)*80%),transparent)}
+.bar i.hot{background:var(--bad);box-shadow:none}
+.ctx .num{font-size:var(--t-sm);min-width:92px}
+tr.idle-row td{padding:3px 8px}
+.more-row button{height:22px;font-size:var(--t-xs)}
+.slots tr.hidden{display:none}
+.tablewrap{overflow-x:auto;margin:0 -2px}
+
+/* ollama models */
+.models{display:flex;flex-direction:column;gap:4px;margin-top:8px}
+.model{display:grid;grid-template-columns:minmax(0,1fr) 70px 120px 90px;gap:10px;align-items:center;font-size:var(--t-md)}
+.model .n{font-family:var(--mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* hosts row */
+.hostrow{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.hostrow .tps b{font-size:20px}
+
+/* ── hardware rail [7] ── */
+.meters{display:grid;grid-template-columns:1fr 1fr;gap:10px 14px;margin-top:10px}
+.meter .l{display:flex;justify-content:space-between;font-size:var(--t-xs);color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.meter .v{font:var(--t-lg) var(--mono);margin:1px 0 4px}
+.meter .v small{font-size:var(--t-sm);color:var(--muted)}
+.meter .bar{height:5px}
+.meter .ok{color:var(--good)}.meter .warnc{color:var(--warn)}
+.stack{display:flex;height:10px;border-radius:3px;overflow:hidden;background:var(--track);margin:6px 0 6px}
+.stack i{display:block;height:100%;border-right:1px solid var(--card)}
+.legend{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:2px 8px;font-size:var(--t-sm)}
+.legend .sw{width:8px;height:8px;border-radius:2px;margin-top:5px}
+.legend .p{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.legend .g{font-family:var(--mono);color:var(--muted);text-align:right}
+.divider{height:1px;background:var(--line);margin:12px -14px}
+.subh{font-size:var(--t-xs);color:var(--muted);letter-spacing:.05em;text-transform:uppercase;margin-top:12px}
+
+/* saved profiles, compact list */
+.plist{display:flex;flex-direction:column}
+.prof{display:grid;grid-template-columns:10px minmax(0,1fr) auto;gap:8px;align-items:center;padding:7px 0;border-bottom:1px solid color-mix(in srgb,var(--line) 60%,transparent)}
+.prof:last-child{border-bottom:0}
+.prof .t{font-weight:600}.prof .m{font:var(--t-xs) var(--mono);color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.prof .d{width:7px;height:7px;border-radius:50%;background:var(--muted)}.prof .d.on{background:var(--good)}
+
+/* [8] empty state with an action */
+.empty{display:flex;gap:12px;align-items:center;padding:10px 12px;border:1px dashed var(--line);border-radius:8px;color:var(--muted);font-size:var(--t-md)}
+.empty b{color:var(--ink);font-weight:600;display:block}
+.empty .acts{margin-left:auto}
+
+/* history toolbar */
+.histbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.search{position:relative;flex:1 1 220px;max-width:320px}
+.search input{width:100%;height:28px;padding:0 30px 0 9px;font:inherit;font-size:var(--t-sm);color:var(--ink);background:var(--card-2);border:1px solid var(--line);border-radius:6px}
+.search input:focus{outline:none;border-color:var(--acc);box-shadow:0 0 0 3px color-mix(in srgb,var(--acc) 18%,transparent)}
+.search .kbd{position:absolute;right:6px;top:5px}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:6px;padding:2px;gap:2px}
+.seg button{height:22px;border:0;background:transparent;color:var(--muted);font-size:var(--t-xs)}
+.seg button.on{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var(--ink)}
+
+/* menus */
+details.menu{position:relative;display:inline-block}
+details.menu>summary{list-style:none}details.menu>summary::-webkit-details-marker{display:none}
+details.menu>div{position:absolute;right:0;top:32px;z-index:20;min-width:170px;padding:4px;background:var(--card);border:1px solid var(--border);border-radius:8px;box-shadow:0 8px 20px rgb(0 0 0/.45);display:flex;flex-direction:column}
+details.menu>div button{justify-content:space-between;background:transparent;border-color:transparent;width:100%}
+details.menu>div button:hover{background:color-mix(in srgb,var(--acc) 12%,transparent)}
+details.menu>div hr{border:0;border-top:1px solid var(--line);margin:4px 2px}
+
+/* [10] command palette */
+.pal-back{position:fixed;inset:0;z-index:50;background:rgb(0 0 0/.55);display:none;align-items:flex-start;justify-content:center;padding:12vh 16px 0}
+.pal-back.open{display:flex}
+.pal{width:min(560px,100%);background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;box-shadow:0 18px 40px rgb(0 0 0/.55)}
+.pal input{width:100%;border:0;border-bottom:1px solid var(--line);background:transparent;color:var(--ink);font:var(--t-lg) var(--sans);padding:12px 14px;outline:none}
+.pal ul{list-style:none;margin:0;padding:4px;max-height:50vh;overflow:auto}
+.pal li{display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:6px;cursor:pointer;font-size:var(--t-md)}
+.pal li .k{margin-left:auto;font-size:var(--t-xs);color:var(--muted)}
+.pal li.sel,.pal li:hover{background:color-mix(in srgb,var(--acc) 14%,transparent)}
+.pal .grp{font-size:var(--t-xs);color:var(--muted);text-transform:uppercase;letter-spacing:.06em;padding:8px 10px 2px;cursor:default}
+.pal .grp:hover{background:none}
+.pal .foot{display:flex;gap:12px;padding:7px 12px;border-top:1px solid var(--line);font-size:var(--t-xs);color:var(--muted)}
+
+/* [9] toasts */
+.toasts{position:fixed;right:16px;bottom:16px;z-index:60;display:flex;flex-direction:column;gap:8px;max-width:calc(100% - 32px)}
+.toast{display:flex;gap:10px;align-items:center;padding:8px 12px;background:var(--card);border:1px solid var(--border);border-left:3px solid var(--good);border-radius:8px;font-size:var(--t-md);box-shadow:0 6px 16px rgb(0 0 0/.4)}
+.toast.warn{border-left-color:var(--warn)}
+.toast button{height:24px}
+
+/* ── markers for the proposal list ── */
+.mk{display:inline-flex;align-items:center;justify-content:center;width:17px;height:17px;border-radius:50%;font:700 10px/1 var(--sans);
+  color:#1a1300;background:#ffd34d;vertical-align:middle;margin:0 2px;cursor:help;flex:none;letter-spacing:0;text-transform:none}
+body.nomk .mk{display:none}
+.demo{position:fixed;left:16px;bottom:16px;z-index:40;display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:6px 8px;background:var(--card);border:1px dashed #ffd34d88;border-radius:8px;font-size:var(--t-xs);color:var(--muted);max-width:calc(100% - 32px)}
+.demo select,.demo label{font:inherit;color:var(--ink)}
+.demo select{background:var(--card-2);border:1px solid var(--line);border-radius:4px;height:24px}
+.legendbox{margin-top:var(--gap)}
+.legendbox ol{margin:6px 0 0;padding-left:22px;columns:2 340px;column-gap:28px;font-size:var(--t-md)}
+.legendbox li{margin:0 0 5px;break-inside:avoid}
+.legendbox li span{color:var(--muted)}
+
+/* ── phone [12]: rows instead of wide tables, header in two lines, 16px gutter ── */
+@media(max-width:640px){
+  .top{padding:8px 16px;gap:8px}
+  nav{order:3;flex:1 1 100%;overflow-x:auto;scrollbar-width:none}
+  .strip{margin-left:0;order:4;flex:1 1 100%}
+  .strip .hide-s{display:none}
+  main{padding:12px 16px 90px}
+  .tps b{font-size:22px}
+  .sub{flex-basis:100%}
+  table.stackable thead{display:none}
+  table.stackable tr{display:grid;grid-template-columns:1fr auto;gap:0 10px;padding:6px 0;border-bottom:1px solid var(--line)}
+  table.stackable td{border:0;padding:1px 0;text-align:left}
+  table.stackable td.num{text-align:right}
+  table.stackable td[data-l]::before{content:attr(data-l) " ";color:var(--muted);font-family:var(--sans);font-size:var(--t-xs)}
+  table.stackable td.hide-s{display:none}
+  .model{grid-template-columns:minmax(0,1fr) auto}.model .hide-s{display:none}
+  .meters{grid-template-columns:1fr 1fr}
+}
+
+/* ── window shell without GPU (html.shell): no blur, no soft shadows, no loops ── */
+html.shell .top{background:var(--bg)}
+html.shell .bar i,html.shell .tps b,html.shell nav a.active::after{box-shadow:none}
+html.shell details.menu>div,html.shell .pal,html.shell .toast{box-shadow:none}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+
+/* ════ v2: more glow, data-bound motion ════ */
+/* halo helper: colour at a strength scaled by --g */
+:root{--halo:calc(var(--g)*100%)}
+.brand .logo,.brand .acc{text-shadow:0 0 4px color-mix(in srgb,var(--acc) min(100%,calc(var(--g)*120%)),transparent),0 0 14px color-mix(in srgb,var(--acc) calc(var(--g)*80%),transparent),0 0 30px color-mix(in srgb,var(--acc) calc(var(--g)*45%),transparent)}
+nav a.active{text-shadow:0 0 12px color-mix(in srgb,var(--acc) calc(var(--g)*90%),transparent)}
+nav a.active::after{box-shadow:0 0 6px color-mix(in srgb,var(--acc) min(100%,calc(var(--g)*120%)),transparent),0 0 16px color-mix(in srgb,var(--acc) calc(var(--g)*70%),transparent)}
+
+/* big numbers */
+.tps b{transition:color .4s;text-shadow:0 0 3px color-mix(in srgb,var(--acc) min(100%,calc(var(--g)*110%)),transparent),0 0 12px color-mix(in srgb,var(--acc) calc(var(--g)*75%),transparent),0 0 32px color-mix(in srgb,var(--acc) calc(var(--g)*45%),transparent)}
+.card.busy .tps b{color:#fff}
+.card.idle .tps b{text-shadow:none}
+.meter .v.glow,.figs dd{text-shadow:0 0 10px color-mix(in srgb,var(--acc) calc(var(--g)*45%),transparent)}
+
+/* working card: accent rim + slowly breathing halo (only while busy; the halo lives on ::after so only opacity animates) */
+.card{position:relative;transition:border-color .5s}
+.card::after{content:"";position:absolute;inset:-1px;border-radius:inherit;pointer-events:none;opacity:0;transition:opacity .6s;
+  box-shadow:0 0 0 1px color-mix(in srgb,var(--acc) calc(var(--g)*55%),transparent),0 0 18px color-mix(in srgb,var(--acc) calc(var(--g)*35%),transparent),0 0 44px color-mix(in srgb,var(--acc) calc(var(--g)*18%),transparent),inset 0 0 22px color-mix(in srgb,var(--acc) calc(var(--g)*8%),transparent)}
+.card.busy{border-color:color-mix(in srgb,var(--acc) 60%,var(--border))}
+.card.busy::after{opacity:1;animation:halo 2.6s ease-in-out infinite}
+@keyframes halo{0%,100%{opacity:.6}50%{opacity:1}}
+.card.busy .hd .dot,.card.busy .hostrow .dot{box-shadow:none}
+
+/* status dots breathe only when online and busy */
+.dot{box-shadow:0 0 4px color-mix(in srgb,var(--good) calc(var(--g)*90%),transparent),0 0 10px color-mix(in srgb,var(--good) calc(var(--g)*50%),transparent)}
+.dot.off{box-shadow:0 0 6px color-mix(in srgb,var(--warn) calc(var(--g)*70%),transparent)}
+.card.busy .dot{animation:breathe 1.6s ease-in-out infinite}
+@keyframes breathe{50%{box-shadow:0 0 0 3px color-mix(in srgb,var(--good) 25%,transparent),0 0 14px color-mix(in srgb,var(--good) calc(var(--g)*100%),transparent)}}
+
+/* bars: glow + gliding width; "writing" slots get a light sweep */
+.bar i,.stat .mini i{position:relative;transition:width .9s cubic-bezier(.2,.8,.2,1);overflow:hidden;
+  box-shadow:0 0 4px color-mix(in srgb,var(--acc) min(100%,calc(var(--g)*110%)),transparent),0 0 12px color-mix(in srgb,var(--acc) calc(var(--g)*60%),transparent)}
+.bar i.hot{background:var(--bad);box-shadow:0 0 4px color-mix(in srgb,var(--bad) calc(var(--g)*100%),transparent),0 0 12px color-mix(in srgb,var(--bad) calc(var(--g)*55%),transparent)}
+.bar i.writing::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgb(255 255 255/.55),transparent);background-size:40% 100%;background-repeat:no-repeat;animation:run 1.4s linear infinite}
+@keyframes run{from{background-position:-60% 0}to{background-position:160% 0}}
+.bar,.stat .mini{overflow:visible}   /* let the glow spill out; the sweep is clipped by the fill itself */
+
+/* sparkline: wider soft strokes + glowing tip that follows the newest value */
+.spark{overflow:hidden}
+.spark .g1{stroke-width:12px;opacity:calc(.16*var(--g))}
+.spark .g2{fill:none;stroke:var(--acc);stroke-width:5px;opacity:calc(.35*var(--g));vector-effect:non-scaling-stroke;stroke-linejoin:round}
+.spark .ln{stroke-width:2px}
+.spark g.move{transition:transform 1s linear}
+.spark .tip{position:absolute;right:-4px;width:9px;height:9px;margin-top:-4.5px;border-radius:50%;background:var(--acc);z-index:2;transition:top 1s linear,opacity .4s;
+  box-shadow:0 0 0 3px color-mix(in srgb,var(--acc) calc(var(--g)*25%),transparent),0 0 12px 3px color-mix(in srgb,var(--acc) calc(var(--g)*60%),transparent)}
+.spark .tip::after{content:"";position:absolute;left:3px;top:3px;width:3px;height:3px;border-radius:50%;background:#fff}
+.card.idle .spark .tip{opacity:0}
+
+/* primary buttons light up on hover/focus; success glow after an action */
+button.primary:hover,button.primary:focus-visible{box-shadow:0 0 0 1px color-mix(in srgb,var(--acc) 50%,transparent),0 0 16px color-mix(in srgb,var(--acc) calc(var(--g)*55%),transparent)}
+button{transition:background .15s,border-color .15s,box-shadow .3s}
+button.done{animation:ok 1.1s ease-out}
+button.fail{animation:nok 1.1s ease-out}
+@keyframes ok{0%{box-shadow:0 0 0 1px var(--good),0 0 22px color-mix(in srgb,var(--good) calc(var(--g)*80%),transparent);border-color:var(--good);color:var(--good)}100%{box-shadow:none}}
+@keyframes nok{0%{box-shadow:0 0 0 1px var(--warn),0 0 22px color-mix(in srgb,var(--warn) calc(var(--g)*80%),transparent);border-color:var(--warn)}100%{box-shadow:none}}
+button[aria-busy=true]::after{content:"";width:10px;height:10px;border-radius:50%;border:2px solid currentColor;border-right-color:transparent;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* new request row slides in at the top and flashes once */
+tr.new td{animation:rowin .5s ease-out,flash 1.6s ease-out}
+@keyframes rowin{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
+@keyframes flash{0%,20%{background:color-mix(in srgb,var(--acc) 22%,transparent);box-shadow:inset 0 0 12px color-mix(in srgb,var(--acc) calc(var(--g)*30%),transparent)}100%{background:transparent}}
+
+/* toast slides in */
+.toast{animation:toastin .3s cubic-bezier(.2,.8,.2,1)}
+.toast.out{transition:opacity .3s,transform .3s;opacity:0;transform:translateX(12px)}
+@keyframes toastin{from{opacity:0;transform:translateX(24px)}to{opacity:1;transform:none}}
+.toast{box-shadow:0 6px 16px rgb(0 0 0/.4),0 0 16px color-mix(in srgb,var(--good) calc(var(--g)*20%),transparent)}
+
+/* shell (window without GPU): halos, sweeps, breathing, blur off; number and bar transitions stay */
+html.shell .card::after,html.shell .bar i.writing::after,html.shell .tip{display:none}
+html.shell *{animation:none!important;text-shadow:none!important}
+html.shell .dot,html.shell .bar i,html.shell .stat .mini i,html.shell nav a.active::after,html.shell button{box-shadow:none!important}
+html.shell .spark .g1,html.shell .spark .g2{display:none}
+html.shell .card.busy{border-color:color-mix(in srgb,var(--acc) 60%,var(--border))}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
+
+/* ════ v3: icons instead of words, backend colours, slot tiles, request rows, light theme ════ */
+.ic{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;vertical-align:-3px}
+.card{box-shadow:var(--shadow)}
+/* backend colour: strip on the left edge, glyph, busy rim and halo take the backend colour */
+.srv{--b:var(--acc);padding-left:16px;overflow:visible}
+.srv::before{content:"";position:absolute;left:-1px;top:10px;bottom:10px;width:3px;border-radius:0 3px 3px 0;background:var(--b);
+  box-shadow:0 0 8px color-mix(in srgb,var(--b) calc(var(--g)*70%),transparent)}
+.srv.busy{border-color:color-mix(in srgb,var(--b) 55%,var(--border))}
+.srv::after{box-shadow:0 0 0 1px color-mix(in srgb,var(--b) calc(var(--g)*55%),transparent),0 0 18px color-mix(in srgb,var(--b) calc(var(--g)*35%),transparent),0 0 44px color-mix(in srgb,var(--b) calc(var(--g)*16%),transparent),inset 0 0 22px color-mix(in srgb,var(--b) calc(var(--g)*7%),transparent)}
+.srv .tps b{text-shadow:0 0 3px color-mix(in srgb,var(--b) min(100%,calc(var(--g)*110%)),transparent),0 0 12px color-mix(in srgb,var(--b) calc(var(--g)*75%),transparent),0 0 32px color-mix(in srgb,var(--b) calc(var(--g)*40%),transparent)}
+.srv.idle .tps b{text-shadow:none}
+.bk{display:inline-flex;width:24px;height:24px;align-items:center;justify-content:center;border-radius:6px;color:var(--b);
+  background:color-mix(in srgb,var(--b) 13%,transparent);border:1px solid color-mix(in srgb,var(--b) 35%,transparent)}
+.hd .name{font-size:var(--t-lg);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+/* state: colour + icon, word only in the tooltip */
+[data-s=idle]{--sc:var(--st-idle)}[data-s=read]{--sc:var(--st-read)}[data-s=gen]{--sc:var(--st-gen)}[data-s=load]{--sc:var(--st-load)}[data-s=off]{--sc:var(--st-off)}
+.st{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;color:var(--sc);background:color-mix(in srgb,var(--sc) 14%,transparent);
+  box-shadow:0 0 8px color-mix(in srgb,var(--sc) calc(var(--g)*45%),transparent)}
+.st .ic{width:14px;height:14px}
+.st[data-s=gen]{animation:breathe2 1.6s ease-in-out infinite}
+.st[data-s=load] .ic{animation:spin 1.4s linear infinite}
+@keyframes breathe2{50%{box-shadow:0 0 0 3px color-mix(in srgb,var(--sc) 22%,transparent),0 0 14px color-mix(in srgb,var(--sc) calc(var(--g)*90%),transparent)}}
+/* icon metrics */
+.m{display:inline-flex;align-items:center;gap:4px;font:var(--t-md) var(--mono);color:var(--ink);white-space:nowrap}
+.m .ic{color:var(--muted)}
+.m small{color:var(--muted);font-size:var(--t-xs);margin-left:-2px}
+.m.dim{color:var(--muted)}
+.m.warn,.m.warn .ic{color:var(--warn)}
+.m.ok .ic{color:var(--good)}
+.chipi{display:inline-flex;align-items:center;gap:4px;height:22px;padding:0 7px;border-radius:5px;font-size:var(--t-xs);color:var(--muted);border:1px solid var(--line)}
+.chipi .ic{width:14px;height:14px}
+.chipi.host{color:var(--ink)}
+.mrow{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;margin-top:8px}
+.mrow .sep{width:1px;height:14px;background:var(--line)}
+.acts3{display:flex;gap:4px;margin-left:auto}
+.ib{width:28px;padding:0;justify-content:center}
+.ib.txt{width:auto;padding:0 10px}
+.clients{display:inline-flex;gap:2px;color:var(--muted)}
+/* sparkline + slot tiles side by side */
+.body2{display:flex;gap:10px;align-items:stretch;margin-top:8px}
+.body2 .spark{flex:1;min-width:0}
+.tiles{display:flex;gap:5px;align-items:stretch;flex:none}
+.slot{position:relative;width:38px;height:auto;min-height:64px;padding:0;flex-direction:column;justify-content:space-between;align-items:center;overflow:hidden;
+  color:var(--sc);border:1px solid color-mix(in srgb,var(--sc) 50%,transparent);background:color-mix(in srgb,var(--sc) 5%,transparent);border-radius:6px;gap:0;padding:5px 0 3px}
+.slot:hover{background:color-mix(in srgb,var(--sc) 12%,transparent);border-color:var(--sc)}
+.slot>i{position:absolute;left:0;right:0;bottom:0;height:var(--f,0%);background:linear-gradient(0deg,color-mix(in srgb,var(--sc) 38%,transparent),color-mix(in srgb,var(--sc) 16%,transparent));
+  transition:height .9s cubic-bezier(.2,.8,.2,1);box-shadow:0 -1px 0 var(--sc),0 -2px 10px color-mix(in srgb,var(--sc) calc(var(--g)*50%),transparent)}
+.slot[data-s=idle]>i{box-shadow:none}
+.slot[data-s=gen]>i::after{content:"";position:absolute;inset:0;background:linear-gradient(0deg,transparent,rgb(255 255 255/.35),transparent);background-size:100% 40%;background-repeat:no-repeat;animation:runv 1.4s linear infinite}
+@keyframes runv{from{background-position:0 160%}to{background-position:0 -60%}}
+.slot.hot{--sc:var(--bad)}
+.slot .ic,.slot span{position:relative}
+.slot span{font:var(--t-xs) var(--mono);color:var(--muted)}
+.slot.sel{outline:2px solid var(--sc);outline-offset:1px}
+.slotinfo{font:var(--t-sm) var(--mono);color:var(--muted);margin-top:6px;min-height:0}
+.slotinfo:empty{display:none}
+.slotinfo b{color:var(--ink);font-weight:500}
+/* ollama models as icon rows */
+.mods{display:flex;flex-direction:column;gap:5px;margin-top:8px}
+.mod{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.mod .n{font:var(--t-md) var(--mono);flex:1 1 140px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mod .bar{flex:0 0 70px}
+/* recent requests as rows */
+.reqs{display:flex;flex-direction:column;margin-top:6px}
+.req{display:grid;grid-template-columns:20px minmax(0,1.4fr) minmax(70px,1fr) 58px 64px 20px 54px;gap:10px;align-items:center;padding:6px 4px;border-bottom:1px solid color-mix(in srgb,var(--line) 60%,transparent);font-size:var(--t-md)}
+.req:last-child{border-bottom:0}
+.req:hover{background:color-mix(in srgb,var(--acc) 5%,transparent)}
+.req.head{font-size:var(--t-xs);color:var(--muted);padding-top:0;border-bottom:1px solid var(--line)}
+.req.head:hover{background:none}
+.req .cl{color:var(--muted);display:inline-flex}
+.req .mdl{display:flex;align-items:center;gap:7px;min-width:0}
+.req .mdl i{width:8px;height:8px;border-radius:50%;background:var(--b);flex:none;box-shadow:0 0 6px color-mix(in srgb,var(--b) calc(var(--g)*80%),transparent)}
+.req .mdl span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.req .dur{display:flex;align-items:center;gap:6px;font:var(--t-xs) var(--mono);color:var(--muted)}
+.req .dur .bar{height:4px;min-width:30px}
+.req .dur .bar i{background:color-mix(in srgb,var(--b) 80%,transparent);box-shadow:none}
+.req .spd{font:600 var(--t-md) var(--mono);text-align:right;color:var(--spc);text-shadow:0 0 8px color-mix(in srgb,var(--spc) calc(var(--g)*45%),transparent)}
+.spd.s1{--spc:var(--sp-1)}.spd.s2{--spc:var(--sp-2)}.spd.s3{--spc:var(--sp-3)}.spd.s4{--spc:var(--sp-4)}
+.req .ex{display:flex;gap:6px;color:var(--muted);font:var(--t-xs) var(--mono)}
+.req .ex span{display:inline-flex;align-items:center;gap:2px}
+.req .ex .ic{width:14px;height:14px}
+.req .res{display:inline-flex}
+.res.ok{color:var(--good)}.res.abort{color:var(--warn)}.res.err{color:var(--bad)}.res.full{color:var(--bad)}
+.req .ago{font:var(--t-xs) var(--mono);color:var(--muted);text-align:right}
+.req.new{animation:rowin .5s ease-out,flash 1.6s ease-out}
+.spdscale{display:inline-flex;align-items:center;gap:4px;font-size:var(--t-xs);color:var(--muted);margin-left:auto}
+.spdscale i{width:14px;height:4px;border-radius:2px;display:inline-block}
+@media(max-width:640px){
+  .body2{flex-direction:column}
+  .tiles .slot{flex:1;min-height:40px;flex-direction:row;padding:0 8px}
+  .req{grid-template-columns:18px minmax(0,1fr) 48px 18px 44px}
+  .req .dur,.req .ex{display:none}
+  .acts3{margin-left:0}
+}
+/* shell: tile sweep and halos off */
+html.shell .slot>i,html.shell .st,html.shell .srv::before,html.shell .req .mdl i{box-shadow:none!important}
+html.shell .slot>i::after{display:none}
+
+/* ── Light theme: colour instead of neon. Soft tinted shadows, no text halos; --g scales the tint ── */
+[data-theme=light] body{background:linear-gradient(180deg,var(--bg-top),var(--bg) 700px) fixed,var(--bg)}
+[data-theme=light] .top{background:var(--bg-top)}
+[data-theme=light] .brand .logo,[data-theme=light] .brand .acc,[data-theme=light] nav a.active,[data-theme=light] .glow,
+[data-theme=light] .meter .v.glow,[data-theme=light] .figs dd,[data-theme=light] .tps b,[data-theme=light] .req .spd{text-shadow:none}
+[data-theme=light] nav a.active::after{box-shadow:0 2px 6px color-mix(in srgb,var(--acc) calc(var(--g)*45%),transparent)}
+[data-theme=light] .srv .tps b,[data-theme=light] .card.busy .tps b{color:var(--ink);text-shadow:none}
+[data-theme=light] .srv.busy .tps b{color:var(--b)}
+[data-theme=light] .srv.busy{background:linear-gradient(180deg,color-mix(in srgb,var(--b) calc(var(--g)*9%),var(--card)),var(--card) 60%)}
+[data-theme=light] .srv::after{box-shadow:0 0 0 1px color-mix(in srgb,var(--b) calc(var(--g)*45%),transparent),0 8px 24px color-mix(in srgb,var(--b) calc(var(--g)*24%),transparent)}
+[data-theme=light] .srv::before{box-shadow:none}
+[data-theme=light] .bar i,[data-theme=light] .stat .mini i{box-shadow:none}
+[data-theme=light] .bar i.writing::after,[data-theme=light] .slot[data-s=gen]>i::after{background-image:linear-gradient(90deg,transparent,rgb(255 255 255/.7),transparent)}
+[data-theme=light] .slot>i{box-shadow:0 -1px 0 var(--sc)}
+[data-theme=light] .st{box-shadow:none}
+[data-theme=light] .dot{box-shadow:0 0 0 2px color-mix(in srgb,var(--good) 20%,transparent)}
+[data-theme=light] .spark{background:linear-gradient(180deg,color-mix(in srgb,var(--acc) 7%,transparent),transparent);border-color:var(--line)}
+[data-theme=light] .spark .area{fill:color-mix(in srgb,var(--b,var(--acc)) 14%,transparent)}
+[data-theme=light] .spark .g1{opacity:calc(.07*var(--g))}[data-theme=light] .spark .g2{opacity:calc(.14*var(--g))}
+[data-theme=light] .spark .tip{box-shadow:0 0 0 3px color-mix(in srgb,var(--b,var(--acc)) calc(var(--g)*30%),transparent)}
+[data-theme=light] details.menu>div,[data-theme=light] .pal,[data-theme=light] .toast{box-shadow:0 8px 24px rgb(20 30 50/.14)}
+[data-theme=light] .pal-back{background:rgb(20 30 50/.25)}
+[data-theme=light] .notice{background:color-mix(in srgb,var(--warn) 7%,var(--card))}
+[data-theme=light] .figs div{background:var(--card-2)}
+[data-theme=light] .stat{background:var(--card)}
+[data-theme=light] .req .mdl i{box-shadow:none}
+[data-theme=light] button.primary:hover,[data-theme=light] button.primary:focus-visible{box-shadow:0 4px 14px color-mix(in srgb,var(--acc) calc(var(--g)*35%),transparent)}
+/* sparkline colour follows the backend colour of its card */
+.srv .spark .ln,.srv .spark .g1,.srv .spark .g2{stroke:var(--b)}
+.srv .spark .area{fill:color-mix(in srgb,var(--b) 14%,transparent)}
+.srv .spark .tip{background:var(--b);box-shadow:0 0 0 3px color-mix(in srgb,var(--b) calc(var(--g)*25%),transparent),0 0 12px 3px color-mix(in srgb,var(--b) calc(var(--g)*55%),transparent)}
+</style>
+</head>
+<body class="nomk">
+<!-- v3: one icon set, own simple line drawings, 16px grid, 1.5px stroke, currentColor -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <!-- metrics -->
+  <symbol id="i-vram" viewBox="0 0 16 16"><rect x="3" y="4" width="10" height="8" rx="1.5"/><path d="M5.5 4V2M8 4V2M10.5 4V2M5.5 14v-2M8 14v-2M10.5 14v-2M6 7h4v2H6z"/></symbol>
+  <symbol id="i-ram" viewBox="0 0 16 16"><rect x="1.5" y="4.5" width="13" height="6" rx="1"/><path d="M4 7h1.5M7.25 7h1.5M10.5 7H12M3.5 10.5v2M6 10.5v2M10 10.5v2M12.5 10.5v2"/></symbol>
+  <symbol id="i-cpu" viewBox="0 0 16 16"><rect x="4" y="4" width="8" height="8" rx="1"/><rect x="6.5" y="6.5" width="3" height="3"/><path d="M6 4V2M10 4V2M6 14v-2M10 14v-2M4 6H2M4 10H2M14 6h-2M14 10h-2"/></symbol>
+  <symbol id="i-file" viewBox="0 0 16 16"><path d="M4 1.75h5.5L12.5 5v9.25h-8.5z"/><path d="M9.5 1.75V5h3"/><path d="M6.5 8.5h4M6.5 11h3"/></symbol>
+  <symbol id="i-port" viewBox="0 0 16 16"><path d="M5.5 2v3M10.5 2v3M3.5 5h9v3a4.5 4.5 0 0 1-9 0zM8 12.5V15"/></symbol>
+  <symbol id="i-ctx" viewBox="0 0 16 16"><path d="M2.5 3.5h11M2.5 6.5h11M2.5 9.5h7M2.5 12.5h4"/></symbol>
+  <symbol id="i-peak" viewBox="0 0 16 16"><path d="M1.5 13.5 6 6l3 4 2-3 3.5 6.5"/><path d="M11 3.5h3v3"/></symbol>
+  <symbol id="i-avg" viewBox="0 0 16 16"><path d="M1.5 10c2-5 4-5 6.5-2s4.5 3 6.5-2"/><path d="M1.5 13.5h13" stroke-dasharray="2 2"/></symbol>
+  <symbol id="i-sum" viewBox="0 0 16 16"><path d="M12 3H4l4.5 5L4 13h8"/></symbol>
+  <symbol id="i-draft" viewBox="0 0 16 16"><path d="M9 1.5 3.5 9H8l-1 5.5L12.5 7H8z"/></symbol>
+  <symbol id="i-users" viewBox="0 0 16 16"><circle cx="6" cy="5.5" r="2.5"/><path d="M1.5 14c.5-3 2.2-4.5 4.5-4.5s4 1.5 4.5 4.5"/><path d="M10.5 3.2a2.5 2.5 0 0 1 0 4.6M12.5 9.8c1.2.6 1.8 2 2 4.2"/></symbol>
+  <symbol id="i-host" viewBox="0 0 16 16"><rect x="1.5" y="2.5" width="13" height="8.5" rx="1"/><path d="M6 14h4M8 11v3"/></symbol>
+  <symbol id="i-proxy" viewBox="0 0 16 16"><path d="M2 5h10M9.5 2.5 12 5 9.5 7.5M14 11H4M6.5 8.5 4 11l2.5 2.5"/></symbol>
+  <!-- actions -->
+  <symbol id="i-chat" viewBox="0 0 16 16"><path d="M2.5 3.5h11v7h-6l-3 2.5v-2.5h-2z"/></symbol>
+  <symbol id="i-info" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.25"/><path d="M8 7.25v4M8 4.75v.01"/></symbol>
+  <symbol id="i-more" viewBox="0 0 16 16"><path d="M3.5 8h.01M8 8h.01M12.5 8h.01" stroke-width="2.5"/></symbol>
+  <symbol id="i-stop" viewBox="0 0 16 16"><rect x="4" y="4" width="8" height="8" rx="1.5"/></symbol>
+  <symbol id="i-rec" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.25"/><circle cx="8" cy="8" r="2.5"/></symbol>
+  <!-- states (never colour alone) -->
+  <symbol id="s-idle" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.5" stroke-dasharray="2.2 2.2"/></symbol>
+  <symbol id="s-read" viewBox="0 0 16 16"><path d="M1.5 8s2.5-4.5 6.5-4.5S14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8z"/><circle cx="8" cy="8" r="2"/></symbol>
+  <symbol id="s-gen" viewBox="0 0 16 16"><path d="M10.5 2.5l3 3-7.5 7.5H3v-3z"/><path d="M9 4l3 3"/></symbol>
+  <symbol id="s-load" viewBox="0 0 16 16"><path d="M8 2a6 6 0 1 1-6 6"/><path d="M8 5v3l2 1.5"/></symbol>
+  <symbol id="s-off" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"/><path d="M3.8 3.8l8.4 8.4"/></symbol>
+  <!-- results -->
+  <symbol id="r-ok" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.25"/><path d="M5 8.25 7 10.25 11 6"/></symbol>
+  <symbol id="r-abort" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.25"/><rect x="6" y="6" width="4" height="4"/></symbol>
+  <symbol id="r-err" viewBox="0 0 16 16"><path d="M8 2 14.5 13.5h-13z"/><path d="M8 6.5v3.5M8 12v.01"/></symbol>
+  <symbol id="r-full" viewBox="0 0 16 16"><path d="M3 5v8.5h10V5"/><path d="M3 8h10M3 11h10"/><path d="M8 4.5V1.5M6.25 3 8 1.25 9.75 3"/></symbol>
+  <!-- client kinds -->
+  <symbol id="c-cli" viewBox="0 0 16 16"><rect x="1.5" y="2.5" width="13" height="11" rx="1.5"/><path d="M4.5 6.5 6.5 8.25 4.5 10M8 10.5h3.5"/></symbol>
+  <symbol id="c-editor" viewBox="0 0 16 16"><path d="M5.5 4 1.75 8l3.75 4M10.5 4l3.75 4-3.75 4M9 3l-2 10"/></symbol>
+  <symbol id="c-web" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.25"/><path d="M1.75 8h12.5M8 1.75c-2.2 2.2-2.2 10.3 0 12.5M8 1.75c2.2 2.2 2.2 10.3 0 12.5"/></symbol>
+  <symbol id="c-agent" viewBox="0 0 16 16"><rect x="2.5" y="5" width="11" height="8.5" rx="2"/><path d="M8 5V2.5M6.5 2.5h3"/><path d="M5.75 8.75v1M10.25 8.75v1"/></symbol>
+  <symbol id="x-tool" viewBox="0 0 16 16"><path d="M10.5 2a3.5 3.5 0 0 0-3.2 4.9L2.5 11.7l1.8 1.8 4.8-4.8A3.5 3.5 0 0 0 14 5.5l-2 .5-.5-2z"/></symbol>
+  <symbol id="x-think" viewBox="0 0 16 16"><path d="M5.5 12.5h5M6.25 14.5h3.5M5.5 10.5C4 9.5 3.5 8.2 3.5 6.75a4.5 4.5 0 0 1 9 0c0 1.45-.5 2.75-2 3.75z"/></symbol>
+  <!-- backend glyphs: own abstract marks, not product logos -->
+  <symbol id="b-llama" viewBox="0 0 16 16"><path d="M8 1.5 13.6 4.75v6.5L8 14.5 2.4 11.25v-6.5z"/><path d="M5.5 6.5h5M5.5 9.5h3"/></symbol>
+  <symbol id="b-ollama" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.25"/><circle cx="8" cy="8" r="2.75"/></symbol>
+  <symbol id="b-lms" viewBox="0 0 16 16"><rect x="2" y="2" width="12" height="12" rx="3"/><path d="M5 5.5h6M5 8h4M5 10.5h6"/></symbol>
+  <symbol id="b-vllm" viewBox="0 0 16 16"><path d="M2 3.5 5.5 12.5 9 3.5M7.5 3.5 11 12.5 14.5 3.5"/></symbol>
+</svg>
+
+
+<header class="top">
+  <div class="brand"><span class="logo">◆</span> STYKKER <span class="acc">LLM</span></div>
+  <nav aria-label="Main">
+    <a href="#" class="active" aria-current="page">Monitor</a><a href="#">Model tests</a><a href="#">Benchmarks</a><a href="#">Recordings</a>
+  </nav>
+  <span class="mk" title="4: compact header with live status">4</span>
+  <div class="strip">
+    <button class="stat on" title="Proxy settings" onclick="toast('Proxy settings would open as a side panel')">● Proxy <b>:8080</b> → stykker</button>
+    <span class="stat" title="GPU VRAM used">GPU <span class="mini"><i id="hvbar" style="width:72%"></i></span><b id="hvram">17.2</b>/24 GB</span>
+    <span class="stat hide-s" title="System memory">RAM <b>38.1</b> GB free</span>
+    <span class="stat hide-s">Servers <b>3</b> · <span style="color:var(--good)">2 busy</span></span>
+    <button class="quiet" onclick="openPal()" title="Search pages and actions">Search <span class="kbd">Ctrl K</span></button><span class="mk" title="10: command palette">10</span>
+    <button onclick="busy(this,'Free VRAM','Freeing …','Freed 9.8 GB VRAM (1 server stopped, 1 model unloaded)')">Free VRAM</button>
+    <button class="sq quiet" title="Stop the StykkerLLM server" aria-label="Stop server">⏻</button>
+    <details class="menu"><summary class="btn sq" title="More" aria-label="More">☰</summary>
+      <div><button>Runs</button><button>Catalog</button><button>Models</button><hr><button>GPU</button><button>Prompt</button><button>Compare</button><hr><button>Model hosts</button><button>Phone access</button><button>Settings</button><button>Bug report</button></div>
+    </details>
+  </div>
+</header>
+
+<main>
+  <div class="notice" role="status" id="notice">
+    <span class="badge warn plain">Hint</span>
+    <span class="txt">qwen3-coder on <span class="mono">:8082</span> spills 1.4 GB into shared RAM – generation is slower than it could be. Lower <span class="mono">-ngl</span> or the context.</span>
+    <span class="acts"><a class="btn" href="#">Open log</a><button class="quiet" onclick="document.getElementById('notice').remove();toast('Hint dismissed','Undo')">Dismiss</button></span>
+  </div>
+
+  <div class="layout" style="margin-top:var(--gap)">
+    <div class="col">
+      <div class="sec">Running <span class="n">3</span></div>
+
+      <!-- llama.cpp, busy -->
+      <article class="card srv busy" id="c1" style="--b:var(--b-llama)">
+        <div class="hd">
+          <span class="bk" title="llama.cpp"><svg class="ic"><use href="#b-llama"/></svg></span>
+          <span class="name" title="gemma-3-27b-it-Q4_K_M">gemma-3-27b</span>
+          <span class="st" data-s="gen" id="c1s" title="generating"><svg class="ic"><use href="#s-gen"/></svg></span>
+          <span class="m dim" title="Port 8081"><svg class="ic"><use href="#i-port"/></svg>8081</span>
+          <span class="m ok" title="Served by the proxy"><svg class="ic"><use href="#i-proxy"/></svg></span>
+          <span class="tps"><b id="t1">41.8</b><span>t/s</span></span>
+        </div>
+        <div class="body2">
+          <div class="spark" id="sp1"><span class="tip" id="tip1"></span><span class="lbl tl">60</span><span class="lbl bl">−2 min</span></div>
+          <div class="tiles" id="c1t"></div>
+        </div>
+        <div class="slotinfo" id="c1i"></div>
+        <div class="mrow">
+          <span class="m" title="GPU VRAM"><svg class="ic"><use href="#i-vram"/></svg>17.0<small>G</small></span>
+          <span class="m" title="RAM"><svg class="ic"><use href="#i-ram"/></svg>1.2<small>G</small></span>
+          <span class="m" title="CPU"><svg class="ic"><use href="#i-cpu"/></svg>6<small>%</small></span>
+          <span class="m" title="Context per slot"><svg class="ic"><use href="#i-ctx"/></svg>32<small>k</small></span>
+          <span class="sep"></span>
+          <span class="m" title="Peak t/s"><svg class="ic"><use href="#i-peak"/></svg>48.2</span>
+          <span class="m" title="Average t/s while active"><svg class="ic"><use href="#i-avg"/></svg>41.7</span>
+          <span class="m" title="Tokens generated"><svg class="ic"><use href="#i-sum"/></svg><span id="c1sum">182.3</span><small>k</small></span>
+          <span class="m" title="Draft acceptance (speculative decoding)"><svg class="ic"><use href="#i-draft"/></svg>71<small>%</small></span>
+          <span class="clients" title="Clients: opencode (terminal), VS Code (editor)"><svg class="ic"><use href="#c-cli"/></svg><svg class="ic"><use href="#c-editor"/></svg></span>
+          <span class="acts3">
+            <button class="primary ib txt" title="Prompt"><svg class="ic"><use href="#i-chat"/></svg>Prompt</button>
+            <button class="ib" title="Details"><svg class="ic"><use href="#i-info"/></svg></button>
+            <button class="ib" title="Record" onclick="toast('Recording started')"><svg class="ic"><use href="#i-rec"/></svg></button>
+            <button class="ib danger" title="Stop" onclick="busyIcon(this,'gemma-3-27b stopped','Undo')"><svg class="ic"><use href="#i-stop"/></svg></button>
+          </span>
+        </div>
+      </article>
+
+      <!-- llama.cpp, idle -->
+      <article class="card srv idle" id="c2" style="--b:var(--b-llama)">
+        <div class="hd">
+          <span class="bk" title="llama.cpp"><svg class="ic"><use href="#b-llama"/></svg></span>
+          <span class="name" title="Qwen3-Coder-30B-A3B-Q4_K_XL">qwen3-coder-30b</span>
+          <span class="st" data-s="idle" id="c2s" title="idle"><svg class="ic"><use href="#s-idle"/></svg></span>
+          <span class="m dim" title="Port 8082"><svg class="ic"><use href="#i-port"/></svg>8082</span>
+          <button class="ib quiet" title="Serve via proxy"><svg class="ic"><use href="#i-proxy"/></svg></button>
+          <span class="tps"><b id="t2">0.0</b><span>t/s</span></span>
+        </div>
+        <div class="body2">
+          <div class="spark" id="sp2" style="height:44px"><span class="tip" id="tip2"></span><span class="lbl tl">100</span><span class="lbl br" id="idle2">idle 4 min</span></div>
+          <div class="tiles" id="c2t"></div>
+        </div>
+        <div class="slotinfo" id="c2i"></div>
+        <div class="mrow">
+          <span class="m" title="GPU VRAM"><svg class="ic"><use href="#i-vram"/></svg>4.6<small>G</small></span>
+          <span class="m warn" title="In shared RAM (slow): lower -ngl or the context"><svg class="ic"><use href="#i-ram"/></svg>1.4<small>G</small></span>
+          <span class="m" title="CPU"><svg class="ic"><use href="#i-cpu"/></svg>0<small>%</small></span>
+          <span class="m" title="Model file"><svg class="ic"><use href="#i-file"/></svg>17.7<small>G</small></span>
+          <span class="sep"></span>
+          <span class="m" title="Peak t/s"><svg class="ic"><use href="#i-peak"/></svg>96.4</span>
+          <span class="m" title="Tokens generated"><svg class="ic"><use href="#i-sum"/></svg>41.2<small>k</small></span>
+          <span class="clients" title="No clients"><svg class="ic" style="opacity:.4"><use href="#i-users"/></svg></span>
+          <span class="acts3">
+            <button class="primary ib txt" title="Prompt"><svg class="ic"><use href="#i-chat"/></svg>Prompt</button>
+            <button class="ib" title="Details"><svg class="ic"><use href="#i-info"/></svg></button>
+            <button class="ib" title="Record"><svg class="ic"><use href="#i-rec"/></svg></button>
+            <button class="ib danger" title="Stop" onclick="busyIcon(this,'qwen3-coder-30b stopped','Undo')"><svg class="ic"><use href="#i-stop"/></svg></button>
+          </span>
+        </div>
+      </article>
+
+      <!-- Ollama -->
+      <article class="card srv idle" id="c3" style="--b:var(--b-ollama)">
+        <div class="hd">
+          <span class="bk" title="Ollama"><svg class="ic"><use href="#b-ollama"/></svg></span>
+          <span class="name">Ollama</span>
+          <span class="st" data-s="idle" title="idle"><svg class="ic"><use href="#s-idle"/></svg></span>
+          <span class="m dim" title="Port 11434"><svg class="ic"><use href="#i-port"/></svg>11434</span>
+          <span class="tps"><b>0.0</b><span>t/s</span></span>
+        </div>
+        <div class="mods">
+          <div class="mod"><span class="n">llama3.2:3b</span><span class="m" title="Size in VRAM"><svg class="ic"><use href="#i-vram"/></svg>3.4<small>G</small></span><span class="bar" title="100 % on GPU"><i style="width:100%;background:var(--b-ollama)"></i></span><span class="m dim" title="Unloads in 3 min"><svg class="ic"><use href="#s-load"/></svg>3m</span></div>
+          <div class="mod"><span class="n">nomic-embed-text</span><span class="m" title="Size in VRAM"><svg class="ic"><use href="#i-vram"/></svg>0.6<small>G</small></span><span class="bar" title="100 % on GPU"><i style="width:100%;background:var(--b-ollama)"></i></span><span class="m dim" title="Unloads in 4 min"><svg class="ic"><use href="#s-load"/></svg>4m</span></div>
+        </div>
+      </article>
+
+      <div class="sec">On model hosts <span class="n">2</span></div>
+      <article class="card srv busy" id="c4" style="--b:var(--b-vllm)">
+        <div class="hd">
+          <span class="bk" title="vLLM"><svg class="ic"><use href="#b-vllm"/></svg></span>
+          <span class="name">mistral-small-24b</span>
+          <span class="st" data-s="gen" title="generating"><svg class="ic"><use href="#s-gen"/></svg></span>
+          <span class="chipi host" title="Runs on model host GPU-BOX (192.168.1.20)"><svg class="ic"><use href="#i-host"/></svg>GPU-BOX</span>
+          <span class="m" title="GPU VRAM"><svg class="ic"><use href="#i-vram"/></svg>14.1<small>G</small></span>
+          <span class="m" title="Busy slots"><svg class="ic"><use href="#i-ctx"/></svg>1/2</span>
+          <span class="tps"><b id="t3">23.5</b><span>t/s</span></span>
+        </div>
+      </article>
+      <article class="card srv idle" id="c5" style="--b:var(--b-lms)">
+        <div class="hd">
+          <span class="bk" title="LM Studio"><svg class="ic"><use href="#b-lms"/></svg></span>
+          <span class="name">phi-4-mini</span>
+          <span class="st" data-s="load" id="c5s" title="loading"><svg class="ic"><use href="#s-load"/></svg></span>
+          <span class="chipi host" title="Runs on model host GPU-BOX (192.168.1.20)"><svg class="ic"><use href="#i-host"/></svg>GPU-BOX</span>
+          <span class="m" title="GPU VRAM"><svg class="ic"><use href="#i-vram"/></svg><span id="c5v">1.1</span><small>G</small></span>
+          <span class="tps"><b id="t5">0.0</b><span>t/s</span></span>
+        </div>
+      </article>
+
+      <div class="card">
+        <div class="hd"><h2>Recent requests</h2>
+          <span class="spdscale" title="t/s colour: slow to fast">t/s <i style="background:var(--sp-1)"></i><i style="background:var(--sp-2)"></i><i style="background:var(--sp-3)"></i><i style="background:var(--sp-4)"></i></span></div>
+        <div class="reqs" id="recent">
+          <div class="req head" aria-hidden="true"><span></span><span>model</span><span class="dur">time</span><span style="text-align:right">t/s</span><span class="ex">tools</span><span></span><span style="text-align:right">ago</span></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="histbar">
+          <h2 style="margin-right:6px">History</h2>
+          <label class="search"><input id="hsearch" placeholder="Search model, ctx …" aria-label="Search history"><span class="kbd">/</span></label>
+          <span class="seg" role="group" aria-label="Sort"><button class="on">Recent</button><button>Best t/s</button><button>Runs</button></span>
+          <span class="mk" title="11: keyboard: / focuses search, sortable columns">11</span>
+        </div>
+        <div class="tablewrap" style="margin-top:6px">
+        <table class="stackable">
+          <thead><tr><th>Model</th><th class="num">Ctx</th><th>Last seen</th><th class="num">Runs</th><th class="num">Best <small>t/s</small></th><th class="num">VRAM <small>GB</small></th><th></th></tr></thead>
+          <tbody>
+            <tr><td>gemma-3-27b-it-Q4_K_M</td><td class="num" data-l="ctx">32k</td><td class="dim hide-s">today 14:02</td><td class="num" data-l="runs">23</td><td class="num" data-l="best">48.2</td><td class="num" data-l="vram">17.0</td><td class="num"><button>Start again</button> <details class="menu"><summary class="btn sq" aria-label="More">⋯</summary><div><button>Details</button><button>Save as profile</button><hr><button style="color:var(--bad)">Forget</button></div></details></td></tr>
+            <tr><td>Qwen3-Coder-30B-A3B-Q4_K_XL</td><td class="num" data-l="ctx">64k</td><td class="dim hide-s">today 13:47</td><td class="num" data-l="runs">11</td><td class="num" data-l="best">96.4</td><td class="num" data-l="vram">20.9</td><td class="num"><button>Start again</button> <details class="menu"><summary class="btn sq" aria-label="More">⋯</summary><div><button>Details</button><button>Save as profile</button><hr><button style="color:var(--bad)">Forget</button></div></details></td></tr>
+            <tr><td>Llama-3.3-70B-IQ2_XS</td><td class="num" data-l="ctx">8k</td><td class="dim hide-s">2026-10-03</td><td class="num" data-l="runs">2</td><td class="num" data-l="best">7.9</td><td class="num" data-l="vram">22.8</td><td class="num"><button>Start again</button> <details class="menu"><summary class="btn sq" aria-label="More">⋯</summary><div><button>Details</button><button>Save as profile</button><hr><button style="color:var(--bad)">Forget</button></div></details></td></tr>
+          </tbody>
+        </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- side column -->
+    <aside class="col">
+      <div class="sec">Hardware <span class="mk" title="7: GPU and system in one compact card">7</span></div>
+      <div class="card">
+        <h2>GPU <small>RTX 4090 · 24 GB</small></h2>
+        <div class="meters">
+          <div class="meter"><div class="l"><span>Load</span></div><div class="v glow"><span id="gload">87</span> <small>%</small></div><div class="bar"><i id="gloadb" style="width:87%"></i></div></div>
+          <div class="meter"><div class="l"><span>VRAM</span><span id="gfree">6.8 free</span></div><div class="v glow"><span id="gvram">17.2</span> <small>/ 24 GB</small></div><div class="bar"><i id="gvramb" style="width:72%"></i></div></div>
+          <div class="meter"><div class="l"><span>Power</span></div><div class="v glow"><span id="gpow">312</span> <small>/ 450 W</small></div><div class="bar"><i id="gpowb" style="width:69%"></i></div></div>
+          <div class="meter"><div class="l"><span>Temp</span><span class="ok">clocks free</span></div><div class="v glow">64 <small>°C</small></div><div class="bar"><i style="width:64%"></i></div></div>
+        </div>
+        <div class="subh">VRAM per process</div>
+        <div class="stack"><i style="width:70%;background:var(--acc)"></i><i style="width:14%;background:var(--second)"></i><i style="width:3%;background:var(--warn)"></i><i style="width:4%;background:var(--muted)"></i></div>
+        <div class="legend">
+          <span class="sw" style="background:var(--acc)"></span><span class="p">llama-server :8081</span><span class="g">17.0</span>
+          <span class="sw" style="background:var(--second)"></span><span class="p">ollama</span><span class="g">3.4</span>
+          <span class="sw" style="background:var(--warn)"></span><span class="p">dwm.exe</span><span class="g">0.7</span>
+          <span class="sw" style="background:var(--muted)"></span><span class="p">other (6)</span><span class="g">0.9</span>
+        </div>
+        <div class="divider"></div>
+        <h2>System <small>32 logical cores</small></h2>
+        <div class="meters">
+          <div class="meter"><div class="l"><span>CPU</span></div><div class="v glow">14 <small>%</small></div><div class="bar"><i style="width:14%"></i></div></div>
+          <div class="meter"><div class="l"><span>Memory</span><span>38.1 free</span></div><div class="v glow">25.9 <small>/ 64 GB</small></div><div class="bar"><i style="width:40%"></i></div></div>
+        </div>
+      </div>
+
+      <div class="sec">Saved profiles <span class="n">4</span></div>
+      <div class="card">
+        <div class="plist">
+          <div class="prof"><span class="d on"></span><div><div class="t">gemma-3-27b</div><div class="m">ctx 32k · :8081 · best 48.2 t/s · 17.0 GB</div></div><span class="badge good">running</span></div>
+          <div class="prof"><span class="d on"></span><div><div class="t">coder-fast</div><div class="m">ctx 64k · :8082 · best 96.4 t/s · 20.9 GB</div></div><span class="badge good">running</span></div>
+          <div class="prof"><span class="d"></span><div><div class="t">llama-70b-lowctx</div><div class="m">ctx 8k · :8083 · best 7.9 t/s · 22.8 GB</div></div>
+            <span class="acts"><button onclick="busy(this,'Start','Checking …','Not enough free VRAM: needs 22.8 GB, 6.8 GB free','',true)">Start</button><details class="menu"><summary class="btn sq" aria-label="More">⋯</summary><div><button>Bench</button><button>Edit</button><hr><button style="color:var(--bad)">Remove</button></div></details></span></div>
+          <div class="prof"><span class="d"></span><div><div class="t">embed-small</div><div class="m">ctx 8k · :8084 · never measured</div></div>
+            <span class="acts"><button onclick="busy(this,'Start','Starting …','embed-small started on :8084')">Start</button><details class="menu"><summary class="btn sq" aria-label="More">⋯</summary><div><button>Bench</button><button>Edit</button><hr><button style="color:var(--bad)">Remove</button></div></details></span></div>
+        </div>
+      </div>
+
+      <div class="sec">Empty state example <span class="mk" title="8: empty states with one clear next step">8</span></div>
+      <div class="empty">
+        <div><b>No benchmark yet</b>Measure this server once to compare it later.</div>
+        <span class="acts"><button class="primary">Run bench</button></span>
+      </div>
+    </aside>
+  </div>
+
+  <div class="card legendbox" id="legend">
+    <h2>Mockup markers <small>see proposals.de.md for details</small></h2>
+    <ol>
+      <li>Type scale with five steps, tabular digits everywhere <span>(app.css)</span></li>
+      <li>Running servers first, saved profiles and hardware in a side column <span>(Monitor.razor)</span></li>
+      <li>Key figures as a labelled grid instead of a sentence plus chips <span>(Monitor.razor)</span></li>
+      <li>Compact header: proxy, VRAM, RAM, server count as status chips <span>(MainLayout.razor)</span></li>
+      <li>Three button levels, badges visibly different from buttons <span>(app.css)</span></li>
+      <li>Slots table: units in header, idle rows folded <span>(Monitor.razor)</span></li>
+      <li>GPU and system in one hardware card with legend <span>(Monitor.razor, StackBar)</span></li>
+      <li>Empty states with one action <span>(all pages)</span></li>
+      <li>Feedback: busy buttons and toasts with undo (click Stop, Start, Free VRAM) <span>(MainLayout, WebActions)</span></li>
+      <li>Command palette Ctrl+K for pages and actions <span>(MainLayout, ui.js)</span></li>
+      <li>Keyboard: / for search, visible focus ring <span>(ui.js, app.css)</span></li>
+      <li>Phone: tables turn into rows below 640 px <span>(app.css)</span></li>
+    </ol>
+  </div>
+</main>
+
+<div class="demo" aria-label="Mockup controls">
+  <span style="color:var(--warn)">Mockup</span>
+  <select id="theme" aria-label="Theme" onchange="applyTheme(this.value)"><option value="dark">Dark</option><option value="light">Light</option><option value="system">System</option></select>
+  <label><input type="checkbox" onchange="document.body.classList.toggle('nomk',!this.checked)"> markers</label>
+  <label title="Glow strength">glow <input type="range" min="0" max="150" value="100" style="width:90px;vertical-align:middle" oninput="document.documentElement.style.setProperty('--gk',this.value/100);this.nextElementSibling.textContent=this.value+' %'"><span class="mono" style="display:inline-block;width:38px">100 %</span></label>
+  <label><input type="checkbox" checked onchange="live=this.checked"> live</label>
+  <label title="html.shell: window without GPU"><input type="checkbox" onchange="document.documentElement.classList.toggle('shell',this.checked)"> shell</label>
+</div>
+
+<div class="pal-back" id="pal" onclick="if(event.target===this)closePal()">
+  <div class="pal" role="dialog" aria-label="Command palette">
+    <input id="palq" placeholder="Go to page or run an action …" autocomplete="off" oninput="filterPal()" onkeydown="palKey(event)">
+    <ul id="pall">
+      <li class="grp">Actions</li>
+      <li>Start profile: llama-70b-lowctx<span class="k">profile</span></li>
+      <li>Start profile: embed-small<span class="k">profile</span></li>
+      <li>Stop gemma-3-27b<span class="k">server</span></li>
+      <li>Prompt gemma-3-27b<span class="k">server</span></li>
+      <li>Free VRAM<span class="k">global</span></li>
+      <li>Proxy: serve qwen3-coder-30b<span class="k">proxy</span></li>
+      <li class="grp">Pages</li>
+      <li>Model tests<span class="k">g t</span></li><li>Benchmarks<span class="k">g b</span></li><li>Recordings<span class="k">g r</span></li>
+      <li>GPU details<span class="k">page</span></li><li>Model hosts<span class="k">page</span></li><li>Phone access<span class="k">page</span></li><li>Settings<span class="k">page</span></li>
+    </ul>
+    <div class="foot"><span><span class="kbd">↑↓</span> move</span><span><span class="kbd">Enter</span> run</span><span><span class="kbd">Esc</span> close</span></div>
+  </div>
+</div>
+
+<div class="toasts" id="toasts" aria-live="polite"></div>
+
+<script>
+// ── v3: live simulation (about every second), all motion bound to data ──
+const RM=matchMedia('(prefers-reduced-motion: reduce)');
+let live=true;
+const $=id=>document.getElementById(id);
+const fmt=(v,d=1)=>v.toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d});
+const ic=(id,cls='')=>`<svg class="ic ${cls}"><use href="#${id}"/></svg>`;
+// theme: Dark / Light / System
+const sysLight=matchMedia('(prefers-color-scheme: light)');
+let themePick='dark';
+function applyTheme(v){themePick=v||themePick;document.documentElement.dataset.theme=themePick==='system'?(sysLight.matches?'light':'dark'):themePick;}
+sysLight.addEventListener('change',()=>themePick==='system'&&applyTheme());
+// numbers count softly to the new value (jump with reduced motion)
+const cur=new Map();
+function tween(el,to,d=1,ms=800){
+  if(!el)return;const from=cur.has(el)?cur.get(el):parseFloat(el.textContent.replace(/,/g,''))||0;cur.set(el,to);
+  if(RM.matches){el.textContent=fmt(to,d);return;}
+  const t0=performance.now();
+  (function step(t){const k=Math.min(1,(t-t0)/ms),e=1-Math.pow(1-k,3);el.textContent=fmt(from+(to-from)*e,d);if(k<1&&cur.get(el)===to)requestAnimationFrame(step);})(t0);
+}
+// sparkline: shifts left one step per tick, tip follows the newest value
+const SP={};
+function spark(id,pts,max){SP[id]={pts:pts.slice(),max};drawSpark(id,false);}
+function drawSpark(id,shift){
+  const o=SP[id],el=$(id),w=300,h=64,n=o.pts.length,step=w/(n-2);
+  const xy=o.pts.map((v,i)=>[(i*step).toFixed(1),(h-3-v/o.max*(h-10)).toFixed(1)]);
+  const line=xy.map(p=>p.join(',')).join(' ');
+  const old=el.querySelector('svg');if(old)old.remove();
+  el.insertAdjacentHTML('afterbegin',`<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true">
+    <line class="ref" x1="0" x2="${w}" y1="${h/2}" y2="${h/2}"/><g class="move" style="transform:translateX(${shift?0:-step}px)">
+    <polygon class="area" points="0,${h} ${line} ${(n-1)*step},${h}"/>
+    <polyline class="g1" points="${line}"/><polyline class="g2" points="${line}"/><polyline class="ln" points="${line}"/></g></svg>`);
+  const g=el.querySelector('g.move');
+  if(shift&&!RM.matches)g.getBoundingClientRect();
+  g.style.transform=`translateX(${-step}px)`;
+  const tip=el.querySelector('.tip');if(tip)tip.style.top=(100*(h-3-o.pts[n-1]/o.max*(h-10))/h)+'%';
+}
+function pushSpark(id,v){const o=SP[id];o.pts.shift();o.pts.push(v);drawSpark(id,true);}
+spark('sp1',[0,0,12,38,41,44,40,43,46,48,45,42,0,0,0,30,39,42,44,41,43,40,42,41.8,41.8],60);
+spark('sp2',[0,80,92,96,90,88,91,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],100);
+
+// slot tiles: colour = state, fill = context, icon always (never colour alone); click shows details
+const ST={idle:['s-idle','idle'],read:['s-read','reading prompt'],gen:['s-gen','generating'],load:['s-load','loading'],off:['s-off','offline']};
+const SLOTS={c1:[{s:'gen',ctx:12410,tps:42.1,gen:3812},{s:'read',ctx:30880,tps:0,gen:0},{s:'idle',ctx:0,tps:0,gen:0},{s:'idle',ctx:0,tps:0,gen:0}],
+             c2:[{s:'idle',ctx:0,tps:0,gen:0},{s:'idle',ctx:0,tps:0,gen:0}]};
+const MAXCTX=32768,selSlot={};
+function slotText(i,v){return `Slot ${i} · ${ST[v.s][1]} · ctx ${fmt(v.ctx,0)} / 32k`+(v.s==='gen'?` · ${fmt(v.tps)} t/s · ${fmt(v.gen,0)} tok`:'')+(v.ctx/MAXCTX>.9?' · context almost full':'');}
+function drawTiles(card){
+  const box=$(card+'t');
+  SLOTS[card].forEach((v,i)=>{
+    let t=box.children[i];
+    if(!t){t=document.createElement('button');t.className='slot';t.innerHTML='<i></i><svg class="ic"><use/></svg><span></span>';t.onclick=()=>{selSlot[card]=selSlot[card]===i?undefined:i;drawTiles(card);};box.append(t);}
+    t.dataset.s=v.s;t.classList.toggle('hot',v.ctx/MAXCTX>.9);t.classList.toggle('sel',selSlot[card]===i);
+    t.querySelector('use').setAttribute('href','#'+ST[v.s][0]);t.querySelector('span').textContent=i;
+    t.style.setProperty('--f',(100*v.ctx/MAXCTX).toFixed(1)+'%');t.title=slotText(i,v);t.setAttribute('aria-label',t.title);
+  });
+  const info=$(card+'i'),k=selSlot[card];
+  info.innerHTML=k===undefined?'':'<b>'+slotText(k,SLOTS[card][k]).replace(' · ','</b> · ');
+}
+function setState(el,s){el.dataset.s=s;el.title=ST[s][1];el.querySelector('use').setAttribute('href','#'+ST[s][0]);}
+drawTiles('c1');drawTiles('c2');
+
+// recent requests: client kind icon, model dot in card colour, duration bar, t/s colour scale, extras, result icon
+const CL={cli:'terminal / CLI',editor:'editor',web:'browser',agent:'agent'};
+const RES={ok:['r-ok','done'],abort:['r-abort','cancelled'],err:['r-err','error'],full:['r-full','context full']};
+const spc=t=>t<15?'s1':t<30?'s2':t<60?'s3':'s4';
+function reqRow(r,isNew){
+  const d=document.createElement('div');d.className='req'+(isNew?' new':'');d.style.setProperty('--b',`var(--b-${r.b})`);
+  d.innerHTML=`<span class="cl" title="Client: ${r.cn} (${CL[r.c]})">${ic('c-'+r.c)}</span>
+   <span class="mdl" title="${r.m}${r.host?' on '+r.host:''}"><i></i><span>${r.m}</span>${r.host?`<span class="chipi" style="height:18px;padding:0 4px" title="Model host ${r.host}">${ic('i-host')}</span>`:''}</span>
+   <span class="dur" title="${r.sec} s, ${fmt(r.tok,0)} tokens"><span class="bar"><i style="width:${Math.min(100,r.sec/1.2)}%"></i></span>${r.sec}s</span>
+   <span class="spd ${r.res==='err'?'':spc(r.tps)}" title="Generation ${fmt(r.tps)} t/s">${r.res==='err'?'–':fmt(r.tps)}</span>
+   <span class="ex">${r.tools?`<span title="${r.tools} tool calls">${ic('x-tool')}${r.tools}</span>`:''}${r.think?`<span title="Thinking: ${fmt(r.think,0)} tokens">${ic('x-think')}</span>`:''}</span>
+   <span class="res ${r.res}" title="${RES[r.res][1]}">${ic(RES[r.res][0])}</span>
+   <span class="ago" data-t="${r.t}"></span>`;
+  return d;
+}
+const now0=Date.now();
+const SEED=[
+ {c:'cli',cn:'opencode',b:'llama',m:'gemma-3-27b',sec:41,tok:1822,tps:43.9,tools:3,think:0,res:'ok',t:now0-12e3},
+ {c:'agent',cn:'build-agent',b:'vllm',m:'mistral-small-24b',host:'GPU-BOX',sec:17,tok:412,tps:24.1,tools:0,think:380,res:'ok',t:now0-39e3},
+ {c:'editor',cn:'VS Code',b:'llama',m:'gemma-3-27b',sec:102,tok:4096,tps:40.2,tools:6,think:0,res:'full',t:now0-180e3},
+ {c:'cli',cn:'qwen-code',b:'llama',m:'qwen3-coder-30b',sec:32,tok:2904,tps:91.7,tools:2,think:0,res:'ok',t:now0-240e3},
+ {c:'web',cn:'browser chat',b:'ollama',m:'llama3.2:3b',sec:4,tok:310,tps:88.0,tools:0,think:0,res:'abort',t:now0-300e3},
+ {c:'agent',cn:'build-agent',b:'llama',m:'qwen3-coder-30b',sec:0,tok:0,tps:0,tools:0,think:0,res:'err',t:now0-420e3},
+ {c:'editor',cn:'VS Code',b:'vllm',m:'mistral-small-24b',host:'GPU-BOX',sec:58,tok:1210,tps:11.3,tools:1,think:900,res:'ok',t:now0-600e3}];
+SEED.forEach(r=>$('recent').append(reqRow(r)));
+function ago(){document.querySelectorAll('.ago').forEach(a=>{const s=Math.round((Date.now()-a.dataset.t)/1000);a.textContent=s<60?s+'s':Math.round(s/60)+'m';a.title=new Date(+a.dataset.t).toLocaleTimeString();});}
+ago();
+function newRequest(r){
+  r.t=Date.now();r.tok=Math.round(r.tok||rnd(200,3000));r.sec=Math.max(1,Math.round(r.tok/Math.max(r.tps,1)));
+  const box=$('recent');box.children[0].after(reqRow(r,true));while(box.children.length>9)box.lastElementChild.remove();ago();
+  setTimeout(()=>box.querySelectorAll('.req.new').forEach(x=>x.classList.remove('new')),1700);
+}
+
+const S={t1:41.8,sum:182.3,s1ticks:0,t2:0,idle2:240,t3:23.5,vram:17.2,load:87,pow:312,tick:0,c5:1.1};
+const rnd=(a,b)=>a+Math.random()*(b-a);
+function setBusy(card,on){$(card).classList.toggle('busy',on);$(card).classList.toggle('idle',!on);}
+function tick(){
+  if(!live)return;S.tick++;
+  const a=SLOTS.c1;
+  S.t1=Math.max(30,Math.min(49,S.t1+rnd(-2.2,2.2)));tween($('t1'),S.t1);
+  a[0].tps=S.t1;a[0].gen+=Math.round(S.t1*.5);a[0].ctx+=Math.round(S.t1*.5);
+  if(a[0].ctx>32000){newRequest({c:'cli',cn:'opencode',b:'llama',m:'gemma-3-27b',tps:S.t1,tools:Math.round(rnd(0,5)),think:0,res:'ok',tok:a[0].gen});a[0].ctx=2100;a[0].gen=0;}
+  if(++S.s1ticks===5){a[1].s='gen';a[1].ctx=3400;}
+  if(a[1].s==='gen'){a[1].tps=S.t1*.9;a[1].gen+=Math.round(S.t1*.45);a[1].ctx+=Math.round(S.t1*.45);}
+  S.sum+=S.t1/1000;$('c1sum').textContent=fmt(S.sum);
+  drawTiles('c1');pushSpark('sp1',S.t1);
+  // qwen: short burst every 14 s on slot 0
+  const ph=S.tick%14,b=SLOTS.c2[0];
+  if(ph===6){setBusy('c2',true);setState($('c2s'),'read');b.s='read';b.ctx=1800;}
+  if(ph===7){setState($('c2s'),'gen');b.s='gen';}
+  if(ph>=7&&ph<11){S.t2=Math.max(70,Math.min(98,(S.t2||85)+rnd(-5,5)));b.tps=S.t2;b.gen+=Math.round(S.t2*.6);b.ctx+=Math.round(S.t2*.6);}
+  if(ph===11){setBusy('c2',false);setState($('c2s'),'idle');newRequest({c:'cli',cn:'qwen-code',b:'llama',m:'qwen3-coder-30b',tps:S.t2,tools:Math.round(rnd(1,4)),think:0,res:'ok',tok:b.gen});
+    b.s='idle';b.ctx=0;b.gen=0;S.t2=0;S.idle2=0;}
+  drawTiles('c2');tween($('t2'),S.t2);pushSpark('sp2',S.t2);
+  if(!S.t2)S.idle2++;
+  $('idle2').textContent=S.t2>0?'now':('idle '+(S.idle2<60?S.idle2+' s':Math.round(S.idle2/60)+' min'));
+  // host servers: vLLM writes, LM Studio finishes loading after 8 s
+  S.t3=Math.max(19,Math.min(27,S.t3+rnd(-1,1)));tween($('t3'),S.t3);
+  if(S.tick<=8){S.c5=Math.min(2.6,S.c5+.19);tween($('c5v'),S.c5);}
+  if(S.tick===8)setState($('c5s'),'idle');
+  // hardware
+  S.vram=Math.max(15.5,Math.min(22.5,S.vram+rnd(-.4,.4)+(ph===6?2.4:ph===11?-2.4:0)));
+  tween($('gvram'),S.vram);tween($('hvram'),S.vram);$('gfree').textContent=fmt(24-S.vram)+' free';
+  $('gvramb').style.width=$('hvbar').style.width=(100*S.vram/24).toFixed(1)+'%';
+  S.load=Math.max(55,Math.min(99,S.load+rnd(-6,6)+(ph>=6&&ph<11?3:0)));tween($('gload'),S.load,0);$('gloadb').style.width=S.load.toFixed(0)+'%';
+  S.pow=Math.round(150+S.load*2.8);tween($('gpow'),S.pow,0);$('gpowb').style.width=(100*S.pow/450).toFixed(1)+'%';
+  if(S.tick%9===4)newRequest({c:'agent',cn:'build-agent',b:'vllm',m:'mistral-small-24b',host:'GPU-BOX',tps:S.t3,tools:Math.round(rnd(0,3)),think:Math.round(rnd(0,800)),res:Math.random()<.2?'abort':'ok'});
+  ago();
+}
+setInterval(tick,1000);
+
+function toggleIdle(){}
+function toast(msg,action,warn){
+  const t=document.createElement('div');t.className='toast'+(warn?' warn':'');t.textContent=msg;
+  if(action){const b=document.createElement('button');b.className='quiet';b.textContent=action;b.onclick=()=>t.remove();t.append(b);}
+  $('toasts').append(t);setTimeout(()=>{t.classList.add('out');setTimeout(()=>t.remove(),300);},4500);
+}
+function busy(btn,label,busyLabel,done,action,warn){
+  btn.setAttribute('aria-busy','true');btn.disabled=true;btn.textContent=busyLabel;
+  setTimeout(()=>{btn.removeAttribute('aria-busy');btn.disabled=false;btn.textContent=label;
+    btn.classList.remove('done','fail');void btn.offsetWidth;btn.classList.add(warn?'fail':'done');toast(done,action,warn);},1100);
+}
+function busyIcon(btn,done,action){
+  const html=btn.innerHTML;btn.setAttribute('aria-busy','true');btn.disabled=true;btn.innerHTML='';
+  setTimeout(()=>{btn.removeAttribute('aria-busy');btn.disabled=false;btn.innerHTML=html;
+    btn.classList.remove('done');void btn.offsetWidth;btn.classList.add('done');toast(done,action);},1100);
+}
+// command palette
+const pal=$('pal'),palq=document.getElementById('palq');
+function items(){return [...document.querySelectorAll('#pall li:not(.grp)')].filter(li=>li.style.display!=='none');}
+function sel(i){const it=items();it.forEach(x=>x.classList.remove('sel'));if(it.length)it[(i+it.length)%it.length].classList.add('sel');}
+function openPal(){pal.classList.add('open');palq.value='';filterPal();palq.focus();}
+function closePal(){pal.classList.remove('open');}
+function filterPal(){const q=palq.value.toLowerCase();document.querySelectorAll('#pall li:not(.grp)').forEach(li=>li.style.display=li.textContent.toLowerCase().includes(q)?'':'none');sel(0);}
+function palKey(e){const it=items(),i=it.findIndex(x=>x.classList.contains('sel'));
+  if(e.key==='ArrowDown'){sel(i+1);e.preventDefault();}else if(e.key==='ArrowUp'){sel(i-1);e.preventDefault();}
+  else if(e.key==='Enter'&&it[i]){closePal();toast('Would run: '+it[i].firstChild.textContent);}else if(e.key==='Escape')closePal();}
+document.getElementById('pall').addEventListener('click',e=>{const li=e.target.closest('li:not(.grp)');if(li){closePal();toast('Would run: '+li.firstChild.textContent);}});
+document.addEventListener('keydown',e=>{
+  if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k'){e.preventDefault();openPal();}
+  else if(e.key==='/'&&!/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)){e.preventDefault();document.getElementById('hsearch').focus();}
+  else if(e.key==='Escape')closePal();
+});
+// close other open menus when one opens
+document.querySelectorAll('details.menu').forEach(d=>d.addEventListener('toggle',()=>{if(d.open)document.querySelectorAll('details.menu[open]').forEach(o=>o!==d&&(o.open=false));}));
+</script>
+</body>
+</html>

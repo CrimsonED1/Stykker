@@ -1,0 +1,13 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/StykkerLlm.Cli/StykkerLlm.Cli.csproj" />
+    <Project Path="src/StykkerLlm.Core/StykkerLlm.Core.csproj" />
+    <Project Path="src/StykkerLlm.Host/StykkerLlm.Host.csproj" />
+    <Project Path="src/StykkerLlm.Platform.Windows/StykkerLlm.Platform.Windows.csproj" />
+    <Project Path="src/StykkerLlm.Server/StykkerLlm.Server.csproj" />
+    <Project Path="src/StykkerLlm.UI/StykkerLlm.UI.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/StykkerLlm.Tests/StykkerLlm.Tests.csproj" />
+  </Folder>
+</Solution>

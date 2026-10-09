@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- UI-freier Kern: Erkennung, Parser, Bibliothek, Überwachung. Keine Windows-Abhängigkeit (Plattformzugriffe über IPlatform). -->
+  <!-- Angefangen, nicht fertig (2026-10-06, pausiert wegen Nutzungslimit): LinuxPlatform.cs.wip – IPlatform für Linux
+       (/proc, nvidia-smi; siehe AGENTS.md, Open work). Wird nicht gebaut, solange es .wip heißt. Zum Weitermachen in .cs umbenennen,
+       bauen, Tests mit nachgebauten /proc-Dateien schreiben und EngineHost/CLI/Shell auf LinuxPlatform umstellen. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>StykkerLlm.Core</AssemblyName>
+    <RootNamespace>StykkerLlm.Core</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="StykkerLlm.Tests" />
+    <!-- eingebaute Test-Suite für Modelle (Eval) -->
+    <EmbeddedResource Include="Eval\suite-basic.json" LogicalName="StykkerLlm.Core.Eval.suite-basic.json" />
+    <EmbeddedResource Include="Eval\suite-hard.json" LogicalName="StykkerLlm.Core.Eval.suite-hard.json" />
+    <EmbeddedResource Include="Eval\suite-creative.json" LogicalName="StykkerLlm.Core.Eval.suite-creative.json" />
+    <EmbeddedResource Include="Eval\suite-agent.json" LogicalName="StykkerLlm.Core.Eval.suite-agent.json" />
+  </ItemGroup>
+
+</Project>

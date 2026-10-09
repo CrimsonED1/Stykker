@@ -1,0 +1,39 @@
+@implements IDisposable
+@inject WebPrompt Prompt
+
+@if (Prompt.Pending is { } p)
+{
+    <div class="modal-back">
+        <div class="modal">
+            <h2 style="color:@(p.Warning ? "var(--warn)" : "var(--ink)")">@p.Title</h2>
+            <div style="white-space:pre-wrap">@p.Text</div>
+            @if (p.Kind == "secret")
+            {
+                <input type="password" style="width:100%;margin-top:10px" @bind="_secret" placeholder="@Strings.SecretPlaceholder" />
+            }
+            <div class="row" style="margin-top:14px;justify-content:flex-end">
+                @if (p.Kind == "confirm")
+                {
+                    <button @onclick="() => Prompt.Answer(null)">@Strings.BtnNo</button>
+                    <button class="@(p.Warning ? "bad" : "good")" @onclick="@(() => Prompt.Answer("yes"))">@Strings.BtnYes</button>
+                }
+                else if (p.Kind == "secret")
+                {
+                    <button @onclick="() => Prompt.Answer(null)">@Strings.Cancel</button>
+                    <button class="good" @onclick="() => { var v = _secret; _secret = string.Empty; Prompt.Answer(string.IsNullOrEmpty(v) ? null : v); }">@Strings.Ok</button>
+                }
+                else
+                {
+                    <button class="good" @onclick="() => Prompt.Answer(null)">@Strings.Ok</button>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private string _secret = "";
+    protected override void OnInitialized() => Prompt.Changed += Refresh;
+    private void Refresh() => InvokeAsync(StateHasChanged);
+    public void Dispose() => Prompt.Changed -= Refresh;
+}

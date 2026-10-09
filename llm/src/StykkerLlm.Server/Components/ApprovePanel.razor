@@ -1,0 +1,54 @@
+@* Freigabe andersherum (Netflix-Weg): das neue Gerät zeigt sechs Ziffern, hier tippt man sie ein. Darunter die offenen
+   Anfragen – ohne deren Code: wer freigibt, muss ihn am neuen Gerät ablesen. Auf "Phone access" und auf /approve
+   (dorthin führt der QR-Code, den das neue Gerät zeigt). *@
+@inject EngineHost Host
+@inject WebActions Web
+
+<div class="card">
+    <h2>@Strings.PairApproveTitle</h2>
+    <p class="muted small">@Strings.PairApproveHint</p>
+    <div class="row">
+        <input class="digits" @bind="_code" @bind:event="oninput" inputmode="numeric" maxlength="7" placeholder="@Strings.PairApprovePlaceholder" autocomplete="off" />
+        <label class="small muted"><input type="checkbox" @bind="_viewer" /> @Strings.PairApproveAsViewer</label>
+        <button class="good" disabled="@(AccessControl.CleanCode(_code).Length != AccessControl.CodeLength)" @onclick="Approve">@Strings.BtnApprove</button>
+    </div>
+    @if (_msg.Length > 0)
+    {
+        <p class="small @(_ok ? "good" : "warn")">@_msg</p>
+    }
+    @if (Host.Access.PendingRequests is { Count: > 0 } pending)
+    {
+        <p class="sec" style="margin-top:12px">@Strings.PairPending</p>
+        @foreach (var r in pending)
+        {
+            <div class="row small">
+                <span>@Strings.PairPendingLine(r.Name, r.Address ?? "", r.Kind)</span>
+                <span class="muted">@Strings.CodeValidFor(r.Expires - DateTime.Now)</span>
+                <button class="bad" @onclick="() => Deny(r.Id)">@Strings.BtnDeny</button>
+            </div>
+        }
+    }
+</div>
+
+@code {
+    [Parameter] public string? Code { get; set; }
+
+    private string _code = "";
+    private bool _viewer, _ok;
+    private string _msg = "";
+
+    protected override void OnParametersSet()
+    {
+        if (!string.IsNullOrEmpty(Code) && _code.Length == 0) _code = AccessControl.Pretty(AccessControl.CleanCode(Code));
+    }
+
+    private async Task Approve()
+    {
+        var r = await Web.RunAsync(new ActionRequest { Action = "pair.approve", Arg = _code, Arg2 = _viewer ? AccessRole.Viewer : AccessRole.Admin });
+        _ok = r.Ok;
+        _msg = r.Message;
+        if (r.Ok) _code = "";
+    }
+
+    private Task Deny(string id) => Web.RunAsync(new ActionRequest { Action = "pair.deny", Arg = id });
+}

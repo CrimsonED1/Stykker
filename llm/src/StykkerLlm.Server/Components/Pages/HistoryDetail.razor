@@ -1,0 +1,130 @@
+@page "/history/{key}"
+@implements IDisposable
+@inject EngineHost Host
+@inject LaunchCoordinator Launcher
+@inject WebActions Web
+@inject WebPrompt Prompt
+@inject NavigationManager Nav
+
+@* Details zu einem Verlaufseintrag wie im Fenster (HistoryDetailsForm, Bereich 8 in docs/ui.md):
+   Kommandozeile, Parameter, Laufstatistik und die Modelldatei (GGUF-Kopf, VRAM-Schätzung).
+   Nur gespeicherte Werte – der Server muss nicht laufen. Inhalt kommt aus StykkerLlm.Core.HistoryDetails,
+   damit Fenster und Web garantiert dasselbe zeigen. *@
+
+@{ var h = Host.Engine.Library.FindHistory(Uri.UnescapeDataString(key ?? "")); }
+
+@if (h == null)
+{
+    <div class="card"><b>@Strings.SectionHistory</b>
+        <div class="muted small">@key</div>
+        <p><a href="">@Strings.BackToMonitor</a></p>
+    </div>
+}
+else
+{
+    var name = h.Name.Length > 0 ? h.Name : h.ModelPath != null ? ServerInfo.ModelName(h.ModelPath) : "?";
+    var running = Host.Engine.Registry.Servers.Any(x => x.Info.Program != null && Library.MakeKey(x.Info.Program!, x.Info.Args) == h.Key);
+    var saved = Host.Engine.Library.Profiles.Any(p => p.Key == h.Key);
+    var modelPath = HistoryDetails.ModelPath(h);
+    var parameters = HistoryDetails.Parameters(h);
+    var runs = HistoryDetails.Runs(h);
+
+    <div class="row" style="margin-bottom:12px">
+        <b style="font-size:17px">@name</b>
+        <span class="muted small">@Strings.HistoryDetailsSub(running ? Strings.RunningNow : h.LastSeen.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture), h.Runs, Fmt.Dur(h.TotalSeconds))@(running ? "  ·  " + Strings.RunningTag : "")</span>
+        <span style="margin-left:auto"></span>
+        <button disabled="@(Host.ReadOnly || running || h.Program.Length == 0)" @onclick="Start">@Strings.BtnStartAgain</button>
+        <button disabled="@(Host.ReadOnly || saved || h.Program.Length == 0)" @onclick="() => Save(saved)">@(saved ? Strings.BtnSaved : Strings.BtnSave)</button>
+        <button @onclick="Back">@Strings.Close</button>
+    </div>
+
+    <div class="grid2">
+        <div>
+            <div class="card">
+                <h2>@Strings.SecCommand</h2>
+                <div class="answer">@HistoryDetails.CommandLine(h)</div>
+                <table>
+                    <tr><th>@Strings.ColOption</th><th>@Strings.ColValue</th></tr>
+                    @foreach (var f in parameters)
+                    {
+                        <tr><td>@f.Key</td><td class="muted">@f.Value</td></tr>
+                    }
+                    @if (parameters.Count == 0)
+                    {
+                        <tr><td colspan="2" class="muted small">@Strings.NoParameters</td></tr>
+                    }
+                </table>
+                @if (h.HasSecrets)
+                {
+                    <p class="muted small">@Strings.SecretsHidden</p>
+                }
+            </div>
+
+            <div class="card">
+                <h2>@Strings.SecModelFile</h2>
+                <table>
+                    <tr><th>@Strings.ColProperty</th><th>@Strings.ColValue</th></tr>
+                    <tr><td>@Strings.ColModelFile</td><td class="muted">@(modelPath ?? Strings.NoModelPath)</td></tr>
+                    @foreach (var f in _modelFacts)
+                    {
+                        <tr><td>@f.Key</td><td class="muted">@f.Value</td></tr>
+                    }
+                </table>
+            </div>
+        </div>
+
+        <div>
+            <div class="card">
+                <h2>@Strings.SecRuns</h2>
+                <table>
+                    <tr><th>@Strings.ColProperty</th><th>@Strings.ColValue</th></tr>
+                    @foreach (var f in runs)
+                    {
+                        <tr><td>@f.Key</td><td class="muted">@f.Value</td></tr>
+                    }
+                </table>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private Timer? _t;
+    private bool _modelStarted;
+    private IReadOnlyList<HistoryDetails.Fact> _modelFacts = Array.Empty<HistoryDetails.Fact>();
+
+    [Parameter] public string? key { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        _t ??= new Timer(_ => InvokeAsync(StateHasChanged), null, 1500, 1500);
+        if (!_modelStarted) { _modelStarted = true; _ = LoadModelAsync(); }
+    }
+    public void Dispose() => _t?.Dispose();
+
+    private HistoryEntry? Entry => Host.Engine.Library.FindHistory(Uri.UnescapeDataString(key ?? ""));
+
+    private void Back() => Nav.NavigateTo("");
+
+    private async Task Start()
+    {
+        if (Web.CanWrite && Entry is { } h) await Launcher.StartHistoryAsync(h);
+    }
+
+    // Wie im Fenster: Merken über die Aktions-API, mit dem Namen des Eintrags (leer = aus dem Modell ableiten)
+    private async Task Save(bool saved)
+    {
+        if (Entry is not { } h || saved) return;
+        var result = await Web.RunAsync(new ActionRequest { Action = "profile.add-history", Arg = h.Key, Name = h.Name.Length > 0 ? h.Name : null });
+        if (!result.Ok) await Prompt.InformAsync(Strings.ActionFailed, result.Message, warning: true);
+        else StateHasChanged();
+    }
+
+    // Modelldatei und GGUF-Kopf im Hintergrund (Netzlaufwerk, große Datei)
+    private async Task LoadModelAsync()
+    {
+        if (Entry is not { } h) return;
+        var facts = await Task.Run(() => HistoryDetails.ModelFileFacts(h));
+        try { await InvokeAsync(() => _modelFacts = facts); } catch { /* Seite schon geschlossen */ }
+    }
+}

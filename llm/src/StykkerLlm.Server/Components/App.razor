@@ -1,0 +1,20 @@
+@inject EngineHost Host
+<!DOCTYPE html>
+@* Erstes Bild schon im richtigen Thema; bei „System“ entscheidet ui.js sofort im Kopf *@
+<html lang="en" data-theme="@(ThemeCatalog.Mode(Host.Engine.Settings.Theme) == "titan" ? "titan" : "dark")" data-theme-choice="@ThemeCatalog.Mode(Host.Engine.Settings.Theme)">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <base href="/" />
+    <link rel="stylesheet" href="@Assets["app.css"]" />
+    <title>Stykker LLM</title>
+    @* Ansicht und Hüllen-Erkennung: im Kopf, damit die Ansicht (kompakt/voll) steht, bevor die Seite gezeichnet wird *@
+    <script src="@Assets["ui.js"]"></script>
+    <HeadOutlet @rendermode="InteractiveServer" />
+</head>
+<body>
+    <Routes @rendermode="InteractiveServer" />
+    <script src="@Assets["role.js"]"></script>
+    <script src="@Assets["_framework/blazor.web.js"]"></script>
+</body>
+</html>
