@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Computes example scenes and writes mesh buffers as JSON for tools/snapshot (headless three.js render). -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/Stykker.NanoCut.Cutting/Stykker.NanoCut.Cutting.csproj" />
+  </ItemGroup>
+</Project>

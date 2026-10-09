@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Benchmark CLI: runs an expanded bench scene with NanoCut or ManifoldSharp (comparison only; nothing here ships). -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <ServerGarbageCollection>false</ServerGarbageCollection>
+    <TieredPGO>true</TieredPGO>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="ManifoldSharp" Version="0.3.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Cutting as well as Geometry3D: the "process" engine measures Process3.Cut and Process2.Cut, the production
+         entry points, because the step loop measures something else (docs/performance-audit.md, section 2). -->
+    <ProjectReference Include="../../src/Stykker.NanoCut.Geometry3D/Stykker.NanoCut.Geometry3D.csproj" />
+    <ProjectReference Include="../../src/Stykker.NanoCut.Cutting/Stykker.NanoCut.Cutting.csproj" />
+  </ItemGroup>
+</Project>

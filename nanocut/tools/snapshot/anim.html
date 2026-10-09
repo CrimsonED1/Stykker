@@ -1,0 +1,92 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>NanoCut animation</title>
+  <style>html, body { margin: 0; background: #f4f5f7; overflow: hidden; }</style>
+  <script type="importmap">
+    { "imports": {
+        "three": "/tools/snapshot/node_modules/three/build/three.module.js",
+        "@stykker/nanocut-three": "/js/nanocut-three/index.js" } }
+  </script>
+</head>
+<body>
+<script type="module">
+  import * as THREE from 'three';
+  import { toThreeGeometry } from '@stykker/nanocut-three';
+
+  const W = innerWidth, H = innerHeight;
+  const scene = await (await fetch('/__data/scene.json')).json();
+  const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+  renderer.setPixelRatio(1);
+  renderer.setSize(W, H);
+  renderer.setClearColor(0xf4f5f7);
+  document.body.appendChild(renderer.domElement);
+  const world = new THREE.Scene();
+  world.add(new THREE.HemisphereLight(0xffffff, 0x8899aa, 1.6));
+  const sun = new THREE.DirectionalLight(0xffffff, 2.2);
+  sun.position.set(-1, -1.6, 2.4);
+  world.add(sun);
+  const fill = new THREE.DirectionalLight(0xffffff, 0.7);
+  fill.position.set(2, 1, 0.7);
+  world.add(fill);
+  const camera = new THREE.PerspectiveCamera(30, W / H, 0.1, 5000);
+  camera.up.set(0, 0, 1);
+  const group = new THREE.Group();
+  world.add(group);
+
+  const VIEWS = { mill: [-0.42, -0.62, 0.66], lathe: [0.05, -1, 0.3], gear: [-0.3, -0.55, 0.78], cubes: [-0.55, -0.85, 0.55] };
+  const overlay = document.createElement('canvas');
+  overlay.width = W; overlay.height = H;
+  const ctx = overlay.getContext('2d');
+
+  async function load(file) {
+    const buf = await (await fetch('/__data/' + file)).arrayBuffer();
+    const head = new Uint32Array(buf, 0, 2);
+    const n = head[0], m = head[1];
+    return {
+      positions: new Float32Array(buf, 8, n),
+      normals: new Float32Array(buf, 8 + 4 * n, n),
+      indices: new Uint32Array(buf, 8 + 8 * n, m),
+    };
+  }
+
+  let fitted = false;
+  window.frameCount = scene.frames.length;
+  window.renderFrame = async (i) => {
+    const frame = scene.frames[i];
+    for (const c of [...group.children]) { group.remove(c); c.geometry.dispose(); c.material.dispose(); }
+    for (const o of frame.objects) {
+      const g = toThreeGeometry(await load(o.file));
+      const mat = new THREE.MeshStandardMaterial({ color: o.color, metalness: 0.3, roughness: 0.5, side: THREE.DoubleSide,
+        transparent: o.opacity < 1, opacity: o.opacity, depthWrite: o.opacity >= 1 });
+      group.add(new THREE.Mesh(g, mat));
+    }
+    if (!fitted) {
+      // Fixed camera for the whole animation, framed on the first frame (all objects).
+      const box = new THREE.Box3().setFromObject(group);
+      const c = box.getCenter(new THREE.Vector3()), r = box.getSize(new THREE.Vector3()).length() / 2;
+      const d = new THREE.Vector3(...(VIEWS[scene.view] ?? VIEWS.mill)).normalize();
+      camera.position.copy(c.clone().add(d.multiplyScalar(r * 3.0)));
+      camera.lookAt(c);
+      fitted = true;
+    }
+    renderer.render(world, camera);
+    ctx.clearRect(0, 0, W, H);
+    ctx.drawImage(renderer.domElement, 0, 0);
+    ctx.fillStyle = '#1d2733';
+    ctx.font = 'bold 15px system-ui, sans-serif';
+    ctx.fillText('Stykker.NanoCut – ' + scene.title, 18, 28);
+    ctx.font = '14px system-ui, sans-serif';
+    ctx.fillStyle = '#5b6876';
+    ctx.fillText(`${frame.caption}   (${i + 1}/${scene.frames.length})`, 18, 50);
+    const data = ctx.getImageData(0, 0, W, H).data;
+    // Base64 of the RGBA bytes for transfer to Node.
+    let s = '';
+    for (let k = 0; k < data.length; k += 0x8000) s += String.fromCharCode.apply(null, data.subarray(k, k + 0x8000));
+    return btoa(s);
+  };
+  window.ready = true;
+</script>
+</body>
+</html>

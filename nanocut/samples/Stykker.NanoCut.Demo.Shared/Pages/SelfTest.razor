@@ -1,0 +1,73 @@
+@page "/selftest"
+@inject IComputeRunner Runner
+@using System.Diagnostics
+@using System.Numerics
+
+<div class="pad selftest">
+    <h1>Self test</h1>
+    <p class="desc">
+        Runs the analytic reference checks of the test suite @(Runner is InlineComputeRunner ? "inside this browser (C# on WebAssembly)" : "on the server (native .NET)"): exact predicates
+        against <code>BigInteger</code>, example 1 in 2D at 50 nm chord error and in 3D at 1 µm.
+    </p>
+    <div class="actions"><button class="run" disabled="@_busy" @onclick="Run">@(_busy ? "Running…" : "Run self test")</button></div>
+    @if (_rows.Count > 0)
+    {
+        <table class="results">
+            <thead><tr><th></th><th>Check</th><th>Actual</th><th>Exact</th><th>|Δ|</th><th>Allowed</th></tr></thead>
+            <tbody>
+            @foreach (var c in _rows)
+            {
+                <tr class="@(c.Passed ? "pass" : "fail")">
+                    <td>@(c.Passed ? "PASS" : "FAIL")</td><td>@c.Name</td>
+                    <td>@c.Actual.ToString("0.000000000", CultureInfo.InvariantCulture) @c.Unit</td>
+                    <td>@c.Expected.ToString("0.000000000", CultureInfo.InvariantCulture)</td>
+                    <td>@c.Deviation.ToString("0.###e+0", CultureInfo.InvariantCulture)</td>
+                    <td>@c.Allowed.ToString("0.###e+0", CultureInfo.InvariantCulture)</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+        <p class="summary @(_rows.All(r => r.Passed) ? "pass" : "fail")">
+            @_rows.Count(r => r.Passed) / @_rows.Count passed · @_ms ms · @System.Runtime.InteropServices.RuntimeInformation.OSDescription
+        </p>
+    }
+</div>
+
+@code {
+    private readonly List<ReferenceCheck> _rows = [];
+    private bool _busy;
+    private long _ms;
+
+    private async Task Run()
+    {
+        _busy = true;
+        _rows.Clear();
+        StateHasChanged();
+        await Task.Delay(30);
+        var sw = Stopwatch.StartNew();
+
+        var rng = new Random(1);
+        const long M = Units.MaxCoordinate;
+        int wrong = 0;
+        for (int i = 0; i < 5000; i++)
+        {
+            Vec3 R() => new(rng.NextInt64(-M, M + 1), rng.NextInt64(-M, M + 1), rng.NextInt64(-M, M + 1));
+            Vec3 a = R(), b = R(), c = R(), d = R();
+            BigInteger bx = (BigInteger)b.X - a.X, by = (BigInteger)b.Y - a.Y, bz = (BigInteger)b.Z - a.Z;
+            BigInteger cx = (BigInteger)c.X - a.X, cy = (BigInteger)c.Y - a.Y, cz = (BigInteger)c.Z - a.Z;
+            BigInteger dx = (BigInteger)d.X - a.X, dy = (BigInteger)d.Y - a.Y, dz = (BigInteger)d.Z - a.Z;
+            var exact = (by * cz - bz * cy) * dx + (bz * cx - bx * cz) * dy + (bx * cy - by * cx) * dz;
+            if (exact.Sign != Predicates.Orient3D(a, b, c, d)) wrong++;
+        }
+        _rows.Add(new("orient3d sign vs BigInteger (5000 cases), wrong signs", wrong, 0, 0, ""));
+        StateHasChanged();
+        await Task.Delay(10);
+
+        _rows.AddRange(Example1.Run2D());
+        StateHasChanged();
+        await Task.Delay(10);
+        _rows.AddRange(Example1.Run3D(Tolerance.Budget(totalUm: 2.1, chordNm: 1000)));
+        _ms = sw.ElapsedMilliseconds;
+        _busy = false;
+    }
+}

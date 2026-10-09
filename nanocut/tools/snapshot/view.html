@@ -1,0 +1,69 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>NanoCut snapshot</title>
+  <style>
+    html, body { margin: 0; height: 100%; background: #f4f5f7; font-family: system-ui, sans-serif; }
+    #info { position: absolute; left: 24px; top: 18px; color: #1d2733; font-size: 15px; line-height: 1.5; }
+    #info b { font-size: 19px; }
+  </style>
+  <script type="importmap">
+    { "imports": {
+        "three": "/tools/snapshot/node_modules/three/build/three.module.js",
+        "three/addons/": "/tools/snapshot/node_modules/three/examples/jsm/",
+        "@stykker/nanocut-three": "/js/nanocut-three/index.js" } }
+  </script>
+</head>
+<body>
+<div id="info"></div>
+<script type="module">
+  import * as THREE from 'three';
+  import { toThreeGeometry } from '@stykker/nanocut-three';
+
+  const dir = new URLSearchParams(location.search).get('data') ?? '/snapshot-out';
+  const load = (name) => fetch(`${dir}/${name}`).then((r) => r.json());
+  const [remaining, tool, info] = await Promise.all([load('remaining.json'), load('tool.json'), load('info.json')]);
+
+  const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+  renderer.setPixelRatio(1);
+  renderer.setSize(innerWidth, innerHeight);
+  renderer.setClearColor(0xf4f5f7);
+  document.body.appendChild(renderer.domElement);
+
+  const scene = new THREE.Scene();
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x8899aa, 1.6));
+  const sun = new THREE.DirectionalLight(0xffffff, 2.2);
+  sun.position.set(-12, -20, 30);
+  scene.add(sun);
+  const fill = new THREE.DirectionalLight(0xffffff, 0.7);
+  fill.position.set(25, 10, 8);
+  scene.add(fill);
+
+  const stock = new THREE.Mesh(toThreeGeometry(remaining),
+    new THREE.MeshStandardMaterial({ color: 0x9fb4c8, metalness: 0.35, roughness: 0.45 }));
+  scene.add(stock);
+
+  const ghost = new THREE.Mesh(toThreeGeometry(tool),
+    new THREE.MeshStandardMaterial({ color: 0xff8a3d, transparent: true, opacity: 0.16, roughness: 0.6, depthWrite: false }));
+  scene.add(ghost);
+
+  const camera = new THREE.PerspectiveCamera(30, innerWidth / innerHeight, 1, 500);
+  camera.up.set(0, 0, 1);
+  const view = new URLSearchParams(location.search).get('view') ?? info.view ?? 'iso';
+  const views = {
+    iso: [[-34, -20, 30], [0, 0, -1]], example1: [[-34, -20, 30], [0, 0, -1]], end: [[-36, 0, 14], [0, 0, 1]],
+    gear: [[-36, -64, 70], [2, 4, 0]], lathe: [[0, -95, 25], [0, 0, 0]], mill: [[-30, -52, 50], [0, 2, -2]],
+  };
+  const [eye, target] = views[view] ?? views.iso;
+  camera.position.set(...eye);
+  camera.lookAt(...target);
+  renderer.render(scene, camera);
+
+  const lines = info.lines ?? [];
+  document.getElementById('info').innerHTML =
+    `<b>Stykker.NanoCut – ${lines[0] ?? ''}</b><br>` + lines.slice(1).join('<br>');
+  window.snapshotReady = true;
+</script>
+</body>
+</html>

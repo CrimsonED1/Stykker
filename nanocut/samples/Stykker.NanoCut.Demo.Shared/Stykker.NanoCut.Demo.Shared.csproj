@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk.Razor">
+  <!--
+    The demo pages, scenes, machines and the viewer, shared by both hosts:
+      samples/Stykker.NanoCut.Demo    Blazor WebAssembly: the geometry is computed in the browser.
+      samples/Stykker.NanoCut.Server  Blazor Server: the geometry is computed natively on the server, the browser only
+                                      displays.
+    Static files (viewer, three.js, styles) are served from _content/Stykker.NanoCut.Demo.Shared/ by either host.
+  -->
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <RootNamespace>Stykker.NanoCut.Demo</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <SupportedPlatform Include="browser" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Components.Web" Version="10.0.12" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/Stykker.NanoCut.Cutting/Stykker.NanoCut.Cutting.csproj" />
+    <!-- The preview (Z-map and dexel maps) for the CPU vs GPU page. The CUDA backend needs nanocut_gpu.dll from nvcc;
+         without it CudaBackend reports why and the page falls back to the CPU backend. In the WebAssembly host there
+         is no native interop at all, so the GPU arm is unavailable there by construction, not by accident. -->
+    <ProjectReference Include="../../src/Stykker.NanoCut.Gpu/Stykker.NanoCut.Gpu.csproj" />
+    <Compile Include="../../tests/Shared/*.cs" Link="Shared/%(Filename)%(Extension)" />
+    <!--
+      wwwroot/js/nanocut-three and nanocut-babylon are copies of the npm adapters in the repository's js/ folder. They
+      are copies, not links: a host running from its build output (dotnet run of the server) serves a linked file of a
+      Razor class library as an empty response. DemoAssetsTests keeps them byte for byte equal to js/.
+    -->
+  </ItemGroup>
+</Project>

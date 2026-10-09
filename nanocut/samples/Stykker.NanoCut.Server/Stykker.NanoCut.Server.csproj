@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <!--
+    Server mode of the demo: the same pages as samples/Stykker.NanoCut.Demo (both come from
+    samples/Stykker.NanoCut.Demo.Shared), but the geometry is computed natively in .NET on the server with all cores,
+    and the browser only displays. Meshes travel to the viewer as bytes over the Blazor Server circuit.
+    Run:      dotnet run (in samples/Stykker.NanoCut.Server, add -c Release for real timings); http://localhost:5180
+    Settings: appsettings.json, "Compute:MaxConcurrentJobs" (jobs that run at once across all users).
+  -->
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <RootNamespace>Stykker.NanoCut.Server</RootNamespace>
+    <ServerGarbageCollection>true</ServerGarbageCollection>
+    <TieredPGO>true</TieredPGO>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Stykker.NanoCut.Demo.Shared/Stykker.NanoCut.Demo.Shared.csproj" />
+  </ItemGroup>
+</Project>

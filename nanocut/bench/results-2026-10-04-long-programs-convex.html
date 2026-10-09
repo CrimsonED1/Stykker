@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NanoCut, lange Programme, Schritt 3: was ein konvexes Werkzeug auf der GPU kostet</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one narrow technical sheet — the question, the ladder, the host that cannot follow, the half-space sweep, what the representation costs */
+:root {
+  --bg: #f3f5f6;
+  --paper: #ffffff;
+  --fg: #1b2328;
+  --muted: #5c6a73;
+  --rule: #d5dde1;
+  --steel: #8a99a3;
+  --accent: #c25a00;
+  --accent-soft: #f6e3d2;
+  --good: #1f7a4d;
+  --font-display: "Barlow Condensed", "Arial Narrow", sans-serif;
+  --font-body: "IBM Plex Sans", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #12171a; --paper: #1a2126; --fg: #e4eaed; --muted: #94a3ac; --rule: #2d373e;
+    --steel: #5d6c75; --accent: #f08a2c; --accent-soft: #3a2614; --good: #4cc08a; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #12171a; --paper: #1a2126; --fg: #e4eaed; --muted: #94a3ac; --rule: #2d373e;
+  --steel: #5d6c75; --accent: #f08a2c; --accent-soft: #3a2614; --good: #4cc08a; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--fg); font: 15px/1.55 var(--font-body); padding-inline: 16px; padding-block: 32px 48px; }
+.sheet { max-width: 920px; margin: 0 auto; background: var(--paper); border: 1px solid var(--rule); padding: clamp(20px, 4vw, 44px); display: grid; gap: 32px; }
+header { display: grid; gap: 10px; }
+.eyebrow { font: 500 12px/1 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+h1 { font: 700 clamp(30px, 5.4vw, 48px)/1.02 var(--font-display); letter-spacing: -.01em; margin: 0; text-wrap: balance; }
+h1 em { font-style: normal; color: var(--accent); }
+.lede { margin: 0; max-width: 64ch; color: var(--fg); }
+h2 { font: 600 22px/1.1 var(--font-display); letter-spacing: .01em; margin: 0 0 4px; text-wrap: balance; }
+.sub { margin: 0 0 16px; color: var(--muted); font-size: 13.5px; }
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1px; background: var(--rule); border: 1px solid var(--rule); }
+.kpi { background: var(--paper); padding: 14px 16px; display: grid; gap: 2px; }
+.kpi b { font: 600 34px/1 var(--font-display); font-variant-numeric: tabular-nums; }
+.kpi span { font-size: 13px; color: var(--muted); }
+.kpi.hl b { color: var(--accent); }
+
+.bars { display: grid; gap: 10px; }
+.bar { display: grid; grid-template-columns: minmax(120px, 190px) 1fr; gap: 12px; align-items: center; }
+.bar .lab { font-size: 13.5px; line-height: 1.25; min-width: 0; }
+.bar .lab small { display: block; color: var(--muted); font: 12px var(--font-mono); }
+.track { position: relative; height: 26px; }
+.fill { height: 100%; background: var(--steel); display: flex; align-items: center; justify-content: flex-end; padding-right: 8px; min-width: 52px; }
+.fill.nc { background: var(--accent); }
+.fill span { font: 500 12.5px var(--font-mono); font-variant-numeric: tabular-nums; color: var(--paper); }
+.axis { display: grid; grid-template-columns: minmax(120px, 190px) 1fr; gap: 12px; }
+.axis .ticks { display: flex; justify-content: space-between; font: 11px var(--font-mono); color: var(--muted); border-top: 1px solid var(--rule); padding-top: 4px; }
+
+.tablewrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; min-width: 620px; font-size: 13.5px; }
+th, td { padding: 7px 10px; text-align: right; border-bottom: 1px solid var(--rule); font-variant-numeric: tabular-nums; white-space: nowrap; }
+th:first-child, td:first-child { text-align: left; }
+thead th { font: 500 11.5px var(--font-mono); letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+td.scene { font-weight: 600; }
+td.win { color: var(--accent); font-weight: 600; }
+td.f { font-family: var(--font-mono); font-size: 12.5px; }
+td.pos { color: var(--good); }
+
+.cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 28px; }
+.cols > section { min-width: 0; }
+ul { margin: 0; padding-left: 18px; display: grid; gap: 7px; }
+li::marker { color: var(--muted); }
+.hw { width: 100%; border-collapse: collapse; font-size: 12.5px; min-width: 0; }
+.hw td { padding: 4px 8px 4px 0; border-bottom: 1px solid var(--rule); text-align: left; }
+.hw td:last-child { color: var(--muted); text-align: right; font-family: var(--font-mono); white-space: normal; }
+footer { border-top: 1px solid var(--rule); padding-top: 14px; font: 12px/1.6 var(--font-mono); color: var(--muted); }
+code { font: 12.5px var(--font-mono); background: var(--accent-soft); padding: 1px 4px; }
+</style>
+</head>
+<body>
+<main class="sheet">
+<header>
+<div class="eyebrow">Stykker NanoCut · Lange Programme, Schritt 3 · 4. Oktober 2026</div>
+<h1>Ein konvexes Werkzeug kostet den <em>Kernel</em> das Zwanzigfache — die GPU bleibt trotzdem 3500-mal schneller als der Host</h1>
+<p class="lede">Schritt 3 hat ein beliebiges konvexes Werkzeug auf einer Posenfolge in den Dexel-Kern gebracht. Korrekt
+ist es, gegen den exakten Kernel geprüft; <em>wie schnell</em> es ist, stand nirgends, und davon hing die Frage ab, ob
+die Schritte 4 und 5 überhaupt rechnen können. Gemessen wurde derselbe schlangenförmige Finish-Durchgang wie in
+Schritt 2 — jetzt als Posenfolge eines 12-Ebenen-Werkzeugs, das in eine 0,2-mm-Kugel <em>eingeschrieben</em> ist. Vier
+Arme pro Fall auf derselben Karte und demselben Pfad: gebinnt, ungebinnt, dieselbe Strecke mit Kugelwerkzeug, und
+derselbe konvexe Aufruf auf dem CPU-Backend.
+<strong>57 661,7 ms auf dem Host gegen 16,4 ms auf dem Gerät</strong> bei 24 800 Schritten — und die 793 600 Schritte,
+bei denen die Kugel in 2,7 ms gebinnt ist, kosten mit dem konvexen Werkzeug 65,8 ms.</p>
+</header>
+
+<div class="kpis">
+<div class="kpi hl"><b>3515×</b><span>Host gegen Gerät, 24 800 Schritte: 57 661,7 ms gegen 16,4 ms, dasselbe Programm</span></div>
+<div class="kpi hl"><b>19×</b><span>konvexes gegen Kugelwerkzeug auf dem Kernel, 12 Halbräume, über die Programmlänge hinweg stabil</span></div>
+<div class="kpi"><b>236×</b><span>Was das Binning auf dem konvexen Layout bringt — dieselbe Größenordnung wie bei der Kugel (240×)</span></div>
+<div class="kpi"><b>4,7 %</b><span>Anteil des Host-Binnings an der Wandzeit bei 793 600 Schritten — bei der Kugel waren es 51 %</span></div>
+</div>
+
+<section>
+<h2>Die Leiter</h2>
+<p class="sub">20-mm-Karte, 400 × 400 = 160 000 Spalten, 0,05-mm-Zellen, 4 Intervalle je Spalte, Schritte 0,05 mm
+auseinander. Der CUDA-Kontext wird vor dem ersten Fall angelegt und nicht mitgemessen (97 ms). Bestenfalls von zwei
+Läufen je Fall und Arm. Die Kugelzeile ist derselbe Pfad mit Kugelwerkzeug — der Unterschied ist also nur, wie das
+Werkzeug beschrieben wird.</p>
+<div class="tablewrap">
+<table>
+<thead><tr><th>Schritte</th><th>Zeilen</th><th>Kernel konvex</th><th>Binning (Host)</th><th>Upload</th><th>Wall konvex</th><th>Kernel ungebinnt</th><th>Kernel Kugel</th><th>Wall Kugel</th><th>Binning ×</th><th>konvex/Kugel ×</th><th>Host-Wall</th></tr></thead>
+<tbody>
+<tr><td class="scene">24 800</td><td>62</td><td>3,0 ms</td><td>1,1 ms</td><td>1,0 ms</td><td>16,4 ms</td><td>480,5 ms</td><td>0,2 ms</td><td>1,9 ms</td><td>161,5×</td><td>17,7×</td><td>57 661,7 ms</td></tr>
+<tr><td class="scene">99 200</td><td>248</td><td>7,3 ms</td><td>1,9 ms</td><td>1,6 ms</td><td>47,1 ms</td><td>1935,4 ms</td><td>0,5 ms</td><td>5,7 ms</td><td>263,4×</td><td>15,7×</td><td class="f">–</td></tr>
+<tr><td class="scene">396 800</td><td>992</td><td>32,9 ms</td><td>8,7 ms</td><td>5,7 ms</td><td>187,6 ms</td><td>7881,6 ms</td><td>1,7 ms</td><td>19,7 ms</td><td>239,5×</td><td>19,0×</td><td class="f">–</td></tr>
+<tr><td class="scene">793 600</td><td>1984</td><td class="win">65,8 ms</td><td>17,7 ms</td><td>12,0 ms</td><td>372,6 ms</td><td>15 546,9 ms</td><td>3,4 ms</td><td>38,2 ms</td><td>236,2×</td><td>19,2×</td><td class="f">–</td></tr>
+</tbody>
+</table>
+</div>
+<p class="sub" style="margin-top:12px">Der Host-Arm läuft nur beim kleinsten Fall: 24 800 Schritte kosten dort
+57,7 s, die 793 600 also — linear in den Schritten, bei gleicher Karte und gleicher Intervaltzahl — rund
+<b>31 Minuten</b>. Das ist eine <em>Hochrechnung</em>, keine Messung, und sie ist der eigentliche Grund, warum es diesen
+Bench-Modus gibt: ohne Gerät ist ein Programm dieser Länge nicht auszurechnen, mit Gerät 372,6 ms.</p>
+</section>
+
+<section>
+<h2>Was die Frage beantwortet</h2>
+<div class="bars">
+<div class="bar"><div class="lab">Host, 24 800 Schritte<small>gemessen</small></div><div class="track"><div class="fill" style="width:100%"><span>57 661,7 ms</span></div></div></div>
+<div class="bar"><div class="lab">Gerät, 24 800 Schritte<small>gemessen, derselbe Aufruf</small></div><div class="track"><div class="fill nc" style="width:0.028%"><span>16,4 ms</span></div></div></div>
+</div>
+<div class="axis" aria-hidden="true"><div></div><div class="ticks"><span>0 ms</span><span>15 000</span><span>30 000</span><span>45 000</span><span>60 000 ms</span></div></div>
+<p class="sub" style="margin-top:14px">Die beiden Balken sind dieselbe Rechnung auf zwei Rechnern, und sie sind nicht
+vergleichbar — das ist der Punkt. Ein Balken von 0,028 % Breite ist keine schlechte GPU, sondern ein Balken, neben
+dem der andere verschwindet. Auf der CPU-Zeile steht <em>57,7 s für ein Viertel des Programms</em>; die Vorschau muss
+auf einem Server ohne GPU trotzdem laufen können, und dafür ist die Größenordnung hier die relevante Zahl, nicht der
+Faktor.</p>
+</section>
+
+<section>
+<h2>Der Ebenenzahl auf der Spur</h2>
+<p class="sub">Dieselben 99 200 Schritte, nur die Zahl der Halbräume des Werkzeugs: 6, 8, 12, 16. Das ist die
+Eigenschaft, die <code>MaxPlanes</code> begründet — und die Messung sagt etwas anderes als der Kommentar im Code.</p>
+<div class="tablewrap">
+<table>
+<thead><tr><th>Halbräume</th><th>Kernel gebinnt</th><th>Kernel ungebinnt</th><th>Faktor ungebinnt gegen 6</th><th>konvex/Kugel ×</th><th>Binning ×</th><th>Abgetragen</th><th>gegen Kugel</th></tr></thead>
+<tbody>
+<tr><td class="scene">6</td><td>2,3 ms</td><td>704,1 ms</td><td>1,00×</td><td>5,0×</td><td>304,7×</td><td class="f">81,327304 mm³</td><td>−18,227 %</td></tr>
+<tr><td class="scene">8</td><td>3,5 ms</td><td>1055,6 ms</td><td>1,50×</td><td>7,8×</td><td>302,6×</td><td class="f">82,417753 mm³</td><td>−17,131 %</td></tr>
+<tr><td class="scene">12</td><td>7,3 ms</td><td>1935,4 ms</td><td>2,75×</td><td>15,7×</td><td>263,4×</td><td class="f">88,006673 mm³</td><td>−11,511 %</td></tr>
+<tr><td class="scene">16</td><td>14,0 ms</td><td>3278,2 ms</td><td>4,65×</td><td>31,2×</td><td>233,8×</td><td class="f">90,713592 mm³</td><td>−8,789 %</td></tr>
+</tbody>
+</table>
+</div>
+<p class="sub" style="margin-top:12px">Der Code begründet <code>MaxPlanes = 16</code> mit O(m³): die Suche geht über
+jede Kreuzung zweier der m Geraden und wertet dort die Hüllkurve über alle m. Gemessen wächst der ungebinnte Kernel
+704 → 1056 → 1935 → 3278 ms, also um den Faktor 4,65 zwischen 6 und 16 Ebenen. Das ist in der doppeltlogarithmischen
+Darstellung ein Exponent von <b>1,57</b> — nicht 3. Der Grund ist nicht, dass die Schranke falsch ist (sie gilt), sondern
+dass bei einer Kugel nur die wenigen Ebenen eine Spalte wirklich begrenzen, deren Normale zur Spalte zeigen; die übrigen
+tragen nichts bei. Für die Amplitude ist das eine gute Nachricht, für die Schranke keine: sie beschreibt den
+schlechtesten Fall, den ein Werkzeug mit flachen Normalen immer noch hat.</p>
+</section>
+
+<section>
+<h2>Was die Darstellung kostet — und was das Drehen kostet</h2>
+<div class="cols">
+<section>
+<h3 style="font:600 16px/1.2 var(--font-display);margin:0 0 8px">Die eingeschriebene Kugel</h3>
+<p class="sub" style="margin:0">Damit die Kugelzeile dieselbe Strecke mit demselben Volumen liefert, ist das Werkzeug
+<code>ConvexTool.Ball</code>: ein Polyeder, das <em>in</em> der Kugel liegt und sie von innen anfasst. Es schneidet
+deshalb zwangsläufig weniger Material weg — bei 12 Ebenen <b>11,5 %</b> bei 99 200 Schritten, bei 16 Ebenen 8,8 %, bei
+6 Ebenen 18,2 %. Über die Programmlänge sinkt der Prozentsatz (20,5 % → 8,7 % von 24 800 auf 793 600 Schritte), weil
+ein längerer Durchgang dieselbe Schicht mehrfach abdeckt und die Lücken zwischen den Facetten zum Schluss zu.</p>
+<p class="sub" style="margin:10px 0 0">Das ist kein Fehler, sondern die Representation — und es ist die Zahl, die man
+kennen muss, bevor man einen Zahn mit <em>n</em> Ebenen durch <em>n+4</em> ersetzt: der Zahn ist selbst ein Polyeder,
+und die Einschreibung gilt nur für den Testfall Kugel.</p>
+</section>
+<section>
+<h3 style="font:600 16px/1.2 var(--font-display);margin:0 0 8px">Das drehende Werkzeug</h3>
+<p class="sub" style="margin:0">Dieselben 99 200 Schritte, aber das Werkzeug dreht sich über das ganze Programm um
+720° um z. Der Kernel muss dann die Halbräume <em>je Spalte</em> drehen statt je Schritt, und das kostet:
+<b>8,1 / 9,5 / 9,5 / 9,6 ms</b> gegen <b>7,3 ms</b> ohne Drehung, also rund <b>+30 %</b> (vier unabhängige Läufe;
+die Streuung bei dieser Größe liegt selbst bei ~15 %).</p>
+<p class="sub" style="margin:10px 0 0">Für Schritt 5 heißt das: ein Zahn, der über ein Rad rollt, ist auf der GPU
+nicht teurer als ein ruhender — aber er ist auch nicht kostenlos, und die Posenfolge ist der Grund, warum die Drehung
+im Schritt statt in der Spalte passieren muss.</p>
+</section>
+</div>
+</section>
+
+<section>
+<h2>Was hier nicht gemessen ist</h2>
+<p class="sub">Dieser Modus misst Zeit, nicht Richtigkeit. Die Übereinstimmung mit dem exakten Kernel — Oktaeder auf
+−0,001 %, rotierende Box auf +0,362 % — steht in <code>ConvexDexelTests</code> und in der Tabelle von
+<code>docs/long-programs.md</code>, an kleinen Fällen, auf denen der exakte Kernel bezahlbar ist. Ein 793 600-Schritte-
+Programm gegen <code>Process3</code> zu rechnen wäre der exakte Kernel in Stunden, nicht in Millisekunden.</p>
+<div class="tablewrap">
+<table class="hw">
+<tbody>
+<tr><td>Binning auf dem konvexen Layout</td><td>161× bis 305×, je nach Programmlänge — dieselbe Aussage wie bei der Kugel</td></tr>
+<tr><td>Host-Anteil an der Wandzeit</td><td>1,1 von 16,4 ms (6,7 %) bei 24 800 Schritten, 17,7 von 372,6 ms (4,7 %) bei 793 600</td></tr>
+<tr><td>Überläufe (Overflows)</td><td>0 in allen Fällen, mit 4 Intervallen je Spalte</td></tr>
+<tr><td>CPU gegen Gerät, Volumen</td><td>71,657013 gegen 71,657030 mm³ — −0,000017 mm³, Rundung (fma auf der GPU)</td></tr>
+</tbody>
+</table>
+</div>
+</section>
+
+<div class="cols">
+<section>
+<h2>Was als Nächstes gebaut wird</h2>
+<ul>
+<li><b>Schritt 4 – Schleifvorschau:</b> Körner einer <code>GrindingWheel</code> als konvexe Werkzeuge auf ihren
+Trochoiden, geprüft gegen <code>GrindingSimulation</code> — zuerst 60 Körner, dann die belegte Scheibe. Jetzt weiß man,
+dass ein 12-Ebenen-Werkzeug auf dem Gerät rechnet.</li>
+<li><b>Schritt 5 – Zahnradvorschau (2D):</b> Zeilen als Spalten, die konvexen Rackteile auf den Rollposen; Zielzahl
+1231,252941 mm² aus Schritt 1. Der Zahn ist ein Polyeder, nicht eine Kugel — die 11,5 % Einschreibung aus der
+Ebentabelle gelten hier nicht.</li>
+<li><b>Schritt 6 – in den Servermodus,</b> zuerst die Vorschau, das exakte Ergebnis, sobald es fertig ist.</li>
+</ul>
+</section>
+<section>
+<h2>Was Schritt 3 an Zahlen beantwortet hat</h2>
+<ul>
+<li><b>Wie schnell CUDA bei langen Läufen ist:</b> 3515× gegen das CPU-Backend auf demselben Programm, 24 800
+Schritte. Auf 793 600 Schritte ist der Host nicht gemessen, sondern hochgerechnet: ~31 Minuten gegen 372,6 ms.</li>
+<li><b>Was das konvexe Werkzeug kostet:</b> ~19× den Kugelkernel bei 12 Ebenen, stabil über alle vier Programmlängen.
+Der absolute Preis ist trotzdem klein: 65,8 ms für 793 600 Schritte.</li>
+<li><b>Das Binning wirkt auf diesem Layout genauso:</b> 236× bei 793 600 Schritten, also die Größenordnung des
+Kugelfalls. Schritt 3 hat daran nichts geändert.</li>
+<li><b>Die Wachstumsordnung in der Ebenenzahl ist kleiner als behauptet:</b> gemessen m<sup>1,57</sup> zwischen 6 und
+16 Ebenen gegen die O(m³) im Kommentar. Die Schranke gilt, sie ist nicht der Alltag.</li>
+<li><b>Das Host-Binning ist hier kein Engpass:</b> 4,7 % der Wandzeit bei 793 600 Schritten, weil der Kernel so viel
+teurer ist. Das Argument aus Schritt 2 kehrt sich damit für den konvexen Pfad um.</li>
+</ul>
+</section>
+</div>
+
+<footer>
+Gemessen am 4. Oktober 2026 auf diesem Rechner, auf dem Branch <code>long-programs-step-1</code>: RTX 5070 Ti
+(16 275 MiB, Blackwell, sm_120), CUDA 13.4, Windows 11, .NET SDK 10.0.401, Laufzeit .NET 10.0.12, 16 logische
+Prozessoren. Bestenfalls von zwei Läufen je Fall und Arm, CUDA-Kontext vorher angelegt und nicht mitgemessen. Die
+Ebenen- und die Drehtabelle sind je ein eigener Aufruf desselben Modus bei 99 200 Schritten; die vier Werte der
+Drehung sind vier unabhängige Läufe. Modus <code>convex</code> von
+<code>bench/Stykker.NanoCut.LongPrograms</code>; <code>--out</code> schreibt
+<code>long-programs-results.json</code> und <code>-results.md</code> in <code>bench/out/long-programs-convex</code>.
+Plan und Log: <code>docs/long-programs.md</code>, Schritt 3.
+</footer>
+</main>
+</body>
+</html>

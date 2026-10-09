@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>Stykker.NanoCut.Geometry3D</RootNamespace>
+    <PackageId>Stykker.NanoCut.Geometry3D</PackageId>
+    <Description>Plane-based exact 3D solids: Booleans without rounding, primitives with controlled chord error, mesh buffers.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Stykker.NanoCut.Core/Stykker.NanoCut.Core.csproj" />
+    <ProjectReference Include="../Stykker.NanoCut.Geometry2D/Stykker.NanoCut.Geometry2D.csproj" />
+    <InternalsVisibleTo Include="Stykker.NanoCut.Cutting" />
+    <InternalsVisibleTo Include="Stykker.NanoCut.Tests" />
+    <InternalsVisibleTo Include="Stykker.NanoCut.OracleTests" />
+    <!-- The bench reads the kernel's own counters (parallelism, filter hit rate); it ships nothing. -->
+    <InternalsVisibleTo Include="Stykker.NanoCut.Bench" />
+  </ItemGroup>
+</Project>

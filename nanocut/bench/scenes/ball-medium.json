@@ -1,0 +1,9 @@
+{
+  "name": "ball-medium",
+  "description": "Ball r = 3 mm (48 segments) along a four-segment zig-zag over a 40 × 30 × 10 mm block, 24 hulls per segment.",
+  "box": { "min": [0, 0, 0], "max": [40, 30, 10] },
+  "tool": { "ball": { "radius": 3, "segments": 48 } },
+  "path": [[-5, 6, 9], [45, 6, 8.5], [45, 14, 8.5], [-5, 14, 8], [-5, 22, 9.2]],
+  "stepsPerSegment": 24,
+  "save": [-1]
+}
