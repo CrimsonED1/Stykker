@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/StykkerHud.Core/StykkerHud.Core.csproj" />
+    <Project Path="src/StykkerHud.Platform.Windows/StykkerHud.Platform.Windows.csproj" />
+    <Project Path="src/StykkerHud.Server/StykkerHud.Server.csproj" />
+    <Project Path="src/StykkerHud.UI/StykkerHud.UI.csproj" />
+  </Folder>
+</Solution>

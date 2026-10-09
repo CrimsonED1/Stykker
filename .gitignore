@@ -1,0 +1,9 @@
+bin/
+obj/
+.vs/
+*.user
+*.suo
+
+# Aufnahmen der Oberfläche (neu erzeugen mit: node tools\shot.mjs)
+docs/hud-*.jpg
+docs/hud-measure.json
