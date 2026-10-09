@@ -1,0 +1,2 @@
+# Shell-Skripte brauchen LF, auch unter Windows (WSL liest sonst CRLF nicht).
+*.sh text eol=lf
