@@ -228,6 +228,14 @@ public sealed class MemoryFileSystem : IFileSystem
         }
     }
 
+    // Jeder Ordner direkt unter der Wurzel ist ein Datenträger.
+    public IReadOnlyList<VolumeInfo> Volumes()
+        => _nodes.Where(pair => pair.Key != "/" && pair.Value.IsDirectory && ParentOf(pair.Key) == "/")
+            .Select(pair => pair.Key)
+            .OrderBy(key => key, StringComparer.Ordinal)
+            .Select(key => new VolumeInfo(key, "Test"))
+            .ToList();
+
     public string VolumeOf(string path)
     {
         var segments = Normalize(path).Split('/', StringSplitOptions.RemoveEmptyEntries);

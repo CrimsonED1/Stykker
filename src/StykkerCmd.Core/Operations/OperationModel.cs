@@ -7,6 +7,8 @@ public enum OperationKind
     DeleteToTrash,
     DeletePermanent,
     CreateDirectory,
+    Zip,
+    Unzip,
 }
 
 // Ein einzelner, nicht weiter zerlegbarer Schritt. Er ist Grundlage für Fehlerberichte und für die Rechte-Wiederholung.
@@ -18,12 +20,20 @@ public enum LeafKind
     DeleteFile,
     DeleteEmptyDirectory,
     Trash,
+    ZipEntry,
+    ExtractEntry,
 }
 
 public sealed record LeafOperation(LeafKind Kind, string Source, string? Target);
 
 // Ein Auftrag der Oberfläche. Bei Copy/Move ist TargetDirectory der Zielordner; bei CreateDirectory ist Sources[0] der neue Ordner.
-public sealed record OperationRequest(OperationKind Kind, IReadOnlyList<string> Sources, string? TargetDirectory = null);
+// Zip: Sources sind die Einträge, TargetDirectory der Ordner des Archivs, ArchiveName dessen Dateiname.
+// Unzip: Sources[0] ist das Archiv, TargetDirectory der Ordner, in dem der Entpack-Ordner entsteht.
+public sealed record OperationRequest(
+    OperationKind Kind,
+    IReadOnlyList<string> Sources,
+    string? TargetDirectory = null,
+    string? ArchiveName = null);
 
 public sealed record OperationProgress(
     string Phase,

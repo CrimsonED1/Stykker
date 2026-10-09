@@ -22,6 +22,10 @@ public sealed class PanelViewModel : ObservableObject
     private int _loadVersion;
     private SortField _sortField = SortField.Name;
     private SortDirection _sortDirection = SortDirection.Ascending;
+    private ObservableCollection<VolumeTab> _volumes = [];
+
+    // Pro Datenträger der zuletzt geöffnete Ordner; ein Wechsel auf den Datenträger geht dorthin zurück.
+    private readonly Dictionary<string, string> _lastFolderByRoot = new(StringComparer.OrdinalIgnoreCase);
 
     public PanelViewModel(IFileSystem fileSystem, string directory)
     {
@@ -39,6 +43,12 @@ public sealed class PanelViewModel : ObservableObject
     {
         get => _rows;
         private set => Set(ref _rows, value);
+    }
+
+    public ObservableCollection<VolumeTab> Volumes
+    {
+        get => _volumes;
+        private set => Set(ref _volumes, value);
     }
 
     public int CursorIndex
@@ -91,12 +101,14 @@ public sealed class PanelViewModel : ObservableObject
             _error = ex is UnauthorizedAccessException ? "Zugriff verweigert." : ex.Message;
         }
 
+        RebuildVolumes();
         Rebuild(selectName ?? CursorRow?.Entry.Name);
     }
 
     public Task NavigateAsync(string directory, string? selectName = null)
     {
         _directory = directory;
+        _lastFolderByRoot[RootOf(directory)] = directory;
         _marked.Clear();
         _filter = string.Empty;
         Raise(nameof(CurrentDirectory));
@@ -195,6 +207,37 @@ public sealed class PanelViewModel : ObservableObject
     {
         if (_filter.Length > 0)
             Filter = string.Empty;
+    }
+
+    // Wechselt auf einen Datenträger und geht dort zu dem Ordner, der dort zuletzt offen war.
+    public Task SwitchVolumeAsync(string root)
+        => NavigateAsync(_lastFolderByRoot.TryGetValue(root, out var last) ? last : root);
+
+    private void RebuildVolumes()
+    {
+        var current = RootOf(_directory);
+        Volumes = new ObservableCollection<VolumeTab>(_fs.Volumes().Select(volume => new VolumeTab(
+            volume.Root,
+            LabelOf(volume),
+            string.Equals(volume.Root, current, StringComparison.OrdinalIgnoreCase))));
+    }
+
+    // Kurze Datenträger wie "C:" zeigen den Buchstaben vor dem Namen; eingehängte Medien nur ihren Namen.
+    private static string LabelOf(VolumeInfo volume)
+    {
+        var head = volume.Root.TrimEnd('\\', '/');
+        if (head.Length == 0)
+            head = "/";
+        return head.Length <= 2 ? $"{head}  {volume.Name}" : volume.Name;
+    }
+
+    // Die Wurzel des Datenträgers: der Ordner, dessen Elternteil er selbst ist.
+    private string RootOf(string path)
+    {
+        var current = path;
+        for (var parent = _fs.ParentOf(current); parent != current; parent = _fs.ParentOf(current))
+            current = parent;
+        return current;
     }
 
     private void SetMarked(EntryRow row, bool marked)

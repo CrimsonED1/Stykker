@@ -50,6 +50,57 @@ internal static class NativeMethods
     [DllImport("shell32.dll", CharSet = CharSet.Unicode, ExactSpelling = true)]
     public static extern int SHCreateItemFromParsingName(string path, IntPtr bindContext, ref Guid riid, out IntPtr item);
 
+    public const uint COINIT_APARTMENTTHREADED = 0x2;
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct POINT
+    {
+        public int X;
+        public int Y;
+    }
+
+    [DllImport("ole32.dll")]
+    public static extern int CoInitializeEx(IntPtr reserved, uint coInit);
+
+    [DllImport("ole32.dll")]
+    public static extern void CoUninitialize();
+
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode, ExactSpelling = true)]
+    public static extern int SHParseDisplayName(string name, IntPtr bindContext, out IntPtr pidl, uint attributesIn, out uint attributesOut);
+
+    [DllImport("shell32.dll", ExactSpelling = true)]
+    public static extern int SHBindToParent(IntPtr pidl, ref Guid riid, out ShellInterop.IShellFolder folder, out IntPtr childPidl);
+
+    [DllImport("shell32.dll", ExactSpelling = true)]
+    public static extern IntPtr ILFindLastID(IntPtr pidl);
+
+    [DllImport("shell32.dll", ExactSpelling = true)]
+    public static extern void ILFree(IntPtr pidl);
+
+    [DllImport("user32.dll")]
+    public static extern IntPtr CreatePopupMenu();
+
+    [DllImport("user32.dll")]
+    public static extern bool DestroyMenu(IntPtr menu);
+
+    [DllImport("user32.dll")]
+    public static extern uint TrackPopupMenuEx(IntPtr menu, uint flags, int x, int y, IntPtr owner, IntPtr parameters);
+
+    [DllImport("user32.dll")]
+    public static extern bool GetCursorPos(out POINT point);
+
+    // Fensterunterklasse: Nachrichten des Fensters laufen erst durch diese Funktion, bevor sie an das Fenster gehen.
+    public delegate IntPtr SubclassProc(IntPtr window, uint message, IntPtr wParam, IntPtr lParam, UIntPtr subclassId, UIntPtr refData);
+
+    [DllImport("comctl32.dll")]
+    public static extern bool SetWindowSubclass(IntPtr window, SubclassProc proc, UIntPtr subclassId, UIntPtr refData);
+
+    [DllImport("comctl32.dll")]
+    public static extern bool RemoveWindowSubclass(IntPtr window, SubclassProc proc, UIntPtr subclassId);
+
+    [DllImport("comctl32.dll")]
+    public static extern IntPtr DefSubclassProc(IntPtr window, uint message, IntPtr wParam, IntPtr lParam);
+
     [DllImport("rstrtmgr.dll", CharSet = CharSet.Unicode)]
     public static extern int RmStartSession(out uint session, int flags, string sessionKey);
 

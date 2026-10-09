@@ -31,6 +31,16 @@ Startordner per Argument: `--left <ordner> --right <ordner>`. Fehlt ein Pfad, st
 | Esc | Filter leeren; laufenden Auftrag abbrechen |
 | Strg+R | Ordner neu laden |
 | F9 | Thema wechseln (Dark und Titan) |
+| F1 | Tastenübersicht |
+| Umschalt+F10 oder Kontextmenü-Taste | Kontextmenü zum Eintrag unter dem Cursor |
+
+## Menüs und Laufwerke
+
+- Die Menüleiste (Datei, Bearbeiten, Ansicht, Hilfe) enthält dieselben Befehle wie die Tasten.
+- Jedes Panel hat Laufwerkstabs. Ein Tab wechselt auf den Datenträger und öffnet dort den Ordner, der dort zuletzt offen war.
+- Rechtsklick auf einen Eintrag wählt ihn aus und öffnet das Kontextmenü: Öffnen, Zippen, Hier entpacken (nur bei ZIP-Archiven), Kopieren, Verschieben, Papierkorb, Pfad kopieren, Im Ordner anzeigen.
+- Zippen legt ein ZIP-Archiv im aktuellen Ordner an. Hier entpacken legt einen Ordner mit dem Namen des Archivs an und entpackt dort hinein.
+- „Windows-Menü anzeigen“ öffnet das native Kontextmenü der Shell wie im Explorer, mit den Erweiterungen des Systems (nur Windows).
 
 ## Sicherheit
 
@@ -41,6 +51,7 @@ Startordner per Argument: `--left <ordner> --right <ordner>`. Fehlt ein Pfad, st
 - Löschen fragt immer. Datenträger ohne Papierkorb (Netzlaufwerke, USB) löschen nur endgültig, nach doppelter Bestätigung.
 - Ist eine Datei gesperrt, nennt die Meldung das Programm, das sie hält (Windows: Restart Manager, Linux: `/proc`).
 - Verweigerter Zugriff bietet die Wiederholung mit Administratorrechten an (UAC unter Windows, pkexec unter Linux). Der Helfer führt nur die übergebenen Einzelschritte aus, ohne Shell und ohne Muster.
+- Entpacken verwirft Einträge, die aus dem Zielordner hinausführen („..“, Laufwerksbuchstaben). Beim Zippen werden Verknüpfungen übersprungen und gemeldet, damit das Archiv nicht in sich selbst hineinwächst.
 
 ## Aufbau
 
@@ -69,4 +80,5 @@ Zwei Tests brauchen eine Umgebungsvariable und laufen sonst nicht: der 2-GB-Abbr
 - Die UAC- und pkexec-Abfrage selbst ist nicht automatisiert geprüft; geprüft ist der Helfer-Lauf ohne Abfrage.
 - Auf Linux gibt es nur den Papierkorb des Benutzers. Andere Datenträger löschen endgültig.
 - Wayland erlaubt Anwendungen keinen Fokuswechsel; Drag & Drop ist nicht umgesetzt (laut Plan ein Vorschlag).
-- Keine Archive, keine Suche, kein Mehrfach-Umbenennen, kein Viewer, keine Netzwerkprotokolle (laut Plan nicht im MVP).
+- Archive: nur ZIP, ohne Passwort und ohne 7z oder RAR. Keine Suche, kein Mehrfach-Umbenennen, kein Viewer, keine Netzwerkprotokolle (laut Plan nicht im MVP).
+- Zippen, Entpacken und die Laufwerksleiste sind unter Linux kompiliert, aber dort nicht ausgeführt. Unter Linux zeigt „Im Ordner anzeigen“ den Ordner über xdg-open, ein natives Kontextmenü gibt es nicht.

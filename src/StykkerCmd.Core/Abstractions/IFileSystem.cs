@@ -53,6 +53,9 @@ public interface IFileSystem
     // Stabiler Schlüssel für einen Ordner (folgt Links), für die Schleifenerkennung.
     string IdentityOf(string directory);
 
+    // Datenträger, die gerade bereit sind (Laufwerke unter Windows, eingehängte Medien unter Linux).
+    IReadOnlyList<VolumeInfo> Volumes();
+
     string Combine(string directory, string name)
         => directory.EndsWith(Separator) ? directory + name : directory + Separator + name;
 

@@ -1,8 +1,10 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using StykkerCmd.Core;
 using StykkerCmd.Core.Abstractions;
 using StykkerCmd.Core.Elevation;
@@ -21,8 +23,22 @@ namespace StykkerCmd.UI;
 // Hauptfenster: zwei Panels, Funktionsleiste und die Befehle für Tasten und Schaltflächen.
 public partial class MainWindow : Window
 {
-    private const string Hint = "Tab Panel · Enter öffnen · Rücktaste nach oben · Einfg/Leer markieren · "
-                                + "Strg+A alle · Strg+1–4 sortieren · Strg+F filtern · Umschalt+F8 endgültig löschen";
+    private const string Hint = "Tab Panel · Enter öffnen · Leertaste markieren · Umschalt+F10 Kontextmenü · "
+                                + "Strg+A alle · Strg+1–4 sortieren · Strg+F filtern · F1 Hilfe";
+
+    private static readonly string HelpText = string.Join('\n',
+        "Tab  Panel wechseln",
+        "Pfeiltasten, Pos1, Ende, Bild auf/ab  Cursor bewegen",
+        "Enter  Ordner öffnen oder Datei öffnen",
+        "Rücktaste  einen Ordner nach oben",
+        "Leertaste oder Einfg  markieren, eine Zeile weiter",
+        "Strg+A  alle markieren, zweimal löst die Markierung",
+        "F5 Kopieren · F6 Verschieben · F7 Ordner · F8 Papierkorb",
+        "Umschalt+F8  endgültig löschen (doppelt bestätigt)",
+        "Strg+1 bis Strg+4  sortieren, zweimal kehrt die Richtung um",
+        "Strg+F  Filter · Esc  Filter leeren oder Auftrag abbrechen",
+        "Strg+R  neu laden · F9  Thema wechseln",
+        "Umschalt+F10 oder Kontextmenü-Taste  Kontextmenü");
 
     private readonly IPlatformServices _services;
     private readonly ThemeService _themes;
@@ -52,6 +68,15 @@ public partial class MainWindow : Window
         Title = AppInfo.Name;
         StatusText.Text = Hint;
         UpdateThemeLabel();
+
+        // Die Panels melden Klicks und Befehle aus ihrem Kontextmenü an das Hauptfenster.
+        LeftPanel.CommandRequested += command => RunFromPanel(left: true, command);
+        RightPanel.CommandRequested += command => RunFromPanel(left: false, command);
+        LeftPanel.ActivationRequested += () => ActivatePanel(left: true);
+        RightPanel.ActivationRequested += () => ActivatePanel(left: false);
+        LeftPanel.ConfigureShell(_services.Shell.SupportsNativeMenu);
+        RightPanel.ConfigureShell(_services.Shell.SupportsNativeMenu);
+        ShellMenuItem.IsVisible = _services.Shell.SupportsNativeMenu;
 
         // Tunnel: Tasten kommen zuerst am Fenster an, bevor Listen oder Textfelder sie verbrauchen.
         AddHandler(KeyDownEvent, OnKeyDown, RoutingStrategies.Tunnel, handledEventsToo: true);
@@ -141,6 +166,12 @@ public partial class MainWindow : Window
             return;
         }
 
+        // Menüs und das Kontextmenü bedienen sich selbst: Pfeiltasten, Enter und Esc gehören ihnen, nicht den Listen.
+        if (e.Source is Visual source
+            && (source.FindAncestorOfType<MenuItem>(includeSelf: true) is not null
+                || source.FindAncestorOfType<ContextMenu>(includeSelf: true) is not null))
+            return;
+
         var command = KeyRouter.Map(e.Key, e.KeyModifiers, LeftPanel.IsFilterFocused || RightPanel.IsFilterFocused);
         if (command == UiCommand.None)
             return;
@@ -152,6 +183,13 @@ public partial class MainWindow : Window
     private void OnFunctionButton(object? sender, RoutedEventArgs e)
     {
         if (sender is Button { Tag: string name } && Enum.TryParse<UiCommand>(name, out var command))
+            Dispatch(command);
+    }
+
+    // Menüeintrag: sein Tag trägt den Befehlsnamen, wie bei den Funktionsknöpfen.
+    private void OnMenuCommand(object? sender, RoutedEventArgs e)
+    {
+        if (sender is MenuItem { Tag: string name } && Enum.TryParse<UiCommand>(name, out var command))
             Dispatch(command);
     }
 
@@ -168,7 +206,8 @@ public partial class MainWindow : Window
         finally
         {
             if (command is UiCommand.Copy or UiCommand.Move or UiCommand.MakeDirectory
-                or UiCommand.Delete or UiCommand.DeletePermanent or UiCommand.Open)
+                or UiCommand.Delete or UiCommand.DeletePermanent or UiCommand.Open
+                or UiCommand.Zip or UiCommand.Unzip)
             {
                 RestoreFocus();
             }
@@ -247,7 +286,45 @@ public partial class MainWindow : Window
                 Active.ClearFilter();
                 ActiveView.FocusList();
                 break;
+            case UiCommand.Zip:
+                await ZipAsync();
+                break;
+            case UiCommand.Unzip:
+                await UnzipAsync();
+                break;
+            case UiCommand.CopyPath:
+                await CopyPathAsync();
+                break;
+            case UiCommand.Reveal:
+                await RevealAsync();
+                break;
+            case UiCommand.ShellMenu:
+                // Das native Menü hält den UI-Thread an. Erst nach dem Schließen des eigenen Menüs öffnen.
+                Dispatcher.UIThread.Post(ShowShellMenu, DispatcherPriority.Background);
+                break;
+            case UiCommand.ContextMenu:
+                ActiveView.ShowContextMenu();
+                break;
+            case UiCommand.ShowHelp:
+                await MessageDialog.ShowAsync(this, "Tastenübersicht", "Tasten und Befehle", HelpText,
+                    new DialogButton("OK", "ok", IsDefault: true, IsCancel: true));
+                break;
+            case UiCommand.About:
+                await MessageDialog.ShowAsync(this, "Über StykkerCMD", AppInfo.Name,
+                    "Zwei-Panel-Dateimanager für Windows und Linux. Ohne Browser, Server oder offenen Port.",
+                    new DialogButton("OK", "ok", IsDefault: true, IsCancel: true));
+                break;
+            case UiCommand.Quit:
+                Close();
+                break;
         }
+    }
+
+    // Befehl aus dem Kontextmenü eines Panels: dieses Panel wird zuerst aktiv, danach läuft der Befehl.
+    private void RunFromPanel(bool left, UiCommand command)
+    {
+        ActivatePanel(left);
+        Dispatch(command);
     }
 
     private void ActivatePanel(bool left)
@@ -400,6 +477,112 @@ public partial class MainWindow : Window
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             await ShowMessageAsync("Öffnen fehlgeschlagen", ex.Message);
+        }
+    }
+
+    // ---- Zippen und Entpacken ----------------------------------------------------------------
+
+    private async Task ZipAsync()
+    {
+        var sources = Active.SelectedEntries();
+        if (sources.Count == 0)
+            return;
+
+        // Vorschlag: der Name des einzigen Eintrags (Datei ohne Endung), sonst "Archiv".
+        var suggestion = sources.Count != 1
+            ? "Archiv"
+            : sources[0].IsDirectory ? sources[0].Name : Path.GetFileNameWithoutExtension(sources[0].Name);
+        var typed = (await InputDialog.ShowAsync(this, "Zippen", "Name des Archivs:", suggestion + ".zip", "Zippen"))?.Trim();
+        if (string.IsNullOrEmpty(typed))
+            return;
+
+        var archive = typed.EndsWith(".zip", StringComparison.OrdinalIgnoreCase) ? typed : typed + ".zip";
+        if (archive.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
+        {
+            await ShowMessageAsync("Ungültiger Name", "Der Name enthält Zeichen, die das Dateisystem nicht erlaubt.");
+            return;
+        }
+
+        var result = await _operations.RunAsync(
+            new OperationRequest(OperationKind.Zip, sources.Select(s => s.FullPath).ToList(), Active.CurrentDirectory, archive),
+            "Zippen");
+        await FinishAsync(result, "Gezippt");
+        await Active.LoadAsync(selectName: archive);
+    }
+
+    // Entpackt jedes markierte ZIP-Archiv in einen Ordner gleichen Namens im aktuellen Ordner.
+    private async Task UnzipAsync()
+    {
+        var archives = Active.SelectedEntries()
+            .Where(e => !e.IsDirectory && e.Name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        if (archives.Count == 0)
+        {
+            SetStatus("Kein ZIP-Archiv ausgewählt.");
+            return;
+        }
+
+        foreach (var archive in archives)
+        {
+            var result = await _operations.RunAsync(
+                new OperationRequest(OperationKind.Unzip, [archive.FullPath], Active.CurrentDirectory),
+                "Entpacken");
+            await FinishAsync(result, "Entpackt");
+        }
+    }
+
+    // ---- Pfad, Explorer und natives Menü ------------------------------------------------------
+
+    private async Task CopyPathAsync()
+    {
+        var paths = Active.SelectedEntries().Select(e => e.FullPath).ToList();
+        if (paths.Count == 0)
+            return;
+
+        var clipboard = TopLevel.GetTopLevel(this)?.Clipboard;
+        if (clipboard is null)
+        {
+            SetStatus("Die Zwischenablage ist nicht verfügbar.");
+            return;
+        }
+
+        await clipboard.SetTextAsync(string.Join(Environment.NewLine, paths));
+        SetStatus(paths.Count == 1 ? "Pfad in der Zwischenablage." : $"{paths.Count} Pfade in der Zwischenablage.");
+    }
+
+    private async Task RevealAsync()
+    {
+        var entry = Active.SelectedEntries().FirstOrDefault();
+        if (entry is null)
+            return;
+
+        try
+        {
+            _services.Shell.Reveal(entry.FullPath);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            await ShowMessageAsync("Anzeigen fehlgeschlagen", ex.Message);
+        }
+    }
+
+    // Das native Kontextmenü der Shell für die Auswahl, wie im Explorer. Danach holt das Fenster den Fokus zurück.
+    private async void ShowShellMenu()
+    {
+        try
+        {
+            var paths = Active.SelectedEntries().Select(e => e.FullPath).ToList();
+            if (paths.Count == 0 || !_services.Shell.SupportsNativeMenu)
+                return;
+
+            var handle = TryGetPlatformHandle()?.Handle ?? IntPtr.Zero;
+            _services.Shell.ShowNativeMenu(paths, handle);
+            RestoreFocus();
+        }
+        catch (Exception ex)
+        {
+            // Läuft außerhalb von Dispatch, daher hier melden.
+            await ShowMessageAsync("Windows-Menü", ex.Message);
         }
     }
 
