@@ -12,7 +12,9 @@ each state carries a symbol beside its colour, and the curves move only when the
 - **Graphics** — utilisation, VRAM, temperature, board power against its limit, graphics and memory clock (NVIDIA
   via `nvml.dll`), and the split of the load across the engines — 3D, Compute, Copy, Video decode, Video encode —
   as a stacked bar with a legend. The engines come from the same performance counters as the process rows, so the
-  figures and the bar can be checked against each other.
+  figures and the bar can be checked against each other. Without `nvml.dll` (Intel or AMD graphics) utilisation, the
+  engine split and the memory in use come from the same Windows counters; temperature, power, clocks and total
+  memory then show `–`.
 - **Processor** — total load, the five-minute curve, and every core behind a **folded line**: folded it names
   the busiest core, one click opens the 16 bars (which are only built while open).
 - **Memory** — used/total RAM and commit charge.
@@ -96,7 +98,7 @@ asking protects it, cancelling changes nothing, confirming ends it, and the toas
 ## The design system is one source, not a copy
 
 The styles are **not** copied into this repository. The server serves them at `/ds` straight from
-`C:\_AI\StykkerLLM-Design-System` (the folder the design-system zip was extracted to), so a change
+`C:\_AI\Stykker\Design-System` (the folder the design-system zip was extracted to), so a change
 there is visible here at the next reload — one version for the whole family. Another location:
 `--design-system <folder>` or the environment variable `STYKKERHUD_DESIGN_SYSTEM`.
 
@@ -148,8 +150,8 @@ above the list**, not as the popover this draft drew).
 Regenerate (both themes; `-full.png` is the whole page, `-review.jpg` a small one for image reading):
 
 ```powershell
-node tools\shot.mjs --url file:///C:/_AI/StykkerHUD/stykker-hud/docs/design/mockup-2.html --out docs\screenshots --name mockup-2 --format png --height 1120
-node tools\shot.mjs --url file:///C:/_AI/StykkerHUD/stykker-hud/docs/design/mockup-1.html --out docs\screenshots --name mockup-1 --format png
+node tools\shot.mjs --url file:///C:/_AI/Stykker/HUD/docs/design/mockup-2.html --out docs\screenshots --name mockup-2 --format png --height 1120
+node tools\shot.mjs --url file:///C:/_AI/Stykker/HUD/docs/design/mockup-1.html --out docs\screenshots --name mockup-1 --format png
 ```
 
 `docs/design/mockup-2-onepager.html` is the same mockup as a **standalone** page: the design system is

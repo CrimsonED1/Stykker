@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Net;
 using System.Net.Http;
 using Photino.NET;
 
@@ -19,7 +20,11 @@ internal static class Program
             Environment.SetEnvironmentVariable("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", "--disable-gpu --disable-gpu-compositing");
 
         var url = $"http://127.0.0.1:{opt.Port}/" + (opt.Gpu ? "" : "?shell=1");
-        var started = EnsureServer(opt.Port, opt.Server);
+        // Startet der Server nicht, zeigt das Fenster den Grund, statt ohne Meldung zu verschwinden.
+        Process? started = null;
+        string? startError = null;
+        try { started = EnsureServer(opt.Port, opt.Server); }
+        catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception) { startError = ex.Message; }
 
         var window = new PhotinoWindow()
             .SetTitle("StykkerHUD")
@@ -29,7 +34,8 @@ internal static class Program
             .SetTemporaryFilesPath(Path.Combine(CacheDir(), "web-shell"));
         try
         {
-            window.Load(new Uri(url));
+            if (startError == null) window.Load(new Uri(url));
+            else window.LoadRawString(ErrorPage(startError));
             window.WaitForClose();
         }
         finally
@@ -42,6 +48,11 @@ internal static class Program
         }
         return 0;
     }
+
+    private static string ErrorPage(string message) =>
+        "<!doctype html><meta charset=\"utf-8\"><body style=\"font-family:'Segoe UI',sans-serif;margin:32px\">" +
+        "<h2>StykkerHUD could not start its server</h2><p>" + WebUtility.HtmlEncode(message) + "</p>" +
+        "<p>Build the solution first, or start with <code>--server &lt;path&gt;</code>.</p></body>";
 
     private static string CacheDir()
     {

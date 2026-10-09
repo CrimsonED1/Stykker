@@ -3,7 +3,7 @@
 // und als Artefakt veröffentlichen.
 //
 //   node tools/onepager.mjs [--src docs/design/mockup-2.html] [--out docs/design/mockup-2-onepager.html]
-//                           [--ds C:/_AI/StykkerLLM-Design-System]
+//                           [--ds C:/_AI/Stykker/Design-System]
 import { readFileSync, writeFileSync } from "node:fs";
 
 const args = process.argv.slice(2);
@@ -13,7 +13,7 @@ const value = (name, fallback) => {
 };
 const src = value("--src", "docs/design/mockup-2.html");
 const dst = value("--out", src.replace(/\.html$/, "-onepager.html"));
-const ds = value("--ds", "C:/_AI/StykkerLLM-Design-System");
+const ds = value("--ds", "C:/_AI/Stykker/Design-System");
 
 const read = (file) => readFileSync(file, "utf8");
 // Ein "</script" im eingebetteten Code würde das umgebende <script> beenden.
@@ -38,7 +38,7 @@ const extra = `
 `;
 
 const out = `<style>
-/* ── aus dem Design-System (C:\\_AI\\StykkerLLM-Design-System), eingebettet statt verlinkt ── */
+/* ── aus dem Design-System (C:\\_AI\\Stykker\\Design-System), eingebettet statt verlinkt ── */
 ${tokens}
 ${bundle}
 /* ── die eigenen Regeln des Entwurfs ── */

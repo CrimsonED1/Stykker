@@ -22,7 +22,7 @@
   </ItemGroup>
 
   <!-- Das Design-System wird nicht kopiert und nicht eingebunden: der Server liefert es zur Laufzeit unter /ds aus
-       seiner Quelle (Vorgabe C:\_AI\StykkerLLM-Design-System, umstellbar über den Schalter design-system). So gibt
+       seiner Quelle (Vorgabe C:\_AI\Stykker\Design-System, umstellbar über den Schalter design-system). So gibt
        es genau eine Fassung für die ganze Stykker-Familie. -->
 
 </Project>

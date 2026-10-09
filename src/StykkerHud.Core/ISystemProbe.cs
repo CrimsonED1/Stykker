@@ -20,6 +20,9 @@ public interface ISystemProbe : IDisposable
     // Datenträger- und Netzwerk-Durchsatz. null, solange die Quelle keine Rate liefern kann.
     IoRates? ReadIo();
 
+    // Name der Grafikkarte, wenn nvml.dll sie nicht nennt (Anzeige ohne NVIDIA). null, wenn unbekannt.
+    string? AdapterName { get; }
+
     // Die Programmdatei eines Prozesses. Wird für jede Zeile jedes Takts gefragt und muss deshalb billig sein;
     // null, wenn Windows sie verweigert (geschützte Prozesse).
     string? PathOf(int pid);
@@ -37,6 +40,7 @@ public sealed class BasicProbe : ISystemProbe
     public GpuUtilSample? ReadGpuUtil() => null;
     public IReadOnlyList<GpuProcRow>? ReadGpuMemory() => null;
     public IoRates? ReadIo() => null;
+    public string? AdapterName => null;
     public string? PathOf(int pid) => null;
     public void ResetBaselines() { }
     public void Dispose() { }

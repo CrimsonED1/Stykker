@@ -13,7 +13,7 @@
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
   </PropertyGroup>
 
-  <!-- Das Design-System der Stykker-Familie liegt neben diesem Ordner (C:\_AI\StykkerLLM-Design-System). Es wird
+  <!-- Das Design-System der Stykker-Familie liegt neben diesem Ordner (C:\_AI\Stykker\Design-System). Es wird
        weder kopiert noch eingebunden: der Server liefert es zur Laufzeit unter /ds aus seiner Quelle. -->
 
 </Project>
