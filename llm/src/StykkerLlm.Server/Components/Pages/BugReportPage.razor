@@ -1,0 +1,56 @@
+@page "/bugreport"
+@inject WebActions Web
+@inject ViewerSession Viewer
+
+@* Fehlerbericht (docs/ui.md, Bereich 15): Beschreibung → Zip mit Protokollen, Einstellungen und Zustand (ohne
+   Geheimnisse, BugReport im Core) → Download und ein vorausgefülltes GitHub-Issue. Hochgeladen wird nichts. *@
+
+<h2>@Strings.BugReportTitle</h2>
+
+<div class="card">
+    <p class="muted small">@Strings.BugReportHint</p>
+    <textarea class="prompt-in" rows="7" placeholder="@Strings.BugReportPlaceholder" @bind="_text" @bind:event="oninput" disabled="@Viewer.IsViewer"></textarea>
+    <div class="row" style="margin-top:10px">
+        <button class="primary" disabled="@(Viewer.IsViewer || _busy)" @onclick="Create">@Strings.BtnBugReportCreate</button>
+        @if (_error.Length > 0) { <span class="small" style="color:var(--bad)">@_error</span> }
+        @if (Viewer.IsViewer) { <span class="muted small">@Strings.ViewerOnly</span> }
+    </div>
+</div>
+
+@if (_zip.Length > 0)
+{
+    <div class="card">
+        <h2>@_summary</h2>
+        <div class="row">
+            <a class="btn" href="@($"api/bugreport?file={Uri.EscapeDataString(Path.GetFileName(_zip))}")" download>@Strings.BtnBugReportDownload</a>
+            <a class="btn" href="@_issue" target="_blank" rel="noopener">@Strings.BtnBugReportIssue</a>
+        </div>
+        <p class="muted small">@Strings.BugReportIssueHint</p>
+        <h3 class="sec">@Strings.BugReportFiles</h3>
+        <div class="log">@foreach (var f in _files) { <div>@f</div> }</div>
+    </div>
+}
+
+@code {
+    private string _text = "", _error = "", _zip = "", _issue = "", _summary = "";
+    private string[] _files = Array.Empty<string>();
+    private bool _busy;
+
+    private async Task Create()
+    {
+        _error = "";
+        if (string.IsNullOrWhiteSpace(_text)) { _error = Strings.BugReportEmpty; return; }
+        _busy = true;
+        try
+        {
+            var r = await Web.RunAsync(new ActionRequest { Action = "bugreport.create", Arg = _text });
+            if (!r.Ok || r.Data == null) { _error = r.Message; return; }
+            var parts = r.Data.Split('\n');
+            _zip = parts[0];
+            _issue = parts.Length > 1 ? parts[1] : BugReport.IssueBase;
+            _files = parts.Length > 2 ? parts[2].Split('|') : Array.Empty<string>();
+            _summary = r.Message;
+        }
+        finally { _busy = false; }
+    }
+}

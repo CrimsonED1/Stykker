@@ -1,0 +1,10 @@
+bin/
+obj/
+*.user
+TestResults/
+node_modules/
+
+snap/
+
+# der npm-Launcher liegt in einem Ordner namens bin und wird trotzdem versioniert
+!npm/stykker-llm/bin/

@@ -1,0 +1,51 @@
+@page "/compare"
+@inject AppPaths Paths
+
+@* Zwei Aufnahmen gegenüberstellen wie im Fenster (docs/ui.md, Bereich 6): dieselben Kennzahlen, Differenz. *@
+
+@{ var (a, sa) = Load(A); var (b, sb) = Load(B); }
+
+<div class="row" style="margin-bottom:12px">
+    <b style="font-size:17px">@Strings.CompareTitle</b>
+    <span style="margin-left:auto"><a href="recordings">@Strings.RecordingsTitle</a></span>
+</div>
+
+@if (sa == null || sb == null)
+{
+    <div class="card"><span class="muted small">@Strings.RecordingsEmpty</span></div>
+}
+else
+{
+    <div class="card">
+        <div class="row">
+            <b>@Name(sa)</b><span class="muted small">@sa.Started.ToString("yyyy-MM-dd HH:mm") · @Fmt.Dur(sa.DurationSec)</span>
+            <span style="margin-left:auto"><b>@Name(sb)</b><span class="muted small">@sb.Started.ToString("yyyy-MM-dd HH:mm") · @Fmt.Dur(sb.DurationSec)</span></span>
+        </div>
+        <table style="margin-top:10px">
+            <tr><th></th><th class="num">@Name(sa)</th><th class="num">@Name(sb)</th><th class="num">@Strings.CompareDelta</th></tr>
+            @foreach (var row in RecordingMetrics.Compare(sa, sb))
+            {
+                <tr>
+                    <td>@row.Label</td>
+                    <td class="num">@row.A</td>
+                    <td class="num">@row.B</td>
+                    <td class="num @(row.Better == 0 ? "muted" : row.Better > 0 ? "win" : "muted")">@row.Delta</td>
+                </tr>
+            }
+        </table>
+    </div>
+}
+
+@code {
+    [SupplyParameterFromQuery(Name = "a")] public string? A { get; set; }
+    [SupplyParameterFromQuery(Name = "b")] public string? B { get; set; }
+
+    private (RecordingData?, RecordingSummary?) Load(string? file)
+    {
+        if (string.IsNullOrEmpty(file)) return (null, null);
+        var summary = RecordingStore.List(Paths.RecordingsDir).FirstOrDefault(x => x.File == file);
+        return summary == null ? (null, null) : (RecordingStore.Load(summary.File), summary);
+    }
+
+    private static string Name(RecordingSummary s) => (s.Target.Length > 0 ? s.Target : s.Model) + " · " + s.Started.ToString("MM-dd HH:mm", CultureInfo.InvariantCulture);
+}

@@ -1,0 +1,209 @@
+@page "/settings"
+@implements IDisposable
+@inject EngineHost Host
+@inject AppPaths Paths
+@inject ActionContext Actions
+@inject WebActions Web
+@inject WebPrompt Prompt
+
+@* Einstellungen und About wie im Fenster (docs/ui.md, Bereiche 7 und 8) *@
+
+@{ var e = Host.Engine; bool ro = Host.ReadOnly; }
+
+<h2>@Strings.SettingsTitle</h2>
+
+<div class="grid2">
+    <div class="card">
+        <h2>@Strings.MenuTheme</h2>
+        <div class="seg theme-seg" role="radiogroup" aria-label="@Strings.MenuTheme">
+            @foreach (var t in ThemeCatalog.Choices)
+            {
+                <button class="@(e.Settings.Theme == t ? "on" : "")" role="radio" aria-checked="@(e.Settings.Theme == t ? "true" : "false")" disabled="@ro" @onclick="() => SetTheme(t)">@t</button>
+            }
+        </div>
+        <p class="muted small">@Strings.ThemeHint</p>
+    </div>
+
+    <div class="card">
+        <h2>@Strings.RemoteTitle</h2>
+        <div class="row">
+            <button class="@(Host.Access.RemoteEnabled ? "good" : "")" disabled="@ro" @onclick="ToggleRemote">
+                @(Host.Access.RemoteEnabled ? Strings.RemoteOnState : Strings.RemoteOffState)
+            </button>
+            <a href="phone">@Strings.RemoteOpenPage</a>
+        </div>
+        <p class="muted small">@(Host.Access.RemoteEnabled ? Strings.RemoteOn : Strings.RemoteOff)</p>
+        <p class="muted small">@Strings.RemoteCodeLabel: <b>@AccessControl.Pretty(Host.Access.Code)</b> · @Strings.RemoteDeviceCount(Host.Access.Devices.Count)</p>
+    </div>
+</div>
+
+<div class="card">
+    <h2>@Strings.ServerName</h2>
+    <label class="check"><input type="checkbox" checked="@e.Settings.KeepServerRunning" disabled="@ro" @onchange="ToggleKeep" /> @Strings.KeepServerLabel</label>
+    <p class="muted small">@Strings.KeepServerHint</p>
+    <p class="muted small">@Strings.ServerHolders(Host.Holds.Describe(DateTime.Now))</p>
+</div>
+
+<div class="card">
+    <h2>@Strings.SetLimitsTitle</h2>
+    <div class="grid2">
+        <div>
+            <label>@Strings.SetMaxRecordings</label>
+            <input type="number" min="0" max="10000" @bind="_maxRecordings" disabled="@ro" />
+            <label>@Strings.SetMaxRecordingsMb</label>
+            <input type="number" min="10" max="100000" @bind="_maxRecordingsMb" disabled="@ro" />
+            <label>@Strings.SetMaxRecordingMb</label>
+            <input type="number" min="1" max="100000" @bind="_maxRecordingMb" disabled="@ro" />
+        </div>
+        <div>
+            <label>@Strings.SetMaxLogs</label>
+            <input type="number" min="1" max="1000" @bind="_maxLogFiles" disabled="@ro" />
+            <label>@Strings.SetMaxLogsMb</label>
+            <input type="number" min="1" max="100000" @bind="_maxLogsMb" disabled="@ro" />
+            <label>@Strings.SetMaxCsvMb</label>
+            <input type="number" min="1" max="100000" @bind="_maxCsvMb" disabled="@ro" />
+        </div>
+    </div>
+    <div class="grid2" style="margin-top:10px">
+        <div>
+            <label>@Strings.SetBenchRegression</label>
+            <input type="number" min="0" max="100" @bind="_benchRegressionPct" disabled="@ro" />
+            <span class="muted small">@Strings.SetBenchRegressionHint</span>
+        </div>
+    </div>
+    <div class="row" style="margin-top:12px">
+        <button class="good" disabled="@ro" @onclick="SaveLimits">@Strings.BtnSave</button>
+        <span class="muted small">@_flash</span>
+    </div>
+</div>
+
+<div class="card">
+    <h2>@Strings.MenuAddServer</h2>
+    <div class="row">
+        <input placeholder="@Strings.ColName" @bind="_msName" style="width:180px" />
+        <input placeholder="http://127.0.0.1:8080" @bind="_msUrl" style="flex:1;max-width:340px" />
+        <select @bind="_msKind">
+            <option value="">@Strings.KindAuto</option>
+            <option value="llama.cpp">llama.cpp</option>
+            <option value="ollama">Ollama</option>
+            <option value="lmstudio">LM Studio</option>
+            <option value="vllm">vLLM</option>
+        </select>
+        <button disabled="@ro" @onclick="AddManual">@Strings.MenuAddServer</button>
+    </div>
+    @if (e.Settings.ManualServers.Count > 0)
+    {
+        <table style="margin-top:8px">
+            <tr><th>@Strings.ColName</th><th>@Strings.ColUrl</th><th></th></tr>
+            @foreach (var m in e.Settings.ManualServers)
+            {
+                <tr>
+                    <td>@m.Name</td>
+                    <td class="muted">@m.Url</td>
+                    <td class="num"><button class="bad" disabled="@ro" @onclick="() => RemoveManual(m.Url)">@Strings.BtnDelete</button></td>
+                </tr>
+            }
+        </table>
+    }
+</div>
+
+<div class="card">
+    <h2>@Strings.AboutTitle</h2>
+    <table>
+        <tr><th>@Strings.AboutVersion</th><td>@Version</td></tr>
+        <tr><th>@Strings.AboutDataDir</th><td class="muted">@Paths.Root</td></tr>
+        <tr><th>@Strings.AboutServer</th><td>StykkerLLM-Server · http://127.0.0.1:@Actions.ServerPort</td></tr>
+        @if (e.Gpu is { } g)
+        {
+            <tr><th>@Strings.Gpu</th><td>@g.Name</td></tr>
+            <tr><th>@Strings.AboutDriver</th><td class="muted">@(e.Platform.GpuDriver ?? Strings.NotAvailable)</td></tr>
+        }
+        <tr><th>@Strings.AboutOs</th><td class="muted">@Environment.OSVersion · .NET @Environment.Version</td></tr>
+        <tr><th>@Strings.AboutLicense</th><td class="muted">BUSL-1.1</td></tr>
+    </table>
+</div>
+
+<div class="card">
+    <div class="row">
+        <span class="muted small">@Strings.AboutStopServer</span>
+        @if (_confirm)
+        {
+            <button class="bad" @onclick="Shutdown">@Strings.AboutStopReally</button>
+            <button @onclick="() => _confirm = false">@Strings.AboutStopCancel</button>
+        }
+        else
+        {
+            <button @onclick="() => _confirm = true">@Strings.AboutStopServer</button>
+        }
+    </div>
+</div>
+
+@code {
+    private Timer? _t;
+    private string _msName = "", _msUrl = "", _msKind = "", _flash = "";
+    private bool _confirm;
+    private int _maxRecordings, _maxRecordingsMb, _maxRecordingMb, _maxLogFiles, _maxLogsMb, _maxCsvMb, _benchRegressionPct;
+
+    protected override void OnInitialized()
+    {
+        var s = Host.Engine.Settings;
+        _maxRecordings = s.MaxRecordings; _maxRecordingsMb = s.MaxRecordingsMb; _maxRecordingMb = s.MaxRecordingMb;
+        _maxLogFiles = s.MaxLogFiles; _maxLogsMb = s.MaxLogsMb; _maxCsvMb = s.MaxCsvMb;
+        _benchRegressionPct = s.BenchRegressionPct;
+        _t = new Timer(_ => InvokeAsync(StateHasChanged), null, 2000, 2000);
+    }
+
+    public void Dispose() => _t?.Dispose();
+
+    private static string Version =>
+        typeof(EngineHost).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion?.Split('+')[0] ?? "?";
+
+    private static string Key(string url)
+    {
+        try { return NetAddr.Key(new Uri(url).DnsSafeHost, new Uri(url).Port); }
+        catch { return url; }
+    }
+
+    private Task ToggleKeep(ChangeEventArgs ev)
+    {
+        var req = new ActionRequest { Action = "settings.set" };
+        req.Values["keepServer"] = (ev.Value is bool b && b).ToString();
+        return Act(req);
+    }
+
+    private Task SetTheme(string name) => Act(new ActionRequest { Action = "theme.set", Arg = name });
+
+    private Task ToggleRemote() => Act(new ActionRequest { Action = "remote.set", Flag = !Host.Access.RemoteEnabled });
+
+    private Task Shutdown() => Act(new ActionRequest { Action = "shutdown" });
+
+    private Task SaveLimits()
+    {
+        var req = new ActionRequest { Action = "settings.set" };
+        req.Values["maxRecordings"] = _maxRecordings.ToString(CultureInfo.InvariantCulture);
+        req.Values["maxRecordingsMb"] = _maxRecordingsMb.ToString(CultureInfo.InvariantCulture);
+        req.Values["maxRecordingMb"] = _maxRecordingMb.ToString(CultureInfo.InvariantCulture);
+        req.Values["maxLogFiles"] = _maxLogFiles.ToString(CultureInfo.InvariantCulture);
+        req.Values["maxLogsMb"] = _maxLogsMb.ToString(CultureInfo.InvariantCulture);
+        req.Values["maxCsvMb"] = _maxCsvMb.ToString(CultureInfo.InvariantCulture);
+        req.Values["benchRegressionPct"] = _benchRegressionPct.ToString(CultureInfo.InvariantCulture);
+        return Act(req);
+    }
+
+    private async Task AddManual()
+    {
+        if (string.IsNullOrWhiteSpace(_msUrl)) return;
+        var req = new ActionRequest { Action = "manual.add", Arg = _msUrl.Trim(), Name = _msName.Trim() };
+        req.Values["kind"] = _msKind;
+        await Act(req);
+        _msName = _msUrl = _msKind = "";
+    }
+
+    private Task RemoveManual(string url) => Act(new ActionRequest { Action = "manual.remove", Arg = Key(url) });
+
+    private async Task Act(ActionRequest req)
+    {
+        var result = await Web.RunAsync(req);
+        _flash = result.Message;
+    }
+}

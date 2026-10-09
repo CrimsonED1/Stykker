@@ -1,0 +1,195 @@
+@* Eine Serverkarte (docs/plan-ui-redesign.md, U4) – gleich für alle Backends und für Server auf Model-Hosts.
+   Kopf: Backend-Zeichen, Name, Zustand, Port, wo er läuft, Proxy, Aufnahme, Aktionen, tokens/s. Darunter Kurve und
+   Slots (llama.cpp, vLLM) oder die geladenen Modelle (Ollama, LM Studio), unten die zwölf festen Kennzahlen.
+   Ein Wert, den das Backend nicht meldet, steht als gedämpftes „–“ an seinem Platz. *@
+@{
+    var m = Model;
+    var st = m.State;
+    string F1(double v) => v.ToString("0.0", CultureInfo.InvariantCulture);
+}
+<article class="card srv @(st == "gen" || st == "read" ? "busy" : "") @(st == "off" ? "off" : "") @(m.SlowerPct != null || m.SpillGb != null ? "warnstripe" : "")" style="--b:var(@m.BackendVar)">
+    <div class="hd5">
+        <span class="bk" title="@m.Backend"><Icon Name="@m.BackendIcon" Title="@m.Backend" /></span>
+        <span class="name" title="@m.Model">@m.Name</span>
+        <span class="st" data-s="@st" title="@Strings.StateText(st)"><Icon Name="@("s-" + st)" Title="@Strings.StateText(st)" Class="@(st == "load" ? "spin" : null)" /></span>
+        <span class="mc port" title="@Strings.CardPort(m.Port)"><Icon Name="port" /><b>@m.Port</b></span>
+        @if (m.IsLocal)
+        {
+            <span class="chipi local" title="@Strings.CardLocalTip"><Icon Name="host" />@Strings.CardLocal</span>
+        }
+        else
+        {
+            <span class="chipi host" title="@Strings.CardHostTip(m.HostName ?? "")"><Icon Name="host" />@m.HostName</span>
+        }
+        @if (Served)
+        {
+            <span class="pxs on" title="@Strings.CardServed"><Icon Name="proxy" Title="@Strings.CardServed" /></span>
+        }
+        else if (ProxyRunning && CanWrite && m.IsLocal)
+        {
+            <button class="ib quiet pxs" title="@Strings.CardServe" aria-label="@Strings.CardServe" @onclick="OnServe"><Icon Name="proxy" /></button>
+        }
+        @if (m.Recording)
+        {
+            <span class="recchip" title="@Strings.CardRecording"><Icon Name="rec" /><b>@RecTime()</b></span>
+        }
+        @if (m.Slots.Count(v => v.Full) is int full && full > 0)
+        {
+            <span class="chipi warnc ctxfull" title="@Strings.CtxAlmostFull"><Icon Name="r-full" /><b>@Strings.CardCtxFull(full)</b></span>
+        }
+        @if (m.SlowerPct is int slow)
+        {
+            <span class="chipi warnc slow" title="@Strings.CardSlower(slow)"><Icon Name="down" /><b>−@slow %</b></span>
+        }
+        @if (m.SpillGb is double spill)
+        {
+            <span class="chipi warnc" title="@Strings.CardSpill(spill)"><Icon Name="vram" />@F1(spill) G</span>
+        }
+        <span class="acts3">
+            @if (m.Online && CanWrite)
+            {
+                <a class="btn primary ib txt" href="@PromptHref" title="@Strings.PromptTitle"><Icon Name="chat" />@Strings.BtnPrompt</a>
+            }
+            @if (m.IsLocal)
+            {
+                @if (!m.Manual && m.Kind == BackendKind.LlamaCpp)
+                {
+                    <a class="btn ib" href="@($"serverdetail/{Uri.EscapeDataString(m.Key)}")" title="@Strings.CardDetails" aria-label="@Strings.CardDetails"><Icon Name="info" /></a>
+                }
+                @if (CanWrite && m.Online && !m.Manual && m.Kind == BackendKind.LlamaCpp)
+                {
+                    <button class="ib" title="@Strings.CardSave" aria-label="@Strings.CardSave" @onclick="OnSave"><Icon Name="save" /></button>
+                    <button class="ib rec @(m.Recording ? "on" : "")" title="@(m.Recording ? Strings.CardStopRecord : Strings.CardRecord)" aria-label="@(m.Recording ? Strings.CardStopRecord : Strings.CardRecord)" @onclick="OnRecord"><Icon Name="rec" /></button>
+                }
+            }
+            else
+            {
+                <a class="btn ib" href="hosts" title="@Strings.CardOpenHost" aria-label="@Strings.CardOpenHost"><Icon Name="open" /></a>
+            }
+            @if (CanWrite && !m.Manual && m.Kind == BackendKind.LlamaCpp)
+            {
+                <button class="ib danger" title="@Strings.CardStop" aria-label="@Strings.CardStop" @onclick="OnStop"><Icon Name="stop" /></button>
+            }
+        </span>
+        <span class="tps" title="@Strings.ColTps"><b class="@(m.Online ? "" : "na")">@F1(m.Current)</b><span>t/s</span></span>
+    </div>
+
+    @if (m.MultiModel)
+    {
+        @if (m.Models.Count == 0)
+        {
+            <div class="muted small mods-empty">@(m.Online ? Strings.RunningNothingLoaded : Strings.Offline)</div>
+        }
+        else
+        {
+            <div class="mods">
+                <div class="mod head" aria-hidden="true"><span>@Strings.CardModelCol</span><span>VRAM</span><span>@Strings.CardOnGpu</span><span>@Strings.CardCtxCol</span><span>@Strings.CardUnloads</span><span></span></div>
+                @foreach (var lm in m.Models)
+                {
+                    double onGpu = lm.SizeBytes > 0 ? Math.Clamp((double)lm.VramBytes / lm.SizeBytes, 0, 1) : 0;
+                    <div class="mod">
+                        <span class="n" title="@lm.Name">@lm.Name</span>
+                        <span class="mc" title="@Strings.CardVram"><Icon Name="vram" /><b>@F1(lm.VramBytes / 1073741824.0)</b><small>G</small></span>
+                        <span class="bar" title="@((int)(onGpu * 100)) % @Strings.CardOnGpu"><div style="width:@((int)(onGpu * 100))%"></div></span>
+                        <span class="mc @(lm.ContextLength == null ? "na" : "")" title="@Strings.CardCtx"><Icon Name="ctx" /><b>@(lm.ContextLength is int c ? (c / 1024).ToString(CultureInfo.InvariantCulture) : "–")</b>@if (lm.ContextLength != null) { <small>k</small> }</span>
+                        <span class="mc @(lm.ExpiresAt == null ? "na" : "")" title="@Strings.Until(lm.ExpiresAt)"><Icon Name="timer" /><b>@Short(lm.ExpiresAt)</b></span>
+                        <span>
+                            @if (CanWrite && OnUnload.HasDelegate)
+                            {
+                                var name = lm.Name;
+                                <button class="ib quiet" title="@Strings.UnloadTitle" aria-label="@Strings.UnloadTitle" @onclick="() => OnUnload.InvokeAsync(name)"><Icon Name="eject" /></button>
+                            }
+                        </span>
+                    </div>
+                }
+            </div>
+        }
+    }
+    else
+    {
+        <div class="body2">
+            <div class="spark-wrap">
+                <svg class="spark" viewBox="0 0 300 70" preserveAspectRatio="none"><polygon class="area" points="@m.SparkArea()" /><polyline class="glow1" points="@m.SparkPoints()" /><polyline class="glow2" points="@m.SparkPoints()" /><polyline class="line" fill="none" points="@m.SparkPoints()" /></svg>
+                @if (m.Current > 0 && m.SparkTipTop() is { } tip) { <span class="spark-tip" style="top:@(tip)%"></span> }
+                <span class="lbl tl">@m.SparkMax.ToString("0", CultureInfo.InvariantCulture)</span>
+                <span class="lbl bl">@SparkAgo</span>
+            </div>
+            @if (m.Slots.Count > 0)
+            {
+                <div class="tiles">
+                    @foreach (var v in m.Slots)
+                    {
+                        <span class="slot @(v.Full ? "hot" : "")" data-s="@v.State" style="--f:@((int)(v.Frac * 100))%" title="@SlotTip(v)">
+                            <i></i><Icon Name="@("s-" + v.State)" Class="sm" /><b>@v.Id</b>
+                        </span>
+                    }
+                </div>
+            }
+        </div>
+    }
+
+    <div class="mgrid">
+        @Metric("vram", Strings.CardVram, m.VramGb is double vr ? F1(vr) : null, "G")
+        @Metric("ram", Strings.CardRam, m.RamGb is double ra ? F1(ra) : null, "G")
+        @Metric("cpu", Strings.CardCpu, m.CpuPercent is double cp ? cp.ToString("0", CultureInfo.InvariantCulture) : null, "%")
+        @Metric("file", Strings.CardFile, m.ModelFileGb is double mf ? F1(mf) : null, "G")
+        @Metric("ctx", Strings.CardCtx, m.CtxPerSlot is int cx && cx > 0 ? (cx / 1024).ToString(CultureInfo.InvariantCulture) : null, "k")
+        @if (m.MultiModel)
+        {
+            @Metric("layers", Strings.CardModels, m.Online ? m.Models.Count.ToString(CultureInfo.InvariantCulture) : null, "")
+        }
+        else
+        {
+            @Metric("slots", Strings.CardSlots, m.Slots.Count > 0 ? $"{m.SlotsBusy}/{m.Slots.Count}" : null, "")
+        }
+        @Metric("queue", Strings.CardQueue, m.Queue?.ToString(CultureInfo.InvariantCulture), "", warn: m.Queue > 0)
+        @Metric("peak", Strings.CardPeak, m.Peak > 0 ? F1(m.Peak) : null, "", sep: true)
+        @Metric("avg", Strings.CardAvg, m.Avg > 0 ? F1(m.Avg) : null, "")
+        @Metric("sum", Strings.CardSum, m.GeneratedTotal > 0 ? F1(m.GeneratedTotal / 1000.0) : null, "k")
+        @Metric("draft", Strings.CardDraft, m.DraftRate is double dr ? (dr * 100).ToString("0", CultureInfo.InvariantCulture) : null, "%")
+        @Metric("users", Strings.CardClients + ": " + (m.Clients.Length == 0 ? Strings.CardNone : string.Join(", ", m.Clients)), m.Clients.Length.ToString(CultureInfo.InvariantCulture), "")
+    </div>
+</article>
+
+@code {
+    [Parameter, EditorRequired] public ServerCardModel Model { get; set; } = null!;
+    [Parameter] public bool CanWrite { get; set; }
+    [Parameter] public bool Served { get; set; }
+    [Parameter] public bool ProxyRunning { get; set; }
+    [Parameter] public string SparkAgo { get; set; } = "";
+    [Parameter] public EventCallback OnServe { get; set; }
+    [Parameter] public EventCallback OnSave { get; set; }
+    [Parameter] public EventCallback OnRecord { get; set; }
+    [Parameter] public EventCallback OnStop { get; set; }
+    [Parameter] public EventCallback<string> OnUnload { get; set; }
+
+    private static string SlotTip(CardSlot v) =>
+        Strings.CardSlotTip(v.Id, Strings.StateText(v.State), v.Tps, v.Generated, v.CtxUsed, v.CtxMax) + (v.Full ? " · " + Strings.CtxAlmostFull : "");
+
+    private string PromptHref => Model.IsLocal ? $"prompt?server={Uri.EscapeDataString(Model.Key)}" : "prompt";
+
+    private string RecTime()
+    {
+        if (Model.RecordingSince is not DateTime t) return "";
+        var d = DateTime.Now - t;
+        return d.TotalHours >= 1 ? d.ToString(@"h\:mm\:ss") : d.ToString(@"mm\:ss");
+    }
+
+    // Kurz für die Spalte: „4m“, „30s“, „∞“
+    private static string Short(DateTime? expires)
+    {
+        if (expires == null) return "–";
+        var left = expires.Value - DateTime.Now;
+        if (left.TotalDays > 365) return "∞";
+        if (left.TotalSeconds <= 0) return "0s";
+        return left.TotalMinutes < 1 ? $"{(int)left.TotalSeconds}s" : $"{(int)Math.Ceiling(left.TotalMinutes)}m";
+    }
+
+    // Ein Feld der Kennzahlenreihe: Symbol, Wert, Einheit; fehlt der Wert, gedämpftes „–“ mit Grund im Tooltip
+    private RenderFragment Metric(string icon, string title, string? value, string unit, bool sep = false, bool warn = false) => __builder =>
+    {
+        var cls = "mc" + (value == null ? " na" : "") + (sep ? " sep" : "") + (warn ? " warn" : "");
+        var tip = value == null ? $"{title}: {Strings.CardNotReported}" : title;
+        <span class="@cls" title="@tip"><Icon Name="@icon" Title="@title" /><b>@(value ?? "–")</b>@if (value != null && unit.Length > 0) { <small>@unit</small> }</span>
+    };
+}

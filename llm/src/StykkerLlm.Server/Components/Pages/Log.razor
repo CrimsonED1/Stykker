@@ -1,0 +1,34 @@
+@page "/log"
+@inject AppPaths Paths
+
+@* Serverlog ansehen – der „Open log"-Knopf beim anhaltenden Hinweis (Bereich 2 in docs/ui.md).
+   Gezeigt werden nur Dateien im Datenordner; alles andere bleibt auf diesem Rechner. *@
+
+@{ var shown = LogTail.Read(Paths, Path); }
+
+<div class="card">
+    <div class="row">
+        <b>@Strings.BtnOpenLog</b>
+        <span class="muted small">@(string.IsNullOrEmpty(Path) ? Strings.NoLogFile : Path)</span>
+        <span style="margin-left:auto"><button @onclick="Refresh">@Strings.BtnRefresh</button> <a href="">@Strings.BackToMonitor</a></span>
+    </div>
+    @if (shown == null)
+    {
+        <p class="muted">@Strings.LogOutsideFolder</p>
+    }
+    else if (shown.Length == 0)
+    {
+        <p class="muted">@Strings.NoLogLines</p>
+    }
+    else
+    {
+        <div class="answer" style="max-height:70vh;overflow:auto;margin-top:8px">@shown</div>
+    }
+</div>
+
+@code {
+    [SupplyParameterFromQuery(Name = "path")] public string? Path { get; set; }
+
+    // Nach dem Klick liest der Knopf die Datei beim nächsten Zeichnen einfach erneut
+    private void Refresh() { }
+}

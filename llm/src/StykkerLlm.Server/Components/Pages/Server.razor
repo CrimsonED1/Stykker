@@ -1,0 +1,132 @@
+@page "/serverdetail/{key}"
+@implements IDisposable
+@inject EngineHost Host
+@inject WebActions Web
+@inject WebPrompt Prompt
+@inject NavigationManager Nav
+
+@* Details wie im Fenster-Fenster (Bereich 4 in docs/ui.md): Kommandozeile, Parameter, /props, Clients *@
+
+@{ var key0 = Uri.UnescapeDataString(key ?? ""); var s = Host.Engine.Registry.Servers.FirstOrDefault(x => x.Key == key0); }
+
+@if (s == null)
+{
+    <div class="card"><b>@Strings.NoServersTitle</b>
+        <div class="muted small">@key</div>
+        <p><a href="">@Strings.BackToMonitor</a></p>
+    </div>
+}
+else
+{
+    <div class="row" style="margin-bottom:12px">
+        <span style="color:@(s.Online ? "var(--good)" : "var(--warn)")">●</span>
+        <b style="font-size:17px">@s.Name</b>
+        <span class="muted small">@s.Url</span>
+        <span style="margin-left:auto"></span>
+        <button disabled="@Host.ReadOnly" @onclick="() => Record()">@Strings.BtnRecord</button>
+        <button disabled="@Host.ReadOnly" @onclick="() => Save()">@Strings.BtnSave</button>
+        @if (!s.Info.Manual)
+        {
+            <button class="bad" disabled="@Host.ReadOnly" @onclick="() => Stop()">@Strings.Stop</button>
+        }
+        <button @onclick="Back">@Strings.Close</button>
+    </div>
+
+    <div class="grid2">
+        <div>
+            <div class="card">
+                <h2>@Strings.SecCommand</h2>
+                <div class="answer">@(s.Info.CommandLine ?? "")</div>
+                <table>
+                    <tr><th>@Strings.ColOption</th><th>@Strings.ColValue</th></tr>
+                    @foreach (var e in LlamaServerArgs.Parse(s.Info.Args, s.Info.Env).Entries)
+                    {
+                        <tr><td>@(e.Name.Length > 0 ? e.Name : "(argument)")</td><td class="muted">@e.Value</td></tr>
+                    }
+                    @foreach (var kv in s.Info.Env)
+                    {
+                        <tr><td>env @kv.Key</td><td class="muted">@kv.Value</td></tr>
+                    }
+                </table>
+                @if (s.Info.HasSecrets)
+                {
+                    <p class="muted small">@Strings.SecretsHidden</p>
+                }
+            </div>
+
+            @if (s.Props is { } p)
+            {
+                <div class="card">
+                    <h2>/props</h2>
+                    <table>
+                        <tr><th>@Strings.ColProperty</th><th>@Strings.ColValue</th></tr>
+                        <tr><td>build</td><td class="muted">@p.BuildInfo</td></tr>
+                        <tr><td>model</td><td class="muted">@p.ModelPath</td></tr>
+                        <tr><td>alias</td><td class="muted">@p.ModelAlias</td></tr>
+                        <tr><td>slots</td><td class="muted">@p.TotalSlots</td></tr>
+                        <tr><td>@Strings.ColContext</td><td class="muted">@p.NCtx.ToString("N0", CultureInfo.InvariantCulture)</td></tr>
+                        <tr><td>quant</td><td class="muted">@p.ModelFtype</td></tr>
+                        <tr><td>role</td><td class="muted">@p.Role</td></tr>
+                    </table>
+                </div>
+            }
+        </div>
+
+        <div>
+            <div class="card">
+                <h2>@Strings.SlotsTitle</h2>
+                @if (s.Slots.Count == 0) { <span class="muted small">@Strings.SlotNoSlots</span> }
+                <table>
+                    <tr><th>@Strings.ColSlot</th><th>@Strings.ColStatus</th><th class="num">@Strings.ColTps</th><th class="num">@Strings.ColGenerated</th></tr>
+                    @foreach (var v in s.Slots)
+                    {
+                        <tr>
+                            <td>@v.Id</td>
+                            <td><span class="pill @(!v.Busy ? "wait" : v.ReadingPrompt ? "half" : "ok")">@(!v.Busy ? Strings.SlotIdle : v.ReadingPrompt ? Strings.SlotReading : Strings.SlotWriting)</span></td>
+                            <td class="num">@(v.Tps > 0 ? v.Tps.ToString("0.0", CultureInfo.InvariantCulture) : "–")</td>
+                            <td class="num">@v.Generated.ToString("N0", CultureInfo.InvariantCulture)</td>
+                        </tr>
+                    }
+                </table>
+                <div class="muted small" style="margin-top:8px">@Strings.Stats(s.Peak, s.AverageActive(), s.GeneratedTotal, s.Slots.Count(v => v.Busy), s.Slots.Count)</div>
+            </div>
+
+            <div class="card">
+                <h2>@Strings.ColProcess</h2>
+                <table>
+                    <tr><th>@Strings.ColProperty</th><th>@Strings.ColValue</th></tr>
+                    <tr><td>PID</td><td class="muted">@(s.Info.Pid?.ToString(CultureInfo.InvariantCulture) ?? "–")</td></tr>
+                    <tr><td>@Strings.ColWorkingDir</td><td class="muted">@(s.Info.WorkingDir ?? "–")</td></tr>
+                    <tr><td>@Strings.ColLogFile</td><td class="muted">@(s.Info.LogFile ?? "–")</td></tr>
+                    <tr><td>@Strings.Clients</td><td class="muted">@(s.Clients.Length == 0 ? Strings.None : string.Join(", ", s.Clients))</td></tr>
+                    <tr><td>@Strings.GpuVram</td><td class="muted">@Gb(s.VramGb)</td></tr>
+                    <tr><td>@Strings.Ram</td><td class="muted">@Gb(s.RamGb)</td></tr>
+                </table>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private Timer? _t;
+
+    protected override void OnInitialized() => _t = new Timer(_ => InvokeAsync(StateHasChanged), null, 1500, 1500);
+    public void Dispose() => _t?.Dispose();
+
+    [Parameter] public string? key { get; set; }
+
+    private static string Gb(double? v) => v == null ? "–" : v.Value.ToString("0.0", CultureInfo.InvariantCulture) + " GB";
+
+    private ServerWatcher? Watcher => Host.Engine.Registry.Servers.FirstOrDefault(x => x.Key == Uri.UnescapeDataString(key ?? ""));
+    private void Back() => Nav.NavigateTo("");
+
+    private Task Record() => Act("record.start", Watcher?.Key ?? "");
+    private Task Save() => Act("save", Watcher?.Key ?? "", name: Watcher?.Name);
+    private Task Stop() => Act("stop", Watcher?.Key ?? "");
+
+    private async Task Act(string action, string? arg = null, string? name = null)
+    {
+        var result = await Web.RunAsync(new ActionRequest { Action = action, Arg = arg, Name = name });
+        if (!result.Ok) await Prompt.InformAsync(Strings.ActionFailed, result.Message, warning: true);
+    }
+}

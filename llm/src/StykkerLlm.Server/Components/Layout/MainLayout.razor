@@ -1,0 +1,241 @@
+@inherits LayoutComponentBase
+@implements IDisposable
+@inject EngineHost Host
+@inject IHostApplicationLifetime Life
+@inject WebPrompt Prompt
+@inject ViewerSession Viewer
+@inject WebActions Web
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+@* Die Themen (ThemeCatalog: Dark, Spacepunk Titan) stehen als CSS-Variablen im Kopf, die Wahl als Meta-Angabe:
+   ui.js setzt daraus html[data-theme] – bei „System“ nach dem Hell/Dunkel des Systems. Ein Wechsel über /settings
+   ist ohne Neuladen sichtbar, weil der Kopf jeden Takt neu gezeichnet wird. *@
+<HeadContent>
+    <style>@ThemeCatalog.Css()</style>
+    <meta name="stykker-theme" content="@ThemeCatalog.Mode(Host.Engine.Settings.Theme)" />
+</HeadContent>
+
+<IconSprite />
+<div class="page">
+@* Kopfzeile: wenige Hauptpunkte stehen sichtbar, alles andere liegt gruppiert im ☰ (wie das ☰-Panel des Fensters).
+   Liegt die aktuelle Seite im ☰, bekommt das ☰ einen Punkt. Im Kompakt-Modus tritt der Name der Seite neben die
+   Marke – man weiß trotzdem, wo man ist. *@
+<header class="top">
+    @if (_shell)
+    {
+        <div class="navback">
+            <button class="icon" title="@Strings.BtnBack" aria-label="@Strings.BtnBack" @onclick="GoBack">←</button>
+            <button class="icon" title="@Strings.BtnForward" aria-label="@Strings.BtnForward" @onclick="GoForward">→</button>
+        </div>
+    }
+    <div class="brand"><span class="logo">◆</span> STYKKER <span class="acc">LLM</span></div>
+    @if (InMore)
+    {
+        <span class="here muted">@PageName()</span>
+    }
+    <nav>
+        <NavLink href="" Match="NavLinkMatch.All">@Strings.NavMonitor</NavLink>
+        <NavLink href="results">@Strings.NavEval</NavLink>
+        <NavLink href="bench">@Strings.NavBenchmarks</NavLink>
+        <NavLink href="recordings">@Strings.NavRecordings</NavLink>
+    </nav>
+    @* Statusleiste (U3): Proxy, Grafikspeicher mit Minibalken, freier Arbeitsspeicher, Server – je ein Chip *@
+    @{ var px = Host.Engine.Proxies; var srv = Host.Engine.Servers; int busy = srv.Count(x => x.Current > 0); }
+    <div class="status">
+        <a class="hchip @(px.Running ? "on" : "")" href="./#proxy" title="@Strings.HdrProxyTip">
+            <span class="lamp"></span>@Strings.HdrProxy <b>@(px.Running ? ":" + px.Port.ToString(CultureInfo.InvariantCulture) : Strings.HdrProxyOff)</b>
+        </a>
+        @if (Host.Engine.Gpu is { } g)
+        {
+            var frac = g.MemTotalGb > 0 ? Math.Clamp(g.MemUsedGb / g.MemTotalGb, 0, 1) : 0;
+            <a class="hchip @(frac > .92 ? "warn" : "")" href="gpu" title="@g.Name · @Strings.GpuHeadline(g.MemUsedGb, g.MemTotalGb)">
+                <Icon Name="vram" /><span class="mini"><i style="width:@((int)(frac * 100))%"></i></span>
+                <b>@g.MemUsedGb.ToString("0.0", CultureInfo.InvariantCulture)</b><span class="muted">/@g.MemTotalGb.ToString("0", CultureInfo.InvariantCulture) GB</span>
+            </a>
+        }
+        @if (Host.Engine.Sys is { } s)
+        {
+            <span class="hchip" title="@Strings.RamFreeGb(s.RamTotalGb - s.RamUsedGb)"><Icon Name="ram" /><b>@((s.RamTotalGb - s.RamUsedGb).ToString("0.0", CultureInfo.InvariantCulture))</b><span class="muted">GB free</span></span>
+        }
+        <span class="hchip @(busy > 0 ? "busy" : "")" title="@Strings.HdrServersTip"><Icon Name="slots" /><b>@Strings.HdrServers(srv.Count, busy)</b></span>
+        @if (Host.ReadOnly)
+        {
+            <span class="pill wait" title="@Strings.ServerReadOnlyHint">@Strings.ServerReadOnly</span>
+        }
+        @if (Viewer.Known && Viewer.IsViewer)
+        {
+            <span class="pill wait" title="@Strings.RemoteRoleHint">@Strings.RoleViewer</span>
+        }
+        <button class="hsearch" title="@Strings.CmdTitle (Ctrl+K)" aria-label="@Strings.CmdTitle" onclick="document.getElementById('cmdk-open').click()"><span>@Strings.CmdSearch</span><span class="kbd">Ctrl K</span></button>
+        <button @onclick="FreeVram" disabled="@(Host.ReadOnly || Viewer.IsViewer)" title="@Strings.FreeVramTitle">@Strings.BtnFreeVram</button>
+        @if (_confirm)
+        {
+            <button class="bad" @onclick="StopServer">@Strings.AboutStopReally</button><button @onclick="() => _confirm = false">@Strings.AboutStopCancel</button>
+        }
+        else
+        {
+            <button @onclick="() => _confirm = true" disabled="@(Viewer.IsViewer || Host.ReadOnly)" title="@Strings.ServerStopHint" aria-label="@Strings.ServerStopHint">⏻</button>
+        }
+    </div>
+    <details class="menu more @(InMore ? "on" : "")">
+        <summary title="@Strings.NavMore" aria-label="@Strings.NavMore">☰</summary>
+        <div>
+            <span class="grp">@Strings.NavGroupEval</span>
+            <NavLink href="runs">@Strings.EvalRuns</NavLink>
+            <NavLink href="catalog">@Strings.EvalCatalog</NavLink>
+            <NavLink href="models">@Strings.EvalModels</NavLink>
+            <span class="grp">@Strings.GroupTools</span>
+            <NavLink href="gpu">@Strings.GpuDetails</NavLink>
+            <NavLink href="prompt">@Strings.BtnPrompt</NavLink>
+            <NavLink href="compare">@Strings.BtnCompare</NavLink>
+            <span class="grp">@Strings.GroupView</span>
+            <NavLink href="hosts">@Strings.HostsTitle</NavLink>
+            <NavLink href="phone">@Strings.RemoteTitle</NavLink>
+            <NavLink href="settings">@Strings.SettingsTitle</NavLink>
+            <NavLink href="bugreport">@Strings.BugReportTitle</NavLink>
+            <div class="seg">
+                <button class="@(_density == DensityAuto ? "on" : "")" @onclick="() => SetDensity(DensityAuto)">@Strings.ViewAuto</button>
+                <button class="@(_density == DensitySmall ? "on" : "")" @onclick="() => SetDensity(DensitySmall)">@Strings.ViewSmall</button>
+                <button class="@(_density == DensityFull ? "on" : "")" @onclick="() => SetDensity(DensityFull)">@Strings.ViewFull</button>
+            </div>
+        </div>
+    </details>
+</header>
+@if (Host.ReadOnly)
+{
+    <div class="notice-bar"><Icon Name="lock" /><span>@Strings.ServerReadOnlyHint</span></div>
+}
+else if (Viewer.Known && Viewer.IsViewer)
+{
+    <div class="notice-bar"><Icon Name="lock" /><span>@Strings.ViewerOnly</span></div>
+}
+@* Server verloren (U10): Banner oben statt Dialog über der Seite – Ursache, Log, Neustart über Profil/History *@
+@if (Host.LastLost is { } lost)
+{
+    <div class="lost-bar" role="alert">
+        <Icon Name="e-crash" Class="lg" />
+        <div class="lost-txt">
+            <b>@Strings.LostTitle: @lost.Name</b>
+            <span class="muted small">@lost.Url @(lost.Pid is int pid ? $"· PID {pid}" : "") · @lost.When.ToString("g")</span>
+            @if (!string.IsNullOrEmpty(lost.Cause)) { <span>@lost.Cause</span> }
+            @if (lost.LogTail.Count > 0)
+            {
+                <details><summary class="small">@Strings.LostLogTail</summary><div class="log">@foreach (var line in lost.LogTail) { <div>@line</div> }</div></details>
+            }
+        </div>
+        @if (lost.LogFile is { Length: > 0 } log)
+        {
+            <a class="btn ib txt" href="@($"log?path={Uri.EscapeDataString(log)}")"><Icon Name="file" />@Strings.BtnOpenLog</a>
+        }
+        @if (Web.CanWrite && !Host.ReadOnly && Host.Engine.Library.Profiles.FirstOrDefault(p => lost.Key.Length > 0 && p.Key == lost.Key) is { } lp)
+        {
+            <button class="ib txt primary" @onclick="() => StartLost(lp)"><Icon Name="play" />@Strings.BtnStartAgain</button>
+        }
+        <button class="ib" title="@Strings.BtnDismiss" aria-label="@Strings.BtnDismiss" @onclick="DismissLost"><Icon Name="x" /></button>
+    </div>
+}
+<main>@Body</main>
+<PromptDialog />
+<ToastHost />
+<CommandPalette />
+</div>
+
+@code {
+    private const string DensityAuto = "auto", DensitySmall = "small", DensityFull = "full";
+    private Timer? _t;
+    private bool _confirm;
+    private bool _shell;                 // in der Fenster-Hülle: dort die Zurück/Vor-Knöpfe zeigen
+    private string _density = DensityAuto;   // auto = nach Fensterbreite (der Umschalter im ☰ überstimmt sie)
+    // Seiten, die nicht als Hauptpunkt in der Kopfzeile stehen, sondern im ☰
+    private static readonly string[] MorePages = { "runs", "catalog", "models", "gpu", "prompt", "compare", "hosts", "nodes", "phone", "settings", "bugreport", "serverdetail" };
+
+    protected override void OnInitialized() => _t = new Timer(_ => InvokeAsync(StateHasChanged), null, 2000, 2000);
+
+    // Rolle, Hülle und Ansicht einmal beim Browser erfragen (geht erst nach dem ersten Zeichnen)
+    protected override async Task OnAfterRenderAsync(bool first)
+    {
+        if (!first) return;
+        await Viewer.LoadAsync();
+        _shell = await Safe<bool>("stykkerUi.shell");
+        _density = await Safe<string>("stykkerUi.density") ?? "auto";
+        StateHasChanged();
+    }
+
+    // Fehlt das Skript (alte Seite im Cache), bleibt die Oberfläche einfach ohne Hüllen-Knöpfe und in „auto“
+    private async Task<T> Safe<T>(string what)
+    {
+        try { return await JS.InvokeAsync<T>(what); }
+        catch (Exception ex) when (ex is JSException or InvalidOperationException or NotSupportedException) { return default!; }
+    }
+
+    private async Task GoBack() => await JS.InvokeVoidAsync("stykkerUi.back");
+    private async Task GoForward() => await JS.InvokeVoidAsync("stykkerUi.forward");
+
+    private async Task SetDensity(string density)
+    {
+        _density = density;
+        await JS.InvokeVoidAsync("stykkerUi.set", density);
+    }
+
+    // Der Weg dieser Seite ohne führenden/abschließenden Schrägstrich und ohne Abfrage („/runs?a=1“ → „runs“)
+    private string RelPath()
+    {
+        var path = Nav.ToBaseRelativePath(Nav.Uri);
+        var cut = path.IndexOfAny(new[] { '?', '#' });
+        return (cut >= 0 ? path[..cut] : path).Trim('/');
+    }
+
+    private string PageName() => RelPath() switch
+    {
+        "" => Strings.NavMonitor,
+        "results" => Strings.NavEval,
+        "bench" => Strings.NavBenchmarks,
+        "recordings" => Strings.NavRecordings,
+        "runs" => Strings.EvalRuns,
+        "catalog" => Strings.EvalCatalog,
+        "models" => Strings.EvalModels,
+        "gpu" => Strings.GpuDetails,
+        "prompt" => Strings.BtnPrompt,
+        "compare" => Strings.BtnCompare,
+        "hosts" => Strings.HostsTitle,
+        "phone" => Strings.RemoteTitle,
+        "settings" => Strings.SettingsTitle,
+        "bugreport" => Strings.BugReportTitle,
+        _ => RelPath().StartsWith("serverdetail", StringComparison.Ordinal) ? Strings.NavMonitor : RelPath(),
+    };
+
+    private bool InMore
+    {
+        get
+        {
+            var path = RelPath();
+            return Array.Exists(MorePages, p => path == p || path.StartsWith(p + "/", StringComparison.Ordinal));
+        }
+    }
+
+    // „Free VRAM“ wie im Fenster: lokale Server stoppen und Ollama-Modelle entladen (eine Bestätigung des Servers)
+    private async Task FreeVram()
+    {
+        var result = await Web.RunAsync(new ActionRequest { Action = "freevram" });
+        if (!result.Ok) await Prompt.InformAsync(Strings.BtnFreeVram, result.Message, warning: true);
+    }
+
+    private void DismissLost() => Host.ClearLost();
+    public void Dispose() => _t?.Dispose();
+
+    // Server beenden: auch im Handler gesperrt (ein manipulierter Client kann Ereignisse an gesperrte Knöpfe schicken)
+    private async Task StopServer()
+    {
+        if (Viewer.IsViewer || Host.ReadOnly) return;
+        await Web.RunAsync(new ActionRequest { Action = "shutdown" });
+    }
+
+    // „Start again“ im Banner: das Profil des verlorenen Servers neu starten und das Banner schließen
+    [Inject] private LaunchCoordinator Launcher { get; set; } = null!;
+    private async Task StartLost(Profile p)
+    {
+        DismissLost();
+        await Launcher.StartProfileAsync(p);
+    }
+}

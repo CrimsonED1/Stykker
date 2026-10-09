@@ -1,0 +1,181 @@
+@page "/hosts"
+@rendermode InteractiveServer
+@inject EngineHost Host
+@inject WebActions Web
+@inject ActionContext Actions
+@inject ViewerSession Viewer
+@inject WebPrompt Prompt
+@implements IDisposable
+@using System.Globalization
+
+@* Model-Hosts (docs/plan-hosts-gateway.md): PCs, die nur Modelle laufen lassen und sich hier einwählen.
+   Oben der Code für einen neuen Host und die Adressen dieses Servers, darunter die gekoppelten Hosts. *@
+<h2>@Strings.HostsTitle</h2>
+<p class="muted small">@Strings.HostsHint</p>
+
+@{ var hosts = Host.Hosts.List(); }
+
+@if (Viewer.Known && CanWrite)
+{
+    <div class="card">
+        <div class="row" style="align-items:flex-start;gap:24px">
+            <div>
+                <label>@Strings.HostsCodeLabel</label>
+                <div class="pairbox" style="margin-top:4px">
+                    <div class="code">@AccessControl.Pretty(Host.Hosts.Pairing.Code)</div>
+                    <div class="muted small">@Strings.CodeValidFor(Host.Hosts.Pairing.Expires - DateTime.Now)</div>
+                </div>
+                <button style="margin-top:8px" @onclick="NewCode">@Strings.HostsNewCode</button>
+            </div>
+            <div style="flex:1 1 260px">
+                <label>@Strings.HostPairServer</label>
+                @foreach (var url in Addresses())
+                {
+                    <div class="num" style="text-align:left">@url</div>
+                }
+                @if (!Host.Access.RemoteEnabled)
+                {
+                    <p class="warn small">@Strings.HostsRemoteHint</p>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+<h3 class="sec">@Strings.HostsTitle · @hosts.Count</h3>
+@if (hosts.Count == 0)
+{
+    <div class="card"><span class="muted small">@Strings.HostsNone</span></div>
+}
+<div class="nodes">
+@foreach (var h in hosts)
+{
+    var id = h.Entry.Id;
+    var st = h.Connected ? h.State : null;
+    <div class="card node @(h.Connected ? "" : "off")">
+        <div class="row">
+            <span class="dot @(h.Connected ? "on" : "off")">●</span>
+            <b style="font-size:16px">@(h.Name.Length > 0 ? h.Name : h.Entry.Name)</b>
+            <span class="muted small">@h.Address @(h.Version.Length > 0 ? "· " + h.Version : "")</span>
+            <span style="flex:1"></span>
+            <span class="pill @(h.Connected ? "ok" : "wait")">@(h.Connected ? Strings.HostOnline : Strings.HostOffline)</span>
+        </div>
+        @if (st?.Gpu is { } g)
+        {
+            <div class="kpis" style="margin-top:10px">
+                <div class="kpi"><div class="muted">@g.Name</div>@g.MemUsedGb.ToString("0.0", CultureInfo.InvariantCulture) / @g.MemTotalGb.ToString("0") GB<div class="bar"><div style="width:@Pct(g.MemUsedGb, g.MemTotalGb)%"></div></div></div>
+                @if (st.Sys is { } sy)
+                {
+                    <div class="kpi"><div class="muted">@Strings.TuiMemory</div>@sy.RamUsedGb.ToString("0.0", CultureInfo.InvariantCulture) / @sy.RamTotalGb.ToString("0") GB<div class="bar"><div style="width:@Pct(sy.RamUsedGb, sy.RamTotalGb)%"></div></div></div>
+                }
+            </div>
+        }
+        @if (st != null)
+        {
+            @if (st.Servers.Count == 0)
+            {
+                <p class="muted small">@Strings.HostsNothingRunning</p>
+            }
+            @foreach (var sv in st.Servers)
+            {
+                var r = sv;
+                <ServerCard Model="ServerCardModel.From(r, id, h.Name.Length > 0 ? h.Name : h.Entry.Name)" CanWrite="CanWrite"
+                            OnStop='() => Act(id, "host.stop", r.Key, null)' OnUnload='m => Act(id, "host.unload", r.Key, m)' />
+            }
+        }
+        @if (CanWrite)
+        {
+            <div class="row" style="margin-top:12px">
+                @if (h.Connected)
+                {
+                    <button @onclick="() => LoadModels(id)">@Strings.HostsModelsButton</button>
+                }
+                <span style="flex:1"></span>
+                <button class="bad" @onclick="() => Remove(id, h.Name.Length > 0 ? h.Name : h.Entry.Name)">@Strings.BtnRemove</button>
+            </div>
+        }
+        @if (_models.TryGetValue(id, out var files))
+        {
+            @if (files.Count == 0)
+            {
+                <p class="muted small">@Strings.HostsNoModels</p>
+            }
+            else
+            {
+                <table style="margin-top:8px">
+                    @foreach (var f in files)
+                    {
+                        <tr>
+                            <td>@f.Name</td><td class="num small">@f.SizeGb.ToString("0.0", CultureInfo.InvariantCulture) GB</td>
+                            <td class="actions"><button class="good" @onclick='() => Act(id, "host.start", null, f.Path)'>@Strings.BtnStart</button></td>
+                        </tr>
+                    }
+                </table>
+            }
+        }
+        @if (_msg.TryGetValue(id, out var msg) && msg.Length > 0)
+        {
+            <p class="muted small">@msg</p>
+        }
+    </div>
+}
+</div>
+@if (_flash.Length > 0) { <p class="muted small">@_flash</p> }
+
+@code {
+    private readonly Dictionary<string, List<(string Name, string Path, double SizeGb)>> _models = new();
+    private readonly Dictionary<string, string> _msg = new();
+
+    private static int Pct(double used, double total) => total > 0 ? (int)Math.Clamp(100 * used / total, 0, 100) : 0;
+
+    private async Task LoadModels(string id)
+    {
+        _msg[id] = Strings.HostsModelsLoading;
+        var r = await Web.RunAsync(new ActionRequest { Action = "host.models", Arg = id });
+        _msg[id] = r.Message;
+        var list = new List<(string, string, double)>();
+        if (r.Ok && r.Data is { Length: > 0 } data)
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(data);
+            foreach (var e in doc.RootElement.EnumerateArray())
+                list.Add((e.GetProperty("name").GetString() ?? "", e.GetProperty("path").GetString() ?? "", e.GetProperty("sizeGb").GetDouble()));
+        }
+        _models[id] = list;
+    }
+
+    // Befehl an den Host: host.start (Modelldatei), host.stop (Server-Key), host.unload (Key + Modell)
+    private async Task Act(string id, string action, string? key, string? value)
+    {
+        var req = new ActionRequest { Action = action, Arg = id, Arg2 = key };
+        if (action == "host.start" && value != null) req.Values["model"] = value;
+        if (action == "host.unload" && value != null) req.Values["model"] = value;
+        _msg[id] = "…";
+        _msg[id] = (await Web.RunAsync(req)).Message;
+    }
+}
+
+@code {
+    private Timer? _t;
+    private string _flash = "";
+
+    protected override void OnInitialized() => _t = new Timer(_ => InvokeAsync(StateHasChanged), null, 1000, 1000);
+    public void Dispose() => _t?.Dispose();
+
+    // Wo ein Host diesen Server findet: dieser PC und jede Netzadresse (LAN, Tailscale …)
+    private IEnumerable<string> Addresses()
+    {
+        int port = Actions.ServerPort;
+        yield return NetAddr.Url("127.0.0.1", port) + "  " + Strings.HostsThisPc;
+        foreach (var ip in NetInfo.Ipv4Addresses()) yield return NetAddr.Url(ip, port);
+    }
+
+    private async Task NewCode() => _flash = (await Web.RunAsync(new ActionRequest { Action = "host.code" })).Message;
+    // Schreiben nur mit Admin-Rolle und ohne Read-only (der Server prüft es ohnehin, die Knöpfe zeigen es)
+    private bool CanWrite => Viewer.CanWrite && !Host.ReadOnly;
+
+    private async Task Remove(string id, string name)
+    {
+        if (!CanWrite || !await Prompt.ConfirmAsync(Strings.HostRemoveTitle, Strings.HostRemoveConfirm(name), warning: true)) return;
+        _flash = (await Web.RunAsync(new ActionRequest { Action = "host.remove", Arg = id })).Message;
+    }
+}

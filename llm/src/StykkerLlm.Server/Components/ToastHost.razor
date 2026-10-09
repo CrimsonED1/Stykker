@@ -1,0 +1,24 @@
+@* Meldungen unten rechts (Toasts): gleiten herein, verschwinden von selbst; mit „Rückgängig“, wenn die Aktion das anbietet *@
+@implements IDisposable
+@inject Toasts T
+
+<div class="toasts" aria-live="polite">
+    @foreach (var t in T.Items)
+    {
+        var id = t.Id;
+        <div class="toast @(t.Warn ? "warn" : "")" @key="id">
+            <span>@t.Text</span>
+            @if (t.Undo != null || t.Commit != null)
+            {
+                <button class="link" @onclick="() => T.UndoNow(id)">@Strings.ToastUndo</button>
+            }
+            <button class="ib quiet" title="@Strings.Close" aria-label="@Strings.Close" @onclick="() => T.Dismiss(id)"><Icon Name="x" /></button>
+        </div>
+    }
+</div>
+
+@code {
+    protected override void OnInitialized() => T.Changed += OnChanged;
+    private void OnChanged() => InvokeAsync(StateHasChanged);
+    public void Dispose() => T.Changed -= OnChanged;
+}

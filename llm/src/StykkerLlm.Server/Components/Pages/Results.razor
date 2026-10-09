@@ -1,0 +1,129 @@
+@page "/results"
+@inject AppPaths Paths
+
+<div class="card">
+    <div class="row">
+        <h2 style="margin:0">@Strings.EvalRanking</h2>
+        <select @bind="Suite" style="margin-left:12px">
+            <option value="">@Strings.EvalAllSuites</option>
+            @foreach (var s in _suiteNames) { <option value="@s">@s</option> }
+        </select>
+        <button @onclick="Load">@Strings.EvalReload</button>
+        <span class="muted small" style="margin-left:auto">@_runs.Count @Strings.EvalRunsSaved</span>
+    </div>
+    @if (_rank.Count == 0)
+    {
+        <p class="muted">@Strings.EvalNoResults</p>
+    }
+    else
+    {
+        <table style="margin-top:10px">
+            <tr><th>#</th><th>@Strings.ColModel</th>@if (AnyMachine) { <th>@Strings.EvalMachine</th> }<th class="num">@Strings.EvalTotal</th><th class="num">@Strings.ColRuns</th>
+                @foreach (var c in _cats) { <th class="num">@c</th> }
+                <th class="num">@Strings.BenchSeriesGen</th><th class="num">@Strings.EvalTime</th></tr>
+            @for (int i = 0; i < _rank.Count; i++)
+            {
+                var r = _rank[i];
+                <tr>
+                    <td>@(i + 1)</td><td>@r.Model</td>@if (AnyMachine) { <td class="muted small">@(r.Machine.Length > 0 ? r.Machine : "–")</td> }
+                    <td class="num"><b style="color:@Color(r.Total)">@r.Total.ToString("0")</b>@(r.Spread > 0 ? $" ±{r.Spread:0}" : "")</td>
+                    <td class="num">@r.Runs</td>
+                    @foreach (var c in _cats) { <td class="num" style="color:@(r.Cats.TryGetValue(c, out var v) ? Color(v) : "inherit")">@(r.Cats.TryGetValue(c, out var v2) ? v2.ToString("0") : Strings.EvalMarkNone)</td> }
+                    <td class="num">@r.Tps.ToString("0", CultureInfo.InvariantCulture)</td><td class="num">@Strings.EvalSeconds(r.Seconds)</td>
+                </tr>
+            }
+        </table>
+    }
+</div>
+
+@if (Suite.Length > 0 && _matrixModels.Count > 0)
+{
+    <div class="grid2">
+        <div class="card" style="overflow:auto">
+            <h2>@Strings.EvalTaskMatrix</h2>
+            <table>
+                <tr><th>@Strings.EvalTask</th>@foreach (var m in _matrixModels) { <th style="text-align:center">@m.Title</th> }</tr>
+                @foreach (var (id, title, cat) in _tasks)
+                {
+                    <tr>
+                        <td><span class="muted small">@cat</span> @title</td>
+                        @foreach (var m in _matrixModels)
+                        {
+                            var t = m.Tasks.FirstOrDefault(x => x.Id == id);
+                            <td class="cell" @onclick="() => Pick(m, t)"><span class="pill @Cls(t)">@Mark(t)</span></td>
+                        }
+                    </tr>
+                }
+            </table>
+        </div>
+        <div class="card">
+            <h2>@Strings.EvalAnswer</h2>
+            @if (_sel is { } st && _selRun is { } sr)
+            {
+                <div class="muted small">@sr.Title · @st.Category · @st.Title</div>
+                <div style="margin:6px 0"><span class="pill @Cls(st)">@Mark(st)</span>
+                    <span class="muted small">@st.GenTokens tok · @Strings.EvalSeconds1(st.Seconds) · @st.GenTps.ToString("0", CultureInfo.InvariantCulture) t/s@(st.Rounds > 1 ? $" · {Strings.EvalRounds(st.Rounds)}" : "")</span></div>
+                @if (st.Note.Length > 0) { <div class="small" style="color:var(--warn);margin-bottom:6px">@st.Note</div> }
+                <div class="answer">@(st.Answer.Length > 0 ? st.Answer : Strings.EvalNoAnswer)</div>
+            }
+            else
+            {
+                <p class="muted">@Strings.EvalPickCell</p>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    private string _suite = "";
+    private string Suite { get => _suite; set { _suite = value; Build(); } }
+    private List<EvalRun> _runs = new();
+    private List<string> _suiteNames = new(), _cats = new();
+    // Spalte "Rechner" nur, wenn mindestens ein Lauf ihn kennt (sonst eine Spalte voller Striche)
+    private bool AnyMachine => _rank.Any(r => r.Machine.Length > 0);
+
+    private sealed record Row(string Model, string Machine, double Total, double Spread, int Runs, Dictionary<string, double> Cats, double Tps, double Seconds);
+    private List<Row> _rank = new();
+    private List<EvalRun> _matrixModels = new();
+    private List<(string Id, string Title, string Cat)> _tasks = new();
+    private EvalTaskResult? _sel; private EvalRun? _selRun;
+
+    protected override void OnInitialized() => Load();
+
+    private void Load()
+    {
+        _runs = EvalSuites.LoadRuns(Paths.EvalResultsDir).Select(x => x.Run).ToList();
+        _suiteNames = _runs.Select(r => r.Suite).Distinct().OrderBy(s => s).ToList();
+        Build();
+    }
+
+    // Je Suite: neueste Version; "alle": Mittel der Suiten-Noten je Modell
+    private void Build()
+    {
+        _sel = null; _selRun = null;
+        var perSuite = _suiteNames.Where(s => _suite.Length == 0 || s == _suite)
+            .Select(s => (s, ver: _runs.Where(r => r.Suite == s).Max(r => r.SuiteVersion)))
+            .SelectMany(x => EvalOverview.Summarize(_runs, x.s, x.ver).Select(sum => (Suite: x.s, Sum: sum))).ToList();
+        // Rechner gehört in den Schlüssel: dasselbe Modell auf zwei Rechnern ist ein Vergleich, keine Verschmelzung
+        _rank = perSuite.GroupBy(x => (x.Sum.ModelFile.Length > 0 ? x.Sum.ModelFile : x.Sum.Model).ToLowerInvariant() + "|" + x.Sum.Machine.ToLowerInvariant()).Select(g =>
+        {
+            var cats = g.SelectMany(x => x.Sum.Categories).GroupBy(c => c.Key).ToDictionary(c => c.Key, c => c.Average(v => v.Value));
+            return new Row(g.First().Sum.Model, g.First().Sum.Machine, g.Average(x => x.Sum.Total), _suite.Length > 0 ? g.First().Sum.TotalSd : 0, g.Sum(x => x.Sum.Runs), cats,
+                g.Average(x => x.Sum.GenTps), g.Sum(x => x.Sum.Seconds));
+        }).OrderByDescending(r => r.Total).ToList();
+        _cats = _rank.SelectMany(r => r.Cats.Keys).Distinct().OrderBy(EvalSuites.CategoryOrder).ThenBy(c => c).ToList();
+        if (_suite.Length > 0)
+        {
+            int ver = _runs.Where(r => r.Suite == _suite).Max(r => r.SuiteVersion);
+            _matrixModels = _runs.Where(r => r.Suite == _suite && r.SuiteVersion == ver && !r.Cancelled)
+                .GroupBy(EvalOverview.Key).Select(g => g.OrderByDescending(r => r.Started).First()).OrderBy(r => r.Title).ToList();
+            _tasks = _matrixModels.SelectMany(r => r.Tasks.Select(t => (t.Id, t.Title, t.Category))).Distinct().ToList();
+        }
+        else { _matrixModels = new(); _tasks = new(); }
+    }
+
+    private void Pick(EvalRun r, EvalTaskResult? t) { _selRun = r; _sel = t; }
+    private static string Mark(EvalTaskResult? t) => t == null ? Strings.EvalMarkNone : t.Skipped ? Strings.EvalMarkSkip : t.Error ? Strings.EvalMarkErr : t.Passed ? Strings.EvalMarkPass : t.Score > 0 ? Strings.EvalMarkHalf : Strings.EvalMarkFail;
+    private static string Cls(EvalTaskResult? t) => t == null || t.Skipped ? "wait" : t.Error ? "fail" : t.Passed ? "ok" : t.Score > 0 ? "half" : "fail";
+    private static string Color(double p) => p >= 90 ? "var(--good)" : p >= 70 ? "var(--warn)" : "var(--bad)";
+}

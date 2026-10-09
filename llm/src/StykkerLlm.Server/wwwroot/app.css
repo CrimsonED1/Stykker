@@ -1,0 +1,681 @@
+/* Farben und Ecken kommen aus ThemeCatalog (Dark, Spacepunk Titan): der Server schreibt beide Sätze als <style> in den
+   Kopf (MainLayout), ui.js wählt über html[data-theme]. Dieser Block ist nur der Rückfall für ein Stylesheet ohne Server
+   (Dark). Titan ändert weiter unten auch Formen und Leuchten (Abschnitt „Spacepunk Titan“). */
+:root{color-scheme:dark;--bg:#060916;--bg-top:#0e1430;--bg-bottom:#060916;--card:#111a33;--card-top:#96b4ff22;--card-bottom:#0e785a0e;--card2:#0e0f26;--card-border:#4fe3ff40;--top-line:#ffffff3c;--track:#ffffff1c;--line:#24325a;--radius:12px;--ink:#e8eeff;--muted:#8292b8;--acc:#4fe3ff;--signal:#4fe3ff;--second:#a77bff;--good:#6cffb0;--warn:#ffc857;--bad:#ff5c7a;--bg-rgb:6 9 22;--ink-rgb:232 238 255;--muted-rgb:130 146 184;--acc-rgb:79 227 255;--second-rgb:167 123 255;--good-rgb:108 255 176;--warn-rgb:255 200 87;--bad-rgb:255 92 122;--font:Segoe UI Variable Text,Segoe UI,system-ui,sans-serif;--font-num:Cascadia Mono,Consolas,monospace}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg-bottom);color:var(--ink);font:14px/1.5 var(--font,Segoe UI,system-ui,sans-serif);transition:background-color .3s,color .3s}
+/* Seitenhintergrund: Dark mit Sternen und Lichtschein, Titan matt ohne Muster */
+.page{position:relative;min-height:100vh}
+.page::before{content:"";position:fixed;inset:0;z-index:-1;background:var(--bg-bottom)}
+html:not([data-theme=titan]) .page::before{background-image:radial-gradient(circle,rgb(220 230 255/.55) 1px,transparent 1.4px),radial-gradient(circle,rgb(190 210 255/.4) 1px,transparent 1.3px),radial-gradient(62% 44% at 85% 6%,rgb(var(--second-rgb)/.17),transparent 70%),radial-gradient(56% 40% at 8% 44%,rgb(var(--acc-rgb)/.12),transparent 72%),radial-gradient(60% 46% at 72% 76%,rgb(255 95 210/.1),transparent 70%),linear-gradient(180deg,var(--bg-top),var(--bg-bottom) 1200px);background-size:311px 311px,193px 193px,auto,auto,auto,auto;background-position:23px 47px,101px 13px,0 0,0 0,0 0,0 0;background-attachment:fixed}
+a{color:var(--acc);text-decoration:none}
+.top{display:flex;flex-wrap:wrap;align-items:center;gap:12px 24px;padding:12px 20px;border-bottom:1px solid var(--line);position:sticky;top:0;background:rgb(var(--bg-rgb)/.86);backdrop-filter:blur(10px);z-index:5}
+.brand{font-weight:600;letter-spacing:.06em}.logo,.acc{color:var(--acc)}.dim{color:var(--muted)}
+nav{display:flex;gap:6px}nav a{padding:5px 14px;border-radius:999px;color:var(--muted);border:1px solid transparent}
+nav a.active{color:var(--ink);border-color:rgb(var(--acc-rgb)/.55);background:rgb(var(--acc-rgb)/.12)}
+/* Zurück/Vor: nur in der Fenster-Hülle (StykkerUI) sichtbar – ein Browser hat eigene Knöpfe */
+.navback{display:flex;gap:4px}button.icon{padding:3px 10px;font-size:15px;line-height:1.3}
+/* „Sie sind hier“: im Kompakt-Modus neben der Marke, wenn die Seite im ☰ liegt (dort ist kein Reiter aktiv) */
+.here{display:none}
+/* das ☰ leuchtet, wenn die aktuelle Seite darin liegt */
+details.menu.more.on>summary{border-color:rgb(var(--acc-rgb)/.55);color:var(--ink);background:rgb(var(--acc-rgb)/.12)}
+/* Gruppen im ☰ (EVAL / TOOLS / VIEW) */
+details.menu>div>.grp{color:var(--muted);font-size:11px;letter-spacing:.08em;padding:7px 8px 2px;text-transform:uppercase}
+details.menu>div>.seg{margin:6px 2px 2px}
+.status{margin-left:auto;display:flex;gap:14px;color:var(--muted);font-size:13px;align-items:center}
+main{padding:18px 20px;max-width:1280px;margin:0 auto}
+/* Karte wie im Fenster: Verlauf, Ecken des Themas, heller Strich an der Oberkante, weicher Schatten */
+.card{background:linear-gradient(180deg,var(--card-top),var(--card-bottom));border:1px solid var(--card-border);border-radius:var(--radius);padding:14px 16px;margin-bottom:16px;box-shadow:inset 0 1px 0 var(--top-line),0 10px 26px rgb(0 0 0/.32)}
+.card h2{margin:0 0 10px;font-size:15px;font-weight:600}
+.row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.grid2{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:16px}
+@media(max-width:860px){.grid2{grid-template-columns:1fr}.status{margin-left:0}}
+/* Kompakt-Ansicht (schmales Fenster oder Schalter im ☰; data-view setzt ui.js): der Kopf bricht um statt zu
+   scrollen, die Reiter laufen in einer umbrechenden Zeile weiter, breite Tabellen scrollen in ihrem Block
+   statt die ganze Seite zu schieben, und Klappmenüs in Zeilen klappen auf, statt zu schweben. */
+[data-view=small] .top{gap:6px 10px;padding:8px 10px}
+[data-view=small] .here{display:inline;font-size:12px}
+[data-view=small] nav{order:4;flex:1 1 100%;flex-wrap:wrap;gap:4px;margin:0}
+[data-view=small] nav a{padding:4px 10px;font-size:13px}
+[data-view=small] .status{gap:8px;font-size:12px}
+[data-view=small] .status button{padding:3px 10px}
+[data-view=small] main{padding:12px 10px}
+[data-view=small] .card{padding:12px}
+[data-view=small] .kpis{grid-template-columns:repeat(auto-fit,minmax(110px,1fr))}
+[data-view=small] table{display:block;overflow-x:auto;max-width:100%}
+[data-view=small] th,[data-view=small] td{padding:5px 6px}
+[data-view=small] details.menu>div{position:static;margin-top:4px}
+[data-view=small] .log,[data-view=small] .answer,[data-view=small] .turn .msg{overflow-wrap:anywhere}
+/* Pillen wie im Fenster (UiKit.PillButton): die Akzentfarbe kommt zu 12 % über den Grund, der Rand zu 55 % */
+button,.btn{background:color-mix(in srgb,var(--bg) 88%,var(--acc));color:var(--ink);border:1px solid color-mix(in srgb,var(--bg) 45%,var(--acc));border-radius:999px;padding:5px 14px;cursor:pointer;font:inherit}
+button:hover,.btn:hover{background:color-mix(in srgb,var(--bg) 70%,var(--acc))}button:active{background:color-mix(in srgb,var(--bg) 55%,var(--acc))}
+button.bad{border-color:rgb(var(--bad-rgb)/.6);background:rgb(var(--bad-rgb)/.1)}button.good{border-color:rgb(var(--good-rgb)/.6);background:rgb(var(--good-rgb)/.1)}
+button:disabled{opacity:.45;cursor:default}
+/* Knopf, der wie ein Link aussieht (z. B. „+n more“): kein Pillen-Rahmen, nur die Akzentfarbe */
+button.link{background:none;border:0;padding:0;color:var(--acc);cursor:pointer;font:inherit}
+button.link:hover{background:none;text-decoration:underline}
+details.menu{display:inline-block;position:relative;vertical-align:middle}
+details.menu>summary{list-style:none;cursor:pointer;padding:5px 10px;border-radius:999px;border:1px solid color-mix(in srgb,var(--bg) 45%,var(--acc));color:var(--ink)}
+details.menu>summary::-webkit-details-marker{display:none}
+details.menu>div{position:absolute;right:0;top:30px;z-index:20;display:flex;flex-direction:column;gap:4px;background:var(--card);border:1px solid var(--card-border);border-radius:var(--radius);padding:6px;min-width:110px;box-shadow:0 8px 24px rgba(0,0,0,.45)}
+details.menu>div>a,details.menu>div>button{text-align:center}
+input,select,textarea{background:var(--card2);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:5px 8px;font:inherit}
+input:focus,select:focus,textarea:focus{outline:1px solid rgb(var(--acc-rgb)/.6)}
+textarea{width:100%;min-height:90px;font-family:var(--font-num);font-size:13px}
+table{width:100%;border-collapse:collapse}th{color:var(--muted);font-weight:400;text-align:left;font-size:12px;background:rgb(var(--ink-rgb)/.05)}
+th,td{padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:middle}tr:nth-child(even) td{background:rgb(var(--ink-rgb)/.025)}
+.num{text-align:right;font-variant-numeric:tabular-nums;font-family:var(--font-num)}
+.pill{display:inline-block;font-size:12px;padding:1px 10px;border-radius:999px;border:1px solid var(--line)}
+.ok{color:var(--good);border-color:rgb(var(--good-rgb)/.5)}.run{color:var(--acc);border-color:rgb(var(--acc-rgb)/.5)}.wait{color:var(--muted)}.fail{color:var(--bad);border-color:rgb(var(--bad-rgb)/.5)}.half{color:var(--warn);border-color:rgb(var(--warn-rgb)/.5)}
+.bar{height:8px;background:var(--track);border-radius:4px;overflow:hidden;min-width:80px}.bar>div{height:8px;background:linear-gradient(90deg,rgb(var(--acc-rgb)/.66),var(--acc))}
+.muted{color:var(--muted)}.small{font-size:12px}
+.kpi .good{color:var(--good)}.kpi .warn{color:var(--warn)}p.warn{color:var(--warn)}
+td.actions{text-align:right;white-space:nowrap}td.actions button+button{margin-left:6px}
+.qr.off{opacity:.3;filter:grayscale(1)}
+.nodes{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px}.node.off{opacity:.7}.node .dot{font-size:10px}
+.pairbox{margin-top:12px;padding:12px 14px;border:1px dashed rgb(var(--acc-rgb)/.5);border-radius:var(--radius)}.pairbox .code{font:30px var(--font-num);letter-spacing:.18em;color:var(--acc);margin:4px 0}
+.chat{max-height:56vh;overflow:auto;margin-bottom:10px}.turn{margin:0 0 10px}.turn .who{font-size:12px;color:var(--muted)}
+.turn .msg{white-space:pre-wrap;line-height:1.5}.turn.user .msg{color:var(--acc)}.msg.think{color:var(--muted);font-size:13px;border-left:2px solid var(--line);padding-left:8px;margin:4px 0}
+.msg.tool-call{font-family:var(--font-num);font-size:13px;color:var(--warn)}.msg.tool-out{font-family:var(--font-num);font-size:12px;color:var(--muted);max-height:180px;overflow:auto;border-left:2px solid var(--line);padding-left:8px}
+.approve{border:1px solid rgb(var(--warn-rgb)/.6);border-radius:var(--radius);padding:10px 12px;margin:8px 0}.approve pre{white-space:pre-wrap;max-height:200px;overflow:auto;margin:6px 0}
+.opts input:not([type=checkbox]):not([type=number]),.opts select,.opts textarea{width:100%;box-sizing:border-box}
+textarea.prompt-in{width:100%;box-sizing:border-box;font:inherit}
+input.digits::placeholder{letter-spacing:normal;font:13px var(--font)}input.digits{font:18px var(--font-num);letter-spacing:.18em;width:9.5em}p.good{color:var(--good)}.qr-info{flex:1 1 200px;min-width:0;overflow-wrap:anywhere}
+/* Umschalter aus zwei Hälften: die gewählte leuchtet, die andere bleibt klickbar */
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:999px;padding:2px;gap:2px}.seg button{border-color:transparent;background:transparent;color:var(--muted)}
+.seg button.on{color:var(--ink);border-color:rgb(var(--acc-rgb)/.55);background:rgb(var(--acc-rgb)/.16)}
+.log{font-family:var(--font-num);font-size:12px;line-height:1.7;max-height:260px;overflow:auto}
+.cell{cursor:pointer;text-align:center}.cell:hover{outline:1px solid var(--acc)}
+.answer{white-space:pre-wrap;font-family:var(--font-num);font-size:12px;background:var(--card2);border-radius:8px;padding:10px;max-height:420px;overflow:auto}
+.list div{padding:4px 8px;border-radius:8px;cursor:pointer}.list div:hover{background:var(--card2)}.list .sel{background:rgb(var(--acc-rgb)/.15);color:var(--ink)}
+label{color:var(--muted);font-size:12px;display:block;margin:8px 0 3px}
+.modal-back{position:fixed;inset:0;background:rgb(var(--bg-rgb)/.72);backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;z-index:50}
+.modal{background:linear-gradient(180deg,var(--card-top),var(--card-bottom));border:1px solid var(--card-border);border-radius:var(--radius);padding:18px;max-width:560px;width:92%;box-shadow:inset 0 1px 0 var(--top-line),0 18px 48px rgb(0 0 0/.5)}
+.big{font-size:34px;font-weight:600;line-height:1}.spark{width:100%;height:70px;background:rgb(var(--ink-rgb)/.03);border-radius:8px}
+.stack{display:flex;height:14px;border-radius:5px;overflow:hidden;background:var(--track)}.stack>div{height:14px;border-right:1px solid var(--bg)}
+.chip{display:inline-block;border:1px solid var(--line);border-radius:999px;padding:1px 10px;font-size:12px;margin:2px 4px 2px 0}.chip b{font-weight:600;margin-left:4px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}.kpi .muted{font-size:12px}
+.sec{color:var(--muted);font-size:12px;font-weight:400;letter-spacing:.08em;margin:18px 2px 8px;text-transform:uppercase}
+/* ── Feinschliff: Bewegung, Licht, Tiefe. Alles aus den Farben des Themas; wer weniger Bewegung will
+   (prefers-reduced-motion), bekommt die Farben ohne Animation. ── */
+::selection{background:rgb(var(--acc-rgb)/.35);color:var(--ink)}
+*{scrollbar-width:thin;scrollbar-color:rgb(var(--acc-rgb)/.35) transparent}
+
+/* Kopf: leuchtende Linie unten, Marke mit Verlauf und pulsierendem Rhombus */
+.top{border-bottom-color:transparent;box-shadow:0 1px 0 rgb(var(--ink-rgb)/.04),0 10px 30px rgb(0 0 0/.25)}
+.top::after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:1px;background:linear-gradient(90deg,transparent,rgb(var(--acc-rgb)/.7) 30%,rgb(var(--second-rgb)/.7) 70%,transparent);opacity:.75;pointer-events:none}
+.brand{font-size:15px;white-space:nowrap}
+.brand .acc{background:linear-gradient(90deg,var(--acc),var(--second));-webkit-background-clip:text;background-clip:text;color:transparent}
+.brand .logo{display:inline-block;text-shadow:0 0 12px rgb(var(--acc-rgb)/.8);animation:logo 4s ease-in-out infinite}
+@keyframes logo{0%,100%{transform:scale(1) rotate(0);opacity:1}50%{transform:scale(1.18) rotate(45deg);opacity:.8}}
+nav a{transition:color .2s,background .2s,border-color .2s,box-shadow .2s}
+nav a:hover{color:var(--ink);background:rgb(var(--ink-rgb)/.05)}
+nav a.active{box-shadow:0 0 0 1px rgb(var(--acc-rgb)/.15),0 0 18px rgb(var(--acc-rgb)/.25),inset 0 1px 0 rgb(255 255 255/.08)}
+details.menu>summary{transition:background .2s,box-shadow .2s}
+details.menu>summary:hover{background:rgb(var(--acc-rgb)/.12);box-shadow:0 0 14px rgb(var(--acc-rgb)/.25)}
+details.menu[open]>summary{background:rgb(var(--acc-rgb)/.18)}
+details.menu>div{animation:drop .16s ease-out;transform-origin:top right;backdrop-filter:blur(12px);background:color-mix(in srgb,var(--card) 92%,transparent)}
+details.menu>div>a{padding:5px 10px;border-radius:8px;color:var(--ink);transition:background .15s}
+details.menu>div>a:hover,details.menu>div>a.active{background:rgb(var(--acc-rgb)/.14)}
+@keyframes drop{from{opacity:0;transform:translateY(-4px) scale(.97)}to{opacity:1;transform:none}}
+
+/* Knöpfe: weiche Übergänge, beim Überfahren ein Lichthof in der Farbe des Knopfs, beim Drücken nachgeben */
+button,.btn{transition:background .18s,border-color .18s,box-shadow .18s,transform .12s,color .18s;display:inline-block}
+button:not(:disabled):hover,.btn:hover{box-shadow:0 0 0 1px rgb(var(--acc-rgb)/.25),0 4px 16px rgb(var(--acc-rgb)/.22);transform:translateY(-1px)}
+button:not(:disabled):active,.btn:active{transform:translateY(0) scale(.97);box-shadow:none}
+button:focus-visible,.btn:focus-visible,a:focus-visible,summary:focus-visible{outline:2px solid rgb(var(--acc-rgb)/.8);outline-offset:2px}
+button.primary{background:linear-gradient(180deg,color-mix(in srgb,var(--acc) 82%,white),var(--acc));color:var(--bg);border-color:transparent;font-weight:600;box-shadow:0 4px 18px rgb(var(--acc-rgb)/.35)}
+button.primary:not(:disabled):hover{background:linear-gradient(180deg,color-mix(in srgb,var(--acc) 68%,white),var(--acc));box-shadow:0 6px 24px rgb(var(--acc-rgb)/.5)}
+button.good{color:var(--good)}button.bad{color:var(--bad)}
+button.good:not(:disabled):hover{background:rgb(var(--good-rgb)/.18);box-shadow:0 0 0 1px rgb(var(--good-rgb)/.3),0 4px 16px rgb(var(--good-rgb)/.25)}
+button.bad:not(:disabled):hover{background:rgb(var(--bad-rgb)/.18);box-shadow:0 0 0 1px rgb(var(--bad-rgb)/.3),0 4px 16px rgb(var(--bad-rgb)/.25)}
+button.ghost{background:transparent;color:var(--muted);border-color:var(--line)}
+button.ghost:not(:disabled):hover{color:var(--ink);background:rgb(var(--ink-rgb)/.06);box-shadow:none}
+button.link:not(:disabled):hover,button.icon:not(:disabled):hover{transform:none}
+button.link:not(:disabled):hover{box-shadow:none}
+
+/* Karten: kommen sanft herein, ein Lichtschimmer an der Oberkante, beim Überfahren hebt sich der Rand */
+.card{position:relative;transition:border-color .25s,box-shadow .25s;animation:rise .35s ease-out backwards}
+.card::before{content:"";position:absolute;left:14px;right:14px;top:-1px;height:1px;background:linear-gradient(90deg,transparent,rgb(var(--acc-rgb)/.55),transparent);opacity:.55;pointer-events:none}
+.card:hover{border-color:color-mix(in srgb,var(--card-border) 60%,var(--acc));box-shadow:inset 0 1px 0 var(--top-line),0 14px 34px rgb(0 0 0/.38)}
+@keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+/* ein Server, der gerade schreibt, leuchtet an der Kante, ein Lichtstreif läuft über die Oberkante */
+
+/* Abschnittsköpfe: Akzentstrich davor, Haarlinie dahinter */
+.sec{display:flex;align-items:center;gap:10px}
+.sec::before{content:"";width:3px;height:12px;border-radius:2px;background:linear-gradient(180deg,var(--acc),var(--second));box-shadow:0 0 8px rgb(var(--acc-rgb)/.6)}
+.sec::after{content:"";flex:1;height:1px;background:linear-gradient(90deg,var(--line),transparent)}
+
+/* Lebenszeichen: der Punkt eines erreichbaren Servers pulsiert */
+.dot{display:inline-block;line-height:1}
+.dot.on,.dot.ok{color:var(--good);animation:pulse 2s ease-in-out infinite}.dot.off{color:var(--warn)}
+@keyframes pulse{0%,100%{text-shadow:0 0 0 rgb(var(--good-rgb)/0)}50%{text-shadow:0 0 10px rgb(var(--good-rgb)/.9)}}
+
+/* große Zahlen mit Verlauf, Kennzahlen als kleine Kacheln */
+.big{background:linear-gradient(180deg,var(--ink),color-mix(in srgb,var(--ink) 50%,var(--acc)));-webkit-background-clip:text;background-clip:text;color:transparent;font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+.kpi{background:rgb(var(--ink-rgb)/.03);border:1px solid rgb(var(--ink-rgb)/.06);border-radius:10px;padding:10px 12px;transition:border-color .2s,background .2s}
+.kpi:hover{border-color:rgb(var(--acc-rgb)/.3);background:rgb(var(--acc-rgb)/.05)}
+.kpi .bar{margin-top:6px}
+
+/* Balken: Verlauf mit wanderndem Glanz; die Breite gleitet statt zu springen */
+.bar{box-shadow:inset 0 1px 2px rgb(0 0 0/.35)}
+.bar>div{position:relative;background:linear-gradient(90deg,var(--second),var(--acc));box-shadow:0 0 10px rgb(var(--acc-rgb)/.45);transition:width .6s cubic-bezier(.2,.8,.2,1);border-radius:4px;overflow:hidden}
+.bar>div::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgb(255 255 255/.35),transparent);transform:translateX(-100%);animation:gloss 2.8s ease-in-out infinite}
+@keyframes gloss{60%,100%{transform:translateX(100%)}}
+.stack>div{transition:width .6s cubic-bezier(.2,.8,.2,1)}
+.spark{background:linear-gradient(180deg,rgb(var(--acc-rgb)/.07),transparent);border:1px solid rgb(var(--ink-rgb)/.04)}
+.spark polyline{filter:drop-shadow(0 0 4px rgb(var(--acc-rgb)/.8))}
+
+/* Pillen und Chips: getönter Grund, der Status hat einen leuchtenden Punkt */
+.pill{background:rgb(var(--ink-rgb)/.04)}
+.pill.ok{background:rgb(var(--good-rgb)/.1)}.pill.run{background:rgb(var(--acc-rgb)/.1)}.pill.fail{background:rgb(var(--bad-rgb)/.1)}.pill.half{background:rgb(var(--warn-rgb)/.1)}
+.pill.ok::before,.pill.run::before,.pill.half::before{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;background:currentColor;margin-right:6px;vertical-align:1px;box-shadow:0 0 6px currentColor}
+.pill.run::before{animation:blink 1.2s ease-in-out infinite}
+@keyframes blink{50%{opacity:.25}}
+.chip{background:rgb(var(--ink-rgb)/.035);border-color:rgb(var(--ink-rgb)/.08)}.chip b{color:var(--ink)}
+
+/* Tabellen: Zeile unter der Maus hervorheben */
+tr{transition:background .15s}
+tr:hover td{background:rgb(var(--acc-rgb)/.06)}
+th{text-transform:uppercase;letter-spacing:.05em;font-size:11px}
+
+/* Felder: Leuchten beim Fokus */
+input,select,textarea{transition:border-color .18s,box-shadow .18s}
+input:focus,select:focus,textarea:focus{outline:none;border-color:rgb(var(--acc-rgb)/.7);box-shadow:0 0 0 3px rgb(var(--acc-rgb)/.18)}
+input[type=checkbox],input[type=radio]{accent-color:var(--acc)}
+
+/* Dialoge: Hintergrund blendet ein, der Kasten springt leicht auf */
+.modal-back{animation:fade .18s ease-out}
+.modal{animation:pop .22s cubic-bezier(.2,1.2,.4,1)}
+.modal h2{margin-top:0;font-size:16px;letter-spacing:.06em}
+.modal .row.end{justify-content:flex-end;margin-top:14px}
+label.check{display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin:6px 0 2px}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+@keyframes pop{from{opacity:0;transform:translateY(10px) scale(.96)}to{opacity:1;transform:none}}
+.pairbox .code{text-shadow:0 0 18px rgb(var(--acc-rgb)/.55)}
+
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation:none!important;transition:none!important}
+}
+.spark .area{fill:rgb(var(--acc-rgb)/.13)}
+.brand .acc{background-image:linear-gradient(90deg,var(--acc),color-mix(in srgb,var(--acc) 55%,white))}
+details.menu>div>a{text-align:left;padding-left:12px}details.menu{z-index:6}
+/* Kompakt: ☰ oben rechts neben der Marke, Messwerte darunter, Reiter als letzte Zeile */
+[data-view=small] details.menu.more{order:1;margin-left:auto}[data-view=small] .status{order:2;flex:1 1 100%}
+/* Im Fenster StykkerUI zeichnet die WebView ohne GPU (kein VRAM): dort kostet jede Endlos-Animation dauernd
+   Rechenzeit. Einmalige Effekte (Einblenden, Hover, Dialoge) bleiben, die Dauerbewegung ruht. */
+html.shell *,html.shell *::before,html.shell *::after{animation-iteration-count:1!important}
+html.shell .bar>div::after{display:none}
+/* ebenso Weichzeichner und Filter: ohne GPU rechnet jeder Takt sie neu (Lichthöfe bleiben als box-shadow) */
+html.shell .top,html.shell details.menu>div,html.shell .modal-back{backdrop-filter:none}
+html.shell .top{background:rgb(var(--bg-rgb)/.97)}
+html.shell .spark polyline{filter:none}
+/* und weiche Schatten und gleitende Breiten: der Takt (alle 2 s) zeichnet die Karten neu, ohne GPU kostet ein
+   breiter Weichzeichner-Schatten dann jedes Mal. Kanten und Farben bleiben, nur ohne Weichzeichner. */
+html.shell .bar>div,html.shell .stack>div{transition:none}
+html.shell .card,html.shell .card:hover{box-shadow:inset 0 1px 0 var(--top-line)}
+html.shell .top{box-shadow:none}
+html.shell nav a.active{box-shadow:0 0 0 1px rgb(var(--acc-rgb)/.25)}
+
+/* ── Leuchten wie im Fenster (WinForms Theme.Glow): Schrift, Punkte, Balken und Kurve mit weichem Lichthof, die Stärke
+   je Thema über --glow (Space Glass 1, Cyber Grid .8, Deep Sea .6, Phosphor .5, Obsidian kaum), dazu der Glanz oben
+   auf der Karte (--sheen). Alles ruhig, ohne Animation und ohne Weichzeichner: kostet auch in StykkerUI (ohne GPU) kaum. ── */
+:root{--glow:.6;--sheen:.04}
+.brand .logo,.brand .acc{text-shadow:0 0 4px rgb(var(--acc-rgb)/min(1,calc(1.4*var(--glow)))),0 0 12px rgb(var(--acc-rgb)/calc(1.1*var(--glow))),0 0 26px rgb(var(--acc-rgb)/calc(.6*var(--glow)))}
+.brand .acc{background:none;-webkit-background-clip:border-box;background-clip:border-box;color:var(--acc)}
+.card{background-image:linear-gradient(180deg,rgb(255 255 255/var(--sheen)),rgb(255 255 255/0) 42px),linear-gradient(180deg,var(--card-top),var(--card-bottom))}
+.big{background:none;-webkit-background-clip:border-box;background-clip:border-box;color:var(--ink)}
+.dot{text-shadow:0 0 3px color-mix(in srgb,currentColor calc(var(--glow)*100%),transparent),0 0 9px color-mix(in srgb,currentColor calc(var(--glow)*80%),transparent)}
+.bar>div{box-shadow:0 0 4px rgb(var(--acc-rgb)/min(1,calc(1.3*var(--glow)))),0 0 12px rgb(var(--acc-rgb)/calc(.8*var(--glow)))}
+.bar>div::before{content:"";position:absolute;left:3px;right:3px;top:1px;height:1px;background:rgb(255 255 255/.35)}
+.pill.ok::before,.pill.run::before,.pill.half::before{box-shadow:0 0 6px currentColor}
+nav a.active{text-shadow:0 0 10px rgb(var(--acc-rgb)/calc(1.2*var(--glow)))}
+.kpi .muted+*{text-shadow:0 0 10px rgb(var(--acc-rgb)/calc(.25*var(--glow)))}
+/* Kurve: breite, durchsichtige Striche unter der Linie (wie DrawLines mit 9/5/2.8 px im Fenster), Leuchtpunkt am Ende */
+.spark-wrap{position:relative}
+.spark polyline.glow1,.spark polyline.glow2{fill:none;stroke:var(--acc);stroke-linejoin:round;vector-effect:non-scaling-stroke}
+.spark polyline.glow1{stroke-width:10px;opacity:calc(.2*var(--glow))}
+.spark polyline.glow2{stroke-width:5px;opacity:calc(.4*var(--glow))}
+.spark polyline.line{vector-effect:non-scaling-stroke;stroke-width:1.8px}
+.spark polyline{filter:none;stroke:var(--acc)}
+.spark .area{fill:rgb(var(--acc-rgb)/.14)}
+.spark-tip{position:absolute;right:-3px;width:8px;height:8px;margin-top:-4px;border-radius:50%;background:var(--acc);
+  box-shadow:0 0 0 3px rgb(var(--acc-rgb)/calc(.25*var(--glow))),0 0 10px 3px rgb(var(--acc-rgb)/calc(.45*var(--glow)));pointer-events:none}
+.spark-tip::after{content:"";position:absolute;left:2.5px;top:2.5px;width:3px;height:3px;border-radius:50%;background:rgb(255 255 255/.8)}
+/* die Zahlen rechts leuchten immer (wie GlowText im Fenster), beim Schreiben stärker; „tokens/s“ daneben leicht mit */
+.big{color:color-mix(in srgb,var(--ink) 85%,white);text-shadow:0 0 4px rgb(var(--acc-rgb)/calc(.9*var(--glow))),0 0 14px rgb(var(--acc-rgb)/calc(.55*var(--glow)))}
+.big+.muted{color:color-mix(in srgb,var(--muted) 60%,var(--acc));text-shadow:0 0 8px rgb(var(--acc-rgb)/calc(.8*var(--glow)))}
+.kpi{color:var(--ink)}.kpi>div:not(.muted):not(.bar),.kpi{text-shadow:0 0 10px rgb(var(--acc-rgb)/calc(.45*var(--glow)))}
+.kpi .muted{text-shadow:none}
+td.num b,.chip b{text-shadow:0 0 8px rgb(var(--acc-rgb)/calc(.5*var(--glow)))}
+
+/* ── Spacepunk Titan (docs/plan-ui-redesign.md): Raumschiff-Innenraum bei Arbeitslicht. Matte Paneele mit Fuge statt
+   Verlauf und Schatten, harte Ecken, Signal-Orange. Leuchten nur in den dunklen Display-Fenstern (große Zahlen, Kurve);
+   sonst kein Lichthof – auf Hell wirkt er schmutzig statt hell. ── */
+html[data-theme=titan] *{text-shadow:none!important}   /* gegen die spezifischeren Glow-Regeln von Dark */
+html[data-theme=titan] .top{background:var(--bg);backdrop-filter:none;box-shadow:none;border-bottom:1px solid var(--card-border)}
+html[data-theme=titan] .top::after{background:var(--signal);opacity:1;height:2px;bottom:-2px}
+html[data-theme=titan] .brand .logo,html[data-theme=titan] .brand .acc{color:var(--signal);animation:none}
+html[data-theme=titan] .card,html[data-theme=titan] .modal,html[data-theme=titan] details.menu>div{background:var(--card);border:1px solid var(--card-border);box-shadow:none;backdrop-filter:none}
+html[data-theme=titan] .card::before{display:none}
+html[data-theme=titan] .card:hover{border-color:var(--ink);box-shadow:none}
+html[data-theme=titan] .kpi{background:var(--card2);border:1px solid var(--line);border-radius:var(--radius)}
+html[data-theme=titan] .kpi:hover{background:var(--card2);border-color:var(--card-border)}
+html[data-theme=titan] .sec{color:var(--ink);letter-spacing:.14em;font-family:var(--font-num);font-size:11px}
+html[data-theme=titan] .sec::before{width:8px;height:8px;border-radius:0;background:var(--signal);box-shadow:none}
+html[data-theme=titan] .sec::after{background:var(--card-border)}
+/* Knöpfe: Paneel-Schalter mit Fuge; der Hauptknopf in Orange (dunklere Stufe, damit Weiß darauf AA hat) */
+html[data-theme=titan] button,html[data-theme=titan] .btn,html[data-theme=titan] details.menu>summary{background:var(--card2);color:var(--ink);border:1px solid var(--card-border);border-radius:var(--radius)}
+html[data-theme=titan] button:not(:disabled):hover,html[data-theme=titan] .btn:hover,html[data-theme=titan] details.menu>summary:hover{background:color-mix(in srgb,var(--card2) 80%,var(--signal));box-shadow:none;transform:none}
+html[data-theme=titan] button.primary{background:var(--acc);color:#fff;border-color:var(--acc);box-shadow:none}
+html[data-theme=titan] button.primary:not(:disabled):hover{background:color-mix(in srgb,var(--acc) 85%,black);box-shadow:none}
+html[data-theme=titan] button.good{color:var(--good);background:var(--card2)}html[data-theme=titan] button.bad{color:var(--bad);background:var(--card2)}
+html[data-theme=titan] button.good:not(:disabled):hover,html[data-theme=titan] button.bad:not(:disabled):hover{box-shadow:none}
+html[data-theme=titan] button:focus-visible,html[data-theme=titan] .btn:focus-visible,html[data-theme=titan] a:focus-visible,html[data-theme=titan] summary:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+html[data-theme=titan] nav a{border-radius:var(--radius);font-family:var(--font-num);letter-spacing:.06em}
+html[data-theme=titan] nav a.active{color:var(--ink);background:var(--card);border-color:var(--card-border);box-shadow:inset 0 -2px 0 var(--signal)}
+html[data-theme=titan] details.menu.more.on>summary{background:var(--card);box-shadow:inset 0 -2px 0 var(--signal)}
+html[data-theme=titan] .seg{border-radius:var(--radius);border-color:var(--card-border)}
+html[data-theme=titan] .seg button{border-radius:var(--radius);background:transparent;border-color:transparent}
+html[data-theme=titan] .seg button.on{background:var(--card);border-color:var(--card-border);box-shadow:inset 0 -2px 0 var(--signal)}
+/* Plaketten: Pillen und Chips in Versalien der Konsolenschrift */
+html[data-theme=titan] .pill,html[data-theme=titan] .chip{border-radius:0;font-family:var(--font-num);letter-spacing:.08em;text-transform:uppercase;font-size:11px;background:var(--card2);border-color:var(--card-border)}
+html[data-theme=titan] .pill.ok::before,html[data-theme=titan] .pill.run::before,html[data-theme=titan] .pill.half::before{box-shadow:0 0 0 1px var(--card-border)}
+html[data-theme=titan] th{background:var(--card2);color:var(--ink);font-family:var(--font-num)}
+html[data-theme=titan] tr:nth-child(even) td{background:rgb(var(--ink-rgb)/.03)}
+html[data-theme=titan] tr:hover td{background:rgb(var(--ink-rgb)/.06)}
+html[data-theme=titan] input,html[data-theme=titan] select,html[data-theme=titan] textarea{background:var(--card2);border-color:var(--card-border);border-radius:var(--radius)}
+html[data-theme=titan] input:focus,html[data-theme=titan] select:focus,html[data-theme=titan] textarea:focus{border-color:var(--acc);box-shadow:0 0 0 2px rgb(var(--acc-rgb)/.25)}
+/* Balken: flach, ohne Glanz und Lichthof */
+html[data-theme=titan] .bar{border-radius:0;box-shadow:inset 0 0 0 1px var(--line)}
+html[data-theme=titan] .bar>div{background:var(--signal);box-shadow:none;border-radius:0}
+html[data-theme=titan] .bar>div::after,html[data-theme=titan] .bar>div::before{display:none}
+html[data-theme=titan] .stack{border-radius:0}
+/* Lampen: Punkt mit Ring, kein Pulsieren */
+html[data-theme=titan] .dot{animation:none;text-shadow:none}
+/* Display-Fenster: die großen Zahlen und die Kurve auf dunklem Einsatz, dort leuchtet Phosphor-Grün */
+html[data-theme=titan] .big{display:inline-block;background:var(--disp);color:var(--disp-ink);padding:4px 10px;border:1px solid var(--card-border);
+  text-shadow:0 0 6px rgb(var(--disp-ink-rgb)/calc(.6*var(--glow))),0 0 16px rgb(var(--disp-ink-rgb)/calc(.3*var(--glow)))!important}
+html[data-theme=titan] .big+.muted{color:var(--muted)}
+html[data-theme=titan] .spark{background:var(--disp);border:1px solid var(--card-border);border-radius:0}
+html[data-theme=titan] .spark polyline,html[data-theme=titan] .spark polyline.glow1,html[data-theme=titan] .spark polyline.glow2,
+html[data-theme=titan] .spark .area{fill:rgb(var(--disp-ink-rgb)/.12)}
+html[data-theme=titan] .spark-tip{background:var(--disp-ink);box-shadow:0 0 8px 2px rgb(var(--disp-ink-rgb)/calc(.5*var(--glow)))}
+html[data-theme=titan] .pairbox{border-color:var(--card-border);border-radius:var(--radius)}
+html[data-theme=titan] .pairbox .code{color:var(--ink)}
+html[data-theme=titan] ::selection{background:rgb(var(--acc-rgb)/.25);color:var(--ink)}
+html[data-theme=titan] *{scrollbar-color:var(--card-border) transparent}
+/* Fenster ohne GPU: auch in Titan keine Lichthöfe in den Displays */
+html.shell[data-theme=titan] .big,html.shell[data-theme=titan] .spark-tip{text-shadow:none!important;box-shadow:none}
+
+/* Symbole (U2): Strichzeichnungen aus IconSprite, Farbe vom Text */
+.ic{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;vertical-align:-3px}
+.ic.sm{width:14px;height:14px}
+.ic.lg{width:20px;height:20px}
+@keyframes ic-spin{to{transform:rotate(360deg)}}
+.ic.spin{animation:ic-spin 1.4s linear infinite}
+html.shell .ic.spin{animation:none}
+
+/* Rahmen (U3): Statusleiste im Kopf und zwei Spalten im Monitor */
+main{max-width:1480px}
+.status{gap:8px}
+.hchip{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border:1px solid var(--line);border-radius:999px;color:var(--muted);font-size:12px;white-space:nowrap;background:rgb(var(--ink-rgb)/.03)}
+a.hchip:hover{color:var(--ink);border-color:rgb(var(--acc-rgb)/.5)}
+.hchip b{color:var(--ink);font-weight:600;font-family:var(--font-num);font-variant-numeric:tabular-nums}
+.hchip .lamp{width:7px;height:7px;border-radius:50%;background:var(--st-idle)}
+.hchip.on .lamp{background:var(--good);box-shadow:0 0 6px rgb(var(--good-rgb)/calc(.8*var(--glow)))}
+.hchip.busy .ic{color:var(--good)}.hchip.warn b{color:var(--warn)}
+.hchip .mini{display:inline-block;width:42px;height:5px;border-radius:3px;background:var(--track);overflow:hidden}
+.hchip .mini i{display:block;height:100%;background:var(--acc);box-shadow:0 0 6px rgb(var(--acc-rgb)/calc(.7*var(--glow)));transition:width .6s}
+.hchip.warn .mini i{background:var(--warn)}
+.mon{display:grid;grid-template-columns:minmax(0,1fr) minmax(300px,380px);gap:16px;align-items:start}
+.mon-main,.mon-side,.mon-area,.mon-proxy{min-width:0}
+.mon-main>.mon-area:first-child>.sec:first-child,.mon-side>.mon-area:first-child>.sec:first-child{margin-top:0}
+/* schmal in der Reihenfolge von docs/ui.md: Proxy, Saved, laufende Server, Hardware, Anfragen, Verlauf. Die Bereiche
+   werden Geschwister im Raster und per order sortiert; breit bleiben es zwei Spalten */
+@media(max-width:1100px){
+.mon{grid-template-columns:minmax(0,1fr);gap:0}
+.mon-main,.mon-side{display:contents}
+.mon-proxy{order:1}.mon-saved{order:2}.mon-run{order:3}.mon-hw{order:4}.mon-rec{order:5}.mon-hist{order:6}
+.mon-area>.sec:first-child,.mon-proxy>.sec:first-child{margin-top:0}
+}
+/* schmal (< 640 px): breite Tabellen werden zu Zeilen-Blöcken statt seitlich zu scrollen */
+@media(max-width:640px){
+  .status{width:100%;flex-wrap:wrap}
+  table.rows,table.rows tbody,table.rows tr,table.rows td{display:block;width:100%}
+  table.rows tr:first-child{display:none}
+  table.rows tr{border-bottom:1px solid var(--line);padding:6px 0}
+  table.rows td{border:0;padding:2px 4px}
+}
+html[data-theme=titan] .hchip{border-radius:var(--radius);border-color:var(--card-border);background:var(--card2);font-family:var(--font-num)}
+html[data-theme=titan] .hchip .mini{border-radius:0;background:var(--disp)}
+html[data-theme=titan] .hchip .mini i{background:var(--disp-ink);box-shadow:none}
+html[data-theme=titan] .hchip.on .lamp{box-shadow:0 0 0 1px var(--card-border)}
+html.shell .hchip .mini i{transition:none;box-shadow:none}
+
+/* ── Serverkarten (U4, Vorlage docs/design/mockup-7.html): Backend-Farbe als Streifen und Zeichen, Zustand als Symbol
+   mit Farbe, Kurve und Slot-Kacheln nebeneinander, zwölf feste Kennzahlen ── */
+[data-s=idle]{--sc:var(--st-idle)}[data-s=read]{--sc:var(--st-read)}[data-s=gen]{--sc:var(--st-gen)}[data-s=load]{--sc:var(--st-load)}[data-s=off]{--sc:var(--st-off)}
+.srv{--b:var(--acc);padding-left:18px}
+.srv::before{content:"";position:absolute;left:-1px;top:10px;bottom:10px;right:auto;width:3px;height:auto;border-radius:0 3px 3px 0;background:var(--b);opacity:1;
+  box-shadow:0 0 8px color-mix(in srgb,var(--b) calc(var(--glow)*60%),transparent);animation:none}
+.card.srv.busy{border-color:color-mix(in srgb,var(--b) 55%,var(--card-border));
+  box-shadow:inset 0 1px 0 var(--top-line),0 10px 26px rgb(0 0 0/.32),0 0 0 1px color-mix(in srgb,var(--b) calc(var(--glow)*40%),transparent),0 0 22px color-mix(in srgb,var(--b) calc(var(--glow)*22%),transparent);
+  animation:srv-pulse 2.6s ease-in-out infinite}
+.card.srv.busy::before{left:-1px;right:auto;background:var(--b);background-size:auto;animation:none}
+@keyframes srv-pulse{50%{box-shadow:inset 0 1px 0 var(--top-line),0 10px 26px rgb(0 0 0/.32),0 0 0 1px color-mix(in srgb,var(--b) calc(var(--glow)*55%),transparent),0 0 32px color-mix(in srgb,var(--b) calc(var(--glow)*32%),transparent)}}
+.card.srv.off{opacity:.72}
+.hd5{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0}
+.hd5 .name{font-size:16px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;max-width:40%}
+.bk{display:inline-flex;width:26px;height:26px;align-items:center;justify-content:center;border-radius:7px;color:var(--b);flex:none;
+  background:color-mix(in srgb,var(--b) 13%,transparent);border:1px solid color-mix(in srgb,var(--b) 35%,transparent)}
+.st{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;color:var(--sc);flex:none;
+  background:color-mix(in srgb,var(--sc) 14%,transparent);box-shadow:0 0 8px color-mix(in srgb,var(--sc) calc(var(--glow)*40%),transparent)}
+.st .ic{width:14px;height:14px}
+.st[data-s=gen]{animation:st-breathe 1.6s ease-in-out infinite}
+@keyframes st-breathe{50%{box-shadow:0 0 0 3px color-mix(in srgb,var(--sc) 22%,transparent),0 0 14px color-mix(in srgb,var(--sc) calc(var(--glow)*80%),transparent)}}
+.chipi{display:inline-flex;align-items:center;gap:4px;height:22px;padding:0 7px;border-radius:5px;font-size:11px;color:var(--muted);border:1px solid var(--line);white-space:nowrap}
+.chipi .ic{width:14px;height:14px}.chipi.host{color:var(--ink);border-color:color-mix(in srgb,var(--b-host) 55%,var(--line))}.chipi.host .ic{color:var(--b-host)}
+.chipi.local{opacity:.8}.chipi.warnc{color:var(--warn);border-color:rgb(var(--warn-rgb)/.45)}
+.pxs{display:inline-flex;align-items:center;color:var(--muted)}.pxs.on{color:var(--good)}
+.recchip{display:inline-flex;align-items:center;gap:4px;color:var(--bad);font:12px var(--font-num)}
+.recchip .ic{animation:rec-blink 1.2s ease-in-out infinite}@keyframes rec-blink{50%{opacity:.3}}
+.acts3{display:flex;gap:4px;margin-left:auto;align-items:center}
+.ib{display:inline-flex;align-items:center;justify-content:center;gap:5px;min-width:30px;height:28px;padding:0 7px;border-radius:8px}
+.ib.txt{padding:0 11px}.ib.quiet{background:transparent;border-color:transparent}
+.ib.danger{color:var(--bad);border-color:rgb(var(--bad-rgb)/.5)}.ib.rec.on{color:var(--bad);border-color:rgb(var(--bad-rgb)/.6)}
+.tps{display:flex;align-items:baseline;gap:5px;margin-left:6px;min-width:96px;justify-content:flex-end}
+.tps b{font:600 28px/1 var(--font-num);font-variant-numeric:tabular-nums;color:color-mix(in srgb,var(--ink) 88%,white);transition:color .4s;
+  text-shadow:0 0 4px color-mix(in srgb,var(--b) calc(var(--glow)*90%),transparent),0 0 14px color-mix(in srgb,var(--b) calc(var(--glow)*55%),transparent),0 0 32px color-mix(in srgb,var(--b) calc(var(--glow)*28%),transparent)}
+.srv:not(.busy) .tps b{text-shadow:0 0 6px color-mix(in srgb,var(--b) calc(var(--glow)*30%),transparent)}
+.tps b.na{color:var(--muted);text-shadow:none;font-weight:400}
+.tps span{font-size:12px;color:var(--muted)}
+.body2{display:flex;gap:10px;align-items:stretch;margin-top:10px}
+.body2 .spark-wrap{flex:1;min-width:0;position:relative}
+.body2 .spark{height:70px;display:block}
+.spark-wrap .lbl{position:absolute;font:10px var(--font-num);color:var(--muted);pointer-events:none;opacity:.8}
+.spark-wrap .lbl.tl{left:6px;top:3px}.spark-wrap .lbl.bl{left:6px;bottom:3px}
+.srv .spark polyline.line,.srv .spark polyline.glow1,.srv .spark polyline.glow2{stroke:var(--b)}
+.srv .spark .area{fill:color-mix(in srgb,var(--b) 14%,transparent)}
+.srv .spark-tip{background:var(--b);box-shadow:0 0 0 3px color-mix(in srgb,var(--b) calc(var(--glow)*25%),transparent),0 0 10px 3px color-mix(in srgb,var(--b) calc(var(--glow)*45%),transparent)}
+.tiles{display:flex;gap:5px;align-items:stretch;flex:none}
+.slot{position:relative;display:flex;width:38px;min-height:70px;flex-direction:column;justify-content:space-between;align-items:center;overflow:hidden;
+  color:var(--sc);border:1px solid color-mix(in srgb,var(--sc) 50%,transparent);background:color-mix(in srgb,var(--sc) 5%,transparent);border-radius:7px;padding:5px 0 3px;cursor:default}
+.slot:hover{background:color-mix(in srgb,var(--sc) 12%,transparent);border-color:var(--sc)}
+.slot>i{position:absolute;left:0;right:0;bottom:0;height:var(--f,0%);background:linear-gradient(0deg,color-mix(in srgb,var(--sc) 38%,transparent),color-mix(in srgb,var(--sc) 16%,transparent));
+  transition:height .9s cubic-bezier(.2,.8,.2,1);box-shadow:0 -1px 0 var(--sc),0 -2px 10px color-mix(in srgb,var(--sc) calc(var(--glow)*45%),transparent)}
+.slot[data-s=idle]>i{box-shadow:none}
+.slot[data-s=gen]>i::after{content:"";position:absolute;inset:0;background:linear-gradient(0deg,transparent,rgb(255 255 255/.35),transparent);background-size:100% 40%;background-repeat:no-repeat;animation:slot-run 1.4s linear infinite}
+@keyframes slot-run{from{background-position:0 160%}to{background-position:0 -60%}}
+.slot .ic,.slot b{position:relative}.slot b{font:10px var(--font-num);color:var(--muted);font-weight:400}
+.mods{display:flex;flex-direction:column;gap:5px;margin-top:10px}
+.mod{display:grid;grid-template-columns:minmax(0,1fr) 70px 70px 54px 54px 30px;gap:10px;align-items:center}
+.mod.head{font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.mod .n{font:13px var(--font-num);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mod .bar{min-width:0}.mods-empty{margin-top:8px}
+.mc{display:inline-flex;align-items:center;gap:4px;font:13px var(--font-num);color:var(--ink);white-space:nowrap;min-width:0}
+.mc .ic{color:var(--muted)}.mc b{font-weight:500}
+.mc small{color:var(--muted);font-size:11px;margin-left:-2px}
+.mc.na,.mc.na .ic{color:color-mix(in srgb,var(--muted) 70%,transparent)}.mc.na b{font-weight:400}
+.mc.warn,.mc.warn .ic{color:var(--warn)}
+.hd5 .mc.port{color:var(--muted)}.hd5 .mc.port b{font-weight:400}
+.mgrid{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:6px 8px;margin-top:10px;padding-top:8px;border-top:1px solid color-mix(in srgb,var(--line) 70%,transparent)}
+.mgrid .mc.sep{position:relative}.mgrid .mc.sep::before{content:"";position:absolute;left:-5px;top:2px;bottom:2px;width:1px;background:var(--line)}
+@media(max-width:1250px){.mgrid{grid-template-columns:repeat(6,minmax(0,1fr))}.mgrid .mc.sep::before{display:none}}
+@media(max-width:640px){
+  .mgrid{grid-template-columns:repeat(4,minmax(0,1fr))}
+  .hd5 .name{max-width:none;flex:1 1 auto}
+  .acts3{margin-left:0;order:9}.tps{order:8;margin-left:auto}
+  .body2{flex-direction:column}.body2 .spark{height:56px}.tiles{flex-wrap:wrap}.slot{min-height:48px}
+  .mod{grid-template-columns:minmax(0,1fr) 64px 54px 30px}.mod>:nth-child(3),.mod>:nth-child(4){display:none}
+}
+.card.hostidle .hd5{gap:10px}
+/* Fenster ohne GPU: keine Dauerbewegung, keine weichen Lichthöfe */
+html.shell .card.srv.busy{animation:none;box-shadow:inset 0 1px 0 var(--top-line),0 0 0 1px color-mix(in srgb,var(--b) 45%,transparent)}
+html.shell .st,html.shell .slot>i{box-shadow:none}
+html.shell .st[data-s=gen],html.shell .slot[data-s=gen]>i::after,html.shell .recchip .ic{animation:none}
+html.shell .slot>i{transition:none}
+html.shell .tps b{text-shadow:none}
+/* Titan: Paneel mit Backend-Streifen und abgeschrägter Ecke, Lampen mit Ring, tokens/s im Display-Fenster */
+html[data-theme=titan] .srv::before{left:0;top:0;bottom:0;width:4px;border-radius:0;box-shadow:none}
+html[data-theme=titan] .card.srv{clip-path:polygon(0 0,calc(100% - 12px) 0,100% 12px,100% 100%,0 100%)}
+html[data-theme=titan] .card.srv.busy{box-shadow:none;animation:none;border-color:var(--card-border);
+  background:linear-gradient(225deg,transparent 0 8.2px,var(--card-border) 8.2px 9.2px,transparent 9.2px) no-repeat,color-mix(in srgb,var(--b) 6%,var(--card))}
+html[data-theme=titan] .card.srv.busy::before{box-shadow:none}
+html[data-theme=titan] .bk{border-radius:0;color:#fff;background:var(--b);border-color:var(--b)}
+html[data-theme=titan] .st{border-radius:50%;background:var(--card2);box-shadow:0 0 0 2px var(--card),0 0 0 3px var(--card-border);animation:none}
+html[data-theme=titan] .chipi,html[data-theme=titan] .ib{border-radius:var(--radius)}
+html[data-theme=titan] .chipi{font-family:var(--font-num);letter-spacing:.08em;text-transform:uppercase;background:var(--card2);border-color:var(--card-border);color:var(--ink)}
+html[data-theme=titan] .chipi.host{background:var(--b-host);color:#fff;border-color:var(--b-host)}html[data-theme=titan] .chipi.host .ic{color:#fff}
+html[data-theme=titan] .tps{background:var(--disp);padding:5px 10px;border:1px solid var(--card-border)}
+html[data-theme=titan] .tps b{color:var(--disp-ink);text-shadow:0 0 6px rgb(var(--disp-ink-rgb)/calc(.7*var(--glow))),0 0 18px rgb(var(--disp-ink-rgb)/calc(.35*var(--glow)))!important}
+html[data-theme=titan] .srv:not(.busy) .tps b{text-shadow:0 0 4px rgb(var(--disp-ink-rgb)/calc(.3*var(--glow)))!important}
+html[data-theme=titan] .tps span{color:var(--disp-unit)}
+html[data-theme=titan] .srv .spark{background:var(--disp)}
+html[data-theme=titan] .srv .spark polyline.line,html[data-theme=titan] .srv .spark polyline.glow1,html[data-theme=titan] .srv .spark polyline.glow2{stroke:var(--disp-ink)}
+html[data-theme=titan] .srv .spark .area{fill:rgb(var(--disp-ink-rgb)/.12)}
+html[data-theme=titan] .spark-wrap .lbl{color:var(--disp-unit)}
+html[data-theme=titan] .slot{border-radius:0;background:var(--card2);border-color:var(--card-border)}
+html[data-theme=titan] .slot>i{background:color-mix(in srgb,var(--sc) 30%,transparent);box-shadow:0 -2px 0 var(--sc)}
+html[data-theme=titan] .slot[data-s=gen]>i::after{background-image:linear-gradient(0deg,transparent,rgb(255 255 255/.5),transparent)}
+html[data-theme=titan] .mgrid{border-top-color:var(--card-border)}
+html.shell[data-theme=titan] .tps b{text-shadow:none!important}
+
+/* Pillen und Chips brechen nie um (sonst zweizeilige Zustände in schmalen Spalten) */
+.pill,.chip,.chipi,.hchip{white-space:nowrap}
+
+/* Hardware-Karte (U5) */
+.hw h2{display:flex;align-items:baseline;gap:8px;margin:0 0 10px}.hw h2 small{font-size:12px;font-weight:400}
+.hw h2 .more{margin-left:auto;font-size:12px;font-weight:400;display:inline-flex;align-items:center;gap:4px}
+.hw h2.hw-sep{margin-top:16px;padding-top:12px;border-top:1px solid var(--line)}
+.meters{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.meter{background:rgb(var(--ink-rgb)/.03);border:1px solid rgb(var(--ink-rgb)/.06);border-radius:10px;padding:8px 10px;min-width:0}
+.meter .l{display:flex;justify-content:space-between;gap:8px;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.meter .l span:last-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-transform:none;letter-spacing:0}
+.meter .l .warnc{color:var(--warn)}
+.meter .v{margin:2px 0 6px}.meter .v b{font:600 18px var(--font-num);font-variant-numeric:tabular-nums;text-shadow:0 0 10px rgb(var(--acc-rgb)/calc(.45*var(--glow)))}
+.meter .v small{color:var(--muted);font-size:12px}
+.meter.hot .bar>div{background:var(--warn)}
+.subh{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin:12px 0 5px}
+html[data-theme=titan] .meter{background:var(--card2);border-color:var(--line);border-radius:var(--radius)}
+html[data-theme=titan] .meter .v b{color:var(--ink)}
+html[data-theme=titan] .hw h2.hw-sep{border-top-color:var(--card-border)}
+
+/* Profil-Kacheln (U6) */
+.pfs{display:grid;grid-template-columns:minmax(0,1fr);gap:8px}
+.pf{position:relative;border:1px solid var(--line);border-radius:10px;padding:9px 10px 8px 14px;background:rgb(var(--ink-rgb)/.02);transition:border-color .3s,box-shadow .3s}
+.pf::before{content:"";position:absolute;left:-1px;top:8px;bottom:8px;width:3px;border-radius:0 3px 3px 0;background:var(--b);opacity:.55}
+.pf.on{border-color:color-mix(in srgb,var(--b) 50%,var(--line));box-shadow:0 0 0 1px color-mix(in srgb,var(--b) calc(var(--glow)*30%),transparent),0 0 18px color-mix(in srgb,var(--b) calc(var(--glow)*18%),transparent)}
+.pf.on::before{opacity:1;box-shadow:0 0 8px color-mix(in srgb,var(--b) calc(var(--glow)*60%),transparent)}
+.pf.tight{border-color:rgb(var(--warn-rgb)/.6)}
+.pf-hd{display:flex;align-items:center;gap:7px;min-width:0}
+.pf-hd .bk{width:22px;height:22px;border-radius:6px}.pf-hd .bk .ic{width:14px;height:14px}
+.pf-hd .name{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex:1}
+.pf-tps{display:inline-flex;align-items:baseline;gap:4px;font-family:var(--font-num)}
+.pf-tps b{font-size:17px;font-weight:600;text-shadow:0 0 10px color-mix(in srgb,var(--b) calc(var(--glow)*50%),transparent)}
+.pf-tps small{font-size:10px;color:var(--muted)}.pf-tps.na b{color:var(--muted);text-shadow:none;font-weight:400}
+.pf-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px 10px;margin-top:7px}
+.mc.off .ic{opacity:.6}.mc.off{text-decoration:none}
+.pf-fc{display:flex;align-items:center;gap:6px;margin-top:7px;font:12px var(--font-num);color:var(--muted)}
+.pf-fc b{color:var(--ink);font-weight:500}
+.fc-bar{position:relative;flex:1;height:6px;border-radius:3px;background:var(--track);overflow:hidden}
+.fc-bar i{position:absolute;left:0;top:0;bottom:0;border-radius:3px}
+.fc-bar .free{background:rgb(var(--good-rgb)/.35)}
+.fc-bar .need{background:var(--acc);box-shadow:0 0 6px rgb(var(--acc-rgb)/calc(.6*var(--glow)))}
+.pf.tight .fc-bar .need{background:var(--warn)}.pf.tight .pf-fc b{color:var(--warn)}
+.pf-act{display:flex;align-items:center;gap:6px;margin-top:8px;flex-wrap:wrap}
+.pf-cmd summary{cursor:pointer;font-size:11px;color:var(--muted);list-style:none}.pf-cmd summary::-webkit-details-marker{display:none}
+.pf-cmd[open]{flex-basis:100%;order:9}
+.pf-cmd code{display:block;margin-top:5px;font:11px var(--font-num);color:var(--muted);background:var(--card2);border-radius:6px;padding:6px 8px;overflow-wrap:anywhere}
+.pf-act details.menu>summary{display:inline-flex;align-items:center;padding:4px 8px}
+html.shell .pf.on{box-shadow:none}html.shell .fc-bar .need{box-shadow:none}
+html[data-theme=titan] .pf{border-radius:0;background:var(--card2);border-color:var(--card-border)}
+html[data-theme=titan] .pf::before{left:0;top:0;bottom:0;width:4px;border-radius:0;opacity:1;box-shadow:none}
+html[data-theme=titan] .pf.on{box-shadow:inset 0 0 0 1px var(--b);background:color-mix(in srgb,var(--b) 8%,var(--card2))}
+html[data-theme=titan] .pf-tps{background:var(--disp);padding:2px 7px}
+html[data-theme=titan] .pf-tps b{color:var(--disp-ink);text-shadow:0 0 6px rgb(var(--disp-ink-rgb)/calc(.6*var(--glow)))!important}
+html[data-theme=titan] .pf-tps small{color:var(--disp-unit)}
+html[data-theme=titan] .fc-bar{border-radius:0;background:var(--disp)}
+html[data-theme=titan] .fc-bar i{border-radius:0}html[data-theme=titan] .fc-bar .need{background:var(--signal);box-shadow:none}
+html[data-theme=titan] .fc-bar .free{background:rgb(var(--disp-ink-rgb)/.35)}
+html[data-theme=titan] .pf-cmd code{border-radius:0}
+
+/* Proxy-Panel (U9) */
+.lamp{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--st-idle);flex:none}
+.lamp.on{background:var(--good);box-shadow:0 0 6px rgb(var(--good-rgb)/calc(.8*var(--glow)))}
+.lamp.bad{background:var(--bad)}
+.switch{position:relative;width:38px;height:22px;padding:0;border-radius:999px;background:var(--track);border:1px solid var(--line);flex:none}
+.switch i{position:absolute;left:2px;top:2px;width:16px;height:16px;border-radius:50%;background:var(--muted);transition:left .2s,background .2s}
+.switch.on{background:rgb(var(--good-rgb)/.25);border-color:rgb(var(--good-rgb)/.6)}
+.switch.on i{left:18px;background:var(--good);box-shadow:0 0 8px rgb(var(--good-rgb)/calc(.7*var(--glow)))}
+.switch.on.warn{background:rgb(var(--warn-rgb)/.22);border-color:rgb(var(--warn-rgb)/.6)}.switch.on.warn i{background:var(--warn);box-shadow:none}
+.switch.sm{width:32px;height:18px}.switch.sm i{width:12px;height:12px}.switch.sm.on i{left:16px}
+.switch:not(:disabled):hover{transform:none}
+.pxp-hd{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.pxp-hd b{font-weight:600}
+.pxp-url{font:12px var(--font-num);color:var(--acc);background:var(--card2);padding:3px 8px;border-radius:6px;margin-left:auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:0 1 auto}
+.pxp-hd{flex-wrap:nowrap}.pxp-hd .ib{flex:none}
+.pxp-flash{color:var(--warn);margin-top:6px}
+/* Claude Desktop auf den Stykker-Proxy (Schalter neben dem Proxy-Schalter) */
+.claude{color:var(--muted)}
+.claude.on{color:var(--acc);border-color:rgb(var(--acc-rgb)/.55);background:rgb(var(--acc-rgb)/.12)}
+.claude-ask{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px;padding:7px 9px;border:1px solid rgb(var(--warn-rgb)/.5);border-radius:8px;background:rgb(var(--warn-rgb)/.08)}
+.claude-ask .lamp{background:var(--warn)}
+.claude-ask .t{flex:1;min-width:0;font-size:12px}
+.pxp-row{display:flex;align-items:center;gap:8px;margin-top:10px;flex-wrap:wrap}
+.pxp-row select{flex:1;min-width:0}
+.pxp-l{font-size:12px;color:var(--muted);display:inline-flex;align-items:center;gap:4px;min-width:120px}
+.tip{display:inline-flex;color:var(--muted);cursor:help}.tip .ic{width:14px;height:14px}.tip.warnc{color:var(--warn)}
+.pxs-list{display:flex;flex-direction:column;gap:2px}
+.pxs-grp{display:flex;align-items:center;justify-content:space-between;font-size:12px;color:var(--muted);margin-top:8px}
+.pxs-grp>span{display:inline-flex;align-items:center;gap:4px}
+.pxs-item{display:flex;align-items:center;gap:8px;padding:4px 2px;border-bottom:1px solid color-mix(in srgb,var(--line) 60%,transparent);min-width:0}
+.pxs-item .n{font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:1}
+.pxs-item>.ic{color:var(--muted)}
+.pxs-none{padding:2px}
+.pxs-form{display:flex;flex-direction:column;gap:6px;padding:8px;margin:4px 0;border:1px dashed var(--line);border-radius:8px}
+.pxs-form .row{justify-content:flex-end}
+.warnc{color:var(--warn)}
+.pxp-models{margin-top:10px;font-size:12px}.pxp-models summary{cursor:pointer;color:var(--muted)}
+.pxp-models ul{margin:6px 0 0;padding-left:16px;font-family:var(--font-num)}
+html.shell .switch i,html.shell .lamp.on{transition:none;box-shadow:none}
+html[data-theme=titan] .switch{border-radius:0;background:var(--card2);border-color:var(--card-border)}
+html[data-theme=titan] .switch i{border-radius:0;background:var(--muted)}
+html[data-theme=titan] .switch.on{background:var(--disp)}html[data-theme=titan] .switch.on i{background:var(--disp-ink);box-shadow:none}
+html[data-theme=titan] .switch.on.warn i{background:var(--l-warn,#d99a1e)}
+html[data-theme=titan] .lamp{box-shadow:0 0 0 1px var(--card-border)}
+html[data-theme=titan] .pxp-url{border-radius:0;background:var(--disp);color:var(--disp-ink)}
+html[data-theme=titan] .pxs-form{border-radius:0;border-color:var(--card-border)}
+
+/* Letzte Anfragen (U7) */
+.spdscale{margin-left:auto;display:inline-flex;align-items:center;gap:3px;font-size:11px;color:var(--muted)}
+.spdscale i{width:12px;height:5px;border-radius:2px;display:inline-block}
+.sp1{--spc:var(--bad)}.sp2{--spc:var(--warn)}.sp3{--spc:var(--good)}.sp4{--spc:var(--acc)}
+.spdscale i.sp1,.spdscale i.sp2,.spdscale i.sp3,.spdscale i.sp4{background:var(--spc)}
+.reqs{display:flex;flex-direction:column;margin-top:8px}
+.req{display:grid;grid-template-columns:22px minmax(0,1.4fr) minmax(64px,.8fr) 92px 52px 56px 56px 44px 52px 34px 40px;gap:8px;align-items:center;padding:5px 4px;border-bottom:1px solid color-mix(in srgb,var(--line) 60%,transparent);font-size:13px;transition:background .15s}
+.req:not(.head):hover{background:rgb(var(--acc-rgb)/.05)}
+.req.head{font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);border-bottom-color:var(--line)}
+.req .r{text-align:right;font-family:var(--font-num);font-variant-numeric:tabular-nums}.req .c{text-align:center;justify-content:center}
+.req .cl{color:var(--muted);display:inline-flex}
+.req .mdl{display:inline-flex;align-items:center;gap:6px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500}
+.req .mdl i{width:8px;height:8px;border-radius:50%;flex:none;box-shadow:0 0 6px currentColor}
+.req .hostc{min-width:0;overflow:hidden}
+.req .dur{display:flex;align-items:center;gap:5px}.req .dur small{font:11px var(--font-num);color:var(--muted);min-width:24px;text-align:right}
+.dbar{flex:1;height:5px;border-radius:3px;background:var(--track);overflow:hidden}.dbar i{display:block;height:100%;background:var(--acc);border-radius:3px}
+.req .spd{color:var(--spc);font-weight:600;text-shadow:0 0 8px color-mix(in srgb,var(--spc) calc(var(--glow)*45%),transparent)}
+.req .ex{display:inline-flex;align-items:center;gap:3px;font:12px var(--font-num)}.req .ex .ic{width:14px;height:14px;color:var(--muted)}
+.req .ex.na{color:color-mix(in srgb,var(--muted) 70%,transparent)}
+.req .res{display:inline-flex}.res-ok{color:var(--good)}.res-full{color:var(--warn)}.res-abort{color:var(--muted)}.res-err{color:var(--bad)}
+@media(max-width:900px){.req{grid-template-columns:22px minmax(0,1fr) 56px 56px 34px 40px}.req>:nth-child(3),.req>:nth-child(4),.req>:nth-child(5),.req>:nth-child(8),.req>:nth-child(9){display:none}}
+html[data-theme=titan] .req .spd{text-shadow:none!important}
+html[data-theme=titan] .dbar,html[data-theme=titan] .dbar i,html[data-theme=titan] .spdscale i{border-radius:0}
+html[data-theme=titan] .dbar{background:var(--disp)}html[data-theme=titan] .dbar i{background:var(--disp-ink)}
+html[data-theme=titan] .req .mdl i{box-shadow:0 0 0 1px var(--card-border);border-radius:0}
+
+/* History (U8) und Meldungen */
+.histbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.histbar h2{margin:0}
+.search{position:relative;flex:1;max-width:280px;margin:0;display:block}
+.search input{width:100%;padding-right:26px}.search .kbd{position:absolute;right:6px;top:50%;transform:translateY(-50%)}
+.kbd{font:10px var(--font-num);color:var(--muted);border:1px solid var(--line);border-radius:4px;padding:0 4px}
+.fchips{display:inline-flex;gap:4px}.fchip{padding:3px 10px;font-size:12px}.fchip.on{border-color:rgb(var(--acc-rgb)/.7);background:rgb(var(--acc-rgb)/.18);color:var(--ink)}
+.hist{display:flex;flex-direction:column;margin-top:6px}
+.hgrp{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:10px 0 2px}
+.hr{display:grid;grid-template-columns:10px minmax(0,1.6fr) 54px minmax(80px,1fr) 92px 64px 26px 120px;gap:10px;align-items:center;padding:5px 4px;border-bottom:1px solid color-mix(in srgb,var(--line) 60%,transparent)}
+.hr:hover{background:rgb(var(--acc-rgb)/.05)}
+.hdot{width:8px;height:8px;border-radius:50%;background:var(--b);opacity:.5}.hdot.on{opacity:1;box-shadow:0 0 8px var(--b)}
+.hname{display:flex;flex-direction:column;min-width:0}.hname b{font-weight:600;overflow-wrap:anywhere;line-height:1.25}.hname span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hrun{display:flex;align-items:center;gap:6px}.hrun small{font:11px var(--font-num);color:var(--muted);min-width:30px;text-align:right}
+.htps{font-family:var(--font-num);white-space:nowrap;text-align:right}.htps b{color:var(--spc,var(--ink));font-weight:600}.htps small{color:var(--muted)}
+.hend{display:inline-flex;justify-content:center}.end-clean{color:var(--good)}.end-crashed{color:var(--bad)}.end-outside{color:var(--warn)}.end-live{color:var(--good)}.end-none{color:var(--muted)}
+.hacts{display:flex;gap:2px;justify-content:flex-end}
+.empty{display:flex;gap:12px;align-items:center;padding:14px 4px;color:var(--muted)}.empty b{color:var(--ink)}
+@media(max-width:900px){.hr{grid-template-columns:10px minmax(0,1fr) 84px 26px 92px}.hr>:nth-child(3),.hr>:nth-child(4),.hr>:nth-child(6){display:none}}
+.toasts{position:fixed;right:16px;bottom:16px;z-index:60;display:flex;flex-direction:column;gap:8px;max-width:min(380px,calc(100vw - 32px))}
+.toast{display:flex;align-items:center;gap:10px;padding:9px 10px 9px 14px;background:var(--card);border:1px solid var(--card-border);border-radius:10px;box-shadow:0 10px 30px rgb(0 0 0/.4);animation:toast-in .25s ease-out}
+.toast span{flex:1}.toast.warn{border-color:rgb(var(--warn-rgb)/.6)}
+@keyframes toast-in{from{opacity:0;transform:translateX(16px)}to{opacity:1;transform:none}}
+html.shell .toast{animation:none;box-shadow:none}
+html[data-theme=titan] .toast{border-radius:0;box-shadow:none;border-left:4px solid var(--signal)}
+html[data-theme=titan] .fchip,html[data-theme=titan] .kbd{border-radius:0}
+html[data-theme=titan] .fchip.on{background:var(--card);box-shadow:inset 0 -2px 0 var(--signal);border-color:var(--card-border)}
+html[data-theme=titan] .hdot{border-radius:0}
+
+/* Befehlsfenster, Banner, Hinweisleiste, Fokus (U10) */
+.cmdk-hidden{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;padding:0;border:0}
+.cmdk-back{position:fixed;inset:0;z-index:70;background:rgb(var(--bg-rgb)/.6)}
+.cmdk{position:fixed;z-index:71;left:50%;top:12vh;transform:translateX(-50%);width:min(560px,calc(100vw - 32px));background:var(--card);border:1px solid var(--card-border);border-radius:12px;box-shadow:0 24px 60px rgb(0 0 0/.5);animation:pop .18s ease-out;overflow:hidden}
+.cmdk-in{display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--line)}
+.cmdk-in input{flex:1;border:0;background:transparent;font-size:15px;padding:4px 0;box-shadow:none!important}
+.cmdk-list{max-height:52vh;overflow:auto;padding:6px}
+.cmdk-item{display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:8px;cursor:pointer}
+.cmdk-item span{flex:1}.cmdk-item.sel{background:rgb(var(--acc-rgb)/.16);color:var(--ink)}.cmdk-item .ic{color:var(--muted)}
+.cmdk-none{padding:10px}
+.hsearch{display:inline-flex;align-items:center;gap:8px;color:var(--muted);font-size:12px}
+.notice-bar,.lost-bar{display:flex;align-items:center;gap:10px;margin:10px 20px 0;padding:8px 12px;border-radius:10px;border:1px solid rgb(var(--warn-rgb)/.5);background:rgb(var(--warn-rgb)/.08)}
+.notice-bar .ic{color:var(--warn)}
+.lost-bar{border-color:rgb(var(--bad-rgb)/.6);background:rgb(var(--bad-rgb)/.08);align-items:flex-start}
+.lost-bar>.ic{color:var(--bad);margin-top:2px}.lost-txt{display:flex;flex-direction:column;gap:2px;flex:1;min-width:0}
+.lost-txt .log{max-height:160px}
+:focus-visible{outline:2px solid rgb(var(--acc-rgb)/.85);outline-offset:2px}
+input:focus-visible,select:focus-visible,textarea:focus-visible{outline:none}
+html.shell .cmdk{animation:none;box-shadow:none}
+@media(max-width:640px){.hsearch span:first-child{display:none}}
+html[data-theme=titan] .cmdk{border-radius:0;box-shadow:0 0 0 1px var(--card-border)}
+html[data-theme=titan] .cmdk-item{border-radius:0}html[data-theme=titan] .cmdk-item.sel{background:var(--card2);box-shadow:inset 3px 0 0 var(--signal)}
+html[data-theme=titan] .notice-bar,html[data-theme=titan] .lost-bar{border-radius:0;background:var(--card);background-image:repeating-linear-gradient(-45deg,#d99a1e 0 6px,#1a1e20 6px 12px);background-size:6px 100%;background-repeat:no-repeat;padding-left:18px}
+html[data-theme=titan] :focus-visible{outline-color:var(--acc)}
+
+/* Hinweise (U11): langsamer als sonst, VRAM knapp – in Titan mit Warnstreifen an der Oberkante */
+.chipi.slow b{font-family:var(--font-num)}
+html[data-theme=titan] .card.srv.warnstripe{background-image:repeating-linear-gradient(-45deg,#d99a1e 0 6px,#1a1e20 6px 12px);background-size:100% 4px;background-repeat:no-repeat;background-position:top left}
+html[data-theme=titan] .card.srv.busy.warnstripe{background:repeating-linear-gradient(-45deg,#d99a1e 0 6px,#1a1e20 6px 12px) top left/100% 4px no-repeat,linear-gradient(225deg,transparent 0 8.2px,var(--card-border) 8.2px 9.2px,transparent 9.2px) no-repeat,color-mix(in srgb,var(--b) 6%,var(--card))}
+html[data-theme=titan] .pf.tight{background-image:repeating-linear-gradient(-45deg,#d99a1e 0 6px,#1a1e20 6px 12px);background-size:100% 3px;background-repeat:no-repeat}
+
+/* Übrige Seiten (U12): Kopf bleibt einzeilig, ruhiges Logo, Themenwahl als Umschalter */
+html[data-theme=titan] nav a{font-family:var(--font);letter-spacing:.02em}
+.brand .logo{animation:none}
+.top{flex-wrap:nowrap}.top nav{flex:none}.top .status{min-width:0;flex-wrap:nowrap}.top .status button,.top .status a{white-space:nowrap}
+@media(max-width:1400px){.top{flex-wrap:wrap}.top .status{flex-wrap:wrap;overflow:visible;margin-left:0}}
+html.shell .top{flex-wrap:wrap}html.shell .top .status{flex-wrap:wrap}   /* Fenster: Zurück/Vor brauchen zusätzlich Platz */
+[data-view=small] .top{flex-wrap:wrap}[data-view=small] .top .status{flex-wrap:wrap;overflow:visible}
+.theme-seg button{min-width:110px}
+@media(max-width:1560px){.hsearch span:first-child{display:none}.top nav a{padding:5px 10px}.top{gap:12px 16px}}
+html[data-theme=titan] .sp4{--spc:var(--st-read)}   /* schnellste Stufe blau: Orange ist in Titan der Akzent und wirkte wie eine Warnung */
+
+/* Nach der Endprüfung: Kontext fast voll, Startzustand der Profile, Proxy-Port, Fehler der Anbieter */
+.slot.hot{--sc:var(--bad)}.slot.hot{box-shadow:0 0 0 1px var(--bad)}
+.pf-note{margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pf-launch{display:flex;align-items:center;gap:6px;margin-top:7px;color:var(--st-load)}.pf-launch span{flex:1;min-width:0}
+.pf-launch.failed{color:var(--bad)}
+.pxp-port{width:96px}
+.pxs-err{color:var(--bad);padding:0 2px 4px 18px}
+html[data-theme=titan] .slot.hot{box-shadow:inset 0 0 0 2px var(--bad)}
+
+/* Nach der Endprüfung (Verifier): Kopf klebt auf schmalen Geräten nicht (nahm fast die halbe Höhe ein); ohne GPU keine
+   Lichthöfe an Balken, Zahlen und Marke; Lampen der Proxy-Quellen mit Symbol */
+[data-view=small] .top{position:static}
+html.shell .bar>div,html.shell .spark-tip,html.shell .hchip .mini i{box-shadow:none}
+html.shell .big,html.shell .kpi,html.shell .kpi>div,html.shell .brand .logo,html.shell .brand .acc,html.shell td.num b,html.shell .meter .v b,html.shell .req .spd,html.shell .pf-tps b{text-shadow:none!important}
+.lampi{display:inline-flex}.lampi .ic{width:14px;height:14px}.lampi.ok{color:var(--good)}.lampi.bad{color:var(--bad)}.lampi:not(.ok):not(.bad){color:var(--muted)}
+.end-lost{color:var(--bad)}

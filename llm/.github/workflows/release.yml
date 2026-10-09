@@ -1,0 +1,157 @@
+# Release: Beim Push eines Tags v* wird gebaut, getestet und ein GitHub Release mit Artefakten angelegt.
+# Veröffentlicht wird nur das GitHub Release (Zip + SHA256SUMS). npm publish und der winget-PR bleiben
+# manuelle Schritte (Token des Nutzers erforderlich, siehe unten).
+# Rechte je Job so klein wie möglich: Bauen liest nur, Schreibrecht (contents: write) hat allein der Release-Job (ohne Checkout und
+# ohne eigenen Code), der npm-Job mit NPM_TOKEN hat keine Schreibrechte auf das Repository. Actions sind auf volle SHAs festgenagelt.
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions: {}
+
+jobs:
+  build:
+    name: Build, Test, Pakete
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - name: .NET 10 einrichten
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Tests
+        run: dotnet test tests/StykkerLlm.Tests -c Release --nologo
+
+      - name: Version aus dem Tag ermitteln
+        id: version
+        shell: pwsh
+        env:
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          $v = $env:REF_NAME -replace '^v', ''
+          if ($v -notmatch '^\d+\.\d+\.\d+(-[0-9A-Za-z.\-]+)?$') { throw "Tag '$env:REF_NAME' enthält keine SemVer-Version" }
+          "version=$v" >> $env:GITHUB_OUTPUT
+
+      - name: App und CLI veröffentlichen, Zip und SHA256SUMS.txt erzeugen (make-release.ps1)
+        shell: pwsh
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          ./build/make-release.ps1 -Version $env:VERSION -OutDir build/out
+          Get-Content build/out/SHA256SUMS.txt
+
+      - name: npm-Pakete bauen (pack-npm.ps1)
+        shell: pwsh
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: ./build/pack-npm.ps1 -Version $env:VERSION -SourceDir build/out/publish/app -OutDir build/out
+
+      - name: winget-Manifest erzeugen (make-winget.ps1)
+        shell: pwsh
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          REPO: ${{ github.repository }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          $zip = "build/out/StykkerLLM-$env:VERSION-win-x64.zip"
+          $sha = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
+          $url = "https://github.com/$env:REPO/releases/download/$env:REF_NAME/StykkerLLM-$env:VERSION-win-x64.zip"
+          ./build/make-winget.ps1 -Version $env:VERSION -Sha256 $sha -InstallerUrl $url -OutDir build/out
+
+      - name: Release-Dateien hochladen (für den Release-Job)
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-files
+          path: |
+            build/out/StykkerLLM-*-win-x64.zip
+            build/out/SHA256SUMS.txt
+
+      - name: npm-/winget-Artefakte hochladen
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: npm-and-winget
+          path: |
+            build/out/npm/*.tgz
+            build/out/winget/
+
+  # Einziger Job mit Schreibrecht: legt das GitHub Release an. Kein Checkout, kein eigener Code, nur die fertigen Dateien aus dem Build.
+  release:
+    name: GitHub Release anlegen
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Release-Dateien laden
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: release-files
+          path: release-files
+
+      - name: GitHub Release anlegen
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
+        with:
+          files: |
+            release-files/StykkerLLM-*-win-x64.zip
+            release-files/SHA256SUMS.txt
+          generate_release_notes: true
+
+  publish-npm:
+    name: npm publish (nur mit NPM_TOKEN)
+    needs: build
+    runs-on: windows-latest
+    permissions:
+      contents: read   # keine Schreibrechte; der Job hat den Registry-Token, aber keinen Checkout
+    env:
+      # secrets sind in step-if-Ausdrücken nicht lesbar - daher hier einmal als Job-Umgebung,
+      # die Schritte prüfen auf env.NPM_TOKEN
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+    steps:
+      - name: Node einrichten
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org/
+
+      - name: Artefakte laden
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: npm-and-winget
+          path: build/out
+
+      - name: Plattformpaket veröffentlichen (gesperrt ohne NPM_TOKEN)
+        if: env.NPM_TOKEN != ''
+        shell: pwsh
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          Get-ChildItem build/out/npm -Filter "*win32-x64*.tgz" |
+            ForEach-Object { npm.cmd publish $_.FullName --access public }
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
+      - name: Hauptpaket veröffentlichen (gesperrt ohne NPM_TOKEN)
+        if: env.NPM_TOKEN != ''
+        shell: pwsh
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          Get-ChildItem build/out/npm -Filter "stykker-llm-*.tgz" |
+            Where-Object { $_.Name -notlike "*win32-x64*" } |
+            ForEach-Object { npm.cmd publish $_.FullName --access public }
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
+      - name: Überspringen ohne NPM_TOKEN
+        if: env.NPM_TOKEN == ''
+        run: |
+          Write-Host "Kein NPM_TOKEN gesetzt: npm-Pakete wurden als Artefakt 'npm-and-winget' hochgeladen."
+          Write-Host "Veröffentlichen ist bewusst manuell: npm publish build/out/npm/*.tgz (Plattformpaket zuerst)."

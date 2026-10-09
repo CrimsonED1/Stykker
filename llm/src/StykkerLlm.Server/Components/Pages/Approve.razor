@@ -1,0 +1,27 @@
+@page "/approve"
+@rendermode InteractiveServer
+@inject ViewerSession Viewer
+@implements IDisposable
+
+@* Ziel des QR-Codes, den ein neues Gerät zeigt: ein schon angemeldetes Handy scannt ihn und landet hier mit dem Code *@
+<h2>@Strings.PairApproveTitle</h2>
+@if (!Viewer.Known)
+{
+    <p class="muted small">@Strings.RemoteCheckRole</p>
+}
+else if (Viewer.IsViewer)
+{
+    <div class="card"><p class="muted small">@Strings.ViewerOnly</p></div>
+}
+else
+{
+    <ApprovePanel Code="@Code" />
+}
+
+@code {
+    [SupplyParameterFromQuery(Name = "code")] public string? Code { get; set; }
+
+    private Timer? _t;
+    protected override void OnInitialized() => _t = new Timer(_ => InvokeAsync(StateHasChanged), null, 1000, 1000);
+    public void Dispose() => _t?.Dispose();
+}

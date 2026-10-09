@@ -1,0 +1,25 @@
+{
+  "name": "@stykker-llm/win32-x64",
+  "version": "0.1.0",
+  "description": "Windows x64 app (self-contained, no runtime needed) for stykker-llm. Do not install directly - install stykker-llm instead.",
+  "license": "BUSL-1.1",
+  "author": "CrimsonED1",
+  "homepage": "https://github.com/CrimsonED1/Stykker-LLM",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/CrimsonED1/Stykker-LLM.git"
+  },
+  "os": [
+    "win32"
+  ],
+  "cpu": [
+    "x64"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "files": [
+    "app/",
+    "README.md"
+  ]
+}

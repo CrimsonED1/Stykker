@@ -1,0 +1,387 @@
+using System.Diagnostics;
+using System.Globalization;
+using System.Net;
+
+namespace StykkerLlm.Core;
+
+// IPlatform für Linux (TODO §1.4): alles aus /proc und nvidia-smi, ohne native Bibliotheken.
+//  Listener/Verbindungen   /proc/net/tcp und tcp6 (Zustand 0A = LISTEN, 01 = ESTABLISHED), Inode → PID über /proc/<pid>/fd
+//  Prozesse                /proc/<pid>/stat (Eltern, Startzeit), exe, cwd, cmdline, environ (nur Whitelist), comm, status
+//  System                  /proc/stat (CPU-Anteil zwischen zwei Takten), /proc/meminfo (MemAvailable, Committed_AS/CommitLimit)
+//  GPU                     nvidia-smi (Werte der Karte, Speicher je Prozess); ohne NVIDIA-Treiber bleibt die GPU leer
+// Für Tests ist alles austauschbar: Wurzel von /proc, das Lesen von Links (Testdateien sind keine echten Links) und der
+// Aufruf von nvidia-smi. Ohne DPAPI: Protect liefert null (Dateien stehen im Klartext, geschützt durch die Rechte des Benutzers).
+public sealed class LinuxPlatform : IPlatform
+{
+    private const double Gb = 1024.0 * 1024 * 1024;
+    private static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
+
+    private readonly string _proc;
+    private readonly Func<string, string?> _readLink;
+    private readonly Func<string, string?> _nvidiaSmi;
+    private readonly object _lock = new();
+    private (long Idle, long Total)? _lastCpu;
+    private (DateTime At, Dictionary<int, double> MiB)? _gpuApps;
+    private string? _driver;
+
+    public LinuxPlatform(string procRoot = "/proc", Func<string, string?>? readLink = null, Func<string, string?>? nvidiaSmi = null)
+    {
+        _proc = procRoot;
+        _readLink = readLink ?? (p => { try { return new FileInfo(p).LinkTarget; } catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { return null; } });
+        _nvidiaSmi = nvidiaSmi ?? RunNvidiaSmi;
+    }
+
+    public int ProcessorCount => Environment.ProcessorCount;
+
+    // ── Netz ──
+
+    public IReadOnlyList<ListenerInfo> ReadListeners()
+    {
+        var owners = SocketOwners();
+        var list = new List<ListenerInfo>();
+        foreach (var e in TcpEntries())
+            if (e.State == "0A" && owners.TryGetValue(e.Inode, out var pid)) list.Add(new ListenerInfo(e.LocalIp, e.LocalPort, pid));
+        return list;
+    }
+
+    public IReadOnlyList<ConnectionInfo> ReadConnections()
+    {
+        var owners = SocketOwners();
+        var list = new List<ConnectionInfo>();
+        foreach (var e in TcpEntries())
+            if (e.State == "01" && owners.TryGetValue(e.Inode, out var pid))
+                list.Add(new ConnectionInfo(e.LocalIp, e.LocalPort, e.RemoteIp, e.RemotePort, pid));
+        return list;
+    }
+
+    internal sealed record TcpEntry(string LocalIp, int LocalPort, string RemoteIp, int RemotePort, string State, long Inode);
+
+    private IEnumerable<TcpEntry> TcpEntries()
+    {
+        foreach (var file in new[] { "net/tcp", "net/tcp6" })
+        {
+            var text = Read(Path.Combine(_proc, file));
+            if (text == null) continue;
+            foreach (var e in ParseTcp(text)) yield return e;
+        }
+    }
+
+    // "  0: 0100007F:1F90 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000 0 12345 …"
+    internal static IEnumerable<TcpEntry> ParseTcp(string text)
+    {
+        foreach (var line in text.Split('\n').Skip(1))
+        {
+            var f = line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (f.Length < 10) continue;
+            var (lip, lport) = Endpoint(f[1]);
+            var (rip, rport) = Endpoint(f[2]);
+            if (lip == null || rip == null || !long.TryParse(f[9], out var inode)) continue;
+            yield return new TcpEntry(lip, lport, rip, rport, f[3].ToUpperInvariant(), inode);
+        }
+    }
+
+    // Adresse in /proc/net/tcp: Bytes des IPv4-Werts in Host-Reihenfolge (Little Endian), bei IPv6 vier solche Wörter
+    internal static (string? Ip, int Port) Endpoint(string hex)
+    {
+        var parts = hex.Split(':');
+        if (parts.Length != 2 || !int.TryParse(parts[1], NumberStyles.HexNumber, Inv, out var port)) return (null, 0);
+        var a = parts[0];
+        try
+        {
+            if (a.Length == 8)
+            {
+                var b = Convert.FromHexString(a);
+                Array.Reverse(b);
+                return (new IPAddress(b).ToString(), port);
+            }
+            if (a.Length == 32)
+            {
+                var b = Convert.FromHexString(a);
+                for (int w = 0; w < 4; w++) Array.Reverse(b, w * 4, 4);
+                var ip = new IPAddress(b);
+                return ((ip.IsIPv4MappedToIPv6 ? ip.MapToIPv4() : ip).ToString(), port);
+            }
+        }
+        catch (FormatException) { }
+        return (null, 0);
+    }
+
+    // Socket-Inode → PID: jeder Prozess, dessen fd auf "socket:[inode]" zeigt (eigene Prozesse ohne Root, fremde nur mit Rechten)
+    private Dictionary<long, int> SocketOwners()
+    {
+        var map = new Dictionary<long, int>();
+        foreach (var pid in Pids())
+        {
+            string[] fds;
+            try { fds = Directory.GetFileSystemEntries(Path.Combine(_proc, pid.ToString(Inv), "fd")); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { continue; }
+            foreach (var fd in fds)
+            {
+                var target = _readLink(fd);
+                if (target != null && target.StartsWith("socket:[", StringComparison.Ordinal) && long.TryParse(target[8..^1], out var inode))
+                    map.TryAdd(inode, pid);
+            }
+        }
+        return map;
+    }
+
+    private IEnumerable<int> Pids()
+    {
+        string[] dirs;
+        try { dirs = Directory.GetDirectories(_proc); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { yield break; }
+        foreach (var d in dirs)
+            if (int.TryParse(Path.GetFileName(d), out var pid)) yield return pid;
+    }
+
+    // ── Prozesse ──
+
+    // /proc/<pid>/stat: "pid (name mit Leerzeichen) S ppid … starttime(22) …" – der Name steht in Klammern und darf alles enthalten
+    internal sealed record Stat(string Name, int ParentPid, long StartTicks, long CpuTicks);
+
+    internal static Stat? ParseStat(string? text)
+    {
+        if (text == null) return null;
+        int open = text.IndexOf('('), close = text.LastIndexOf(')');
+        if (open < 0 || close < open) return null;
+        var rest = text[(close + 1)..].Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        // rest[0] = Zustand (Feld 3), rest[1] = ppid (4), rest[11]/[12] = utime/stime (14/15), rest[19] = starttime (22)
+        if (rest.Length < 20) return null;
+        long L(int i) => long.TryParse(rest[i], NumberStyles.Integer, Inv, out var v) ? v : 0;
+        return new Stat(text[(open + 1)..close], (int)L(1), L(19), L(11) + L(12));
+    }
+
+    private Stat? ReadStat(int pid) => ParseStat(Read(Path.Combine(_proc, pid.ToString(Inv), "stat")));
+
+    public long? ProcessStartTicks(int pid) => ReadStat(pid)?.StartTicks;
+
+    public string? ProcessName(int pid) => Read(Path.Combine(_proc, pid.ToString(Inv), "comm"))?.Trim() ?? ReadStat(pid)?.Name;
+
+    public ProcessDetails? ReadProcessBasic(int pid)
+    {
+        var st = ReadStat(pid);
+        if (st == null) return null;
+        var exe = _readLink(Path.Combine(_proc, pid.ToString(Inv), "exe"));
+        return new ProcessDetails(pid, st.StartTicks, st.ParentPid, exe, null, null, new Dictionary<string, string>());
+    }
+
+    public ProcessDetails? ReadProcess(int pid)
+    {
+        var basic = ReadProcessBasic(pid);
+        if (basic == null) return null;
+        var dir = Path.Combine(_proc, pid.ToString(Inv));
+        var args = SplitNul(Read(Path.Combine(dir, "cmdline")));
+        var env = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var entry in SplitNul(Read(Path.Combine(dir, "environ"))))
+        {
+            int eq = entry.IndexOf('=');
+            if (eq <= 0) continue;
+            var name = entry[..eq];
+            if (CmdLine.IsEnvWhitelisted(name)) env[name] = entry[(eq + 1)..];   // nur die Whitelist wird überhaupt behalten
+        }
+        return basic with
+        {
+            CommandLine = args.Count == 0 ? null : CmdLine.Join(args),
+            WorkingDir = _readLink(Path.Combine(dir, "cwd")),
+            Environment = env,
+        };
+    }
+
+    internal static List<string> SplitNul(string? s) =>
+        s == null ? new List<string>() : s.Split('\0', StringSplitOptions.RemoveEmptyEntries).ToList();
+
+    public IReadOnlyList<(int Pid, string Name)> ChildProcesses(int pid)
+    {
+        var list = new List<(int, string)>();
+        foreach (var p in Pids())
+            if (ReadStat(p) is { } st && st.ParentPid == pid) list.Add((p, st.Name));
+        return list;
+    }
+
+    public StopOutcome Terminate(int pid, long expectedStartTicks, out string? error)
+    {
+        error = null;
+        var st = ReadStat(pid);
+        if (st == null) return StopOutcome.NotFound;
+        if (expectedStartTicks != 0 && st.StartTicks != expectedStartTicks) return StopOutcome.ProcessChanged;
+        try
+        {
+            using var p = Process.GetProcessById(pid);
+            p.Kill(entireProcessTree: false);
+            return StopOutcome.Stopped;
+        }
+        catch (ArgumentException) { return StopOutcome.NotFound; }
+        catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception or NotSupportedException)
+        {
+            error = ex.Message;
+            return StopOutcome.Failed;
+        }
+    }
+
+    // VmRSS = belegter Arbeitsspeicher, RssAnon = privater Anteil; CPU-Zeit aus utime+stime (Takte zu 1/100 s)
+    public ProcessUsage? ReadUsage(int pid)
+    {
+        var status = Read(Path.Combine(_proc, pid.ToString(Inv), "status"));
+        var st = ReadStat(pid);
+        if (status == null || st == null) return null;
+        var kv = ParseKb(status);
+        double rss = kv.GetValueOrDefault("VmRSS") * 1024 / Gb;
+        double anon = kv.TryGetValue("RssAnon", out var a) ? a * 1024 / Gb : rss;
+        return new ProcessUsage(rss, anon, TimeSpan.FromSeconds(st.CpuTicks / 100.0));
+    }
+
+    // "MemTotal:       32768000 kB" → MemTotal = 32768000 (kB)
+    internal static Dictionary<string, long> ParseKb(string text)
+    {
+        var d = new Dictionary<string, long>(StringComparer.Ordinal);
+        foreach (var line in text.Split('\n'))
+        {
+            int c = line.IndexOf(':');
+            if (c <= 0) continue;
+            var v = line[(c + 1)..].Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (v.Length > 0 && long.TryParse(v[0], NumberStyles.Integer, Inv, out var n)) d[line[..c].Trim()] = n;
+        }
+        return d;
+    }
+
+    public IReadOnlyList<(string Name, double Gb)>? ReadRamTop(int count)
+    {
+        var byName = new Dictionary<string, double>(StringComparer.Ordinal);
+        foreach (var pid in Pids())
+        {
+            var status = Read(Path.Combine(_proc, pid.ToString(Inv), "status"));
+            if (status == null) continue;
+            var kv = ParseKb(status);
+            if (!kv.TryGetValue("VmRSS", out var kb) || kb == 0) continue;
+            var name = ProcessName(pid) ?? pid.ToString(Inv);
+            byName[name] = byName.GetValueOrDefault(name) + kb * 1024 / Gb;
+        }
+        return byName.OrderByDescending(x => x.Value).Take(count).Select(x => (x.Key, Math.Round(x.Value, 2))).ToList();
+    }
+
+    // ── System ──
+
+    public SystemSample? ReadSystem()
+    {
+        var mem = Read(Path.Combine(_proc, "meminfo"));
+        var stat = Read(Path.Combine(_proc, "stat"));
+        if (mem == null) return null;
+        var kv = ParseKb(mem);
+        double total = kv.GetValueOrDefault("MemTotal") * 1024 / Gb;
+        double avail = (kv.TryGetValue("MemAvailable", out var ma) ? ma : kv.GetValueOrDefault("MemFree")) * 1024 / Gb;
+        double commit = kv.GetValueOrDefault("Committed_AS") * 1024 / Gb;
+        double limit = kv.GetValueOrDefault("CommitLimit") * 1024 / Gb;
+        double cpu = 0;
+        if (stat != null && ParseCpu(stat) is { } now)
+        {
+            lock (_lock)
+            {
+                if (_lastCpu is { } last && now.Total > last.Total)
+                    cpu = Math.Clamp(100.0 * (1 - (double)(now.Idle - last.Idle) / (now.Total - last.Total)), 0, 100);
+                _lastCpu = now;
+            }
+        }
+        return new SystemSample(Math.Round(cpu, 1), ProcessorCount, total - avail, total, commit, limit);
+    }
+
+    // "cpu  user nice system idle iowait irq softirq steal …" → (Leerlauf inkl. iowait, Summe)
+    internal static (long Idle, long Total)? ParseCpu(string stat)
+    {
+        var line = stat.Split('\n').FirstOrDefault(l => l.StartsWith("cpu ", StringComparison.Ordinal));
+        if (line == null) return null;
+        var v = line.Split(' ', StringSplitOptions.RemoveEmptyEntries).Skip(1).Select(x => long.TryParse(x, NumberStyles.Integer, Inv, out var n) ? n : 0).ToArray();
+        if (v.Length < 5) return null;
+        long total = v.Take(Math.Min(8, v.Length)).Sum();   // guest/guest_nice stecken schon in user/nice
+        return (v[3] + v[4], total);
+    }
+
+    // ── GPU (nvidia-smi) ──
+
+    private const string GpuQuery = "name,utilization.gpu,memory.used,memory.total,power.draw,power.limit,temperature.gpu,utilization.memory," +
+                                    "clocks.gr,clocks.max.gr,clocks.mem,clocks.max.mem,clocks_event_reasons.active";
+
+    public GpuSample? ReadGpu()
+    {
+        var csv = _nvidiaSmi($"--query-gpu={GpuQuery} --format=csv,noheader,nounits");
+        return csv == null ? null : ParseGpu(csv);
+    }
+
+    internal static GpuSample? ParseGpu(string csv)
+    {
+        var line = csv.Split('\n').FirstOrDefault(l => l.Trim().Length > 0);
+        if (line == null) return null;
+        var f = line.Split(',').Select(x => x.Trim()).ToArray();
+        if (f.Length < 13) return null;
+        double D(int i) => double.TryParse(f[i], NumberStyles.Float, Inv, out var v) ? v : 0;   // "[N/A]" zählt als 0
+        var bitsText = f[12].StartsWith("0x", StringComparison.OrdinalIgnoreCase) ? f[12][2..] : f[12];
+        ulong bits = ulong.TryParse(bitsText, NumberStyles.HexNumber, Inv, out var b) ? b : 0;
+        return new GpuSample(f[0], D(1), D(2) / 1024, D(3) / 1024, D(4), D(5), D(6), D(7), D(8), D(9), D(10), D(11), bits);
+    }
+
+    public string? GpuDriver => _driver ??= _nvidiaSmi("--query-gpu=driver_version --format=csv,noheader")?.Split('\n')[0].Trim();
+
+    // Speicher je Prozess (MiB); höchstens alle zwei Sekunden neu gefragt, alle Abfragen eines Takts teilen sich das Ergebnis
+    private Dictionary<int, double> GpuApps()
+    {
+        lock (_lock)
+        {
+            if (_gpuApps is { } c && (DateTime.Now - c.At).TotalSeconds < 2) return c.MiB;
+        }
+        var map = ParseApps(_nvidiaSmi("--query-compute-apps=pid,used_memory --format=csv,noheader,nounits") ?? "");
+        lock (_lock) _gpuApps = (DateTime.Now, map);
+        return map;
+    }
+
+    internal static Dictionary<int, double> ParseApps(string csv)
+    {
+        var map = new Dictionary<int, double>();
+        foreach (var line in csv.Split('\n'))
+        {
+            var f = line.Split(',').Select(x => x.Trim()).ToArray();
+            if (f.Length >= 2 && int.TryParse(f[0], out var pid) && double.TryParse(f[1], NumberStyles.Float, Inv, out var mib))
+                map[pid] = map.GetValueOrDefault(pid) + mib;
+        }
+        return map;
+    }
+
+    public IGpuMemoryQuery? OpenGpuMemory(int pid) => new GpuQueryOf(this, pid);
+
+    private sealed class GpuQueryOf(LinuxPlatform owner, int pid) : IGpuMemoryQuery
+    {
+        public int Pid => pid;
+        // nvidia-smi kennt nur dedizierten Speicher je Prozess; geteilter Speicher bleibt 0
+        public (double DedicatedGb, double SharedGb)? Read() => owner.GpuApps().TryGetValue(pid, out var mib) ? (mib / 1024, 0) : null;
+        public void Dispose() { }
+    }
+
+    public IReadOnlyList<(string Name, double Gb)>? ReadGpuTop(int count)
+    {
+        var apps = GpuApps();
+        if (apps.Count == 0) return Array.Empty<(string, double)>();
+        return apps.GroupBy(a => ProcessName(a.Key) ?? a.Key.ToString(Inv))
+            .Select(g => (g.Key, Math.Round(g.Sum(x => x.Value) / 1024, 2)))
+            .OrderByDescending(x => x.Item2).Take(count).ToList();
+    }
+
+    private static string? RunNvidiaSmi(string args)
+    {
+        try
+        {
+            var psi = new ProcessStartInfo("nvidia-smi", args) { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false, CreateNoWindow = true };
+            using var p = Process.Start(psi);
+            if (p == null) return null;
+            var output = p.StandardOutput.ReadToEnd();
+            if (!p.WaitForExit(3000)) { try { p.Kill(); } catch (InvalidOperationException) { } return null; }
+            return p.ExitCode == 0 ? output : null;
+        }
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException) { return null; }   // kein NVIDIA-Treiber
+    }
+
+    private static string? Read(string path)
+    {
+        try { return File.ReadAllText(path); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { return null; }
+    }
+
+    public void Dispose() { }
+}

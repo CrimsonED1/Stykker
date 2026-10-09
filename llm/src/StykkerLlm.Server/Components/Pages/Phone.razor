@@ -1,0 +1,149 @@
+@page "/phone"
+@rendermode InteractiveServer
+@inject EngineHost Host
+@inject ActionContext Actions
+@inject WebActions Web
+@inject ViewerSession Viewer
+@inject WebPrompt Prompt
+@inject IJSRuntime JS
+@implements IDisposable
+
+<h2>@Strings.RemoteTitle</h2>
+@if (!Viewer.Known)
+{
+    @* Die Rolle kommt aus der Schleife erst nach dem ersten Zeichnen – bis dahin wird nichts angezeigt,
+       was nur ein Admin sehen darf. *@
+    <p class="muted small">@Strings.RemoteCheckRole</p>
+}
+else if (Viewer.IsViewer)
+{
+    @* Der Code bleibt weg: mit ihm könnte sich dieses Gerät als Admin anmelden. Die Rollen vergibt ein Admin. *@
+    <div class="card">
+        <p><span class="pill wait">@Strings.RoleViewer</span></p>
+        <p class="muted small">@Strings.ViewerOnly</p>
+    </div>
+}
+else
+{
+    <div class="grid2">
+        <div class="card">
+            <h2>@Strings.RemoteCodeLabel</h2>
+            <div class="row">
+                <div class="qr @(Host.Access.RemoteEnabled ? "" : "off")">@((MarkupString)Qr)</div>
+                <div class="qr-info">
+                    <p class="code">@AccessControl.Pretty(Host.Access.Code)</p>
+                    <p class="muted small">@Strings.CodeValidFor(Host.Access.CodeExpires - DateTime.Now)</p>
+                    @if (Host.Access.RemoteEnabled)
+                    {
+                        <p class="muted small">@Strings.RemoteScan</p>
+                    }
+                    else
+                    {
+                        @* Ohne Home/VPN erreicht das Handy die Adresse im Code nicht: erst einschalten *@
+                        <p class="small warn">@Strings.RemoteOff</p>
+                        <button class="good" @onclick="() => SetRemote(true)">@Strings.RemoteOnState</button>
+                    }
+                    <p class="muted small">@PairUrl</p>
+                    <div class="row">
+                        <button @onclick="NewCode" title="@Strings.RemoteNewCode">@Strings.RemoteNewCode</button>
+                        <button @onclick="CopyUrl">@Strings.CopyLink</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>@Strings.RemoteTitle</h2>
+            <div class="seg">
+                <button class="@(Host.Access.RemoteEnabled ? "on" : "")" @onclick="() => SetRemote(true)">@Strings.RemoteOnState</button>
+                <button class="@(!Host.Access.RemoteEnabled ? "on" : "")" @onclick="() => SetRemote(false)">@Strings.RemoteOffState</button>
+            </div>
+            <p class="muted small">@(Host.Access.RemoteEnabled ? Strings.RemoteOn : Strings.RemoteOff)</p>
+            <p class="muted small">@Strings.RemoteHint</p>
+            @if (!Host.Access.RemoteEnabled)
+            {
+                <p><span class="pill wait">@Strings.RemoteThisPcOnly</span> <span class="muted small">@Url</span></p>
+            }
+            else if (!string.IsNullOrEmpty(LanAddress))
+            {
+                <p><span class="pill ok">@NetAddr.Url(LanAddress, Port)</span></p>
+            }
+        </div>
+    </div>
+
+    <ApprovePanel />
+
+    <div class="card">
+        <h2>@Strings.RemoteDevices</h2>
+        <p class="muted small">@Strings.RemoteRoleHint</p>
+        @if (Host.Access.Devices.Count == 0)
+        {
+            <p class="muted">@Strings.RemoteNoDevices</p>
+        }
+        else
+        {
+            <table>
+                <thead>
+                    <tr><th>@Strings.RemoteDevice</th><th>@Strings.RemoteRole</th><th>@Strings.RemoteFrom</th><th>@Strings.RemoteLastSeen</th><th></th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var d in Host.Access.Devices)
+                    {
+                        var viewer = AccessRole.Normalize(d.Role) == AccessRole.Viewer;
+                        <tr>
+                            <td>@d.Name</td>
+                            <td><span class="pill @(viewer ? "wait" : "ok")">@(viewer ? Strings.RoleViewer : Strings.RoleAdmin)</span></td>
+                            <td class="muted">@(string.IsNullOrEmpty(d.Address) ? "–" : d.Address)</td>
+                            <td class="muted">@(d.LastSeen?.ToString("g") ?? "–")</td>
+                            <td class="actions">
+                                <button @onclick="() => SetRole(d.Id, viewer ? AccessRole.Admin : AccessRole.Viewer)" title="@Strings.RemoteRoleHint">
+                                    @(viewer ? Strings.RemoteMakeAdmin : Strings.RemoteMakeViewer)
+                                </button>
+                                <button class="bad" @onclick="() => Remove(d.Id)">@Strings.RemoteRemoveDevice</button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
+}
+
+@code {
+    private Timer? _t;
+
+    private int Port => Actions.ServerPort;
+    private string Url => NetAddr.Url("127.0.0.1", Port);
+    private string PairUrl => NetInfo.PairUrl(Port, Host.Access.Code);
+    private string LanAddress => NetInfo.LanAddress() ?? "";
+    private string Qr
+    {
+        get
+        {
+            var th = ThemeCatalog.Find(Host.Engine.Settings.Theme);   // Muster und Kartenfläche aus dem Theme
+            return QrCode.Encode(PairUrl, QrCode.Ecc.M).ToSvg(6, 3, th.Ink, th.Card);
+        }
+    }
+
+    protected override void OnInitialized() => _t = new Timer(_ => InvokeAsync(StateHasChanged), null, 1000, 1000);
+
+    private Task SetRemote(bool on) =>
+        Web.RunAsync(new ActionRequest { Action = "remote.set", Flag = on });
+
+    private Task NewCode() =>
+        Web.RunAsync(new ActionRequest { Action = "code.rotate" });
+
+    private Task Remove(string id) =>
+        Web.RunAsync(new ActionRequest { Action = "device.remove", Arg = id });
+
+    private Task SetRole(string id, string role) =>
+        Web.RunAsync(new ActionRequest { Action = "device.role", Arg = id, Arg2 = role });
+
+    private async Task CopyUrl()
+    {
+        try { await JS.InvokeVoidAsync("navigator.clipboard.writeText", PairUrl); }
+        catch { /* Browser verweigert die Zwischenablage: der Code steht als Text daneben */ }
+    }
+
+    public void Dispose() => _t?.Dispose();
+}

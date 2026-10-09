@@ -1,0 +1,67 @@
+@* Gestapelter Speicherbalken wie im Fenster (docs/ui.md, Bereich 5/6): Abschnitt je Programm mit Tooltip, "other", "free";
+   Top 3 + "+n more". Der Rest kommt auf Klick: mit MoreHref über die Detailseite (GPU), sonst aufklappt darunter. *@
+@inject EngineHost Host
+@{
+    double total = Math.Max(TotalGb, Math.Max(UsedGb, Items.Sum(i => i.Gb)));
+    double sum = Items.Sum(i => i.Gb);
+    // Abschnittsfarben aus den CSS-Variablen des gezeigten Themas (Dark oder Titan, auch bei „System“): Akzent, Zweitfarbe,
+    // Grün, Gelb, dann Mischungen
+    string[] pal =
+    {
+        "var(--acc)", "var(--second)", "var(--good)", "var(--warn)",
+        "color-mix(in srgb,var(--acc),var(--bad))", "color-mix(in srgb,var(--second),var(--good))",
+        "color-mix(in srgb,var(--warn) 60%,var(--bad))", "color-mix(in srgb,var(--acc) 60%,var(--ink))",
+    };
+    var rest = Items.Skip(3).ToList();
+    string restTip = string.Join("\n", rest.Select(t => Strings.MemSegmentTip(t.Name, t.Gb, TotalGb)));
+}
+<div class="stack">
+    @for (int i = 0; i < Items.Count; i++)
+    {
+        var (name, gb) = Items[i];
+        <div style="width:@Pct(gb, total);background:@pal[i % pal.Length]" title="@Strings.MemSegmentTip(name, gb, TotalGb)"></div>
+    }
+    @if (UsedGb - sum > 0.05)
+    {
+        <div style="width:@Pct(UsedGb - sum, total);background:rgb(var(--muted-rgb)/.45)" title="@Strings.MemSegmentTip(Strings.MemOther, UsedGb - sum, TotalGb)"></div>
+    }
+    <div style="flex:1" title="@Strings.MemSegmentTip(Strings.MemFree, Math.Max(0, TotalGb - UsedGb), TotalGb)"></div>
+</div>
+<div class="row small" style="margin-top:6px">
+    @for (int i = 0; i < Math.Min(3, Items.Count); i++)
+    {
+        var (name, gb) = Items[i];
+        <span title="@Strings.MemSegmentTip(name, gb, TotalGb)"><span style="color:@pal[i]">●</span> @name <span class="muted">@gb.ToString("0.0", CultureInfo.InvariantCulture) GB</span></span>
+    }
+    @if (rest.Count > 0)
+    {
+        @if (MoreHref != null)
+        {
+            <a style="margin-left:auto" href="@MoreHref" title="@restTip">@Strings.MemMore(rest.Count)</a>
+        }
+        else
+        {
+            <button class="link" style="margin-left:auto" title="@restTip" @onclick="() => _open = !_open">@(_open ? Strings.MemShowLess : Strings.MemMore(rest.Count))</button>
+        }
+    }
+</div>
+@if (_open && rest.Count > 0)
+{
+    <div class="row small" style="margin-top:4px">
+        @for (int i = 3; i < Items.Count; i++)
+        {
+            var (name, gb) = Items[i];
+            <span title="@Strings.MemSegmentTip(name, gb, TotalGb)"><span style="color:@pal[i % pal.Length]">●</span> @name <span class="muted">@gb.ToString("0.0", CultureInfo.InvariantCulture) GB</span></span>
+        }
+    </div>
+}
+
+@code {
+    [Parameter] public IReadOnlyList<(string Name, double Gb)> Items { get; set; } = Array.Empty<(string, double)>();
+    [Parameter] public double UsedGb { get; set; }
+    [Parameter] public double TotalGb { get; set; }
+    // Gesetzt: "+n more" führt auf diese Seite (GPU-Details). Nicht gesetzt: der Rest klappt hier auf.
+    [Parameter] public string? MoreHref { get; set; }
+    private bool _open;
+    private static string Pct(double v, double total) => (total > 0 ? 100 * v / total : 0).ToString("0.###", CultureInfo.InvariantCulture) + "%";
+}

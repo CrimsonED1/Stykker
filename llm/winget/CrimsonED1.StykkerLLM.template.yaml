@@ -1,0 +1,48 @@
+# Winget-Installer-Manifest (Schema 1.6, Singleton). Platzhalter in geschweiften Klammern (VERSION, RELEASE_DATE,
+# INSTALLER_URL, SHA256) werden von build/make-winget.ps1 gefüllt. Template - die
+# ausgefüllte Fassung geht später als PR an microsoft/winget-pkgs (siehe winget/README.md).
+
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.singleton.1.6.0.schema.json
+PackageIdentifier: CrimsonED1.StykkerLLM
+PackageVersion: {VERSION}
+PackageLocale: en-US
+Publisher: CrimsonED1
+PublisherUrl: https://github.com/CrimsonED1
+PublisherSupportUrl: https://github.com/CrimsonED1/Stykker-LLM/issues
+PackageName: StykkerLLM
+PackageUrl: https://github.com/CrimsonED1/Stykker-LLM
+License: BUSL-1.1
+LicenseUrl: https://github.com/CrimsonED1/Stykker-LLM/blob/main/LICENSE
+ShortDescription: Windows monitor for local LLM servers (llama.cpp, Ollama, LM Studio) - tokens/s, VRAM, request log, proxy and benchmarks.
+Description: |-
+  StykkerLLM watches local LLM servers on Windows (llama.cpp, Ollama, LM Studio): it discovers running
+  servers, shows tokens per second, context use and VRAM, keeps a request log and history, can put a
+  proxy in front of a server to record every request, and runs benchmarks. Nothing leaves the machine.
+Tags:
+  - llama.cpp
+  - llama-server
+  - ollama
+  - lm-studio
+  - llm
+  - monitor
+  - vram
+  - benchmark
+Moniker: stykker-llm
+ReleaseNotesUrl: https://github.com/CrimsonED1/Stykker-LLM/releases/tag/v{VERSION}
+ReleaseNotes: |-
+  StykkerLLM {VERSION}.
+  See the repository changelog for details.
+Installers:
+  - Architecture: x64
+    InstallerType: zip
+    NestedInstallerType: portable
+    NestedInstallerFiles:
+      - RelativeFilePath: StykkerLLM\StykkerUI.exe
+        PortableCommandAlias: stykker-llm
+      - RelativeFilePath: StykkerLLM\stykker.exe
+        PortableCommandAlias: stykker
+    InstallerUrl: {INSTALLER_URL}
+    InstallerSha256: {SHA256}
+    ReleaseDate: {RELEASE_DATE}
+ManifestType: singleton
+ManifestVersion: 1.6.0

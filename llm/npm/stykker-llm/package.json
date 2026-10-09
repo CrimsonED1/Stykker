@@ -1,0 +1,41 @@
+{
+  "name": "stykker-llm",
+  "version": "0.1.0",
+  "description": "Windows monitor for local LLM servers (llama.cpp, Ollama, LM Studio): discovery, tokens/s, VRAM, request log, proxy and benchmarks. Installs the win32-x64 app via an optional dependency; no install scripts.",
+  "license": "BUSL-1.1",
+  "author": "CrimsonED1",
+  "homepage": "https://github.com/CrimsonED1/Stykker-LLM",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/CrimsonED1/Stykker-LLM.git"
+  },
+  "keywords": [
+    "llama.cpp",
+    "llama-server",
+    "ollama",
+    "lm-studio",
+    "llm",
+    "monitor",
+    "vram",
+    "tokens-per-second"
+  ],
+  "bin": {
+    "stykker-llm": "bin/run.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "os": [
+    "win32"
+  ],
+  "cpu": [
+    "x64"
+  ],
+  "optionalDependencies": {
+    "@stykker-llm/win32-x64": "0.1.0"
+  },
+  "files": [
+    "bin/",
+    "README.md"
+  ]
+}

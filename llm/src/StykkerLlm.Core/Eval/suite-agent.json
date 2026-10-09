@@ -1,0 +1,187 @@
+{
+ "name": "agent",
+ "version": 1,
+ "description": "Agent tasks with tools (read, list, write, edit, cmd/PowerShell) in a throwaway folder: fix bugs, implement from a spec, transform data, refactor, use the shell. Graded by checking the folder afterwards. Needs 'run model-written code' (the model runs commands).",
+ "temperature": 0.2,
+ "seed": 42,
+ "tasks": [
+  {
+   "id": "a-fix-bug",
+   "category": "agent",
+   "title": "Fix an off-by-one bug",
+   "maxTokens": 8192,
+   "points": 1,
+   "prompt": "The tests in test_stats.py fail. Find and fix the bug in stats.py (do not change the tests). Run the tests to confirm they pass.",
+   "files": {
+    "stats.py": "def mean(xs):\n    return sum(xs) / len(xs)\n\ndef median(xs):\n    s = sorted(xs)\n    n = len(s)\n    mid = n // 2\n    if n % 2 == 1:\n        return s[mid]\n    return (s[mid] + s[mid + 1]) / 2\n",
+    "test_stats.py": "from stats import mean, median\nassert mean([1, 2, 3]) == 2\nassert median([3, 1, 2]) == 2\nassert median([4, 1, 3, 2]) == 2.5\nprint('ok')\n"
+   },
+   "check": {
+    "type": "agent",
+    "tests": "import importlib, stats\nimportlib.reload(stats)\nassert stats.median([4,1,3,2]) == 2.5\nassert stats.median([10,2,8,4,6,12]) == 7\nassert stats.median([5]) == 5\nassert stats.mean([2,4]) == 3",
+    "timeoutSec": 30
+   }
+  },
+  {
+   "id": "a-implement",
+   "category": "agent",
+   "title": "Implement from a spec",
+   "maxTokens": 8192,
+   "points": 1,
+   "prompt": "Read SPEC.md and implement the function in roman.py so that it follows the spec exactly.",
+   "files": {
+    "SPEC.md": "# to_roman(n)\n\nConvert an integer 1..3999 to a Roman numeral string (uppercase, subtractive notation: IV, IX, XL, XC, CD, CM).\nRaise ValueError for anything outside 1..3999 (including 0 and negative numbers).\n",
+    "roman.py": "def to_roman(n):\n    raise NotImplementedError\n"
+   },
+   "check": {
+    "type": "agent",
+    "tests": "import roman\nassert roman.to_roman(1994) == 'MCMXCIV'\nassert roman.to_roman(3999) == 'MMMCMXCIX'\nassert roman.to_roman(4) == 'IV'\nassert roman.to_roman(40) == 'XL'\nfor bad in (0, -5, 4000):\n    try:\n        roman.to_roman(bad)\n        raise AssertionError('no ValueError for %r' % bad)\n    except ValueError:\n        pass",
+    "timeoutSec": 30
+   }
+  },
+  {
+   "id": "a-csv-summary",
+   "category": "agent",
+   "title": "Summarize a CSV into JSON",
+   "maxTokens": 8192,
+   "points": 1,
+   "prompt": "sales.csv has one row per sale. Write summary.json: an object that maps each region to the total amount of its sales (a number, rounded to 2 decimals). Use the tools; do not guess the numbers.",
+   "files": {
+    "sales.csv": "date,region,amount\n2026-01-03,north,120.50\n2026-01-04,south,80.00\n2026-01-04,north,19.25\n2026-01-05,east,300.10\n2026-01-06,south,45.45\n2026-01-07,east,0.90\n2026-01-08,west,12.00\n2026-01-09,north,60.25\n"
+   },
+   "check": {
+    "type": "agent",
+    "tests": "import json\nd = json.load(open('summary.json', encoding='utf-8'))\nassert set(d) == {'north','south','east','west'}, d\nexp = {'north': 200.0, 'south': 125.45, 'east': 301.0, 'west': 12.0}\nfor k, v in exp.items():\n    assert abs(float(d[k]) - v) < 0.006, (k, d[k])",
+    "timeoutSec": 30
+   }
+  },
+  {
+   "id": "a-rename",
+   "category": "agent",
+   "title": "Rename a function across files",
+   "maxTokens": 8192,
+   "points": 1,
+   "prompt": "Rename the function get_usr to get_user everywhere in this project (definition and all uses). The program main.py must still print the same output.",
+   "files": {
+    "users.py": "def get_usr(uid):\n    return {'id': uid, 'name': 'user%d' % uid}\n",
+    "report.py": "from users import get_usr\n\ndef line(uid):\n    u = get_usr(uid)\n    return '%s (%d)' % (u['name'], u['id'])\n",
+    "main.py": "from report import line\nfrom users import get_usr\nprint(line(7))\nprint(get_usr(3)['name'])\n"
+   },
+   "check": {
+    "type": "agent",
+    "tests": "import subprocess, sys, pathlib\nsrc = ''.join(p.read_text(encoding='utf-8') for p in pathlib.Path('.').glob('*.py') if p.name != 'task.py')\nassert 'get_usr' not in src, 'old name still there'\nassert 'def get_user' in src\nout = subprocess.run([sys.executable, 'main.py'], capture_output=True, text=True, timeout=10).stdout.split()\nassert out == ['user7', '(7)', 'user3'], out",
+    "timeoutSec": 30
+   }
+  },
+  {
+   "id": "a-find-file",
+   "category": "agent",
+   "title": "Find a file by its content",
+   "maxTokens": 8192,
+   "points": 1,
+   "prompt": "Somewhere under data/ one file contains the marker ZEBRA-42. Write the path of that file, relative to the working folder and with forward slashes, into answer.txt (just the path).",
+   "files": {
+    "data/a/notes.txt": "nothing here\n",
+    "data/a/b/c.txt": "still nothing\n",
+    "data/b/config.yaml": "key: value\n",
+    "data/b/deep/x/y/readme.md": "# readme\nThe marker is ZEBRA-42 on this line.\n",
+    "data/c/empty.txt": "",
+    "data/c/z.txt": "ZEBRA-41 is not it\n"
+   },
+   "check": {
+    "type": "agent",
+    "tests": "s = open('answer.txt', encoding='utf-8').read().strip().replace('\\\\', '/').lstrip('./')\nassert s == 'data/b/deep/x/y/readme.md', s",
+    "timeoutSec": 30
+   }
+  },
+  {
+   "id": "a-run-then-write",
+   "category": "agent",
+   "title": "Run a script, use its output",
+   "maxTokens": 8192,
+   "points": 1,
+   "prompt": "Run gen.py with python. It prints a number. Create result.txt that contains that number squared (only the number).",
+   "files": {
+    "gen.py": "import hashlib\nprint(int(hashlib.sha256(b'stykker').hexdigest()[:6], 16) % 997)\n"
+   },
+   "check": {
+    "type": "agent",
+    "tests": "import hashlib\nn = int(hashlib.sha256(b'stykker').hexdigest()[:6], 16) % 997\nassert open('result.txt', encoding='utf-8').read().strip() == str(n * n)",
+    "timeoutSec": 30
+   }
+  },
+  {
+   "id": "a-config-edit",
+   "category": "agent",
+   "title": "Edit a config precisely",
+   "maxTokens": 8192,
+   "points": 1,
+   "prompt": "In app.ini set port to 9090 and debug to false. Leave every other line exactly as it is.",
+   "files": {
+    "app.ini": "; app settings\n[server]\nhost = 127.0.0.1\nport = 8080\nworkers = 4\n\n[log]\ndebug = true\nfile = app.log\n"
+   },
+   "check": {
+    "type": "agent",
+    "tests": "lines = open('app.ini', encoding='utf-8').read().splitlines()\nexp = ['; app settings','[server]','host = 127.0.0.1','port = 9090','workers = 4','','[log]','debug = false','file = app.log']\nassert [l.rstrip() for l in lines] == exp, lines",
+    "timeoutSec": 30
+   }
+  },
+  {
+   "id": "a-write-tests",
+   "category": "agent",
+   "title": "Write tests that catch a bug",
+   "maxTokens": 8192,
+   "points": 1,
+   "prompt": "slugify.py contains a function slugify(text). Write test_slugify.py with plain assert statements (no pytest needed) that pass for the current, correct implementation. Good tests should also catch broken versions. Run your test file to confirm it passes.",
+   "files": {
+    "slugify.py": "import re\n\ndef slugify(text):\n    text = text.strip().lower()\n    text = re.sub(r'[^a-z0-9]+', '-', text)\n    return text.strip('-')\n"
+   },
+   "check": {
+    "type": "agent",
+    "tests": "import shutil, subprocess, sys, os\ncode = open('test_slugify.py', encoding='utf-8').read()\nassert code.count('assert') >= 3, 'needs at least 3 asserts'\ndef run():\n    return subprocess.run([sys.executable, 'test_slugify.py'], capture_output=True, text=True, timeout=10).returncode\nshutil.copy('slugify.py', 'slugify.orig')\nassert run() == 0, 'tests fail on the correct implementation'\nbroken = ['import re\\ndef slugify(text):\\n    return re.sub(r\"[^a-z0-9]+\", \"-\", text.strip()).strip(\"-\")\\n',\n          'import re\\ndef slugify(text):\\n    return re.sub(r\"[^a-z0-9]+\", \"-\", text.strip().lower())\\n',\n          'def slugify(text):\\n    return text.strip().lower().replace(\" \", \"-\")\\n']\ncaught = 0\nfor b in broken:\n    open('slugify.py', 'w', encoding='utf-8').write(b)\n    if run() != 0: caught += 1\nshutil.copy('slugify.orig', 'slugify.py')\nassert caught >= 2, 'only %d of 3 broken versions caught' % caught",
+    "timeoutSec": 30
+   }
+  },
+  {
+   "id": "a-count-files",
+   "category": "agent",
+   "title": "Count files with a shell command",
+   "maxTokens": 8192,
+   "points": 1,
+   "prompt": "How many files ending in .log are there under logs/ (all subfolders included)? Find out with a command, then write just the number into count.txt.",
+   "files": {
+    "logs/a.log": "",
+    "logs/b.txt": "",
+    "logs/2026/01/x.log": "",
+    "logs/2026/01/y.log": "",
+    "logs/2026/02/z.log": "",
+    "logs/old/q.log.bak": "",
+    "logs/old/r.log": "",
+    "logs/old/keep.md": ""
+   },
+   "check": {
+    "type": "agent",
+    "tests": "assert open('count.txt', encoding='utf-8').read().strip() == '5'",
+    "timeoutSec": 30
+   }
+  },
+  {
+   "id": "a-traceback",
+   "category": "agent",
+   "title": "Fix a crash from its traceback",
+   "maxTokens": 8192,
+   "points": 1,
+   "prompt": "main.py crashes. Run it, read the error, fix the cause in parse.py, and run main.py again until it prints the total.",
+   "files": {
+    "parse.py": "import json\n\ndef load(path):\n    with open(path, encoding='utf-8') as f:\n        return json.load(f)\n\ndef total(items):\n    return sum(i['price'] * i['qty'] for i in items)\n",
+    "orders.json": "[{\"price\": 2.5, \"qty\": 4}, {\"price\": \"3\", \"qty\": 2}, {\"price\": 1.25, \"qty\": 8}]\n",
+    "main.py": "from parse import load, total\nprint(total(load('orders.json')))\n"
+   },
+   "check": {
+    "type": "agent",
+    "tests": "import subprocess, sys, json\nr = subprocess.run([sys.executable, 'main.py'], capture_output=True, text=True, timeout=10)\nassert r.returncode == 0, r.stderr[-300:]\nassert abs(float(r.stdout.strip()) - 26.0) < 1e-9, r.stdout\nassert json.load(open('orders.json'))[1]['price'] == '3', 'the data must not be changed - fix the code'",
+    "timeoutSec": 30
+   }
+  }
+ ]
+}

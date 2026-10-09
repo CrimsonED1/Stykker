@@ -1,0 +1,172 @@
+@page "/catalog"
+@using System.Text.Json
+@using System.Text.Json.Serialization
+@inject EvalQueue Queue
+@inject AppPaths Paths
+@inject NavigationManager Nav
+@inject WebActions Web
+
+<div class="grid2" style="grid-template-columns:minmax(0,0.8fr) minmax(0,1.6fr)">
+    <div class="card">
+        <h2>@Strings.EvalSuites</h2>
+        <div class="list">
+            @foreach (var s in _suites)
+            {
+                <div class="@(s.Name == _cur?.Name ? "sel" : "")" @onclick="() => Select(s)">@s.Name <span class="muted small">@Strings.EvalTasksCount(s.Tasks.Count)@(Editable(s) ? "" : Strings.EvalSuiteBuiltIn)</span></div>
+            }
+        </div>
+        @if (Web.CanWrite)
+        {
+            <div class="row" style="margin-top:10px"><input placeholder="@Strings.EvalNewSuiteName" @bind="_newSuite" style="flex:1" /><button @onclick="NewSuite">@Strings.EvalNewSuite</button></div>
+        }
+        @if (_cur != null)
+        {
+            <h2 style="margin-top:16px">@Strings.EvalTasksTitle</h2>
+            <div class="list">
+                @foreach (var t in _cur.Tasks)
+                {
+                    <div class="@(t == _task ? "sel" : "")" @onclick="() => Edit(t)"><span class="muted small">@t.Category</span> @t.Title</div>
+                }
+            </div>
+            @if (Editable(_cur) && Web.CanWrite) { <button style="margin-top:8px" @onclick="NewTask">@Strings.EvalNewTest</button> }
+        }
+    </div>
+
+    <div class="card">
+        @if (_task == null)
+        {
+            <p class="muted">@Strings.EvalSuiteFolder(Paths.EvalSuitesDir)</p>
+        }
+        else
+        {
+            // Eingebaute Suiten sind nur lesbar – und für ein Gerät mit der Rolle Viewer ist die ganze Seite das
+            bool ro = !Editable(_cur!) || !Web.CanWrite;
+            <h2>@(ro ? Strings.EvalReadOnlyTest : Strings.EvalEditTest)</h2>
+            <div class="row">
+                <div style="flex:2"><label>@Strings.EvalTitle2</label><input style="width:100%" @bind="_task.Title" disabled="@ro" /></div>
+                <div style="flex:1"><label>@Strings.EvalCategory</label>
+                    <select style="width:100%" @bind="_task.Category" disabled="@ro">
+                        @foreach (var c in new[] { "coding", "reasoning", "format", "tools", "context", "creative", "custom" }) { <option>@c</option> }
+                    </select></div>
+                <div><label>@Strings.EvalMaxTokens</label><input type="number" style="width:100px" @bind="_task.MaxTokens" disabled="@ro" /></div>
+            </div>
+            <label>@Strings.EvalPrompt</label>
+            <textarea style="min-height:120px" @bind="_task.Prompt" disabled="@ro"></textarea>
+            <div class="row">
+                <div><label>@Strings.EvalCheck</label>
+                    <select @bind="_task.Check.Type" disabled="@ro">
+                        @foreach (var c in new[] { "contains", "exact", "number", "regex", "json", "pycheck", "python" }) { <option>@c</option> }
+                    </select></div>
+                <div style="flex:1"><label>@ExpectedLabel()</label><input style="width:100%" @bind="Expected" disabled="@ro" /></div>
+            </div>
+            @if (_task.Check.Type is "regex")
+            {
+                <label>@Strings.EvalPattern</label><input style="width:100%" @bind="_task.Check.Pattern" disabled="@ro" />
+            }
+            @if (_task.Check.Type is "pycheck" or "python")
+            {
+                <label>@(_task.Check.Type == "pycheck" ? Strings.EvalPythonChecks : Strings.EvalPythonTests)</label>
+                <textarea @bind="_task.Check.Tests" disabled="@ro"></textarea>
+            }
+            <div class="row" style="margin-top:12px">
+                @if (!ro)
+                {
+                    <button class="good" @onclick="Save">@Strings.BtnSave</button>
+                    <button class="bad" @onclick="Delete">@Strings.BtnRemove</button>
+                }
+                <select @bind="_tryModel" style="margin-left:auto">
+                    @foreach (var m in Queue.Models.Where(m => m.Enabled)) { <option value="@m.Id">@m.Name</option> }
+                </select>
+                @if (Web.CanWrite)
+                {
+                    <button @onclick="Try" disabled="@(string.IsNullOrEmpty(_tryModel))">@Strings.EvalTry</button>
+                    <button @onclick="SendAll" disabled="@(!Queue.Models.Any(m => m.Enabled))">@Strings.EvalSendAll</button>
+                }
+            </div>
+            @if (_msg.Length > 0) { <p class="small" style="color:var(--acc)">@_msg</p> }
+        }
+    </div>
+</div>
+
+@code {
+    private static readonly JsonSerializerOptions Json = new() { WriteIndented = true, DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull, PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
+    private List<EvalSuite> _suites = new();
+    private EvalSuite? _cur;
+    private EvalTask? _task;
+    private string _newSuite = "", _msg = "", _tryModel = "";
+
+    protected override void OnInitialized()
+    {
+        Reload();
+        _tryModel = Queue.Models.FirstOrDefault(m => m.Enabled)?.Id ?? "";
+    }
+
+    private void Reload() => _suites = EvalSuites.All(Paths.EvalSuitesDir);
+    private static bool Editable(EvalSuite s) => !EvalSuites.BuiltInNames.Contains(s.Name);
+    private string FileOf(EvalSuite s) => Path.Combine(Paths.EvalSuitesDir, s.Name + ".json");
+    private void Select(EvalSuite s) { _cur = s; _task = s.Tasks.FirstOrDefault(); _msg = ""; }
+    private void Edit(EvalTask t) { _task = t; _msg = ""; }
+
+    private string Expected
+    {
+        get => string.Join(", ", _task?.Check.Expected ?? new());
+        set { if (_task != null) _task.Check.Expected = value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList(); }
+    }
+
+    private string ExpectedLabel() => _task?.Check.Type switch
+    {
+        "contains" => Strings.EvalExpectedContains, "exact" => Strings.EvalExpectedExact, "number" => Strings.EvalExpectedNumber,
+        "json" => Strings.EvalExpectedJson, _ => Strings.EvalExpectedOther,
+    };
+
+    // Die Seite legt Suite-Dateien an und hängt Aufträge in die Warteschlange (nicht über die Aktionen):
+    // ein Gerät mit der Rolle Viewer darf hier nichts schreiben.
+    private void NewSuite()
+    {
+        if (!Web.CanWrite) return;
+        var name = string.Concat(_newSuite.Trim().ToLowerInvariant().Select(c => char.IsLetterOrDigit(c) || c == '-' ? c : '-')).Trim('-');
+        if (name.Length == 0 || _suites.Any(s => s.Name == name) || EvalSuites.BuiltInNames.Contains(name)) { _msg = Strings.EvalChooseName; return; }
+        var s = new EvalSuite { Name = name, Description = Strings.EvalOwnSuiteDescription, Temperature = 0.2 };
+        _cur = s; WriteSuite(s); Reload(); _cur = _suites.First(x => x.Name == name); _newSuite = ""; NewTask();
+    }
+
+    private void NewTask()
+    {
+        if (_cur == null || !Web.CanWrite) return;
+        var t = new EvalTask { Id = "t-" + Guid.NewGuid().ToString("N")[..6], Title = Strings.EvalNewTaskTitle, Category = "custom", Prompt = "", MaxTokens = 4096, Check = new EvalCheck { Type = "contains" } };
+        _cur.Tasks.Add(t); _task = t;
+    }
+
+    private void Save() { if (_cur != null && Web.CanWrite) { WriteSuite(_cur); _msg = Strings.EvalSaved; } }
+
+    private void Delete()
+    {
+        if (_cur == null || _task == null || !Web.CanWrite) return;
+        _cur.Tasks.Remove(_task); _task = _cur.Tasks.FirstOrDefault(); WriteSuite(_cur); _msg = Strings.EvalDeleted;
+    }
+
+    private void WriteSuite(EvalSuite s)
+    {
+        Directory.CreateDirectory(Paths.EvalSuitesDir);
+        s.Version++;   // neue Version: alte Ergebnisse bleiben getrennt
+        File.WriteAllText(FileOf(s), JsonSerializer.Serialize(s, Json));
+    }
+
+    private void Try()
+    {
+        var m = Queue.Models.FirstOrDefault(x => x.Id == _tryModel);
+        if (m == null || _task == null || !Web.CanWrite) return;
+        Queue.EnqueueInline(m, new EvalSuite { Name = "try: " + _task.Title, Temperature = _cur?.Temperature ?? 0.2, Tasks = { _task } });
+        Queue.Start();
+        Nav.NavigateTo("runs");
+    }
+
+    private void SendAll()
+    {
+        if (_cur == null || !Web.CanWrite) return;
+        if (Editable(_cur)) WriteSuite(_cur);
+        Queue.Enqueue(Queue.Models.Where(m => m.Enabled), new[] { _cur.Name });
+        Queue.Start();
+        Nav.NavigateTo("runs");
+    }
+}

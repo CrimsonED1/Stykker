@@ -1,0 +1,71 @@
+# CI: Build + Tests bei jedem Push nach main und für Pull Requests. Nur Leserechte, keine Geheimnisse.
+# Actions sind auf volle Commit-SHAs festgenagelt (der Kommentar nennt die Version).
+name: CI
+
+# Vorerst nur von Hand (Actions-Kontingent des privaten Repos, Nutzer 2026-10-06): lokal wird vor jedem Commit gebaut
+# und getestet (AGENTS.md). Wieder automatisch: die beiden Auslöser unten einkommentieren.
+on:
+  workflow_dispatch:
+  # push:
+  #   branches: [main]
+  # pull_request:
+  #   branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build-test:
+    name: Build & Test (windows-latest)
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - name: .NET 10 einrichten
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Build App (Release)
+        run: dotnet build src/StykkerLlm.UI/StykkerLlm.UI.csproj -c Release --nologo
+
+      - name: Build CLI (Release)
+        run: dotnet build src/StykkerLlm.Cli/StykkerLlm.Cli.csproj -c Release --nologo
+
+      - name: Tests
+        run: dotnet test tests/StykkerLlm.Tests -c Release --nologo
+
+  # Core + CLI laufen auch ohne Windows; Windows-Pfadtests melden sich dort als "inconclusive"
+  linux:
+    name: Core + CLI (ubuntu-latest)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - name: .NET 10 einrichten
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Build CLI (Release)
+        run: dotnet build src/StykkerLlm.Cli/StykkerLlm.Cli.csproj -c Release --nologo
+
+      - name: Tests
+        run: dotnet test tests/StykkerLlm.Tests -c Release --nologo
+
+      - name: CLI gegen den Simulator
+        run: |
+          dotnet src/StykkerLlm.Cli/bin/Release/net10.0/stykker.dll status --sim --json > sim-status.json
+          dotnet src/StykkerLlm.Cli/bin/Release/net10.0/stykker.dll status --sim --no-color
+          dotnet src/StykkerLlm.Cli/bin/Release/net10.0/stykker.dll sim --snapshot tui.ans --size 120x36 --keys "{wait 3000}/history{enter}{wait 500}"
+          cat tui.txt
