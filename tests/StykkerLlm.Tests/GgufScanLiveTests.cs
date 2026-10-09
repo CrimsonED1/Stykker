@@ -19,6 +19,7 @@ public class GgufScanLiveTests
         var sw = Stopwatch.StartNew();
         var found = GgufScan.Find(roots);
         sw.Stop();
+        if (found.Count == 0) Assert.Inconclusive("in den Modellordnern liegen keine GGUF-Dateien");
 
         Console.WriteLine($"Scan: {found.Count} Modelle aus {roots.Count} Ordnern in {sw.ElapsedMilliseconds} ms");
         foreach (var m in found.Take(3))
