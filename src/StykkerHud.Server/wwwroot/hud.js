@@ -226,13 +226,21 @@
         }
     }
 
+    // Die Kennung einer Gruppe kommt aus Name und Pfad, nicht aus ihrer Position: sonst hinge das Aufklappen beim
+    // Umsortieren an einem anderen Programm. (djb2 – bei ein paar Dutzend Gruppen praktisch kollisionsfrei.)
+    function groupId(key) {
+        let h = 5381;
+        for (let i = 0; i < key.length; i++) h = (Math.imul(h, 33) ^ key.charCodeAt(i)) >>> 0;
+        return "g" + h.toString(36);
+    }
+
     function renderProcesses(list) {
         const host = $("proc-rows");
         if (!host) return;
         view.last = list;
         const groups = groupOf(list);
         view.byId.clear();
-        groups.forEach((g, i) => { g.id = "g" + i; view.byId.set(g.id, g); });
+        groups.forEach((g) => { g.id = groupId(g.key); view.byId.set(g.id, g); });
         // Bei einer Suche klappen die passenden Gruppen einmal auf: man sucht einen Prozess, nicht eine Summe. Danach
         // darf man sie wieder zuklappen – deshalb nur einmal je Suche, nicht bei jedem Takt.
         if (view.expandAll) {
@@ -324,6 +332,14 @@
         }
     }
 
+    // Speicher der Grafikkarte: mit Gesamtgröße, wenn sie bekannt ist (nvml.dll), sonst nur der belegte Teil.
+    function vramText(gpu) {
+        if (!gpu || missing(gpu.vramUsedGb)) return "– / – GB";
+        return gpu.vramTotalGb > 0
+            ? `${gpu.vramUsedGb.toFixed(1)} / ${gpu.vramTotalGb.toFixed(0)} GB`
+            : `${gpu.vramUsedGb.toFixed(1)} GB in use`;
+    }
+
     function renderGraphics(s) {
         const gpu = s.gpu;
         set("v-gpu-name", gpu ? gpu.name : "–");
@@ -337,7 +353,7 @@
         set("v-gpu-memclock", num(gpu && gpu.memClockMhz, 0));
         const pct = gpu && gpu.vramTotalGb > 0 ? (100 * gpu.vramUsedGb) / gpu.vramTotalGb : 0;
         width("t-vram", pct);
-        set("v-vram-text", gpu ? `${gpu.vramUsedGb.toFixed(1)} / ${gpu.vramTotalGb.toFixed(0)} GB` : "– / – GB");
+        set("v-vram-text", vramText(gpu));
         // Das Leistungsziel steht neben dem Verbrauch; ab 90 % davon wird die Zelle zur Warnung.
         const limit = gpu && gpu.powerLimitW > 0 ? gpu.powerLimitW : 0;
         set("v-gpu-power-max", limit > 0 ? `/ ${num(limit, 0)} W` : "W");

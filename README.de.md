@@ -1,7 +1,7 @@
 # StykkerHUD — das Gerüst steht (2026-10-08)
 
 Ein Ressourcenmonitor für diese Maschine: Prozesse, GPU, CPU, Speicher. Aufgebaut auf dem
-**gemeinsamen Design-System der Stykker-Familie** (aus `C:\_AI\StykkerLLM-Design-System`), mit den
+**gemeinsamen Design-System der Stykker-Familie** (aus `C:\_AI\Stykker\Design-System`), mit den
 beiden Themen **Dark** und **Spacepunk Titan**.
 
 ## Was läuft
@@ -55,7 +55,7 @@ Nachprüfen: `node tools\shot.mjs --port 8079 --out docs`, `node tools\check-ui.
 ## Entscheidungen
 
 - **Design-System wird geliefert, nicht kopiert.** Der Server liest es zur Laufzeit unter `/ds` aus
-  `C:\_AI\StykkerLLM-Design-System` (`--design-system <Ordner>` ändert das). Eine Änderung dort wirkt
+  `C:\_AI\Stykker\Design-System` (`--design-system <Ordner>` ändert das). Eine Änderung dort wirkt
   beim nächsten Laden — genau eine Fassung für die Familie. Der Weg über `Content` + `Link` im Projekt
   funktioniert nicht: solche Dateien landen im Entwicklungsbetrieb nicht im Static-Web-Assets-Manifest.
 - **Design-System erweitert (2026-10-08):** drei Symbole, die dem Satz fehlten — `i-arrow-up`,
@@ -111,8 +111,8 @@ Bilder neu erzeugen (beide Themen; `-full.png` zeigt die ganze Seite, `-review.j
 für die Bildprüfung):
 
 ```powershell
-node tools\shot.mjs --url file:///C:/_AI/StykkerHUD/stykker-hud/docs/design/mockup-2.html --out docs\screenshots --name mockup-2 --format png --height 1120
-node tools\shot.mjs --url file:///C:/_AI/StykkerHUD/stykker-hud/docs/design/mockup-1.html --out docs\screenshots --name mockup-1 --format png
+node tools\shot.mjs --url file:///C:/_AI/Stykker/HUD/docs/design/mockup-2.html --out docs\screenshots --name mockup-2 --format png --height 1120
+node tools\shot.mjs --url file:///C:/_AI/Stykker/HUD/docs/design/mockup-1.html --out docs\screenshots --name mockup-1 --format png
 ```
 
 `docs/design/mockup-2-onepager.html` ist derselbe Entwurf als **eigenständige** Seite: das Design-System ist

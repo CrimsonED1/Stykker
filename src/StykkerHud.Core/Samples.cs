@@ -17,6 +17,8 @@ public sealed record SystemSample(
 // liegen.
 public sealed record GpuEngineRow(string Engine, double Percent);
 
+// Ohne nvml.dll (Intel, AMD) kommen Auslastung, Engines und Speicher aus den Windows-Zählern; was dort fehlt, steht
+// auf -1 („nicht gemessen"), genau wie bei den Verlaufspunkten.
 public sealed record GpuSample(
     string Name,
     double UtilPercent,

@@ -108,10 +108,10 @@ internal sealed class GpuUtilQuery : IDisposable
         if (_ok) Pdh.Collect(_query);   // Prozent-Zähler brauchen eine erste Abtastung
     }
 
-    public GpuUtilSample Read()
+    // null, wenn der Zähler fehlt: dann wäre „0 %" eine Behauptung, die niemand gemessen hat.
+    public GpuUtilSample? Read()
     {
-        if (!_ok || !Pdh.Collect(_query))
-            return new GpuUtilSample(Array.Empty<GpuProcRow>(), Array.Empty<GpuEngineRow>());
+        if (!_ok || !Pdh.Collect(_query)) return null;
         var byPid = new Dictionary<int, double>();
         var byEngine = new Dictionary<string, double>();
         foreach (var (name, value) in Pdh.Values(_counter, Pdh.FmtDouble))
@@ -139,9 +139,10 @@ internal sealed class GpuProcessMemoryQuery : IDisposable
 
     public GpuProcessMemoryQuery() => _ok = Pdh.Open(@"\GPU Process Memory(*)\Dedicated Usage", out _query, out _counter);
 
-    public IReadOnlyList<GpuProcRow> Read()
+    // null, wenn der Zähler fehlt (sonst stünde dort ein falsches „0 MB").
+    public IReadOnlyList<GpuProcRow>? Read()
     {
-        if (!_ok || !Pdh.Collect(_query)) return Array.Empty<GpuProcRow>();
+        if (!_ok || !Pdh.Collect(_query)) return null;
         var byPid = new Dictionary<int, double>();
         foreach (var (name, value) in Pdh.Values(_counter, Pdh.FmtLarge))
         {

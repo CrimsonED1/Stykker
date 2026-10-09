@@ -69,7 +69,8 @@ public sealed class MetricsSampler
 
             var notes = new List<string>(2);
             if (system == null) notes.Add("No CPU or memory values – this build runs without system access.");
-            if (gpu == null) notes.Add("No GPU values – nvml.dll did not answer.");
+            if (gpu == null) notes.Add("No GPU values – neither nvml.dll nor the Windows GPU counters answered.");
+            else if (gpu.TempC < 0) notes.Add("GPU from the Windows counters only (no nvml.dll): temperature, power, clocks and total memory are not shown.");
 
             return new HudSnapshot(now, Environment.MachineName, _cores, (long)(now - _started).TotalSeconds,
                 system, gpu, processes, _points.ToArray(), io, _peaks, notes.ToArray());
@@ -135,9 +136,25 @@ public sealed class MetricsSampler
                 if (value != null || vram != null) processes[i] = p with { GpuPercent = value, VramMb = vram };
             }
 
+        // Ohne nvml.dll (Intel, AMD) kommt die Karte aus den Windows-Zählern. Was sie nicht liefern, bleibt -1.
+        if (gpu == null && (util != null || mem != null)) gpu = FromCounters(util, mem);
+
         // Engines gehören zur Karte, nicht zu einem Prozess.
         if (gpu != null && util is { Engines.Count: > 0 }) gpu = gpu with { Engines = util.Engines };
         return gpu;
+    }
+
+    private GpuSample FromCounters(GpuUtilSample? util, IReadOnlyList<GpuProcRow>? mem)
+    {
+        // Die stärkste Engine entspricht dem, was der Task-Manager als Auslastung zeigt: Engines addieren sich nicht.
+        double busiest = util is { Engines.Count: > 0 } ? util.Engines.Max(e => e.Percent) : 0;
+        double usedMb = mem == null ? -1 : mem.Sum(r => r.Value);
+        return new GpuSample(
+            Name: _probe.AdapterName ?? "GPU",
+            UtilPercent: util == null ? -1 : Math.Min(100, busiest),
+            VramUsedGb: usedMb < 0 ? -1 : usedMb / 1024.0,
+            VramTotalGb: -1, VramUtilPercent: -1, PowerW: -1, PowerLimitW: -1, TempC: -1,
+            GfxClockMhz: -1, GfxClockMaxMhz: -1, MemClockMhz: -1, MemClockMaxMhz: -1, ThrottleReasons: 0);
     }
 
     // Ein Prozess hat mehrere Einträge (mehrere Engines, mehrere Grafikprozessoren): je PID summiert.

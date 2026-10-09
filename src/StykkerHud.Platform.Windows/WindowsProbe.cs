@@ -1,6 +1,7 @@
 using System.Net.NetworkInformation;
 using System.Runtime.InteropServices;
 using System.Text;
+using Microsoft.Win32;
 using StykkerHud.Core;
 
 namespace StykkerHud.Platform.Windows;
@@ -31,6 +32,7 @@ public sealed class WindowsProbe : ISystemProbe
     }
 
     public bool GpuAvailable => _nvml.Available;
+    public string? AdapterName { get; } = ReadAdapterName();
     public SystemSample? ReadSystem() => _sys.Read();
     public GpuSample? ReadGpu() => _nvml.Read();
     public GpuUtilSample? ReadGpuUtil() => _gpuUtil?.Read();
@@ -110,6 +112,18 @@ public sealed class WindowsProbe : ISystemProbe
         }
         catch (Exception ex) when (ex is NetworkInformationException or PlatformNotSupportedException) { }
         return (rx, tx);
+    }
+
+    // Der Treibername des ersten Anzeige-Geräts aus der Windows-Geräteklasse „Display“. Nur für die Anzeige ohne
+    // nvml.dll; mit mehreren Grafikkarten zählt die erste Eintragung.
+    private static string? ReadAdapterName()
+    {
+        try
+        {
+            using var key = Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}\0000");
+            return key?.GetValue("DriverDesc") as string;
+        }
+        catch (Exception ex) when (ex is System.Security.SecurityException or UnauthorizedAccessException or IOException) { return null; }
     }
 
     public void Dispose()
