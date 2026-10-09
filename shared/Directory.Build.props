@@ -1,0 +1,15 @@
+<Project>
+
+  <!-- Gemeinsame Metadaten der Projekte in shared/. Nur Metadaten: kein Verhalten. -->
+  <PropertyGroup>
+    <Version Condition="'$(Version)' == ''">0.1.0</Version>
+    <Authors>CrimsonED1</Authors>
+    <Company>CrimsonED1</Company>
+    <Product>Stykker.Shared</Product>
+    <Copyright>Copyright (c) CrimsonED1</Copyright>
+    <Description>Code shared by the Stykker tools: GPU counters, design-system hosting, local requests, viewer-driven sampling.</Description>
+    <Deterministic>true</Deterministic>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+  </PropertyGroup>
+
+</Project>

@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Stykker.Shared: Code, den mehr als ein Werkzeug braucht – GPU-Zähler (Windows), Hosting des Design-Systems,
+       lokale Anfragen, die Sitzungsschleife. Keine Oberfläche und keine Produktlogik. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>Stykker.Shared</AssemblyName>
+    <RootNamespace>Stykker.Shared</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+</Project>
