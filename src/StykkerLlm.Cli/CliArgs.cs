@@ -10,7 +10,7 @@ public sealed class CliArgs
     public string Command = "";
     public List<string> Words = new();
     public string? DataDir;
-    public int Port = 8078;
+    public int Port = 17400;
     public bool Sim;
     public string? Snapshot;
     public string Keys = "";

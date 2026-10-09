@@ -26,7 +26,7 @@ public class TrayIconTests
     {
         var gezeigt = 0;
         using var tray = new TrayIcon(Menue, _ => gezeigt++, () => { });
-        bool ok = tray.TryShow(Strings.TrayServerTip("http://127.0.0.1:8078"), out var grund);
+        bool ok = tray.TryShow(Strings.TrayServerTip("http://127.0.0.1:17400"), out var grund);
         if (Verfuegbar) Assert.IsTrue(ok, "mit Desktop kommt das Symbol: " + grund);
         else
         {
@@ -49,7 +49,7 @@ public class TrayIconTests
         var befehle = new List<int>();
         var geklickt = 0;
         using var tray = new TrayIcon(Menue, id => { lock (befehle) befehle.Add(id); }, () => Interlocked.Increment(ref geklickt));
-        Assert.IsTrue(tray.TryShow(Strings.TrayServerTip("http://127.0.0.1:8078"), out var grund), "das Symbol kam: " + grund);
+        Assert.IsTrue(tray.TryShow(Strings.TrayServerTip("http://127.0.0.1:17400"), out var grund), "das Symbol kam: " + grund);
         Assert.IsTrue(tray.Visible);
         Assert.AreNotEqual(IntPtr.Zero, tray.Handle, "hinter dem Symbol steht ein Fenster");
 
@@ -72,7 +72,7 @@ public class TrayIconTests
         for (int i = 0; i < 2; i++)
         {
             var tray = new TrayIcon(Menue, _ => { }, () => { });
-            Assert.IsTrue(tray.TryShow("StykkerLLM-Server · http://127.0.0.1:8078", out var grund), $"Durchgang {i}: " + grund);
+            Assert.IsTrue(tray.TryShow("StykkerLLM-Server · http://127.0.0.1:17400", out var grund), $"Durchgang {i}: " + grund);
             tray.Dispose();
             Assert.IsFalse(tray.Visible, $"Durchgang {i}: nach dem Schließen ist das Symbol weg");
             Assert.AreEqual(IntPtr.Zero, tray.Handle, $"Durchgang {i}: das Fenster ist abgemeldet");

@@ -344,7 +344,7 @@ public class N46_CloudProviderTests
             engine.Proxies.AddProvider("Cloud", "https://api.example.com/v1", "sk-supergeheim", out var error);
             Assert.IsNull(error);
 
-            var json = StateJson.WriteText(engine, null, null, 8078, DateTimeOffset.Now);
+            var json = StateJson.WriteText(engine, null, null, 17400, DateTimeOffset.Now);
             StringAssert.Contains(json, "\"providers\":[");
             StringAssert.Contains(json, "Cloud");
             StringAssert.Contains(json, "\"hasKey\":true");
@@ -389,7 +389,7 @@ public class N46_CloudProviderTests
 
             var choose = await ActionApi.ExecuteAsync(new ActionRequest { Action = "proxy.target", Arg = choice.Value }, ctx, new RemotePrompt());
             Assert.IsTrue(choose.Ok, choose.Message);
-            Assert.AreEqual(choice.Value, StateSnapshot.Parse(StateJson.WriteText(engine, null, null, 8078, DateTimeOffset.Now)).Proxy.TargetValue);
+            Assert.AreEqual(choice.Value, StateSnapshot.Parse(StateJson.WriteText(engine, null, null, 17400, DateTimeOffset.Now)).Proxy.TargetValue);
 
             var del = await ActionApi.ExecuteAsync(new ActionRequest { Action = "provider.remove", Arg = provider.Url }, ctx, new RemotePrompt());
             Assert.IsTrue(del.Ok, del.Message);

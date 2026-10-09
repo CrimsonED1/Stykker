@@ -53,7 +53,7 @@ public static partial class Strings
     public const string HostPairNoneFound = "None found – type the address (Home/VPN must be on at the server).";
     public const string HostPairRemoteOff = "Home/VPN off";
     public const string HostPairServer = "Server address", HostPairCode = "Code from the server", HostPairButton = "Pair";
-    public const string HostPairBadUrl = "That is not a server address (http://name:8078).";
+    public const string HostPairBadUrl = "That is not a server address (http://name:17400).";
     public static string HostPairDone(string server) => $"Paired with {server}. The host connects now.";
     public static string HostPairFailed(string status) => $"Pairing failed ({status}).";
     public static string HostPairUnreachable(string detail) => $"The server is not reachable: {detail}";

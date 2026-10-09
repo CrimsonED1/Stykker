@@ -103,7 +103,7 @@ public class T8_DisplayTests
         StringAssert.Contains(text, "SIMULATION");
         StringAssert.Contains(text, "GPU");
         StringAssert.Contains(text, "qwen3-8b");
-        StringAssert.Contains(text, Strings.TuiWebLabel + "  http://127.0.0.1:8078");
+        StringAssert.Contains(text, Strings.TuiWebLabel + "  http://127.0.0.1:17400");
         StringAssert.Contains(Ansi.Strip(t.Screen[^1]), "w web");
         Assert.IsFalse(text.Contains("│ >"), "kein Eingabefeld mehr");
         Assert.AreEqual(TuiApp.Panel.None, app.Current);
@@ -115,7 +115,7 @@ public class T8_DisplayTests
     {
         var (t, _, opened) = await Run("{wait 800}w{wait 300}");
         Assert.AreEqual(1, opened.Count);
-        StringAssert.StartsWith(opened[0], "http://127.0.0.1:8078");
+        StringAssert.StartsWith(opened[0], "http://127.0.0.1:17400");
         StringAssert.Contains(Text(t), Strings.TuiWebOpened);
     }
 
@@ -172,9 +172,9 @@ public class T8_DisplayTests
         using var source = new SimSource();
         StateSnapshot? st = null;
         for (int i = 0; i < 3; i++) st = await source.PollAsync(CancellationToken.None);
-        var lines = TuiApp.StatusLines(st!, 8078, 100, color: false).ToList();
+        var lines = TuiApp.StatusLines(st!, 17400, 100, color: false).ToList();
         Assert.IsTrue(lines.Any(l => l.Contains("qwen3-8b")));
-        Assert.IsTrue(lines.Any(l => l.Contains("http://127.0.0.1:8078")));
+        Assert.IsTrue(lines.Any(l => l.Contains("http://127.0.0.1:17400")));
         Assert.IsFalse(lines.Any(l => l.Contains('\u001b')), "ohne Farben");
     }
 }

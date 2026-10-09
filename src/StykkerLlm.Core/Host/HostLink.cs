@@ -19,7 +19,7 @@ public sealed class HostConfig
     public static HostConfig Load(AppPaths paths, IPlatform platform) => ProtectedJson.Load<HostConfig>(Path.Combine(paths.Root, FileName), platform);
     public void Save(AppPaths paths, IPlatform platform) => ProtectedJson.Save(Path.Combine(paths.Root, FileName), this, platform);
 
-    // http://server:8078 → ws://server:8078/hosts/connect (https → wss)
+    // http://server:17400 → ws://server:17400/hosts/connect (https → wss)
     public static Uri ConnectUri(string server)
     {
         var b = new UriBuilder(server.TrimEnd('/'));

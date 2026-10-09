@@ -7,7 +7,7 @@ namespace StykkerLlm.Tests;
 [TestClass]
 public class ShutdownHintClientTests
 {
-    private const string Route = "127.0.0.1:8078/api/shutdown-outlook";
+    private const string Route = "127.0.0.1:17400/api/shutdown-outlook";
 
     [TestMethod]
     public async Task Hint_ReadsNoteWarningAndProxyCount()
@@ -15,7 +15,7 @@ public class ShutdownHintClientTests
         var fake = new FakeHandler();
         fake.Routes[Route] = (HttpStatusCode.OK,
             "{\"wouldStop\":true,\"note\":\"Quitting shuts the server down.\",\"warning\":\"A request through the proxy is running.\",\"proxyActive\":2}");
-        using var client = ServerClient.ForDevice("http://127.0.0.1:8078", "token", fake);
+        using var client = ServerClient.ForDevice("http://127.0.0.1:17400", "token", fake);
         var hint = await client.ShutdownHintAsync("ui:7", 1);
         Assert.IsNotNull(hint);
         Assert.AreEqual("Quitting shuts the server down.", hint.Note);
@@ -29,7 +29,7 @@ public class ShutdownHintClientTests
         var fake = new FakeHandler();
         fake.Routes[Route] = (HttpStatusCode.OK,
             "{\"wouldStop\":false,\"note\":\"Quitting keeps the server running.\",\"warning\":null,\"proxyActive\":0}");
-        using var client = ServerClient.ForDevice("http://127.0.0.1:8078", "token", fake);
+        using var client = ServerClient.ForDevice("http://127.0.0.1:17400", "token", fake);
         var hint = await client.ShutdownHintAsync("ui:7", 0);
         Assert.IsNotNull(hint);
         Assert.IsNull(hint.Warning);
@@ -40,7 +40,7 @@ public class ShutdownHintClientTests
     public async Task Hint_ServerNotReachable_IsNull()
     {
         var fake = new FakeHandler();                    // keine Route: der Fake meldet „connection refused“
-        using var client = ServerClient.ForDevice("http://127.0.0.1:8078", "token", fake);
+        using var client = ServerClient.ForDevice("http://127.0.0.1:17400", "token", fake);
         Assert.IsNull(await client.ShutdownHintAsync("ui:7", 0));
     }
 }

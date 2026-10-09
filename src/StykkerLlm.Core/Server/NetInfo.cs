@@ -8,7 +8,7 @@ namespace StykkerLlm.Core;
 // Nur Anzeige: der Server bindet immer auf allen Adressen, gesperrt werden fremde Zugriffe im Middleware (siehe AccessControl).
 public static class NetInfo
 {
-    // Nur IPv4: die meisten Heimrouter vergeben IPv4, und ein QR-Code mit http://…:8078 ist für ein Handy verständlicher.
+    // Nur IPv4: die meisten Heimrouter vergeben IPv4, und ein QR-Code mit http://…:17400 ist für ein Handy verständlicher.
     // Sortiert: privates Netz zuerst (192.168, 10, 172.16-31), dann der Rest.
     public static IReadOnlyList<string> Ipv4Addresses()
     {
@@ -36,7 +36,7 @@ public static class NetInfo
 
     public static string LanAddressOrLoopback() => LanAddress() ?? "127.0.0.1";
 
-    // http://192.168.1.23:8078/pair?code=ABCD2345
+    // http://192.168.1.23:17400/pair?code=ABCD2345
     public static string PairUrl(int port, string code, string? address = null)
     {
         string host = address is { Length: > 0 } ? address : LanAddressOrLoopback();
