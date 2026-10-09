@@ -219,6 +219,20 @@ public static partial class Strings
     public const string ProxyProviderAdded = "Provider added.";
     public const string ProxyProviderRemoved = "Provider removed.";
     public const string ProxyProviderKeySet = "The key was saved.";
+    public const string ProxyProviderNoModelsChosen = "Tick at least one model.";
+    public const string ProxyProviderModelsSaved = "The chosen models are offered now.";
+    public const string ProxyWizardOpen = "Set up OpenRouter";
+    public const string ProxyWizardHint = "The key stays on this computer, encrypted for your Windows user. Only the models you tick are offered through the proxy.";
+    public const string ProxyWizardKeyStep = "1 · API key", ProxyWizardModelStep = "2 · Models";
+    public const string ProxyWizardLoad = "Load models", ProxyWizardSave = "Save", ProxyWizardBack = "Back";
+    public const string ProxyWizardFilter = "Filter models", ProxyWizardAll = "All", ProxyWizardNone = "None";
+    public const string ProxyWizardEditModels = "Choose models";
+    public static string ProxyWizardFound(int n) => n == 1 ? "1 model found" : $"{n} models found";
+    public static string ProxyWizardChosen(int n, int total) => $"{n} of {total} chosen";
+    public static string ProxyWizardUsableGroup(int n) => $"Available for your key ({n})";
+    public static string ProxyWizardOtherGroup(int n) => $"Other models ({n})";
+    public const string ProxyWizardUsableUnknown = "Could not check which models this key may use. All models are listed.";
+    public const string ProxyWizardNoneUsable = "None of the models is available for this key.";
     public const string BtnProxyAddProvider = "Add provider", BtnProxyProviderKey = "New key";
     // Antworten des Proxys, wenn ein Cloud-Modell ohne Schlüssel oder ohne Erreichbarkeit angesprochen wird
     public const string ProxyProviderNoKey = "This model needs an API key. Add the key for this provider in the proxy settings.";

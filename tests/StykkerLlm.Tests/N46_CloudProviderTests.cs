@@ -15,6 +15,7 @@ public class N46_CloudProviderTests
         public readonly RawUpstream Up = new();
         public List<string?> ChatAuth { get; } = new();
         public List<string?> ChatModels { get; } = new();
+        public List<string> ChatPaths { get; } = new();   // Anfangszeile jeder Chat-Anfrage (Methode, Pfad, Version)
         public string[] Models { get; set; } = { "m1", "m2" };
         public int ModelRequests;                 // wie oft der Proxy die Modellliste geholt hat
 
@@ -29,6 +30,7 @@ public class N46_CloudProviderTests
                     await RawUpstream.Send(s, $"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {payload.Length}\r\nConnection: close\r\n\r\n{payload}", ct);
                     return;
                 }
+                lock (ChatPaths) ChatPaths.Add(req.Line1);
                 lock (ChatAuth) ChatAuth.Add(req.Header("Authorization"));
                 lock (ChatModels) ChatModels.Add(RouterProxy.ReadModel(req.Body) ?? "");
                 await RawUpstream.Send(s, "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nCache-Control: no-cache\r\nConnection: close\r\n\r\n", ct);
@@ -237,6 +239,43 @@ public class N46_CloudProviderTests
             Assert.AreEqual(ProxyTarget.CloudKey(provider.Url, "m1"), rec.ServerKey);
         }
         finally { Directory.Delete(dir, true); }
+    }
+
+    // Die Basis-URL eines Anbieters endet oft auf /v1 (OpenRouter: …/api/v1). Der Proxy hängt /v1 selbst an, also darf es
+    // beim Anbieter nicht doppelt ankommen
+    [TestMethod]
+    public async Task CloudRequest_BaseUrlEndingInV1_DoesNotRepeatTheVersion()
+    {
+        var dir = TempDir();
+        using var provider = new FakeProvider();
+        try
+        {
+            var settings = new AppSettings { ProxyEnabled = true, ProxyPort = 0 };
+            var plat = new FakePlatform { UserProtection = true };
+            using var http = RequestProxy.CreateClient();
+            using var pm = new ProxyManager(() => Array.Empty<ServerWatcher>(), settings, _ => { },
+                http: http, keys: new ProviderKeys(dir, plat));
+            pm.AddProvider("Cloud", provider.Url + "/v1", "sk-cloud", out var error);
+            Assert.IsNull(error);
+            Assert.IsTrue(pm.Toggle(out error), error);
+            await WaitUntil(() => pm.Choices().Any(c => c.Cloud));
+            pm.SetChoice(pm.Choices().First(c => c.Model == "Cloud/m1"));
+
+            var r = await Post(pm.Port, "{\"model\":\"Cloud/m1\",\"stream\":true,\"messages\":[]}", "Bearer sk-localer-schluessel");
+            StringAssert.StartsWith(r, "200");
+            Assert.IsTrue(provider.ChatPaths.Count > 0, "der Anbieter hat die Anfrage bekommen");
+            Assert.IsTrue(provider.ChatPaths.All(p => p.StartsWith("POST /v1/chat/completions ", StringComparison.Ordinal)),
+                string.Join(",", provider.ChatPaths));
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [TestMethod]
+    public void CloudRoot_DropsAV1Suffix_OnlyTheProxyAddsIt()
+    {
+        Assert.AreEqual("https://openrouter.ai/api", RouterProxy.CloudRoot("https://openrouter.ai/api/v1"));
+        Assert.AreEqual("https://api.example.com", RouterProxy.CloudRoot("https://api.example.com/v1/"));
+        Assert.AreEqual("http://127.0.0.1:8080", RouterProxy.CloudRoot("http://127.0.0.1:8080"));
     }
 
     // Ohne hinterlegten Schlüssel antwortet der Proxy mit einem klaren Hinweis statt den Anbieter zu fragen

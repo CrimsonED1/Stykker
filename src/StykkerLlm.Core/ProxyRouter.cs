@@ -77,7 +77,8 @@ public class RouterProxy : RequestProxy
         var rewritten = t.Model != null ? RewriteModel(body, t.Model) : body;
         var own = t.Cloud && AuthFor?.Invoke(t) is { Length: > 0 } key
             ? new[] { ("Authorization", "Bearer " + key) } : null;
-        if (t.HostId.Length == 0) return new ProxyRoute(t.Url, t.RouteKey, rewritten, Headers: own);
+        // Die Basis-URL eines Cloud-Anbieters endet oft auf /v1 (OpenRouter: …/api/v1); der Pfad des Clients bringt /v1 schon mit
+        if (t.HostId.Length == 0) return new ProxyRoute(t.Cloud ? CloudRoot(t.Url) : t.Url, t.RouteKey, rewritten, Headers: own);
         var via = HostClient?.Invoke(t.HostId);
         return via == null ? Local(503, ErrorJson(Strings.HostNotConnected)) : new ProxyRoute(t.Url, t.RouteKey, rewritten, Headers: own, Client: via);
     }
@@ -141,7 +142,7 @@ public class RouterProxy : RequestProxy
             send.Add((name, value));
         }
 
-        string url = t.Url.TrimEnd('/') + "/v1/chat/completions";
+        string url = (t.Cloud ? CloudRoot(t.Url) : t.Url.TrimEnd('/')) + "/v1/chat/completions";
         return new ProxyRoute("", t.RouteKey, null,
             LocalStream: (net, tap, token) => BridgeAsync(net, url, send, openAi, requested, own, via, tap, token));
     }
@@ -311,6 +312,13 @@ public class RouterProxy : RequestProxy
     private static bool Matches(ProxyTarget x, string wanted) =>
         (x.Model != null && x.Model.Equals(wanted, StringComparison.OrdinalIgnoreCase))
         || (x.PublicModel != null && x.PublicModel.Equals(wanted, StringComparison.OrdinalIgnoreCase));
+
+    // Die Wurzel, an die der Proxy den Pfad des Clients (/v1/…) hängt: eine Basis-URL, die schon auf /v1 endet, verliert es hier
+    internal static string CloudRoot(string baseUrl)
+    {
+        var u = baseUrl.TrimEnd('/');
+        return u.EndsWith("/v1", StringComparison.OrdinalIgnoreCase) ? u[..^3] : u;
+    }
 
     // Ein noch ladendes Ziel: bis LoadingWait warten, bis der Beobachter es als bereit meldet. Platzhalter-Zustand der Oberfläche
     // wird bei jedem Takt ersetzt, deshalb hier die jeweils aktuelle Fassung nachschlagen.

@@ -79,6 +79,8 @@ public sealed class ProxyProvider
 {
     public string Name { get; set; } = "";
     public string BaseUrl { get; set; } = "";
+    // Die angebotenen Modelle (aus dem Einrichtungs-Assistenten): null = alle, die der Anbieter liefert
+    public List<string>? Models { get; set; }
 }
 
 public sealed class AppSettings
