@@ -1,7 +1,7 @@
 # StykkerHUD
 
 Live resource monitor for this machine: processes, GPU, CPU and memory. Part of the Stykker family
-(`StykkerLLM`, `StykkerNanoCut`) and built on the **shared StykkerLLM design system** — same tokens,
+(`StykkerLLM`) and built on the **shared StykkerLLM design system** — same tokens,
 same components, same two themes (*Dark*, *Spacepunk Titan*).
 
 The interface is an instrument panel, not a table dump: every figure is mono with tabular digits,
@@ -98,7 +98,7 @@ asking protects it, cancelling changes nothing, confirming ends it, and the toas
 ## The design system is one source, not a copy
 
 The styles are **not** copied into this repository. The server serves them at `/ds` straight from
-`C:\_AI\Stykker\Design-System` (the folder the design-system zip was extracted to), so a change
+`C:\_AI\Stykker\MonoRepo\shared\design-system` (the monorepo's `shared/design-system` folder), so a change
 there is visible here at the next reload — one version for the whole family. Another location:
 `--design-system <folder>` or the environment variable `STYKKERHUD_DESIGN_SYSTEM`.
 
@@ -150,8 +150,8 @@ above the list**, not as the popover this draft drew).
 Regenerate (both themes; `-full.png` is the whole page, `-review.jpg` a small one for image reading):
 
 ```powershell
-node tools\shot.mjs --url file:///C:/_AI/Stykker/HUD/docs/design/mockup-2.html --out docs\screenshots --name mockup-2 --format png --height 1120
-node tools\shot.mjs --url file:///C:/_AI/Stykker/HUD/docs/design/mockup-1.html --out docs\screenshots --name mockup-1 --format png
+node tools\shot.mjs --url file:///C:/_AI/Stykker/MonoRepo/hud/docs/design/mockup-2.html --out docs\screenshots --name mockup-2 --format png --height 1120
+node tools\shot.mjs --url file:///C:/_AI/Stykker/MonoRepo/hud/docs/design/mockup-1.html --out docs\screenshots --name mockup-1 --format png
 ```
 
 `docs/design/mockup-2-onepager.html` is the same mockup as a **standalone** page: the design system is

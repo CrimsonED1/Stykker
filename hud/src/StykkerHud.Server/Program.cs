@@ -18,7 +18,7 @@ if (args.Contains("--help") || args.Contains("-h"))
           --basic           no system access: every value shows "-" (for trying that mode on Windows)
           --design-system <folder>
                             the shared design system served under /ds
-                            (default C:\_AI\Stykker\Design-System)
+                            (default C:\_AI\Stykker\MonoRepo\shared\design-system)
           --help            this text
 
         Endpoints: / (web interface), /api/snapshot (the current reading and the history as JSON).
@@ -67,7 +67,7 @@ app.UseStaticFiles();
 // die ganze Familie. --design-system <Ordner> oder STYKKERHUD_DESIGN_SYSTEM zeigen auf eine andere Stelle.
 var designSystem = args.SkipWhile(a => a != "--design-system").Skip(1).FirstOrDefault()
     ?? Environment.GetEnvironmentVariable("STYKKERHUD_DESIGN_SYSTEM")
-    ?? @"C:\_AI\Stykker\Design-System";
+    ?? @"C:\_AI\Stykker\MonoRepo\shared\design-system";
 if (Directory.Exists(designSystem))
 {
     app.UseStaticFiles(new StaticFileOptions
