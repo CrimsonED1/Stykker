@@ -84,6 +84,10 @@
         h.innerHTML = '<span class="logo">◆</span> STYKKER <span class="acc">LLM</span>';
         const p = document.createElement('p');
         p.textContent = m.text;
+        // Hinweis zum Server und Warnung, wenn eine Anfrage über den Proxy abbräche
+        const extra = [];
+        if (m.note) { const n = document.createElement('p'); n.className = 'muted'; n.textContent = m.note; extra.push(n); }
+        if (m.warning) { const w = document.createElement('p'); w.className = 'warn'; w.textContent = m.warning; extra.push(w); }
         const lab = document.createElement('label');
         lab.className = 'check';
         const rem = document.createElement('input');
@@ -101,7 +105,7 @@
         };
         const tray = btn(m.tray, 'primary', 'shell.tray', true);
         row.append(btn(m.cancel, 'ghost', 'shell.cancel', false), btn(m.quit, 'bad', 'shell.quit', true), tray);
-        box.append(h, p, lab, row);
+        box.append(h, p, ...extra, lab, row);
         back.append(box);
         back.addEventListener('click', (e) => { if (e.target === back) close('shell.cancel', false); });
         function esc(e) { if (e.key === 'Escape') close('shell.cancel', false); }

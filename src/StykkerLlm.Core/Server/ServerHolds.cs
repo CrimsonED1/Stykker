@@ -71,6 +71,31 @@ public sealed class ServerHolds
         catch (Exception) { return true; }
     }
 
+    // Was passiert, wenn das Fenster `leaving` jetzt geht. ownPages: die Webseiten, die es selbst offen hält (1, solange
+    // seine Seite steht). Gezählt werden nur die anderen, lebenden Mieten und Webseiten; verändert wird nichts.
+    public ShutdownOutlook Outlook(DateTime now, string leaving, int ownPages, bool keepRunning, bool busy, int proxyActive)
+    {
+        lock (_gate)
+        {
+            int windows = 0, terminals = 0;
+            foreach (var (id, until) in _leases)
+            {
+                if (id == leaving || until <= now || !Alive(id)) continue;
+                if (id.StartsWith("ui:", StringComparison.Ordinal)) windows++;
+                else terminals++;                        // tui und unbekannte Mieten zählen wie in Count
+            }
+            return new ShutdownOutlook(windows, terminals, Math.Max(0, _circuits - ownPages), keepRunning, busy, proxyActive);
+        }
+    }
+
+    // Läuft der Prozess hinter einer Miete noch? Ohne Prozessnummer oder ohne Prüfung gilt die Miete
+    private bool Alive(string id)
+    {
+        if (_processRunning == null) return true;
+        var pid = ProcessIdOf(id);
+        return pid is not int n || _processRunning(n);
+    }
+
     // Wer gerade hält (für Status und Log): "ui", "tui", "web" mit Anzahl
     public string Describe(DateTime now)
     {

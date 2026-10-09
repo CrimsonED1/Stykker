@@ -1,5 +1,6 @@
 using System.Net.Http.Headers;
 using System.Text;
+using System.Text.Json;
 
 namespace StykkerLlm.Core;
 
@@ -161,6 +162,25 @@ public sealed class ServerClient : IDisposable
     {
         try { using var _ = await _http.DeleteAsync("/api/hold?id=" + Uri.EscapeDataString(id), ct); }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or OperationCanceledException) { }
+    }
+
+    // Rückfrage beim Schließen eines Fensters: was passiert mit dem Server, wenn es jetzt geht. null, wenn der Server
+    // nicht antwortet – dann steht in der Rückfrage kein Hinweis.
+    public async Task<ShutdownHint?> ShutdownHintAsync(string leavingId, int ownPages, CancellationToken ct = default)
+    {
+        try
+        {
+            var url = "/api/shutdown-outlook?leaving=" + Uri.EscapeDataString(leavingId) + "&ownPages=" + ownPages;
+            using var resp = await _http.GetAsync(url, ct).ConfigureAwait(false);
+            if (!resp.IsSuccessStatusCode) return null;
+            using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false));
+            var root = doc.RootElement;
+            if (!root.TryGetProperty("note", out var note) || note.ValueKind != JsonValueKind.String) return null;
+            var warning = root.TryGetProperty("warning", out var w) && w.ValueKind == JsonValueKind.String ? w.GetString() : null;
+            var proxy = root.TryGetProperty("proxyActive", out var pa) && pa.ValueKind == JsonValueKind.Number ? pa.GetInt32() : 0;
+            return new ShutdownHint(note.GetString() ?? "", warning, proxy);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or OperationCanceledException or JsonException) { return null; }
     }
 
     // Der Zustand als JSON-Text (für den Fehlerbericht der TUI), null ohne Server

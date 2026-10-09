@@ -155,6 +155,19 @@ app.MapDelete("/api/hold", (string? id) =>
     return Results.Text("{\"ok\":true}", "application/json");
 });
 
+// Rückfrage beim Schließen eines Fensters: was passiert mit dem Server, wenn es jetzt geht (leaving = seine Miete,
+// ownPages = seine eigene Webseite, 1 solange sie steht). Nur lesen; gezählt wird wie beim tatsächlichen Beenden.
+bool stayArg = args.Contains("--stay");
+app.MapGet("/api/shutdown-outlook", (string? leaving, int? ownPages) =>
+{
+    var shutdown = engineHost.Holds.Outlook(DateTime.Now, leaving ?? "", ownPages ?? 0,
+        keepRunning: stayArg || engineHost.Engine.Settings.KeepServerRunning,
+        busy: engineHost.Queue?.Running == true || engineHost.Benchmarks.Running,
+        proxyActive: engineHost.Engine.Proxies.All.Sum(proxy => proxy.ActiveRequests));
+    var hint = shutdown.Hint();
+    return Results.Json(new { wouldStop = shutdown.WouldStop, note = hint.Note, warning = hint.Warning, proxyActive = shutdown.ProxyActive });
+});
+
 // Fehlerbericht herunterladen (nur Dateien aus bug-reports\, nur Admin)
 app.MapGet("/api/bugreport", (string? file, HttpContext ctx) =>
 {
@@ -304,7 +317,6 @@ if (!args.Contains("--no-tray") && TrayIcon.Possible)
 // Gebunden an Fenster/TUI/Webseite: ist niemand mehr da und läuft keine Arbeit, beendet sich der Server.
 // Ausnahme: --stay oder die Einstellung „Keep the server running“ (ein Node-PC ohne Bildschirm).
 var life = app.Services.GetRequiredService<IHostApplicationLifetime>();
-bool stayArg = args.Contains("--stay");
 using var lifeTimer = new Timer(_ =>
 {
     try

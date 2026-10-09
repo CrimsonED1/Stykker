@@ -71,7 +71,7 @@ internal static class Program
 
         using var hold = new ServerHold();
         // „Beim Schließen fragen, ob in den Tray": Tray-Symbol und Verstecken gibt es nur unter Windows.
-        CloseToTray? closeToTray = OperatingSystem.IsWindows() ? new CloseToTray(window, paths, hold.Release) : null;
+        CloseToTray? closeToTray = OperatingSystem.IsWindows() ? new CloseToTray(window, paths, hold.Release, hold.Hint) : null;
         if (closeToTray != null && OperatingSystem.IsWindows())
         {
             window.RegisterWindowClosingHandler(closeToTray.OnClosing);
@@ -290,6 +290,15 @@ internal sealed class ServerHold : IDisposable
         _timer = new Timer(_ => { _ = _client.HoldAsync(_id); }, null, 0, 5000);
     }
 
+    // Vor der Rückfrage: was passiert mit dem Server, wenn dieses Fenster jetzt geht (null, wenn der Server nicht antwortet).
+    // Höchstens eine Sekunde; der Server läuft auf diesem Rechner.
+    public ShutdownHint? Hint(bool ownPage)
+    {
+        if (_client == null) return null;
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(1));
+        return _client.ShutdownHintAsync(_id, ownPage ? 1 : 0, cts.Token).GetAwaiter().GetResult();
+    }
+
     // einmal; danach beendet sich der Server nach wenigen Sekunden, wenn ihn sonst niemand braucht
     public void Release()
     {
@@ -347,27 +356,33 @@ internal static class Html
 
     // Die Frage als Nachricht an die Seite: ui.js zeichnet daraus den Dialog über der aktuellen Seite (Texte von hier,
     // weil die Seite Strings nicht kennt)
-    public static string AskMessage() => JsonSerializer.Serialize(new Dictionary<string, string>
+    public static string AskMessage(ShutdownHint? hint) => JsonSerializer.Serialize(new Dictionary<string, string>
     {
         ["t"] = "ask", ["text"] = Strings.ShellCloseText, ["tray"] = Strings.ShellCloseTray, ["quit"] = Strings.ShellCloseQuit,
         ["cancel"] = Strings.ShellCloseCancel, ["remember"] = Strings.ShellCloseRemember,
+        ["note"] = hint?.Note ?? "", ["warning"] = hint?.Warning ?? "",
     });
+
+    // Der Hinweis zum Server unter der Frage; die Warnung (wenn eine Anfrage abbräche) in der Warnfarbe
+    private static string HintHtml(ShutdownHint? hint) => hint == null ? "" :
+        $"<p>{Esc(hint.Note)}</p>" + (hint.Warning == null ? "" : $"<p class=\"warn\">{Esc(hint.Warning)}</p>");
 
     // Die Rückfrage beim Schließen – eine Seite im Fenster in den Farben des Themas (dieselben CSS-Variablen wie die
     // Weboberfläche), damit sie genauso aussieht wie der Rest und keine zweite Oberfläche gebraucht wird.
-    public static string AskClose(ThemeInfo theme) => $$$"""
+    public static string AskClose(ThemeInfo theme, ShutdownHint? hint) => $$$"""
         <!doctype html><html lang="en"><head><meta charset="utf-8"><title>{{{Esc(Strings.AppName)}}}</title>
         <style>{{{theme.CssVariables()}}}
         body{margin:0;background:linear-gradient(180deg,var(--bg-top),var(--bg-bottom) 1200px);color:var(--ink);font:15px/1.6 var(--font);display:flex;align-items:center;justify-content:center;min-height:100vh}
         .box{background:linear-gradient(180deg,var(--card-top),var(--card-bottom));border:1px solid var(--card-border);border-radius:var(--radius);padding:24px 22px;max-width:440px;margin:16px;box-shadow:inset 0 1px 0 var(--top-line),0 18px 48px rgb(0 0 0/.5)}
         h1{font-size:16px;margin:0 0 10px;letter-spacing:.06em}.acc{color:var(--acc)}
-        p{color:var(--muted);margin:0 0 12px}label{display:block;color:var(--muted);font-size:13px;margin:0 0 16px;cursor:pointer}
+        p{color:var(--muted);margin:0 0 12px}label{display:block;color:var(--muted);font-size:13px;margin:0 0 16px;cursor:pointer}p.warn{color:var(--warn)}
         .row{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap}
         button{background:color-mix(in srgb,var(--bg) 88%,var(--acc));color:var(--ink);border:1px solid color-mix(in srgb,var(--bg) 45%,var(--acc));border-radius:999px;padding:8px 18px;font:inherit;cursor:pointer}
         button:hover{background:color-mix(in srgb,var(--bg) 70%,var(--acc))}button.ghost{background:transparent;color:var(--muted);border-color:var(--line)}
         </style></head><body><div class="box">
         <h1>◆ STYKKER <span class="acc">LLM</span></h1>
         <p>{{{Esc(Strings.ShellCloseText)}}}</p>
+        {{{HintHtml(hint)}}}
         <label><input type="checkbox" id="rem"> {{{Esc(Strings.ShellCloseRemember)}}}</label>
         <div class="row">
         <button class="ghost" onclick="tell('{{{MsgCancel}}}',false)">{{{Esc(Strings.ShellCloseCancel)}}}</button>
