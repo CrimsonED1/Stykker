@@ -7,7 +7,7 @@
     <Company>CrimsonED1</Company>
     <Product>StykkerHUD</Product>
     <Copyright>Copyright (c) CrimsonED1</Copyright>
-    <Description>Live resource monitor for this machine: processes, GPU, CPU and memory.</Description>
+    <Description>Live system monitor for this machine: CPU, memory, GPU, storage and network.</Description>
     <Deterministic>true</Deterministic>
     <!-- keine Commit-Kennung in der Produktversion (0.1.0 statt 0.1.0+hash) -->
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>

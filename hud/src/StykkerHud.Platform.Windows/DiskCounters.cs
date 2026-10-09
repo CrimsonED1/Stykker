@@ -1,3 +1,5 @@
+using Stykker.Shared.Windows;
+
 namespace StykkerHud.Platform.Windows;
 
 // Datenträger-Durchsatz der ganzen Maschine (Summe aller physischen Datenträger) über Leistungsindikatoren.

@@ -2,10 +2,8 @@
 // zugeklappt (und das Raster leer), öffnen sie sich auf Klick, und tragen Datenträger und Netzwerk Balken?
 //
 //   node tools/check-ui.mjs [--port 8079]
-import { createRequire } from "node:module";
-
-const require = createRequire("C:/_AI/llama.cpp-prism/build/tools/ui/ui-src/node_modules/");
-const { chromium } = require("playwright-core");
+import { chromium } from "playwright-core";
+import { cpus } from "node:os";
 
 const args = process.argv.slice(2);
 const value = (name, fallback) => {
@@ -15,12 +13,17 @@ const value = (name, fallback) => {
 const port = Number(value("--port", "8079"));
 
 const browser = await chromium.launch({
-    executablePath: "C:/Program Files (x86)/Google/Chrome/Application/chrome.exe",
+    channel: "chrome",
     headless: true,
 });
 
 const checks = [];
 const check = (name, ok, detail) => { checks.push({ name, ok, detail }); };
+
+// Was der Rechner meldet: die Zahl der Kerne (wie Environment.ProcessorCount im Server) und ob die Grafikkarte ein
+// Leistungslimit nennt. Die Prüfung richtet sich danach, statt eine feste Maschine anzunehmen.
+const cores = cpus().length;
+const snapshot = await (await fetch(`http://127.0.0.1:${port}/api/snapshot`, { cache: "no-store" })).json();
 
 try {
     const page = await browser.newPage({ viewport: { width: 1400, height: 1000 } });
@@ -56,7 +59,7 @@ try {
         first: document.querySelector("#cores .ctx")?.innerText.replace(/\s+/g, " ").trim() ?? null,
     }));
     check("clicking the line opens it", opened.foldOpen === true, `open=${opened.foldOpen}`);
-    check("core rows appear when open", opened.rows === 16, `${opened.rows} rows, first "${opened.first}"`);
+    check("core rows appear when open", opened.rows === cores && cores > 0,`${opened.rows} rows, first "${opened.first}"`);
 
     // Die Balken: Breite gesetzt (nicht leer) und der Text nennt Wert und Sockel.
     for (const row of closed.io) {
@@ -94,7 +97,10 @@ try {
             `rows ${row.layout.join("+")} of ${row.cellWidth}px, worst overflow ${row.overflow}px`);
     check("engine bars and legend rows match", grid.bars.length === grid.engines.length,
         `${grid.bars.length} bars, ${grid.engines.length} legend rows`);
-    check("power cell names the limit", /^\/ \d+ W$/.test(grid.power || ""), `"${grid.power}"`);
+    const limit = snapshot.gpu?.powerLimitW ?? -1;
+    check("power cell names the limit when the card reports one",
+        limit > 0 ? /^\/ \d+ W$/.test(grid.power || "") : grid.power === "W",
+        `"${grid.power}" (limit ${limit})`);
 
     // Die Engine-Aufteilung kommt aus den Leistungsindikatoren; über ein paar Takte muss sie einmal auftauchen.
     let engines = [];

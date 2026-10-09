@@ -10,4 +10,8 @@
     <RootNamespace>StykkerHud.Core</RootNamespace>
   </PropertyGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\shared\src\Stykker.Shared\Stykker.Shared.csproj" />
+  </ItemGroup>
+
 </Project>
