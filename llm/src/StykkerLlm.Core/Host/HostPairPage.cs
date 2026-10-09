@@ -157,7 +157,7 @@ public sealed class HostPairPage : IDisposable
             <title>{{{Esc(Strings.HostPairTitle)}}}</title><style>{{{Style}}}</style></head><body><form class="box" method="post" action="pair">
             <h1>◆ STYKKER <b>HOST</b></h1><p>{{{Esc(Strings.HostPairHint)}}}</p>
             <label>{{{Esc(Strings.HostPairFound)}}}</label><div id="found"><p>{{{Esc(Strings.HostPairSearching)}}}</p></div>
-            <label for="server">{{{Esc(Strings.HostPairServer)}}}</label><input id="server" name="server" placeholder="http://192.168.1.10:8078" required>
+            <label for="server">{{{Esc(Strings.HostPairServer)}}}</label><input id="server" name="server" placeholder="http://192.168.1.10:17400" required>
             <label for="code">{{{Esc(Strings.HostPairCode)}}}</label><input id="code" class="code" name="code" inputmode="numeric" maxlength="7" placeholder="123456" required>
             <button type="submit">{{{Esc(Strings.HostPairButton)}}}</button></form>
             <script>

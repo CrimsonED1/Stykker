@@ -250,10 +250,10 @@ internal sealed record ShellArgs(int Port, string? DataDir, bool Gpu, string Pag
     // intern: der Wächter startet so das eigentliche Fenster
     public const string ChildFlag = "--window-process";
 
-    // StykkerUI [--port 8078] [--data-dir <ordner>] [--gpu] [--page runs]
+    // StykkerUI [--port 17400] [--data-dir <ordner>] [--gpu] [--page runs]
     public static ShellArgs Parse(string[] args)
     {
-        int port = 8078; string? data = null; bool gpu = false; string page = ""; bool child = false;
+        int port = 17400; string? data = null; bool gpu = false; string page = ""; bool child = false;
         for (int i = 0; i < args.Length; i++)
         {
             switch (args[i])

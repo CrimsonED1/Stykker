@@ -19,7 +19,7 @@ their models as if they were local.
 
 1. On the server open **☰ → Hosts**. It shows a six-digit code (valid 10 minutes, once).
 2. Start `StykkerHost.exe` on the other PC. Its tray icon offers **Pair with a server …**: a small page lists the servers
-   it finds in the network (or type the address, e.g. `http://pc:8078`) and asks for the code.
+   it finds in the network (or type the address, e.g. `http://pc:17400`) and asks for the code.
 3. The host stores a token (Windows DPAPI) and connects. It reconnects by itself after a restart or a network gap.
 
 Hosts in the network need **Home/VPN** switched on at the server (☰ → Phone access). The host opens no port: it connects
@@ -57,7 +57,7 @@ administrator**, in the folder where `StykkerHost.exe` should stay:
 
 ```
 StykkerHost install-service
-StykkerHost pair-service http://server:8078 123456
+StykkerHost pair-service http://server:17400 123456
 ```
 
 - The service starts with Windows (delayed) and restarts after a crash. It has no tray icon; the server shows it in

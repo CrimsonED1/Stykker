@@ -53,7 +53,7 @@ public sealed class AccessGate(AccessControl access, string key, int port, Func<
         //    und die Anfragen sollen sich nicht von außen anlegen lassen.
         if (path.StartsWith("/pair", StringComparison.OrdinalIgnoreCase))
         {
-            if (!loopback && !access.RemoteEnabled)
+            if (!loopback && !access.AllowsRemote(remote))
             {
                 await Text(ctx, StatusCodes.Status403Forbidden, Strings.RemoteOff + "\n\n" + Strings.RemoteHint);
                 return true;
@@ -75,7 +75,7 @@ public sealed class AccessGate(AccessControl access, string key, int port, Func<
         // 2b) Model-Hosts wählen sich ein (WebSocket mit Host-Token, geprüft am Endpunkt). Von außen nur mit Home/VPN.
         if (path.StartsWith("/hosts/", StringComparison.OrdinalIgnoreCase))
         {
-            if (!loopback && !access.RemoteEnabled)
+            if (!loopback && !access.AllowsRemote(remote))
             {
                 await Text(ctx, StatusCodes.Status403Forbidden, Strings.RemoteOff);
                 return true;
@@ -90,14 +90,14 @@ public sealed class AccessGate(AccessControl access, string key, int port, Func<
             return false;
 
         // 4) Von außen nur mit Schalter
-        if (!loopback && !access.RemoteEnabled)
+        if (!loopback && !access.AllowsRemote(remote))
         {
             await Text(ctx, StatusCodes.Status403Forbidden, Strings.RemoteOff + "\n\n" + Strings.RemoteHint);
             return true;
         }
 
         // 5) Host-Kopf prüfen (nur wenn nur dieser PC erreichbar ist): verhindert Zugriff über einen fremden Domainnamen
-        if (!access.RemoteEnabled && !HostMatchesSelf(ctx.Request.Host))
+        if (!access.RemoteEnabled && !NetAddr.IsOwnHost(ctx.Request.Host.Value, access.TailscaleEnabled))
         {
             await Text(ctx, StatusCodes.Status403Forbidden, "Wrong host name. Open http://" + NetAddr.Url("127.0.0.1", port));
             return true;
@@ -132,14 +132,6 @@ public sealed class AccessGate(AccessControl access, string key, int port, Func<
         var token = ctx.Request.Cookies[StateJson.CookieName];
         var role = string.IsNullOrEmpty(token) ? null : access.RoleOf(token, address);
         return role == null ? null : (role, "cookie");
-    }
-
-    private static bool HostMatchesSelf(HostString host)
-    {
-        var value = host.Value ?? "";
-        if (value.Length == 0) return true;                       // HTTP/1.0 ohne Host
-        var name = value.Contains(':') && !value.StartsWith('[') ? value[..value.IndexOf(':')] : value;
-        return name is "127.0.0.1" or "localhost" or "::1" or "[::1]" or "0.0.0.0";
     }
 
     private static string DeviceName(HttpContext ctx, string? given)

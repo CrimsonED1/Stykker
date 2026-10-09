@@ -13,9 +13,9 @@ public class N60_HostServiceTests
     {
         var paths = Temp();
         Assert.IsNull(HostServiceFiles.TakeRequest(paths));
-        HostServiceFiles.WriteRequest(paths, new HostServiceFiles.Request("http://pc:8078", "123456"));
+        HostServiceFiles.WriteRequest(paths, new HostServiceFiles.Request("http://pc:17400", "123456"));
         var req = HostServiceFiles.TakeRequest(paths);
-        Assert.AreEqual("http://pc:8078", req!.Server);
+        Assert.AreEqual("http://pc:17400", req!.Server);
         Assert.AreEqual("123456", req.Code);
         Assert.IsFalse(req.Unpair);
         Assert.IsNull(HostServiceFiles.TakeRequest(paths), "der Code gilt nur einmal: die Anfrage ist weg");

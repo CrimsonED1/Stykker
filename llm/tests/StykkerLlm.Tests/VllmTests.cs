@@ -172,7 +172,7 @@ public class VllmTests
 
         // t/s stammen aus /metrics; der Zustand nennt den Server als vllm
         Assert.IsTrue(w.Peak > 0, $"Erzeugungs-Tokens/s aus vllm:avg_generation_throughput_toks_per_s – current={w.Current:0.0} peak={w.Peak:0.0} hist={w.HistoryCount}");
-        var json = StateJson.WriteText(host.Engine, null, null, 8078, DateTimeOffset.Now);
+        var json = StateJson.WriteText(host.Engine, null, null, 17400, DateTimeOffset.Now);
         StringAssert.Contains(json, "\"backend\":\"vllm\"");
         Assert.IsTrue(w.QueueCount is >= 0, "Warteschlange aus vllm:num_requests_waiting: " + w.QueueCount);
     }

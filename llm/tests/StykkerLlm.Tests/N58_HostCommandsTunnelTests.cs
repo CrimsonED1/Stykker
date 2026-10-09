@@ -49,7 +49,7 @@ public class N58_HostCommandsTunnelTests
         var (s, c) = await SocketPair();
         var stop = new CancellationTokenSource();
         var serving = hub.HandleAsync(s, entry, "127.0.0.1", stop.Token);
-        var link = new HostLinkClient(new HostConfig { Server = "http://pc:8078", Token = token }, () => "{}", "box", "1",
+        var link = new HostLinkClient(new HostConfig { Server = "http://pc:17400", Token = token }, () => "{}", "box", "1",
             TimeSpan.FromMilliseconds(200), _ => Task.FromResult(c), onCommand, local);
         var running = link.RunAsync(stop.Token);
         var end = DateTime.Now.AddSeconds(5);

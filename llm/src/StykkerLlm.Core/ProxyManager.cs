@@ -183,7 +183,7 @@ public sealed class ProxyManager : IDisposable
 
     // Anbieter eintragen: Name, Basis-URL und Schlüssel. Der Schlüssel wird DPAPI-geschützt abgelegt (ProviderKeys) und
     // erst dann wird der Anbieter abgefragt – ohne ihn geht keine Anfrage ins Netz (Opt-in je Anbieter).
-    public void AddProvider(string name, string url, string key, out string? error)
+    public void AddProvider(string name, string url, string key, out string? error, IEnumerable<string>? models = null)
     {
         error = null;
         url = ProviderKeys.Normalize(url);
@@ -191,14 +191,68 @@ public sealed class ProxyManager : IDisposable
         if (url.Length == 0 || !url.StartsWith("http", StringComparison.OrdinalIgnoreCase)) { error = Strings.ProxyProviderUrlInvalid; return; }
         if (string.IsNullOrWhiteSpace(key)) { error = Strings.ProxyProviderKeyMissing; return; }
         if (name.Length == 0) name = ProviderLabel(url);
+        var chosen = models == null ? null : ChosenModels(models);
+        if (chosen is { Count: 0 }) { error = Strings.ProxyProviderNoModelsChosen; return; }
         _keys?.Set(url, key);
         _settings.ProxyProviders.RemoveAll(p => ProviderKeys.Normalize(p.BaseUrl).Equals(url, StringComparison.OrdinalIgnoreCase));
-        _settings.ProxyProviders.Add(new ProxyProvider { Name = name, BaseUrl = url });
+        _settings.ProxyProviders.Add(new ProxyProvider { Name = name, BaseUrl = url, Models = chosen });
         _settings.Save();
         lock (_providerLock) _provider.Remove(url);
         RefreshProviders();
         PushTargets();
     }
+
+    // Die angebotenen Modelle eines eingetragenen Anbieters setzen (Auswahl im Einrichtungs-Assistenten), mindestens eines
+    public void SetProviderModels(string url, IEnumerable<string> models, out string? error)
+    {
+        error = null;
+        url = ProviderKeys.Normalize(url);
+        var chosen = ChosenModels(models);
+        if (chosen.Count == 0) { error = Strings.ProxyProviderNoModelsChosen; return; }
+        var p = _settings.ProxyProviders.FirstOrDefault(x => ProviderKeys.Normalize(x.BaseUrl).Equals(url, StringComparison.OrdinalIgnoreCase));
+        if (p == null) { error = Strings.ProxyProviderUnknown; return; }
+        p.Models = chosen;
+        _settings.Save();
+        PushTargets();
+    }
+
+    // Welche Modelle eines Anbieters gewählt sind (null = alle, so ist ein Anbieter ohne Auswahl eingetragen)
+    public IReadOnlyList<string>? EnabledModelsFor(string url)
+    {
+        var key = ProviderKeys.Normalize(url);
+        return _settings.ProxyProviders.FirstOrDefault(x => ProviderKeys.Normalize(x.BaseUrl).Equals(key, StringComparison.OrdinalIgnoreCase))?.Models;
+    }
+
+    // Die Modellliste eines Anbieters mit einem Schlüssel abfragen, ohne etwas zu speichern. Ohne Schlüssel im Feld gilt der
+    // hinterlegte: so lädt der Assistent die Liste beim Ändern der Auswahl, ohne den Schlüssel erneut einzugeben.
+    public async Task<(string[] Models, string? Error)> ProbeProviderAsync(string url, string? key, CancellationToken ct = default)
+    {
+        url = ProviderKeys.Normalize(url);
+        if (url.Length == 0 || !url.StartsWith("http", StringComparison.OrdinalIgnoreCase)) return (Array.Empty<string>(), Strings.ProxyProviderUrlInvalid);
+        var k = string.IsNullOrWhiteSpace(key) ? _keys?.Get(url) : key.Trim();
+        if (string.IsNullOrEmpty(k)) return (Array.Empty<string>(), Strings.ProxyProviderKeyMissing);
+        return await FetchModelsAsync(url, k, ct).ConfigureAwait(false);
+    }
+
+    // Die Modelle, die dieser Schlüssel nutzen darf, laut Anbieter (OpenRouter: /models/user, nach Datenschutz- und Guardrail-
+    // Einstellungen gefiltert). Ergebnis: die Modelle und ob der Abruf fehlgeschlagen ist. Modelle = null: bei diesem Anbieter
+    // gibt es keine solche Liste, oder es fehlt der Schlüssel. Nichts wird gespeichert.
+    public async Task<(string[]? Models, bool Failed)> UsableModelsAsync(string url, string? key, CancellationToken ct = default)
+    {
+        url = ProviderKeys.Normalize(url);
+        var path = UsableModelsPath(url);
+        if (path == null || !url.StartsWith("http", StringComparison.OrdinalIgnoreCase)) return (null, false);
+        var k = string.IsNullOrWhiteSpace(key) ? _keys?.Get(url) : key.Trim();
+        if (string.IsNullOrEmpty(k)) return (null, false);
+        var (models, error) = await GetModelIdsAsync(url, path, k, ct).ConfigureAwait(false);
+        if (error != null) return (null, true);
+        return (models, false);
+    }
+
+    // Der Endpunkt mit den Modellen, die ein Schlüssel nutzen darf. Bisher nur OpenRouter (/models/user); sonst null
+    internal static string? UsableModelsPath(string url) =>
+        Uri.TryCreate(url, UriKind.Absolute, out var u) && (u.Host.Equals("openrouter.ai", StringComparison.OrdinalIgnoreCase) || u.Host.EndsWith(".openrouter.ai", StringComparison.OrdinalIgnoreCase))
+            ? "/models/user" : null;
 
     // Schlüssel ersetzen (der Anbieter bleibt eingetragen); leer = Schlüssel entfernen, dann wird er nicht mehr abgefragt
     public void SetProviderKey(string url, string key, out string? error)
@@ -293,6 +347,33 @@ public sealed class ProxyManager : IDisposable
         RefreshRemotes();
         RefreshProviders();
         return true;
+    }
+
+    // Die gewählten Modelle, ohne Leerzeilen und ohne Doppelte (Groß-/Kleinschreibung egal)
+    internal static List<string> ChosenModels(IEnumerable<string> models) =>
+        models.Select(m => (m ?? "").Trim()).Where(m => m.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+
+    // Welche Modelle eines Anbieters angeboten werden: ohne Auswahl alle, mit Auswahl nur die gewählten
+    internal static IReadOnlyList<string> OfferedModels(IEnumerable<string> fetched, IEnumerable<string>? enabled)
+    {
+        if (enabled == null) return fetched.ToList();
+        var chosen = new HashSet<string>(enabled, StringComparer.OrdinalIgnoreCase);
+        return fetched.Where(m => chosen.Contains(m)).ToList();
+    }
+
+    // Die Liste für den Assistenten: zuerst die Modelle, die dieser Schlüssel nutzen darf (in Katalogreihenfolge), dann die
+    // übrigen. Ohne Angabe (null) bleibt die Reihenfolge, und keines gilt als nutzbar.
+    public static IReadOnlyList<(string Id, bool Usable)> OrderForWizard(IEnumerable<string> models, IEnumerable<string>? usable)
+    {
+        var catalog = models.ToList();
+        if (usable == null) return catalog.Select(m => (m, false)).ToList();
+        var allowed = usable.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        var set = new HashSet<string>(allowed, StringComparer.OrdinalIgnoreCase);
+        var seen = new HashSet<string>(catalog, StringComparer.OrdinalIgnoreCase);
+        return catalog.Where(set.Contains).Select(m => (m, true))
+            .Concat(allowed.Where(a => !seen.Contains(a)).Select(a => (a, true)))
+            .Concat(catalog.Where(m => !set.Contains(m)).Select(m => (m, false)))
+            .ToList();
     }
 
     // Die Basis-URL aus einer Cloud-Zielkennung („provider:<Basis-URL>|<Modell>")
@@ -420,7 +501,32 @@ public sealed class ProxyManager : IDisposable
         });
     }
 
-    // Die Modelle live beim Anbieter holen – der einzige Ort, der dafür einen Schlüssel verwendet
+    // Die Modelle live beim Anbieter holen – der einzige Ort, der einen Schlüssel an den Anbieter schickt (an die Adresse,
+    // die der Nutzer eingetragen hat). Ergebnis: die IDs und ein Fehlertext (sonst null)
+    private async Task<(string[] Models, string? Error)> GetModelIdsAsync(string url, string path, string key, CancellationToken ct)
+    {
+        try
+        {
+            using var req = new HttpRequestMessage(HttpMethod.Get, url + path);
+            req.Headers.TryAddWithoutValidation("Authorization", "Bearer " + key);
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            cts.CancelAfter(TimeSpan.FromSeconds(10));
+            using var resp = await _http.SendAsync(req, cts.Token).ConfigureAwait(false);
+            var json = await resp.Content.ReadAsStringAsync(cts.Token).ConfigureAwait(false);
+            if (!resp.IsSuccessStatusCode) return (Array.Empty<string>(), Strings.ProxyProviderModelError((int)resp.StatusCode));
+            return (ParseModelIds(json), null);
+        }
+        catch (Exception ex) { return (Array.Empty<string>(), Strings.ProxyProviderOffline(ex.Message)); }
+    }
+
+    // Die Modellliste eines Anbieters holen: ohne Modelle ist das ein Fehler
+    private async Task<(string[] Models, string? Error)> FetchModelsAsync(string url, string key, CancellationToken ct)
+    {
+        var (models, error) = await GetModelIdsAsync(url, "/models", key, ct).ConfigureAwait(false);
+        if (error != null) return (models, error);
+        return models.Length == 0 ? (models, Strings.ProxyProviderNoModels) : (models, null);
+    }
+
     private async Task RefreshProvidersAsync()
     {
         foreach (var p in _settings.ProxyProviders.ToList())
@@ -429,22 +535,10 @@ public sealed class ProxyManager : IDisposable
             var st = new ProviderState { LastTry = _now() };
             var key = _keys?.Get(url);
             if (string.IsNullOrEmpty(key)) { st.Error = Strings.ProxyProviderKeyMissing; lock (_providerLock) _provider[url] = st; continue; }
-            try
-            {
-                using var req = new HttpRequestMessage(HttpMethod.Get, url + "/models");
-                req.Headers.TryAddWithoutValidation("Authorization", "Bearer " + key);
-                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-                using var resp = await _http.SendAsync(req, cts.Token).ConfigureAwait(false);
-                var json = await resp.Content.ReadAsStringAsync(cts.Token).ConfigureAwait(false);
-                if (!resp.IsSuccessStatusCode) st.Error = Strings.ProxyProviderModelError((int)resp.StatusCode);
-                else
-                {
-                    st.Models = ParseModelIds(json);
-                    st.Ready = st.Models.Length > 0;
-                    if (!st.Ready) st.Error = Strings.ProxyProviderNoModels;
-                }
-            }
-            catch (Exception ex) { st.Error = Strings.ProxyProviderOffline(ex.Message); }
+            var (models, error) = await FetchModelsAsync(url, key, CancellationToken.None).ConfigureAwait(false);
+            st.Models = models;
+            st.Ready = models.Length > 0;
+            st.Error = error ?? "";
             lock (_providerLock) _provider[url] = st;
         }
         PushTargets();   // die neuen Modelle sofort anbieten
@@ -504,7 +598,7 @@ public sealed class ProxyManager : IDisposable
             string name = string.IsNullOrWhiteSpace(p.Name) ? ProviderLabel(url) : p.Name;
             ProviderState? st;
             lock (_providerLock) st = _provider.TryGetValue(url, out var cur) ? cur : null;
-            foreach (var m in st?.Models ?? Array.Empty<string>())
+            foreach (var m in OfferedModels(st?.Models ?? Array.Empty<string>(), p.Models))
                 targets.Add(new ProxyTarget(ProxyTarget.CloudKey(url, m), url, m, BackendKind.LmStudio, st?.Ready == true, false,
                     ServerKey: "", Remote: true, PublicModel: $"{name}/{m}", DisplayName: $"{name} · {m}", Cloud: true));
         }

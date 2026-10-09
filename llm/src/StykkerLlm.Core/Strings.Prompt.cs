@@ -12,15 +12,16 @@ public static partial class Strings
     public const string PromptThinking = "thinking";
     public const string PromptYou = "You", PromptModelSays = "Model";
     public const string PromptBusy = "An answer is still coming.";
-    public const string PromptNeedsKey = "The server wants an API key (started with --api-key). Enter it in the field above.";
+    public const string PromptNeedsKey = "The server wants an API key (started with --api-key). Enter it under Advanced.";
     public const string PromptNoServer = "No server with a loaded model.";
+    public const string PromptCloudNeedsProxy = "Cloud models run through the Stykker proxy. Turn the proxy on (Monitor page) to use them.";
     public static string PromptHttpError(int code, string text) => $"HTTP {code}: {text}";
     public static string PromptNotReachable(string why) => $"Server not reachable: {why}";
     // Werkzeuge
     public const string PromptToolsOn = "Tools: read, list, write, edit, cmd/PowerShell";
     public const string PromptWorkdir = "Working folder (tools stay inside)";
     public const string PromptAutoApprove = "write, edit and commands without asking";
-    public const string PromptToolsHint = "The model may read and list files in the working folder. Writing, editing and commands ask first – a command can reach beyond the folder, so read it before you allow it. llama.cpp needs --jinja for tools.";
+    public const string PromptToolsHint = "Reading and listing stay in the working folder. Writing, editing and commands ask first; a command can reach beyond the folder. llama.cpp needs --jinja for tools.";
     public const string ToolApproveTitle = "The model wants to run a tool";
     public const string BtnAllow = "Allow", BtnRefuse = "Refuse";
     public const string ToolDenied = "Refused by the user.";
@@ -29,6 +30,10 @@ public static partial class Strings
     public const string ToolTimeout = "Stopped after 60 s.";
     public const string ToolTruncated = "… (output cut)";
     public const string PromptNoWorkdir = "Pick a working folder that exists.";
+    // Ordner-Wähler und erweiterte Optionen der Prompt-Seite
+    public const string PromptChooseFolder = "Choose folder…", PromptUseFolder = "Use this folder", PromptFolderCancel = "Cancel";
+    public const string PromptFolderUp = "Up one level", PromptFolderDrives = "Drives", PromptFolderEmpty = "No subfolders here.";
+    public const string PromptFolderFailed = "This folder can't be opened.", PromptAdvanced = "Advanced";
     public static string ToolNotFound(string path) => $"Not found: {path}";
     public static string ToolTooBig(int bytes) => $"File is larger than {bytes / 1000} KB – read it with offset and limit.";
     public static string ToolWritten(string path, int chars) => $"Wrote {path} ({chars} chars).";

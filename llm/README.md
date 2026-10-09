@@ -55,7 +55,7 @@ any browser or your phone; keep an eye on it in the terminal. Nothing leaves you
 | Program | What it is |
 |---|---|
 | `StykkerUI.exe` | **The app window.** Opens at once with a start screen, starts the server if needed and shows the web interface without a browser. Uses **no GPU memory** (rendering in software). Closing asks: keep it in the tray, quit, or cancel. |
-| `StykkerLLM-Server.exe` | **The core**: measures, starts and stops, and serves the web interface on **http://127.0.0.1:8078** – for any browser and your phone. You normally never start it yourself. |
+| `StykkerLLM-Server.exe` | **The core**: measures, starts and stops, and serves the web interface on **http://127.0.0.1:17400** – for any browser and your phone. You normally never start it yourself. |
 | `stykker.exe` | **The terminal display**: GPU, system, running servers and the web address at a glance. It only shows; everything is controlled in the web interface (press `w`). |
 
 ![StykkerUI window](docs/images/window.png)
@@ -129,7 +129,7 @@ stykker help | version
 - **Roles**: *Admin* may do everything, *Viewer* only looks (no actions, no access code).
 - **Model hosts** (☰ → Hosts): pair a PC running `StykkerHost.exe` with a six-digit code, then see its GPU, start and
   stop its models; the proxy uses them like local ones. See [docs/hosts.md](docs/hosts.md).
-- **Metrics** for status bars and dashboards: `http://127.0.0.1:8078/api/metrics` (Prometheus text, this machine only).
+- **Metrics** for status bars and dashboards: `http://127.0.0.1:17400/api/metrics` (Prometheus text, this machine only).
 
 There is no HTTPS yet: use it in your own network or over a VPN such as Tailscale, not on the open internet.
 

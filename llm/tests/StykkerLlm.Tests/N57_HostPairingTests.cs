@@ -45,18 +45,18 @@ public class N57_HostPairingTests
     {
         var h = new FakeHandler();
         h.Responder = (key, _) => key.EndsWith("/hosts/pair") ? (HttpStatusCode.OK, "{\"ok\":true,\"token\":\"tok\",\"id\":\"abc\",\"serverName\":\"MAIN\"}") : null;
-        var ok = await HostPairClient.PairAsync("http://pc:8078", "123456", "box", h);
+        var ok = await HostPairClient.PairAsync("http://pc:17400", "123456", "box", h);
         Assert.IsTrue(ok.Ok);
         Assert.AreEqual("tok", ok.Token);
         Assert.AreEqual("MAIN", ok.ServerName);
 
         var no = new FakeHandler();
         no.Responder = (key, _) => (HttpStatusCode.Unauthorized, "{\"ok\":false,\"message\":\"" + Strings.HostPairWrongCode + "\"}");
-        var refused = await HostPairClient.PairAsync("http://pc:8078/", "000000", "box", no);
+        var refused = await HostPairClient.PairAsync("http://pc:17400/", "000000", "box", no);
         Assert.IsFalse(refused.Ok);
         Assert.AreEqual(Strings.HostPairWrongCode, refused.Message);
 
-        Assert.AreEqual(Strings.HostPairBadUrl, (await HostPairClient.PairAsync("pc:8078", "1", "box", h)).Message);
+        Assert.AreEqual(Strings.HostPairBadUrl, (await HostPairClient.PairAsync("pc:17400", "1", "box", h)).Message);
         Assert.AreEqual(Strings.HostPairBadUrl, (await HostPairClient.PairAsync("ftp://pc", "1", "box", h)).Message);
     }
 
@@ -68,7 +68,7 @@ public class N57_HostPairingTests
         {
             gotServer = server; gotCode = code;
             return Task.FromResult(new HostPairClient.Result(true, Strings.HostPairDone("MAIN"), "tok", "MAIN"));
-        }, _ => Task.FromResult(new List<DiscoveredNode> { new("MAIN", "http://192.168.1.10:8078", true, false) }));
+        }, _ => Task.FromResult(new List<DiscoveredNode> { new("MAIN", "http://192.168.1.10:17400", true, false) }));
         page.Start();
         StringAssert.StartsWith(page.Url, "http://localhost:");
         using var http = new HttpClient();
@@ -81,10 +81,10 @@ public class N57_HostPairingTests
         var root = new Uri(page.Url).GetLeftPart(UriPartial.Authority);
         Assert.AreEqual(HttpStatusCode.NotFound, (await http.GetAsync(root + "/")).StatusCode, "without the secret path there is nothing");
 
-        var post = await http.PostAsync(page.Url + "pair", new FormUrlEncodedContent(new Dictionary<string, string> { ["server"] = "http://192.168.1.10:8078", ["code"] = "123 456" }));
+        var post = await http.PostAsync(page.Url + "pair", new FormUrlEncodedContent(new Dictionary<string, string> { ["server"] = "http://192.168.1.10:17400", ["code"] = "123 456" }));
         Assert.AreEqual(HttpStatusCode.OK, post.StatusCode);
         StringAssert.Contains(await post.Content.ReadAsStringAsync(), "MAIN");
-        Assert.AreEqual("http://192.168.1.10:8078", gotServer);
+        Assert.AreEqual("http://192.168.1.10:17400", gotServer);
         Assert.AreEqual("123 456", gotCode);
     }
 }
