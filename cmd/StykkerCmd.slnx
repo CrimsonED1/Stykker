@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/StykkerCmd.Core/StykkerCmd.Core.csproj" />
+    <Project Path="src/StykkerCmd.Platform.Windows/StykkerCmd.Platform.Windows.csproj" />
+    <Project Path="src/StykkerCmd.Platform.Linux/StykkerCmd.Platform.Linux.csproj" />
+    <Project Path="src/StykkerCmd.UI/StykkerCmd.UI.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/StykkerCmd.Core.Tests/StykkerCmd.Core.Tests.csproj" />
+    <Project Path="tests/StykkerCmd.Platform.Tests/StykkerCmd.Platform.Tests.csproj" />
+  </Folder>
+</Solution>

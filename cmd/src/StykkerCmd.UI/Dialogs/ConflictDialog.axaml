@@ -1,0 +1,48 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="StykkerCmd.UI.Dialogs.ConflictDialog"
+        Title="Konflikt"
+        Width="580" SizeToContent="Height" CanResize="False"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource card}"
+        Foreground="{DynamicResource ink}"
+        FontFamily="{DynamicResource SansFont}"
+        FontSize="13">
+
+    <Window.Styles>
+        <Style Selector="Button">
+            <Setter Property="Padding" Value="14,7" />
+            <Setter Property="MinWidth" Value="110" />
+            <Setter Property="Background" Value="{DynamicResource card-2}" />
+            <Setter Property="Foreground" Value="{DynamicResource ink}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource line}" />
+        </Style>
+        <Style Selector="Button.primary">
+            <Setter Property="Background" Value="{DynamicResource acc}" />
+            <Setter Property="Foreground" Value="{DynamicResource bg}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource acc}" />
+        </Style>
+    </Window.Styles>
+
+    <StackPanel Margin="22" Spacing="12">
+        <TextBlock x:Name="Heading" FontSize="16" FontWeight="SemiBold" TextWrapping="Wrap" />
+
+        <Border Background="{DynamicResource card-2}" CornerRadius="{DynamicResource PanelRadius}" Padding="14">
+            <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto">
+                <TextBlock Grid.Row="0" Grid.Column="0" Text="Vorhanden" Foreground="{DynamicResource muted}" Margin="0,0,16,8" />
+                <TextBlock Grid.Row="0" Grid.Column="1" x:Name="TargetInfo" TextWrapping="Wrap" Margin="0,0,0,8" />
+                <TextBlock Grid.Row="1" Grid.Column="0" Text="Neu" Foreground="{DynamicResource muted}" Margin="0,0,16,0" />
+                <TextBlock Grid.Row="1" Grid.Column="1" x:Name="SourceInfo" TextWrapping="Wrap" />
+            </Grid>
+        </Border>
+
+        <CheckBox x:Name="ApplyToAll" Content="Für alle weiteren Konflikte in diesem Vorgang" />
+
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="10" Margin="0,6,0,0">
+            <Button x:Name="OverwriteButton" Content="Überschreiben" Tag="overwrite" Click="OnChoice" />
+            <Button Content="Umbenennen" Tag="rename" Click="OnChoice" />
+            <Button x:Name="SkipButton" Content="Überspringen" Tag="skip" Classes="primary" IsDefault="True" Click="OnChoice" />
+            <Button Content="Abbrechen" Tag="cancel" IsCancel="True" Click="OnChoice" />
+        </StackPanel>
+    </StackPanel>
+</Window>
