@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- StykkerHud.Core: das Modell der Messwerte und die Messschleife. Kennt kein Betriebssystem und keine
+       Oberfläche – die Sonde (ISystemProbe) liefert die Zahlen von außen herein. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>StykkerHud.Core</AssemblyName>
+    <RootNamespace>StykkerHud.Core</RootNamespace>
+  </PropertyGroup>
+
+</Project>

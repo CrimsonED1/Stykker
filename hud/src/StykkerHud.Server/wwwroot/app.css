@@ -1,0 +1,38 @@
+/* StykkerHUD — nur was das Design-System nicht hergibt: die Werkzeugzeile über der Prozessliste, das
+   aufklappbare Kern-Raster und die Balken-Beschriftungen von Datenträger und Netzwerk. Farben, Maße, Schriften
+   und Formen kommen ausschließlich aus tokens.css/bundle.css. */
+.hud-tools{display:flex;align-items:center;gap:8px;margin:8px 0 2px}
+.hud-tools .search{flex:1}
+.hud-empty{color:var(--muted);padding:8px 2px}
+.hud-note{margin:0 0 10px}
+
+/* Kerne aufklappbar: die Zeile trägt nur die Spitze, das Raster aus 16 Zeilen entsteht beim Öffnen. */
+.hud-fold>summary{display:flex;align-items:center;gap:8px;cursor:pointer;list-style:none;margin-top:8px}
+.hud-fold>summary::-webkit-details-marker{display:none}
+.hud-fold>summary::before{content:"▸";color:var(--muted);font-size:var(--t-xs)}
+.hud-fold[open]>summary::before{content:"▾"}
+.hud-fold .sec{flex:1;margin:0}
+.hud-cores{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:2px 14px;margin-top:10px}
+.hud-cores .num{min-width:44px}
+
+/* Ein Symbol in einer Balken-Beschriftung (Datenträger, Netzwerk). */
+.ctx .num .ic{width:14px;height:14px}
+
+/* Die Engine-Aufteilung der Grafikkarte fehlt ohne die Leistungsindikatoren: leere Behälter müssen dann wirklich
+   verschwinden – das display:flex/grid des Design-Systems schlägt sonst das hidden-Attribut. */
+#gpu-stack[hidden],#gpu-engines[hidden]{display:none}
+
+/* Zeilenmenü: die Liste bekommt eine zehnte Spalte für die Aktionen (neun kommen vom Design-System), und die
+   Priorität steht als kleines Zeichen neben dem Namen, wenn sie nicht Normal ist. */
+#procs .req{grid-template-columns:20px minmax(0,1.3fr) 72px minmax(50px,1fr) 52px 52px 86px 22px 40px 26px}
+#procs .req .act{padding:0;height:20px;width:22px;justify-content:center;font-size:12px}
+#procs .req .menu>div{right:0;left:auto;min-width:240px}
+#procs .req .mdl .chipi{height:18px;padding:0 5px}
+
+/* Gruppenzeile: Winkel zum Aufklappen, „×N" statt Prioritätszeichen, und die Mitglieder leicht eingerückt. */
+#procs .req.grp{background:color-mix(in srgb,var(--acc) 4%,transparent)}
+#procs .req .chev{padding:0;width:18px;height:18px;min-width:18px;border:0;background:transparent;color:var(--muted);cursor:pointer;font-size:var(--t-xs);line-height:1}
+#procs .req .chev:hover{color:var(--ink);background:transparent}
+#procs .req .mdl .chipi.cnt{color:var(--acc)}
+#procs .req.child .cl{margin-left:14px}
+#procs .req.child .mdl{opacity:.9}
