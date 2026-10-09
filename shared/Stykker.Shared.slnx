@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Stykker.Shared/Stykker.Shared.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Stykker.Shared.Tests/Stykker.Shared.Tests.csproj" />
+  </Folder>
+</Solution>
