@@ -172,6 +172,13 @@ public partial class MainWindow : Window
                 || source.FindAncestorOfType<ContextMenu>(includeSelf: true) is not null))
             return;
 
+        // Esc schließt ein offenes Kontextmenü auch dann, wenn der Fokus nicht darin liegt.
+        if (e.Key == Key.Escape && (LeftPanel.CloseMenus() | RightPanel.CloseMenus()))
+        {
+            e.Handled = true;
+            return;
+        }
+
         var command = KeyRouter.Map(e.Key, e.KeyModifiers, LeftPanel.IsFilterFocused || RightPanel.IsFilterFocused);
         if (command == UiCommand.None)
             return;
