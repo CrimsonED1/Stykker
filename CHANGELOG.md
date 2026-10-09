@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## Unreleased
+
+### Changed
+- The web interface and its API listen on **port 17400** (was 8078), next to the proxy (17500) and the discovery port (17501).
+
+### Added
+- **Tailscale switch** on the phone page: devices in your tailnet can open the web interface, without opening the whole
+  network (Home/VPN). The proxy is not affected.
+- **Cloud providers:** setup wizard for OpenRouter (key, model list, choice). The models your key may use are listed first.
+  Cloud models can be prompted on the Prompt page; the request goes through the proxy, which adds the key.
+- **Prompt page:** the working folder can be picked from the server's folders, and the working folder and the tools switch
+  are remembered. System prompt, temperature, max tokens and the API key sit under *Advanced*.
+
 ## 0.4.0
 
 ### Changed
