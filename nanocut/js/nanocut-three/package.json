@@ -1,0 +1,11 @@
+{
+  "name": "@stykker/nanocut-three",
+  "version": "0.1.0-alpha",
+  "description": "three.js adapter for Stykker.NanoCut mesh buffers and 2D contours.",
+  "type": "module",
+  "main": "index.js",
+  "license": "BUSL-1.1",
+  "peerDependencies": {
+    "three": ">=0.150.0"
+  }
+}

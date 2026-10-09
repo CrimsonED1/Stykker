@@ -1,0 +1,11 @@
+{
+  "name": "cube-rotate-45",
+  "kind": "process3",
+  "description": "The demo's free-form case: an 8 mm cube turning 45 deg about z through a 20 mm block (docs/processes.md, 'first 45 deg rotation'). Measures the rotation path, which the step-loop scenes never touch because they have no rotation.",
+  "box": { "min": [-10, -10, -10], "max": [10, 10, 10] },
+  "tool": { "boxMm": { "min": [-4, -4, -4], "max": [4, 4, 4] } },
+  "origin": [0, 0, 0],
+  "axis": [0, 0, 1],
+  "rotateDeg": 45,
+  "tolerance": { "totalUm": 50.1, "chordNm": 50, "sweepNm": 50000 }
+}

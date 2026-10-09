@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>Stykker.NanoCut.Cutting</RootNamespace>
+    <PackageId>Stykker.NanoCut.Cutting</PackageId>
+    <Description>Tools, tool paths and material removal along a path.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Stykker.NanoCut.Geometry2D/Stykker.NanoCut.Geometry2D.csproj" />
+    <ProjectReference Include="../Stykker.NanoCut.Geometry3D/Stykker.NanoCut.Geometry3D.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Stykker.NanoCut.Bench" />
+  </ItemGroup>
+</Project>

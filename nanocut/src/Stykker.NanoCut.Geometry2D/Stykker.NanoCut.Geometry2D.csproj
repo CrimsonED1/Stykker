@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>Stykker.NanoCut.Geometry2D</RootNamespace>
+    <PackageId>Stykker.NanoCut.Geometry2D</PackageId>
+    <Description>Exact 2D contour Booleans, arcs with controlled chord error, offset, Minkowski sweep and penetration analysis.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Stykker.NanoCut.Core/Stykker.NanoCut.Core.csproj" />
+    <InternalsVisibleTo Include="Stykker.NanoCut.Tests" />
+    <InternalsVisibleTo Include="Stykker.NanoCut.Cutting" />
+  </ItemGroup>
+</Project>

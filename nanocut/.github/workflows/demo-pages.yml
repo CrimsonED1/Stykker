@@ -1,0 +1,51 @@
+name: Demo (GitHub Pages)
+
+# Publishes the Blazor WebAssembly demo to GitHub Pages.
+# One-time setup: Settings → Pages → Source: "GitHub Actions". Then run this workflow manually,
+# or set the repository variable PAGES_DEMO = true to deploy on every push to main.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    if: github.event_name == 'workflow_dispatch' || vars.PAGES_DEMO == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Install WebAssembly build tools (AOT)
+        run: dotnet workload install wasm-tools
+      - name: Publish with AOT (≈5× faster geometry in the browser)
+        run: dotnet publish samples/Stykker.NanoCut.Demo -c Release -p:Aot=true -o out
+      - name: Prepare for a project page (base path, SPA fallback)
+        run: |
+          cd out/wwwroot
+          sed -i 's|<base href="/" />|<base href="/${{ github.event.repository.name }}/" />|' index.html
+          cp index.html 404.html
+          touch .nojekyll
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: out/wwwroot
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

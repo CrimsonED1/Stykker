@@ -1,0 +1,344 @@
+@page "/spinning"
+@using System.Diagnostics
+@using Stykker.NanoCut.Cutting
+@using Stykker.NanoCut.Geometry3D
+@inject Viewer Viewer
+@inject IComputeRunner Runner
+@implements IAsyncDisposable
+
+<div class="scene">
+    <section class="stage">
+        <header class="stage-head">
+            <div>
+                <h1>Spinning disc: cut-off wheel and saw blade</h1>
+                <p class="desc">A disc spinning at full speed is fed into a block. A plain wheel is rotationally symmetric, so its swept
+                    volume does not depend on the spin – it is cut as the revolved body, exactly. The teeth of a saw blade follow
+                    trochoids (feed + spin); every tooth removes its own chip of about one feed per tooth. The cut is computed once
+                    in real process time, the playback shows it in slow motion.</p>
+            </div>
+            <div class="engine">
+                <button class="@(_engine == "three" ? "on" : "")" @onclick='() => SwitchEngine("three")'>three.js</button>
+                <button class="@(_engine == "babylon" ? "on" : "")" @onclick='() => SwitchEngine("babylon")'>Babylon.js</button>
+            </div>
+        </header>
+        <div id="viewport" class="viewport"></div>
+    </section>
+
+    <aside class="panel">
+        <h2>Playback</h2>
+        <div class="actions">
+            @if (_playing)
+            {
+                <button class="run" @onclick="Pause">Pause</button>
+            }
+            else
+            {
+                <button class="run" disabled="@(_frames.Count < 2 || _computing)" @onclick="Play">Play</button>
+            }
+            <button class="ghost" disabled="@(_frames.Count < 2)" @onclick="Rewind">Rewind</button>
+        </div>
+        <label class="param"><span>Display speed</span>
+            <select value="@_factor.ToString(CultureInfo.InvariantCulture)" @onchange="OnFactor">
+                <option value="0.1">1/10</option>
+                <option value="0.02">1/50</option>
+                <option value="0.01">1/100</option>
+                <option value="0.002">1/500</option>
+                <option value="0.001">1/1000</option>
+            </select>
+        </label>
+        <input class="scrub" type="range" min="0" max="1000" step="1" value="@SliderValue" @oninput="OnScrub" disabled="@(_frames.Count < 2)" />
+        <div class="dro">
+            <div><span>t</span>@F(_simTime * 1000, "0.00") ms</div>
+            <div><span>X</span>@F(FeedX(_simTime), "0.000")</div>
+            <div><span>rev</span>@F(Math.Abs(_tool.Rpm) / 60 * _simTime, "0.00")</div>
+        </div>
+        <p class="desc">Display: @F(Math.Abs(_tool.Rpm) * _factor, "0.##") rpm on screen, feed @F(_feed * _factor, "0.###") mm/s.</p>
+
+        <h2>Tool</h2>
+        <label class="param"><span>Disc</span>
+            <select @bind="_kind">
+                <option value="saw">Saw blade (toothed)</option>
+                <option value="wheel">Cut-off wheel (plain)</option>
+            </select>
+        </label>
+        <label class="param"><span>Diameter</span><span class="num"><input type="number" step="1" @bind="_diameter" /><em>mm</em></span></label>
+        <label class="param"><span>Thickness</span><span class="num"><input type="number" step="0.1" @bind="_thickness" /><em>mm</em></span></label>
+        @if (_kind == "saw")
+        {
+            <label class="param"><span>Teeth</span><span class="num"><input type="number" step="1" @bind="_teeth" /><em></em></span></label>
+            <label class="param"><span>Tooth height</span><span class="num"><input type="number" step="0.5" @bind="_toothHeight" /><em>mm</em></span></label>
+        }
+
+        <h2>Process</h2>
+        <label class="param"><span>Spindle speed</span><span class="num"><input type="number" step="100" @bind="_rpm" /><em>rpm</em></span></label>
+        <label class="param"><span>Feed speed</span><span class="num"><input type="number" step="5" @bind="_feed" /><em>mm/s</em></span></label>
+        <label class="param"><span>Depth of cut</span><span class="num"><input type="number" step="0.5" @bind="_depth" /><em>mm</em></span></label>
+        <label class="param"><span>Feed length</span><span class="num"><input type="number" step="1" @bind="_length" /><em>mm</em></span></label>
+        <label class="param"><span>Path error</span><span class="num"><input type="number" step="5" @bind="_sweepUm" /><em>µm</em></span></label>
+        <p class="desc">The block is 30 × 8 × 10 mm; the disc axis is Y, the feed runs along +X in the disc plane. The cut is split into
+            frames of @F(FrameMm, "0.##") mm that are stored for playback.</p>
+        <div class="actions">
+            <button class="run" disabled="@_computing" @onclick="Compute">@(_computing ? "Computing…" : "Compute cut")</button>
+            @if (_computing)
+            {
+                <button class="ghost" @onclick="() => _cancel = true">Stop</button>
+            }
+        </div>
+        @if (_error is not null)
+        {
+            <div class="error">@_error</div>
+        }
+
+        <h2>Metrics</h2>
+        <table class="metrics">
+            <tr><td>Spindle</td><td>@F(_tool.Rpm, "0") rpm = @F(_tool.Rpm / 60, "0.#") rev/s</td></tr>
+            @if (_tool.Teeth > 0)
+            {
+                <tr><td>Feed per tooth f<sub>z</sub></td><td>@F(_tool.FeedPerToothMm(_feed) * 1000, "0.##") µm</td></tr>
+            }
+            <tr><td>Feed per revolution</td><td>@F(_tool.FeedPerRevolutionMm(_feed), "0.####") mm</td></tr>
+            <tr><td>Cutting speed</td><td>@F(Math.PI * _diameter * Math.Abs(_rpm) / 60000, "0.##") m/s</td></tr>
+            <tr><td>Swept volume model</td><td>@(_tool.IsSpinInvariant ? "revolved body (spin-invariant)" : "trochoids of the teeth (planar edge sweep)")</td></tr>
+            <tr><td>Frames computed</td><td>@Math.Max(0, _frames.Count - 1) / @_frameCount</td></tr>
+            <tr><td>Process time</td><td>@F(FrameEnd(_frames.Count - 1) * 1000, "0.##") ms (@F(Math.Abs(_rpm) / 60 * FrameEnd(_frames.Count - 1), "0.#") rev)</td></tr>
+            <tr><td>Removed volume</td><td>@F(Removed, "0.000000") mm³</td></tr>
+            <tr><td>Compute time</td><td>@_computeMs ms (@(_frames.Count > 1 ? _computeMs / (_frames.Count - 1) : 0) ms per frame)</td></tr>
+            <tr><td>Sweep steps</td><td>@_steps</td></tr>
+            <tr><td>Workpiece faces</td><td>@(_frames.Count > 0 ? _frames[^1].Work.FaceCount : 0)</td></tr>
+        </table>
+        <div class="actions">
+            <button class="ghost" disabled="@(_frames.Count == 0)" @onclick="DownloadStl">STL</button>
+            <button class="ghost" disabled="@(_frames.Count == 0)" @onclick="DownloadNcs">.ncs (lossless)</button>
+        </div>
+    </aside>
+</div>
+
+@code {
+    private sealed record Frame(double Time, Solid Work, MeshBuffers Mesh);
+
+    // Spindle axis (tool z) along world Y: the disc stands in the XZ-plane and is fed along +X.
+    private static readonly Pose3 AxisAlongY = Pose3.Rotation(-Math.PI / 2, 1, 0, 0);
+    private static readonly double[] ToolAxis = [0, 0, 1];
+    private const double BlockVolume = 30 * 8 * 10;
+
+    private string _engine = "three", _kind = "saw";
+    private double _diameter = 40, _thickness = 1.6, _toothHeight = 2.5, _rpm = 3000, _feed = 60, _depth = 3, _length = 6, _sweepUm = 50;
+    private int _teeth = 12;
+    private double _factor = 0.01;
+
+    private SpinningTool _tool = SpinningTool.Disc(20, 1.6, 3000);
+    private Solid _block = Solid.Empty;
+    private Tolerance _tol = Tolerance.Default;
+    private double _x0, _zCenter, _frameSeconds;
+    private int _frameCount;
+    private readonly List<Frame> _frames = [];
+    private int _shownFrame = -1;
+    private double _simTime;
+    private long _computeMs;
+    private int _steps;
+    private bool _attached, _computing, _cancel, _playing;
+    private readonly CancellationTokenSource _stop = new();
+    private string? _error;
+
+    private static string F(double v, string format) => v.ToString(format, CultureInfo.InvariantCulture);
+
+    private double FrameMm => Math.Max(0.25, _length / Math.Clamp(Math.Ceiling(_length / 0.5), 4, 40));
+    private double Removed => _frames.Count == 0 ? 0 : BlockVolume - _frames[^1].Work.VolumeMm3;
+    private double FrameEnd(int i) => Math.Max(0, i) * _frameSeconds;
+    private double FeedX(double t) => _x0 + _feed * t;
+    private int SliderValue => _frames.Count < 2 ? 0 : (int)Math.Round(1000 * _simTime / FrameEnd(_frameCount));
+
+    protected override void OnInitialized() => Setup();
+
+    private void Setup()
+    {
+        if (!(_feed > 0)) throw new ArgumentException("Feed speed must be positive.");
+        if (!(_length > 0)) throw new ArgumentException("Feed length must be positive.");
+        double chordNm = 20000, sweepNm = Math.Max(1, _sweepUm) * 1000;
+        _tol = Tolerance.Budget(totalUm: (chordNm + sweepNm + 1) / 1000, chordNm: chordNm, sweepNm: sweepNm);
+        double r = _diameter / 2;
+        _tool = _kind == "saw"
+            ? SpinningTool.SawBlade(r, _thickness, Math.Max(1, _teeth), _toothHeight, _rpm, _tol)
+            : SpinningTool.Disc(r, _thickness, _rpm, _tol);
+        _block = Solid.Box(Vec3.Mm(0, -4, -10), Vec3.Mm(30, 4, 0));
+        double d = Math.Clamp(_depth, 0.1, r);
+        _zCenter = r - d;
+        _x0 = -Math.Sqrt(2 * r * d - d * d) - 0.5;            // the disc just clear of the block
+        _frameCount = (int)Math.Round(_length / FrameMm);
+        _frameSeconds = FrameMm / _feed;
+        _frames.Clear();
+        _frames.Add(new Frame(0, _block, _block.ToMeshBuffers(OriginMode.Absolute)));
+        _shownFrame = -1;
+        _simTime = 0;
+        _computeMs = 0;
+        _steps = 0;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_attached) return;
+        await Viewer.Attach("viewport", _engine);
+        _attached = true;
+        await ShowTool();
+        await ShowAt(0, fit: true);
+    }
+
+    private double[] PoseAt(double t)
+    {
+        var q = AxisAlongY.Quaternion();
+        return [FeedX(t), 0, _zCenter, q.X, q.Y, q.Z, q.W];
+    }
+
+    private async Task ShowTool()
+    {
+        await Viewer.SetTool(_tool.Shape.ToSolid().ToMeshBuffers(OriginMode.Absolute), "#ff8a3d", 0.9, PoseAt(_simTime));
+        await Viewer.SetToolSpin(ToolAxis, 0, _tool.AngleAt(_simTime));
+    }
+
+    // Shows the workpiece after the last frame completed at time t, and the tool at its feed position.
+    private async Task ShowAt(double t, bool fit = false)
+    {
+        int frame = Math.Min(_frames.Count - 1, (int)Math.Floor(t / _frameSeconds + 1e-9));
+        if (frame != _shownFrame || fit)
+        {
+            await Viewer.Clear();
+            await Viewer.AddMesh("Workpiece", _frames[frame].Mesh, "#9fb4c8", 1);
+            _shownFrame = frame;
+        }
+        await Viewer.SetToolPose(PoseAt(t));
+        if (fit) await Viewer.Fit("spin", [_x0 - _diameter / 2, -4, -10, 30, 4, _zCenter + _diameter / 2]);
+    }
+
+    private async Task Compute()
+    {
+        _playing = false;
+        _error = null;
+        try { Setup(); }
+        catch (Exception ex) { _error = ex.Message; return; }
+        _computing = true;
+        _cancel = false;
+        await ShowTool();
+        await ShowAt(0, fit: true);
+        StateHasChanged();
+        await Task.Delay(20);
+        try
+        {
+            var work = _block;
+            var total = Stopwatch.StartNew();
+            for (int i = 0; i < _frameCount && !_cancel; i++)
+            {
+                double t0 = FrameEnd(i), t1 = FrameEnd(i + 1);
+                var feed = Motion3.Compose(Motion3.Linear(Vec3.Mm(FeedX(t0), 0, _zCenter), Vec3.Mm(FeedX(t1), 0, _zCenter)), Motion3.Fixed(AxisAlongY));
+                var before = work;
+                var (next, steps, mesh) = await Runner.Run(() =>
+                {
+                    var cut = Process3.CutSpinning([before], _tool, feed, [t1 - t0], _tol, out var stats, startSeconds: t0)[0];
+                    int n = (stats.Body?.Intervals ?? 0) + (stats.Cutters?.Intervals ?? 0) + (stats.PlanarCutters?.Intervals ?? 0);
+                    return (cut, n, cut.ToMeshBuffers(OriginMode.Absolute));
+                }, _stop.Token);
+                work = next;
+                _steps += steps;
+                _frames.Add(new Frame(t1, work, mesh));
+                _computeMs = total.ElapsedMilliseconds;
+                _simTime = t1;
+                await ShowAt(t1);
+                await Viewer.SetToolSpin(ToolAxis, 0, _tool.AngleAt(t1));
+                StateHasChanged();
+                await Task.Delay(1);                            // let the browser render the new frame
+            }
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally
+        {
+            _computing = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task Play()
+    {
+        if (_playing || _frames.Count < 2) return;
+        double end = FrameEnd(_frames.Count - 1);
+        if (_simTime >= end - 1e-12) _simTime = 0;
+        _playing = true;
+        // The browser spins the mesh smoothly at the slowed-down speed; the feed position follows the same clock.
+        await Viewer.SetToolSpin(ToolAxis, _tool.AngularVelocityRadPerS * _factor, _tool.AngleAt(_simTime));
+        var clock = Stopwatch.StartNew();
+        double start = _simTime, factor = _factor;
+        while (_playing)
+        {
+            await Task.Delay(40);
+            if (!_playing || factor != _factor) break;
+            _simTime = Math.Min(end, start + clock.Elapsed.TotalSeconds * factor);
+            await ShowAt(_simTime);
+            if (_simTime >= end) _playing = false;
+            StateHasChanged();
+        }
+        if (factor != _factor && _playing)
+        {
+            _playing = false;
+            await Play();                                       // restart with the new display speed
+            return;
+        }
+        await Viewer.SetToolSpin(ToolAxis, 0, _tool.AngleAt(_simTime));
+        StateHasChanged();
+    }
+
+    private void Pause() => _playing = false;
+
+    private async Task Rewind()
+    {
+        _playing = false;
+        _simTime = 0;
+        await Viewer.SetToolSpin(ToolAxis, 0, 0);
+        await ShowAt(0);
+    }
+
+    private void OnFactor(ChangeEventArgs e)
+    {
+        if (double.TryParse(e.Value?.ToString(), NumberStyles.Float, CultureInfo.InvariantCulture, out double f) && f > 0) _factor = f;
+    }
+
+    private async Task OnScrub(ChangeEventArgs e)
+    {
+        if (_frames.Count < 2 || !double.TryParse(e.Value?.ToString(), NumberStyles.Float, CultureInfo.InvariantCulture, out double v)) return;
+        _playing = false;
+        _simTime = Math.Min(FrameEnd(_frames.Count - 1), v / 1000 * FrameEnd(_frameCount));
+        await Viewer.SetToolSpin(ToolAxis, 0, _tool.AngleAt(_simTime));
+        await ShowAt(_simTime);
+    }
+
+    private async Task SwitchEngine(string engine)
+    {
+        if (_engine == engine) return;
+        _engine = engine;
+        try
+        {
+            await Viewer.SetEngine(engine);
+            _shownFrame = -1;
+            await ShowAt(_simTime, fit: true);
+        }
+        catch (Exception ex) { _error = $"Could not start {engine}: {ex.Message}"; }
+    }
+
+    private async Task DownloadStl() => await Viewer.Download("spinning-disc.stl", _frames[^1].Mesh.ToStl());
+
+    private async Task DownloadNcs()
+    {
+        using var ms = new MemoryStream();
+        NcsFormat.Save(_frames[^1].Work, ms);
+        await Viewer.Download("spinning-disc.ncs", ms.ToArray());
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _playing = false;
+        _cancel = true;
+        _stop.Cancel();
+        if (_attached)
+        {
+            await Viewer.RemoveTool();
+            await Viewer.Clear();
+        }
+    }
+}

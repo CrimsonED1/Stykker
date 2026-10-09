@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NanoCut, lange Programme, Schritt 2: das Binning, das Spalten × Schritte ersetzt</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one narrow technical sheet — verdict, what a block now sees, the four cases, the bug that was not in the binning, the host that is now the limit */
+:root {
+  --bg: #f3f5f6;
+  --paper: #ffffff;
+  --fg: #1b2328;
+  --muted: #5c6a73;
+  --rule: #d5dde1;
+  --steel: #8a99a3;
+  --accent: #c25a00;
+  --accent-soft: #f6e3d2;
+  --good: #1f7a4d;
+  --font-display: "Barlow Condensed", "Arial Narrow", sans-serif;
+  --font-body: "IBM Plex Sans", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #12171a; --paper: #1a2126; --fg: #e4eaed; --muted: #94a3ac; --rule: #2d373e;
+    --steel: #5d6c75; --accent: #f08a2c; --accent-soft: #3a2614; --good: #4cc08a; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #12171a; --paper: #1a2126; --fg: #e4eaed; --muted: #94a3ac; --rule: #2d373e;
+  --steel: #5d6c75; --accent: #f08a2c; --accent-soft: #3a2614; --good: #4cc08a; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--fg); font: 15px/1.55 var(--font-body); padding-inline: 16px; padding-block: 32px 48px; }
+.sheet { max-width: 920px; margin: 0 auto; background: var(--paper); border: 1px solid var(--rule); padding: clamp(20px, 4vw, 44px); display: grid; gap: 32px; }
+header { display: grid; gap: 10px; }
+.eyebrow { font: 500 12px/1 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+h1 { font: 700 clamp(30px, 5.4vw, 48px)/1.02 var(--font-display); letter-spacing: -.01em; margin: 0; text-wrap: balance; }
+h1 em { font-style: normal; color: var(--accent); }
+.lede { margin: 0; max-width: 64ch; color: var(--fg); }
+h2 { font: 600 22px/1.1 var(--font-display); letter-spacing: .01em; margin: 0 0 4px; text-wrap: balance; }
+.sub { margin: 0 0 16px; color: var(--muted); font-size: 13.5px; }
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1px; background: var(--rule); border: 1px solid var(--rule); }
+.kpi { background: var(--paper); padding: 14px 16px; display: grid; gap: 2px; }
+.kpi b { font: 600 34px/1 var(--font-display); font-variant-numeric: tabular-nums; }
+.kpi span { font-size: 13px; color: var(--muted); }
+.kpi.hl b { color: var(--accent); }
+
+.bars { display: grid; gap: 10px; }
+.bar { display: grid; grid-template-columns: minmax(120px, 190px) 1fr; gap: 12px; align-items: center; }
+.bar .lab { font-size: 13.5px; line-height: 1.25; min-width: 0; }
+.bar .lab small { display: block; color: var(--muted); font: 12px var(--font-mono); }
+.track { position: relative; height: 26px; }
+.fill { height: 100%; background: var(--steel); display: flex; align-items: center; justify-content: flex-end; padding-right: 8px; min-width: 52px; }
+.fill.nc { background: var(--accent); }
+.fill span { font: 500 12.5px var(--font-mono); font-variant-numeric: tabular-nums; color: var(--paper); }
+.axis { display: grid; grid-template-columns: minmax(120px, 190px) 1fr; gap: 12px; }
+.axis .ticks { display: flex; justify-content: space-between; font: 11px var(--font-mono); color: var(--muted); border-top: 1px solid var(--rule); padding-top: 4px; }
+
+.tablewrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; min-width: 620px; font-size: 13.5px; }
+th, td { padding: 7px 10px; text-align: right; border-bottom: 1px solid var(--rule); font-variant-numeric: tabular-nums; white-space: nowrap; }
+th:first-child, td:first-child { text-align: left; }
+thead th { font: 500 11.5px var(--font-mono); letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+td.scene { font-weight: 600; }
+td.win { color: var(--accent); font-weight: 600; }
+td.f { font-family: var(--font-mono); font-size: 12.5px; }
+td.pos { color: var(--good); }
+
+.cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 28px; }
+.cols > section { min-width: 0; }
+ul { margin: 0; padding-left: 18px; display: grid; gap: 7px; }
+li::marker { color: var(--muted); }
+.hw { width: 100%; border-collapse: collapse; font-size: 12.5px; min-width: 0; }
+.hw td { padding: 4px 8px 4px 0; border-bottom: 1px solid var(--rule); text-align: left; }
+.hw td:last-child { color: var(--muted); text-align: right; font-family: var(--font-mono); white-space: normal; }
+footer { border-top: 1px solid var(--rule); padding-top: 14px; font: 12px/1.6 var(--font-mono); color: var(--muted); }
+code { font: 12.5px var(--font-mono); background: var(--accent-soft); padding: 1px 4px; }
+</style>
+</head>
+<body>
+<main class="sheet">
+<header>
+<div class="eyebrow">Stykker NanoCut · Lange Programme, Schritt 2 · 4. Oktober 2026</div>
+<h1>Ein Block sieht nur die Schritte, die ihn <em>überhaupt erreichen</em></h1>
+<p class="lede">Schritt 1 hat gemessen, was eine Vorschau ablösen soll. Schritt 2 baut die erste Voraussetzung dafür: bis
+ebenher prüfte <em>jede Spalte jeden Schritt</em>, der Dexel-Kern kostete also Spalten × Schritte, und ein Programm aus
+793 600 Schritten war daran nicht zu rechnen. Die Schritte werden jetzt auf dem Host in Kacheln zu 16 × 16 Spalten
+sortiert (CSR), und ein Block bekommt nur die Schritte, die seine Kachel erreichen. Ein Block <em>ist</em> eine Kachel,
+die Geometrie des Launches ändert sich also nicht — und genau deshalb muss sich am Ergebnis nichts ändern.
+<strong>2,7 ms gegen 640,7 ms</strong> bei 793 600 Schritten, und in beiden Launches steht dasselbe abgetragene Volumen
+bis zur letzten Ziffer.</p>
+</header>
+
+<div class="kpis">
+<div class="kpi hl"><b>240×</b><span>Kernel-Faktor bei 793 600 Schritten — und er bleibt über die Programmlänge hinweg stehen</span></div>
+<div class="kpi hl"><b>0</b><span>Spalten, deren Intervall sich unterscheidet; beide Launches melden dasselbe Volumen</span></div>
+<div class="kpi"><b>18,9 ms</b><span>Binning auf dem Host bei 793 600 Schritten — der neue Engpass, siebenmal der Kernel</span></div>
+<div class="kpi"><b>20 348</b><span>(Schritt, Spalte)-Paare im Test, keines davon darf im CSR fehlen</span></div>
+</div>
+
+<section>
+<h2>Was ein Block jetzt bekommt</h2>
+<p class="sub">Schlangenförmiger Finish-Durchgang mit einer 0,2-mm-Kugel über eine 20-mm-Karte mit 0,05-mm-Zellen
+(400 × 400 = 160 000 Spalten), 4 Intervalle je Spalte, Schritte 0,05 mm auseinander. Der CUDA-Kontext wird vor dem
+ersten Fall angelegt und nicht mitgemessen (87 ms). Beide Launches laufen dasselbe Programm auf derselben Karte.</p>
+<div class="tablewrap">
+<table>
+<thead><tr><th>Schritte</th><th>Zeilen</th><th>Spalten × Schritte</th><th>Kernel gebinnt</th><th>Binning (Host)</th><th>Upload</th><th>Wall gebinnt</th><th>Kernel ungebinnt</th><th>Wall ungebinnt</th><th>Kernel ×</th><th>Wall ×</th><th>Abgetragen (beide)</th></tr></thead>
+<tbody>
+<tr><td class="scene">24 800</td><td>62</td><td>9 920 000</td><td>0,1 ms</td><td>0,6 ms</td><td>0,3 ms</td><td>2,3 ms</td><td>13,6 ms</td><td>14,9 ms</td><td>102×</td><td>6,5×</td><td class="f">90,183421 mm³</td></tr>
+<tr><td class="scene">99 200</td><td>248</td><td>39 680 000</td><td>0,4 ms</td><td>2,2 ms</td><td>0,7 ms</td><td>5,2 ms</td><td>77,9 ms</td><td>80,1 ms</td><td>212×</td><td>15,4×</td><td class="f">99,454883 mm³</td></tr>
+<tr><td class="scene">396 800</td><td>992</td><td>158 720 000</td><td>1,3 ms</td><td>9,4 ms</td><td>2,4 ms</td><td>18,0 ms</td><td>320,4 ms</td><td>327,9 ms</td><td class="win">247×</td><td>18,2×</td><td class="f">99,965987 mm³</td></tr>
+<tr><td class="scene">793 600</td><td>1984</td><td>317 440 000</td><td class="win">2,7 ms</td><td>18,9 ms</td><td>5,1 ms</td><td>36,8 ms</td><td>640,7 ms</td><td>655,0 ms</td><td>240×</td><td>17,8×</td><td class="f">99,991493 mm³</td></tr>
+</tbody>
+</table>
+</div>
+<p class="sub" style="margin-top:12px">Die letzte Spalte ist der eigentliche Befund: das abgetragene Volumen ist in
+beiden Launches <em>identisch</em>, auf die letzte Ziffer, bei jeder Programmlänge, ohne einen einzigen Überlauf. Das
+Binning entscheidet, was ein Block ansieht — nie, was herauskommt.</p>
+</section>
+
+<section>
+<h2>Der ungebinnte Launch wächst mit dem Programm, der gebinnte nicht</h2>
+<p class="sub">Dieselben vier Fälle, zweimal, mit eigener Achse: die unbinned Skala endet bei 700 ms, die gebinnte bei
+40 ms — sonst wäre von 2,3 ms nichts zu sehen.</p>
+<div class="legend" style="display:flex;flex-wrap:wrap;gap:16px;margin:0 0 12px;font-size:13px;color:var(--muted)"><span><i style="display:inline-block;width:22px;height:10px;margin-right:7px;vertical-align:baseline;background:var(--steel)"></i>ungebinnt, Wall</span></div>
+<div class="bars">
+<div class="bar"><div class="lab">24 800 Schritte<small>9,92 Mio. Spalten × Schritte</small></div><div class="track"><div class="fill" style="width:2.1%"><span>14,9 ms</span></div></div></div>
+<div class="bar"><div class="lab">99 200 Schritte<small>39,68 Mio.</small></div><div class="track"><div class="fill" style="width:11.4%"><span>80,1 ms</span></div></div></div>
+<div class="bar"><div class="lab">396 800 Schritte<small>158,72 Mio.</small></div><div class="track"><div class="fill" style="width:46.8%"><span>327,9 ms</span></div></div></div>
+<div class="bar"><div class="lab">793 600 Schritte<small>317,44 Mio.</small></div><div class="track"><div class="fill nc" style="width:93.6%"><span>655,0 ms</span></div></div></div>
+</div>
+<div class="axis" aria-hidden="true"><div></div><div class="ticks"><span>0 ms</span><span>175</span><span>350</span><span>525</span><span>700 ms</span></div></div>
+
+<div class="legend" style="display:flex;flex-wrap:wrap;gap:16px;margin:22px 0 12px;font-size:13px;color:var(--muted)"><span><i style="display:inline-block;width:22px;height:10px;margin-right:7px;vertical-align:baseline;background:var(--accent)"></i>gebinnt, Wall</span></div>
+<div class="bars">
+<div class="bar"><div class="lab">24 800 Schritte<small>davon 0,6 ms Binning</small></div><div class="track"><div class="fill nc" style="width:5.8%"><span>2,3 ms</span></div></div></div>
+<div class="bar"><div class="lab">99 200 Schritte<small>davon 2,2 ms Binning</small></div><div class="track"><div class="fill nc" style="width:13.0%"><span>5,2 ms</span></div></div></div>
+<div class="bar"><div class="lab">396 800 Schritte<small>davon 9,4 ms Binning</small></div><div class="track"><div class="fill nc" style="width:45.0%"><span>18,0 ms</span></div></div></div>
+<div class="bar"><div class="lab">793 600 Schritte<small>davon 18,9 ms Binning</small></div><div class="track"><div class="fill nc" style="width:92.0%"><span>36,8 ms</span></div></div></div>
+</div>
+<div class="axis" aria-hidden="true"><div></div><div class="ticks"><span>0 ms</span><span>10</span><span>20</span><span>30</span><span>40 ms</span></div></div>
+<p class="sub" style="margin-top:14px">Der ungebinnte Kernel wächst exakt mit Spalten × Schritte: 640,7 / 320,4 ≈ 2 für
+die verdoppelte Programmlänge, 640,7 / 13,6 ≈ 47 gegen 32× Schritte. Der gebinnte wächst mit dem, was die Kugel
+anfasst: 2,7 ms bei 793 600 Schritten. Der Faktor pendelt sich bei <b>~240×</b> ein; er ist nur beim kleinsten Fall
+kleiner, weil der Kernel dort 0,1 ms Arbeit ist.</p>
+</section>
+
+<section>
+<h2>Und ein Fehler, der nicht im Binning lag</h2>
+<p class="sub">Die erste Fassung des gebinnten Kernels lieferte ein falsches Ergebnis, obwohl das Binning nachweislich
+vollständig war. Genau das macht den Fall lehrreich: die Diagnose zeigte in zwei Richtungen.</p>
+<div class="tablewrap">
+<table class="hw">
+<tbody>
+<tr><td>CSR vollständig? (Schritt fehlt in keiner Kachel, die er erreicht)</td><td>ja — 0 verloren von 300</td></tr>
+<tr><td>Ergebnis bei 301 Zellen</td><td>83 336 von 90 601 Spalten anders, Volumen 9,29 gegen 3944,06 mm³</td></tr>
+<tr><td>Experiment: gebinnter Kernel, der den CSR ignoriert</td><td>bitgleich zum ungebinnten</td></tr>
+<tr><td>Ursache</td><td><code>first … last</code> als Schrittindizes gelesen, sind aber Positionen in <code>tileSteps</code></td></tr>
+</tbody>
+</table>
+</div>
+<p class="sub" style="margin-top:12px">Das Experiment entscheidet: wenn der gebinnte Launch mit <em>allen</em>
+Schritten dasselbe liefert, sind Launch-Geometrie und Kachel → Spalte in Ordnung und der Fehler steckt im Konsum des
+CSR-Abschnitts. Genau das war es — und die Konstruktion ist seither so, dass er nicht wieder passieren kann:
+<code>dexel_apply_column</code> nimmt eine optionale Indexliste (null für den ungebinnten Launch), beide Launches
+benutzen denselben Helfer, und die Schritte innerhalb einer Kachel stehen aufsteigend, weil die Entstehung des CSR in
+Schrittnummer zählt. Dass die Reihenfolge das Ergebnis nicht ändert, ist keine Hoffnung, sondern getestet:
+<code>StepBinsTests</code> vergleicht alle 20 348 (Schritt, Spalte)-Paare mit dem CSR,
+<code>DexelMapTests.BinnedLaunchGivesTheSameBitsAsTheUnbinnedOne</code> fährt dasselbe Programm auf 16, 32, 64 und 301
+Zellen und vergleicht jede Spalte bitweise.</p>
+</section>
+
+<section>
+<h2>Der neue Engpass ist der Host</h2>
+<p class="sub">Das Binning ist O(Schritte) auf dem Host. Bei 25 000 Schritten ist es Rauschen (0,6 von 2,3 ms), bei
+793 600 sind es 18,9 von 36,8 ms — <b>das Siebenfache des Kernels, das es versorgt</b>. Oberhalb von etwa 10⁶ Schritten
+pro Aufruf setzt nicht mehr die GPU den Takt, sondern der Aufbau des CSR. Der Ausweg ist nicht der schnellere Kernel,
+sondern weniger Arbeit auf der Hostseite: gröbere Kacheln, Binning auf dem Gerät, oder einmal pro Programm statt pro
+Aufruf. Das gehört an Schritt 3 und steht in <code>docs/todo.md</code>.</p>
+</section>
+
+<div class="cols">
+<section>
+<h2>Was als Nächstes gebaut wird</h2>
+<ul>
+<li><b>Schritt 3 – konvexes Werkzeug und Posenfolge</b> im Dexel-Kernel, CPU-Referenz und CUDA, getestet gegen den
+exakten Kernel an Box, Oktaeder und rotierendem Werkzeug. Entscheidet auch, wie das Binning billiger wird.</li>
+<li><b>Schritt 4 – Schleifvorschau:</b> Körner einer <code>GrindingWheel</code> als konvexe Werkzeuge auf ihren
+Trochoiden, geprüft gegen <code>GrindingSimulation</code> — zuerst 60 Körner, dann die belegte Scheibe.</li>
+<li><b>Schritt 5 – Zahnradvorschau (2D):</b> Zeilen als Spalten, die konvexen Rackteile auf den Rollposen; Zielzahl
+1231,252941 mm² aus Schritt 1.</li>
+<li><b>Schritt 6 – in den Servermodus,</b> zuerst die Vorschau, das exakte Ergebnis, sobald es fertig ist.</li>
+</ul>
+</section>
+<section>
+<h2>Was Schritt 2 beantwortet hat</h2>
+<ul>
+<li><b>Die Vorschau ist nicht mehr an der Programmlänge zerbrochen.</b> Der Faktor hängt nicht an der Länge, weil die
+Arbeit dem Werkzeug folgt statt der Spaltenzahl. Genau das war die Voraussetzung der Schritte 3 bis 6.</li>
+<li><b>Das Binning ändert nichts am Ergebnis</b> — auf die letzte Ziffer, in jeder der vier Kartengrößen, bitweise
+über alle Spalten.</li>
+<li><b>Ein vollständiges Binning ist trotzdem nicht genug.</b> Der Fehler saß eine Ebene tiefer, im Kernel. Zwei
+Tests halten jetzt beide Ebenen fest.</li>
+<li><b>Der Beschleuniger ist bezahlt.</b> 18,9 ms Hostarbeit bei 793 600 Schritten gegen 2,7 ms Kernel — das ist der
+nächste Gegenstand, nicht der letzte.</li>
+</ul>
+</section>
+</div>
+
+<footer>
+Gemessen am 4. Oktober 2026 auf diesem Rechner, auf dem Branch <code>long-programs-step-1</code>: RTX 5070 Ti
+(16 275 MiB, Blackwell, sm_120), Treiber 32.0.16.1714, CUDA 13.4, Windows 11, .NET SDK 10.0.401, Laufzeit .NET 10.0.12.
+Beste von zwei Läufen je Fall und Launch, CUDA-Kontext vorher angelegt und nicht mitgemessen. Die abgetragenen Volumen
+sind über alle Läufe identisch; nur die Zeiten nicht. Modus <code>dexel</code> von
+<code>bench/Stykker.NanoCut.LongPrograms</code>; <code>--out</code> schreibt
+<code>long-programs-results.json</code> und <code>-results.md</code> in <code>bench/out/long-programs-dexel</code>.
+Plan und Log: <code>docs/long-programs.md</code>, Schritt 2.
+</footer>
+</main>
+</body>
+</html>
