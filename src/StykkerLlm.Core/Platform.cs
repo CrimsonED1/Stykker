@@ -109,6 +109,32 @@ public static class NetAddr
 
     public static bool IsLoopback(string a) => a.StartsWith("127.", StringComparison.Ordinal) || a is "::1" or "0:0:0:0:0:0:0:1";
 
+    // Der Host-Kopf einer Anfrage zeigt auf diesen PC: Loopback-Namen; mit Tailscale-Schalter auch die Tailnet-IP (als IP,
+    // kein Domainname, damit ein fremder Name nicht durchrutscht). Ohne Host-Kopf (HTTP/1.0) gilt die Anfrage als eigene.
+    public static bool IsOwnHost(string? hostHeader, bool tailscale)
+    {
+        var value = hostHeader ?? "";
+        if (value.Length == 0) return true;
+        string name;
+        if (value.StartsWith('['))
+        {
+            int close = value.IndexOf(']');
+            name = close > 0 ? value[1..close] : value;
+        }
+        else name = value.Contains(':') ? value[..value.IndexOf(':')] : value;
+        if (name is "127.0.0.1" or "localhost" or "::1" or "0.0.0.0") return true;
+        return tailscale && IsTailscale(name);
+    }
+
+    // Tailscale: IPv4 aus 100.64.0.0/10 (CGNAT), IPv6 aus fd7a:115c:a1e0::/48. IPv4 in IPv6 (::ffff:…) wird ausgepackt.
+    public static bool IsTailscale(string a)
+    {
+        if (a.StartsWith("::ffff:", StringComparison.OrdinalIgnoreCase)) a = a[7..];
+        if (a.StartsWith("fd7a:115c:a1e0:", StringComparison.OrdinalIgnoreCase)) return true;
+        var parts = a.Split('.');
+        return parts.Length == 4 && parts[0] == "100" && int.TryParse(parts[1], out var b) && b is >= 64 and <= 127;
+    }
+
     public static bool IsV6(string a) => a.Contains(':');
 
     // Adresse, unter der sich ein lokaler Listener ansprechen lässt: 0.0.0.0 -> 127.0.0.1, :: -> ::1

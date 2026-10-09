@@ -286,6 +286,11 @@ public static partial class Strings
     public const string RemoteOn = "Home/VPN on: reachable in the network";
     public const string RemoteOff = "Home/VPN off: only this PC can open the web interface";
     public const string RemoteThisPcOnly = "Only this PC";
+    public const string TailscaleTitle = "Tailscale";
+    public const string TailscaleOn = "Tailscale access on: devices in your tailnet can open the web interface, with the access code.";
+    public const string TailscaleOff = "Tailscale access off: nobody from outside can open the web interface.";
+    public const string TailscaleHint = "Only devices in your tailnet get in, not the whole network. Home/VPN stays separate. The proxy is not affected.";
+    public const string TailscaleNone = "Tailscale is not running on this PC (no 100.x address).";
     public const string RemoteHint = "Switch on Home/VPN to reach the web interface from your phone or another computer in the network. Windows asks once for the firewall.";
     public const string RemoteCodeLabel = "Access code";
     public const string RemoteScan = "Scan this with the phone camera to sign in";

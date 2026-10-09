@@ -214,11 +214,7 @@ public sealed class TuiApp
     }
 
     // Tailscale vergibt Adressen aus 100.64.0.0/10 (CGNAT)
-    internal static bool IsTailscale(string ip)
-    {
-        var parts = ip.Split('.');
-        return parts.Length == 4 && parts[0] == "100" && int.TryParse(parts[1], out var b) && b is >= 64 and <= 127;
-    }
+    internal static bool IsTailscale(string ip) => NetAddr.IsTailscale(ip);
 
     private string ServerLine(RemoteServer s, int w, int sparkW, bool selected)
     {

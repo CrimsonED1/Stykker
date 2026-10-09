@@ -509,6 +509,12 @@ public static class ActionApi
                 }
 
                 // ── Heimnetz und Geräte ──
+                case "tailscale.set":
+                {
+                    if (ctx.Access == null) return ActionResult.Fail("not available");
+                    ctx.Access.SetTailscale(req.Flag);
+                    return Ok(req.Flag ? Strings.TailscaleOn : Strings.TailscaleOff);
+                }
                 case "remote.set":
                 {
                     if (ctx.Access == null) return ActionResult.Fail("not available");

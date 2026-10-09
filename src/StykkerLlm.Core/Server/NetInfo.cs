@@ -31,6 +31,9 @@ public static class NetInfo
             .Select(x => x.Address).Distinct(StringComparer.Ordinal).ToList();
     }
 
+    // Die Tailscale-Adressen dieses Rechners (IPv4 aus 100.64.0.0/10); leer, wenn Tailscale nicht läuft
+    public static IReadOnlyList<string> TailscaleAddresses() => Ipv4Addresses().Where(NetAddr.IsTailscale).ToList();
+
     // Die Adresse, die im QR-Code steht: privates Netz bevorzugt, damit das Handy im gleichen WLAN bleibt.
     public static string? LanAddress() => Ipv4Addresses().FirstOrDefault();
 

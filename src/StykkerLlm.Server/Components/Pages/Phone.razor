@@ -69,6 +69,23 @@ else
                 <p><span class="pill ok">@NetAddr.Url(LanAddress, Port)</span></p>
             }
         </div>
+        <div class="card">
+            <h2>@Strings.TailscaleTitle</h2>
+            <div class="seg">
+                <button class="@(Host.Access.TailscaleEnabled ? "on" : "")" @onclick="() => SetTailscale(true)">@Strings.RemoteOnState</button>
+                <button class="@(!Host.Access.TailscaleEnabled ? "on" : "")" @onclick="() => SetTailscale(false)">@Strings.RemoteOffState</button>
+            </div>
+            <p class="muted small">@(Host.Access.TailscaleEnabled ? Strings.TailscaleOn : Strings.TailscaleOff)</p>
+            @if (TailscaleAddress.Length == 0)
+            {
+                <p class="small warn">@Strings.TailscaleNone</p>
+            }
+            else
+            {
+                <p><span class="pill ok">@NetAddr.Url(TailscaleAddress, Port)</span></p>
+            }
+            <p class="muted small">@Strings.TailscaleHint</p>
+        </div>
     </div>
 
     <ApprovePanel />
@@ -126,6 +143,12 @@ else
     }
 
     protected override void OnInitialized() => _t = new Timer(_ => InvokeAsync(StateHasChanged), null, 1000, 1000);
+
+    private Task SetTailscale(bool on) =>
+        Web.RunAsync(new ActionRequest { Action = "tailscale.set", Flag = on });
+
+    // Die Tailscale-Adresse dieses PCs (100.x), leer wenn Tailscale nicht läuft
+    private string TailscaleAddress => NetInfo.TailscaleAddresses().FirstOrDefault() ?? "";
 
     private Task SetRemote(bool on) =>
         Web.RunAsync(new ActionRequest { Action = "remote.set", Flag = on });
