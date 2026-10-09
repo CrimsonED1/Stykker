@@ -52,7 +52,17 @@ public sealed class LinuxFileSystem : IFileSystem
     public void SetLastWriteTime(string path, DateTimeOffset time) => File.SetLastWriteTime(path, time.LocalDateTime);
 
     public void CopyAttributes(string source, string target)
-        => File.SetUnixFileMode(target, File.GetUnixFileMode(source));
+    {
+        // Die Rechte sind eine Zugabe: FAT und exFAT (USB-Sticks) kennen keine Unix-Rechte. Die Datei bleibt dann vollständig.
+        try
+        {
+            File.SetUnixFileMode(target, File.GetUnixFileMode(source));
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or PlatformNotSupportedException)
+        {
+            // Ohne übernommene Rechte weiterkopieren.
+        }
+    }
 
     public void CreateDirectory(string path) => Directory.CreateDirectory(path);
 
