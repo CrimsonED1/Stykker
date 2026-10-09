@@ -8,6 +8,17 @@ public static partial class Strings
     public const string KeepServerHint = "Off (default): the server ends about 15 seconds after the last StykkerUI window, stykker terminal " +
         "or web page closes – unless a model test or benchmark is still running. Turn it on to keep it up without any window.";
     public static string ServerAutoStop(string why) => $"server: nobody needs it any more ({why}), shutting down";
+
+    // Rückfrage beim Schließen des Fensters: was das Beenden mit dem Server macht (ShutdownOutlook.Hint)
+    public const string OutlookStops = "Quitting shuts the server down. Keeping the window in the tray keeps it running.";
+    public const string OutlookKeptBySetting = "The server keeps running: \"Keep the server running\" is on, or it was started with --stay.";
+    public const string OutlookBusy = "A model test or benchmark is running. The server keeps running until it is finished.";
+    public const string OutlookProxyRunning = "A request through the proxy is running.";
+    public const string OutlookProxyCut = "A request through the proxy is running. It is cut off when the server shuts down.";
+    public static string OutlookStillOpen(string open) => $"Quitting keeps the server running. Still open: {open}.";
+    public static string OutlookWindows(int n) => n == 1 ? "1 window" : $"{n} windows";
+    public static string OutlookTerminals(int n) => n == 1 ? "1 terminal" : $"{n} terminals";
+    public static string OutlookPages(int n) => n == 1 ? "1 web page" : $"{n} web pages";
     public static string ServerHolders(string who) => $"in use by: {who}";
 
     // ── Startbild StykkerUI ──

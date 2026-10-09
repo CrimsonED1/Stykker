@@ -21,16 +21,19 @@ internal sealed class CloseToTray
     private readonly Action _release;       // beim Beenden beim Server abmelden (er endet, wenn ihn sonst niemand braucht)
     private string? _adoptPage;             // die Anmeldeseite der Hülle: setzt das Gerätecookie und lädt die Oberfläche
     private readonly ThemeInfo _theme;
+    private readonly Func<bool, ShutdownHint?> _hint;   // was das Beenden mit dem Server macht (Argument: die eigene Seite steht)
+    private ShutdownHint? _shown;                       // der Hinweis der offenen Frage, auch für die Ersatzseite
     private TrayIcon? _tray;
     private Timer? _fallback;
     // Nur auf dem Fenster-Thread: Rückfrage und Schließen kommen von dort, die Tray-Klicks werden dorthin geholt
     private bool _quit, _hidden, _acked, _fallbackShown;
 
-    public CloseToTray(PhotinoWindow window, AppPaths paths, Action release)
+    public CloseToTray(PhotinoWindow window, AppPaths paths, Action release, Func<bool, ShutdownHint?>? hint = null)
     {
         _window = window;
         _paths = paths;
         _release = release;
+        _hint = hint ?? (_ => null);
         _theme = ThemeCatalog.Find(AppSettings.Load(paths.SettingsFile).Theme);
     }
 
@@ -44,8 +47,11 @@ internal sealed class CloseToTray
         if (_quit || _hidden) return false;
         if (_adoptPage == null) { Leave(); return false; }   // noch keine Oberfläche: nichts zu fragen
         if (!EnsureTray()) { Leave(); return false; }          // kein Symbol möglich: dann wie bisher schließen
-        var choice = ShellChoice.Load(_paths);
-        Log($"close: choice {choice}");
+        // Was das Beenden mit dem Server macht (die eigene Seite zählt nur, solange sie steht). Eine laufende
+        // Anfrage über den Proxy fragt auch bei gemerkter Wahl
+        _shown = _hint(!_fallbackShown);
+        var choice = CloseRule.Decide(ShellChoice.Load(_paths), _shown);
+        Log($"close: choice {choice}, proxy requests {_shown?.ProxyActive ?? 0}");
         switch (choice)
         {
             case ShellChoice.Tray: ToTray(); return true;
@@ -60,14 +66,14 @@ internal sealed class CloseToTray
     private void Ask()
     {
         _acked = false;
-        _window.SendWebMessage(Html.AskMessage());
+        _window.SendWebMessage(Html.AskMessage(_shown));
         _fallback?.Dispose();
         _fallback = new Timer(_ => _window.Invoke(() =>
         {
             if (_acked || _hidden || _quit) return;
             Log("close: page did not answer, own question page");
             _fallbackShown = true;
-            _window.LoadRawString(Html.AskClose(_theme));
+            _window.LoadRawString(Html.AskClose(_theme, _shown));
         }), null, 1500, Timeout.Infinite);
     }
 
@@ -183,7 +189,7 @@ internal sealed class CloseToTray
 // Einstellungen, die der Server selbst schreibt). Der Tray-Eintrag „Ask when closing“ setzt sie zurück.
 internal static class ShellChoice
 {
-    public const string Ask = "ask", Tray = "tray", Quit = "quit";
+    public const string Ask = CloseRule.Ask, Tray = CloseRule.Tray, Quit = CloseRule.Quit;
     private const string FileName = "web-shell-close.txt";
 
     public static string Load(AppPaths paths)
