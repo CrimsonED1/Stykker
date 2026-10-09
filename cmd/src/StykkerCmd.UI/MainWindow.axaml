@@ -1,0 +1,161 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:panels="clr-namespace:StykkerCmd.UI.Panels"
+        x:Class="StykkerCmd.UI.MainWindow"
+        Width="1180" Height="720" MinWidth="720" MinHeight="460"
+        Background="{DynamicResource bg}"
+        Foreground="{DynamicResource ink}"
+        FontFamily="{DynamicResource SansFont}"
+        FontSize="13">
+
+    <Window.Styles>
+        <!-- Panelrahmen: das aktive Panel bekommt eine feine Linie in der Rahmenfarbe des Themas, kein kräftiger Akzent.
+             Die Klasse "active" setzt PanelView.SetActive. -->
+        <Style Selector="Border.panel">
+            <Setter Property="Background" Value="{DynamicResource card}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource line}" />
+            <Setter Property="BorderThickness" Value="1" />
+        </Style>
+        <Style Selector="Border.panel.active">
+            <Setter Property="BorderBrush" Value="{DynamicResource border}" />
+        </Style>
+
+        <Style Selector="ListBoxItem">
+            <Setter Property="Padding" Value="8,0" />
+            <Setter Property="Foreground" Value="{DynamicResource ink}" />
+        </Style>
+        <Style Selector="ListBoxItem:selected">
+            <Setter Property="Background" Value="{DynamicResource line}" />
+        </Style>
+
+        <Style Selector="Button.key">
+            <Setter Property="Background" Value="{DynamicResource card-2}" />
+            <Setter Property="Foreground" Value="{DynamicResource ink}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource line}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="12,6" />
+            <Setter Property="Margin" Value="0,0,8,0" />
+            <Setter Property="FontSize" Value="12" />
+        </Style>
+
+        <!-- Laufwerkstabs: flache Knöpfe; der Tab des aktuellen Datenträgers ist hell unterlegt. -->
+        <Style Selector="Button.volume">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="{DynamicResource muted}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource line}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="8,2" />
+            <Setter Property="Margin" Value="0,0,6,6" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="MinHeight" Value="24" />
+        </Style>
+        <Style Selector="Button.volume.active">
+            <Setter Property="Background" Value="{DynamicResource card-2}" />
+            <Setter Property="Foreground" Value="{DynamicResource ink}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource border}" />
+        </Style>
+
+        <!-- Menüs in den Farben des Themas, nicht in den Farben des Betriebssystems. -->
+        <Style Selector="Menu">
+            <Setter Property="Background" Value="{DynamicResource card}" />
+            <Setter Property="Foreground" Value="{DynamicResource ink}" />
+        </Style>
+        <Style Selector="MenuItem">
+            <Setter Property="Foreground" Value="{DynamicResource ink}" />
+        </Style>
+        <Style Selector="ContextMenu">
+            <Setter Property="Background" Value="{DynamicResource card}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource line}" />
+            <Setter Property="BorderThickness" Value="1" />
+        </Style>
+    </Window.Styles>
+
+    <Grid RowDefinitions="Auto,Auto,*,Auto,Auto" Margin="0,0,0,14">
+        <!-- Menüleiste: dieselben Befehle wie die Tasten und das Kontextmenü -->
+        <Menu Grid.Row="0">
+            <MenuItem Header="Datei">
+                <MenuItem Header="Öffnen" Tag="Open" InputGesture="Enter" Click="OnMenuCommand" />
+                <MenuItem Header="Zippen …" Tag="Zip" Click="OnMenuCommand" />
+                <MenuItem Header="Entpacken" Tag="Unzip" Click="OnMenuCommand" />
+                <Separator />
+                <MenuItem Header="Kopieren …" Tag="Copy" InputGesture="F5" Click="OnMenuCommand" />
+                <MenuItem Header="Verschieben …" Tag="Move" InputGesture="F6" Click="OnMenuCommand" />
+                <MenuItem Header="Neuer Ordner …" Tag="MakeDirectory" InputGesture="F7" Click="OnMenuCommand" />
+                <Separator />
+                <MenuItem Header="In den Papierkorb" Tag="Delete" InputGesture="F8" Click="OnMenuCommand" />
+                <MenuItem Header="Endgültig löschen …" Tag="DeletePermanent" InputGesture="Shift+F8" Click="OnMenuCommand" />
+                <Separator />
+                <MenuItem Header="Beenden" Tag="Quit" Click="OnMenuCommand" />
+            </MenuItem>
+            <MenuItem Header="Bearbeiten">
+                <MenuItem Header="Markieren oder lösen" Tag="ToggleMark" InputGesture="Space" Click="OnMenuCommand" />
+                <MenuItem Header="Alle markieren oder lösen" Tag="MarkAll" InputGesture="Ctrl+A" Click="OnMenuCommand" />
+                <MenuItem Header="Filter …" Tag="FocusFilter" InputGesture="Ctrl+F" Click="OnMenuCommand" />
+                <Separator />
+                <MenuItem Header="Pfad kopieren" Tag="CopyPath" Click="OnMenuCommand" />
+                <MenuItem Header="Im Ordner anzeigen" Tag="Reveal" Click="OnMenuCommand" />
+                <MenuItem x:Name="ShellMenuItem" Header="Windows-Menü …" Tag="ShellMenu" Click="OnMenuCommand" />
+            </MenuItem>
+            <MenuItem Header="Ansicht">
+                <MenuItem Header="Nach Name" Tag="SortName" InputGesture="Ctrl+1" Click="OnMenuCommand" />
+                <MenuItem Header="Nach Erweiterung" Tag="SortExtension" InputGesture="Ctrl+2" Click="OnMenuCommand" />
+                <MenuItem Header="Nach Größe" Tag="SortSize" InputGesture="Ctrl+3" Click="OnMenuCommand" />
+                <MenuItem Header="Nach Datum" Tag="SortModified" InputGesture="Ctrl+4" Click="OnMenuCommand" />
+                <Separator />
+                <MenuItem Header="Ordner neu laden" Tag="Reload" InputGesture="Ctrl+R" Click="OnMenuCommand" />
+                <MenuItem Header="Thema wechseln" Tag="ToggleTheme" InputGesture="F9" Click="OnMenuCommand" />
+            </MenuItem>
+            <MenuItem Header="Hilfe">
+                <MenuItem Header="Tastenübersicht" Tag="ShowHelp" InputGesture="F1" Click="OnMenuCommand" />
+                <MenuItem Header="Über StykkerCMD" Tag="About" Click="OnMenuCommand" />
+            </MenuItem>
+        </Menu>
+
+        <!-- Kopfzeile -->
+        <Grid Grid.Row="1" ColumnDefinitions="*,Auto" Margin="16,10,16,12">
+            <TextBlock Text="StykkerCMD" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" />
+            <TextBlock Grid.Column="1" x:Name="ThemeLabel" Foreground="{DynamicResource muted}" FontSize="12"
+                       VerticalAlignment="Center" />
+        </Grid>
+
+        <!-- Panels -->
+        <Grid Grid.Row="2" ColumnDefinitions="*,*" Margin="14,0,14,0">
+            <panels:PanelView x:Name="LeftPanel" Grid.Column="0" Margin="0,0,7,0" />
+            <panels:PanelView x:Name="RightPanel" Grid.Column="1" Margin="7,0,0,0" />
+        </Grid>
+
+        <!-- Funktionsleiste: dieselben Befehle wie die Tasten -->
+        <WrapPanel Grid.Row="3" Margin="14,12,14,8">
+            <Button Classes="key" Tag="Copy" Content="F5  Kopieren" Click="OnFunctionButton" />
+            <Button Classes="key" Tag="Move" Content="F6  Verschieben" Click="OnFunctionButton" />
+            <Button Classes="key" Tag="MakeDirectory" Content="F7  Ordner" Click="OnFunctionButton" />
+            <Button Classes="key" Tag="Delete" Content="F8  Papierkorb" Click="OnFunctionButton" />
+            <Button Classes="key" Tag="ToggleTheme" Content="F9  Thema" Click="OnFunctionButton" />
+        </WrapPanel>
+
+        <!-- Statuszeile: letztes Ergebnis oder Tastenhinweise -->
+        <TextBlock Grid.Row="4" x:Name="StatusText" Margin="14,0,14,0" Foreground="{DynamicResource muted}" FontSize="12"
+                   TextTrimming="CharacterEllipsis" />
+
+        <!-- Fortschritt eines laufenden Auftrags: eine Ebene über dem Fenster, ohne eigenes Fenster.
+             Ein zweites Fenster würde beim Schließen den Vordergrund an andere Programme abgeben. -->
+        <Border x:Name="ProgressLayer" Grid.Row="0" Grid.RowSpan="5" IsVisible="False"
+                Background="{DynamicResource bg}" Opacity="0.94">
+            <Border Width="560" Padding="24" Background="{DynamicResource card}"
+                    BorderBrush="{DynamicResource acc}" BorderThickness="1"
+                    CornerRadius="{DynamicResource PanelRadius}"
+                    HorizontalAlignment="Center" VerticalAlignment="Center">
+                <StackPanel Spacing="10">
+                    <TextBlock x:Name="ProgressHeading" FontSize="16" FontWeight="SemiBold" TextWrapping="Wrap" />
+                    <TextBlock x:Name="ProgressCurrent" FontFamily="{DynamicResource MonoFont}" FontSize="12"
+                               Foreground="{DynamicResource muted}" TextTrimming="CharacterEllipsis" Margin="0,4,0,4" />
+                    <ProgressBar x:Name="ProgressMeter" Minimum="0" Maximum="100" Height="8"
+                                 Foreground="{DynamicResource acc}" Background="{DynamicResource line}" />
+                    <TextBlock x:Name="ProgressCounts" Foreground="{DynamicResource muted}" Margin="0,2,0,8" />
+                    <Button x:Name="ProgressCancel" Content="Abbrechen (Esc)" HorizontalAlignment="Right"
+                            MinWidth="150" Click="OnProgressCancel" />
+                </StackPanel>
+            </Border>
+        </Border>
+    </Grid>
+</Window>

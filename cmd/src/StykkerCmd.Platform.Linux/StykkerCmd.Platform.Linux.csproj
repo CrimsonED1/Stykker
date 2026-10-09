@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Linux-Schicht: FreeDesktop-Papierkorb, /proc-Scan, pkexec-Helfer (PLAN.md, Abschnitt 2).
+       Noch leer; der Code kommt mit den Meilensteinen 2 bis 5. -->
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <RootNamespace>StykkerCmd.Platform.Linux</RootNamespace>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\StykkerCmd.Core\StykkerCmd.Core.csproj" />
+  </ItemGroup>
+
+</Project>

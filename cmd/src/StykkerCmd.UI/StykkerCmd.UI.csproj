@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Einzige Avalonia-Schicht: Views, Tastatur, Themes aus tokens.json, Composition Root. Ausgabe: StykkerCMD. -->
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <OutputType>WinExe</OutputType>
+    <AssemblyName>StykkerCMD</AssemblyName>
+    <RootNamespace>StykkerCmd.UI</RootNamespace>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia.Desktop" />
+    <PackageReference Include="Avalonia.Themes.Fluent" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\StykkerCmd.Core\StykkerCmd.Core.csproj" />
+    <ProjectReference Include="..\StykkerCmd.Platform.Windows\StykkerCmd.Platform.Windows.csproj" />
+    <ProjectReference Include="..\StykkerCmd.Platform.Linux\StykkerCmd.Platform.Linux.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Kopie von tokens.json aus dem Design-System (Stand 2026-10-07). Wird eingebettet, nicht zur Laufzeit gelesen. -->
+    <EmbeddedResource Include="Themes\tokens.json" />
+  </ItemGroup>
+
+</Project>
