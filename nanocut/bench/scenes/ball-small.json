@@ -1,9 +1,0 @@
-{
-  "name": "ball-small",
-  "description": "Ball r = 3 mm (24 segments) along a two-segment path over a 20 × 20 × 10 mm block, 8 hulls per segment.",
-  "box": { "min": [0, 0, 0], "max": [20, 20, 10] },
-  "tool": { "ball": { "radius": 3, "segments": 24 } },
-  "path": [[-5, 10, 9], [25, 10, 9], [25, 4, 8]],
-  "stepsPerSegment": 8,
-  "save": [-1]
-}
