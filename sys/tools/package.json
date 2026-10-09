@@ -1,0 +1,9 @@
+{
+  "name": "stykkersys-tools",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Prüfungen und Screenshots der StykkerSYS-Oberfläche (Playwright, Google Chrome).",
+  "devDependencies": {
+    "playwright-core": "1.64.0"
+  }
+}

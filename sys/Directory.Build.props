@@ -1,0 +1,19 @@
+<Project>
+
+  <!-- Gemeinsame Metadaten aller Projekte. Nur Metadaten: kein Verhalten. -->
+  <PropertyGroup>
+    <Version Condition="'$(Version)' == ''">0.1.0</Version>
+    <Authors>CrimsonED1</Authors>
+    <Company>CrimsonED1</Company>
+    <Product>StykkerSYS</Product>
+    <Copyright>Copyright (c) CrimsonED1</Copyright>
+    <Description>Process list for this machine: CPU, memory and GPU per process, with end, priority and open.</Description>
+    <Deterministic>true</Deterministic>
+    <!-- keine Commit-Kennung in der Produktversion (0.1.0 statt 0.1.0+hash) -->
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+  </PropertyGroup>
+
+  <!-- Das Design-System der Stykker-Familie liegt in shared/design-system der Monorepo. Es wird weder kopiert noch
+       eingebunden: der Server liefert es zur Laufzeit unter /ds aus seiner Quelle. -->
+
+</Project>

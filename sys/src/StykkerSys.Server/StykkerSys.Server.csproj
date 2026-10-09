@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <!-- StykkerSYS-Server: die Prozessliste dieser Maschine als Web-Oberfläche (Blazor Server, Port 8077) mit
+       Tray-Symbol. Nur auf 127.0.0.1 erreichbar. Das Fenster (StykkerSYS.exe) zeigt dieselben Seiten. -->
+  <PropertyGroup>
+    <!-- net10.0 statt net10.0-windows: nur so bindet das SDK blazor.web.js ein (Tray-Symbol folgt ohne WinForms) -->
+    <TargetFramework>net10.0</TargetFramework>
+    <!-- Exe statt WinExe: mit WinExe bindet das SDK blazor.web.js nicht ein. Das Fenster startet den Server ohne
+         Konsolenfenster. -->
+    <OutputType>Exe</OutputType>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>StykkerSYS-Server</AssemblyName>
+    <RootNamespace>StykkerSys.Server</RootNamespace>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <SupportedOSPlatformVersion>10.0.17763.0</SupportedOSPlatformVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\StykkerSys.Core\StykkerSys.Core.csproj" />
+    <ProjectReference Include="..\StykkerSys.Platform.Windows\StykkerSys.Platform.Windows.csproj" />
+    <ProjectReference Include="..\..\..\shared\src\Stykker.Shared\Stykker.Shared.csproj" />
+  </ItemGroup>
+
+  <!-- Das Design-System wird nicht kopiert: der Server liefert es zur Laufzeit unter /ds aus seiner Quelle (Vorgabe
+       C:\_AI\Stykker\MonoRepo\shared\design-system, umstellbar über den Schalter design-system). -->
+
+</Project>
