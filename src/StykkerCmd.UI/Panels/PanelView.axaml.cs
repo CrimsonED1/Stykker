@@ -12,6 +12,7 @@ namespace StykkerCmd.UI.Panels;
 public partial class PanelView : UserControl
 {
     private readonly ContextMenu _entryMenu = new();
+    private readonly ContextMenu _panelMenu = new();
     private readonly MenuItem _unzipItem;
     private readonly MenuItem _shellItem;
 
@@ -22,6 +23,7 @@ public partial class PanelView : UserControl
         _unzipItem = Item("Hier entpacken", UiCommand.Unzip);
         _shellItem = Item("Windows-Menü anzeigen …", UiCommand.ShellMenu);
         BuildEntryMenu();
+        BuildPanelMenu();
 
         // Tunnel: der Rechtsklick kommt vor dem Listeneintrag an, der ihn sonst verbraucht (Auswahl) und das Menü verhindert.
         List.AddHandler(InputElement.PointerPressedEvent,
@@ -71,11 +73,14 @@ public partial class PanelView : UserControl
         FilterBox.SelectAll();
     }
 
-    // Kontextmenü über der Zeile unter dem Cursor (Umschalt+F10 oder Menütaste).
+    // Kontextmenü über der Zeile unter dem Cursor (Umschalt+F10 oder Menütaste). Auf ".." und ohne Zeile das Panelmenü.
     public void ShowContextMenu()
     {
         var row = Model is null ? null : List.ContainerFromIndex(Model.CursorIndex);
-        OpenEntryMenu(row ?? List);
+        if (Model?.CursorRow is { IsParent: false })
+            OpenEntryMenu(row ?? List);
+        else
+            OpenPanelMenu(row ?? List);
     }
 
     private void OnVolumeClick(object? sender, RoutedEventArgs e)
@@ -85,33 +90,54 @@ public partial class PanelView : UserControl
             _ = model.SwitchVolumeAsync(root);
     }
 
-    // Rechtsklick wählt den Eintrag unter dem Zeiger, wie im Explorer, und öffnet das Kontextmenü dort.
+    // Rechtsklick wählt den Eintrag unter dem Zeiger, wie im Explorer, und öffnet sein Menü. Auf leerer Fläche und auf ".."
+    // öffnet sich das Panelmenü; der Cursor bleibt dann, wo er war.
     private void OnListPointerPressed(object? sender, PointerPressedEventArgs e)
     {
         if (Model is null || !e.GetCurrentPoint(List).Properties.IsRightButtonPressed)
             return;
 
-        if (e.Source is Visual source && source.FindAncestorOfType<ListBoxItem>() is { } item)
-        {
-            var index = List.IndexFromContainer(item);
-            if (index >= 0)
-                Model.CursorIndex = index;
-        }
-
         ActivationRequested?.Invoke();
         e.Handled = true;
-        OpenEntryMenu(List);
+
+        var item = (e.Source as Visual)?.FindAncestorOfType<ListBoxItem>();
+        if (item?.DataContext is not EntryRow { IsParent: false })
+        {
+            OpenPanelMenu(List);
+            return;
+        }
+
+        Model.CursorIndex = List.IndexFromContainer(item);
+        OpenEntryMenu(item);
     }
 
-    // Das Menü öffnet sich an der Stelle des Mauszeigers. "Hier entpacken" nur bei einem ZIP-Archiv unter dem Cursor.
+    // "Hier entpacken" nur bei einem ZIP-Archiv unter dem Cursor.
     private void OpenEntryMenu(Control target)
     {
         var cursor = Model?.CursorRow;
         _unzipItem.IsVisible = cursor is { IsParent: false, IsDirectory: false }
                                && cursor.Entry.Name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase);
 
-        _entryMenu.PlacementTarget = target;
-        _entryMenu.Open(target);
+        OpenMenuAt(_entryMenu, target);
+    }
+
+    private void OpenPanelMenu(Control target) => OpenMenuAt(_panelMenu, target);
+
+    // Das Menü öffnet sich an der Zeigerposition.
+    private static void OpenMenuAt(ContextMenu menu, Control target)
+    {
+        menu.PlacementTarget = target;
+        menu.Placement = PlacementMode.Pointer;
+        menu.Open(target);
+    }
+
+    // Schließt beide Kontextmenüs. Gibt zurück, ob eines offen war.
+    public bool CloseMenus()
+    {
+        var wasOpen = _entryMenu.IsOpen || _panelMenu.IsOpen;
+        _entryMenu.Close();
+        _panelMenu.Close();
+        return wasOpen;
     }
 
     private void BuildEntryMenu()
@@ -135,6 +161,27 @@ public partial class PanelView : UserControl
         _entryMenu.Items.Add(Item("Im Ordner anzeigen", UiCommand.Reveal));
         _entryMenu.Items.Add(new Separator());
         _entryMenu.Items.Add(_shellItem);
+    }
+
+    // Menü auf leerer Fläche: Befehle, die das ganze Panel betreffen, nicht einen Eintrag.
+    private void BuildPanelMenu()
+    {
+        _panelMenu.Items.Add(Item("Neuer Ordner … (F7)", UiCommand.MakeDirectory));
+        _panelMenu.Items.Add(Item("Ordner neu laden (Strg+R)", UiCommand.Reload));
+        _panelMenu.Items.Add(new Separator());
+        _panelMenu.Items.Add(SortMenu());
+        _panelMenu.Items.Add(new Separator());
+        _panelMenu.Items.Add(Item("Alle markieren oder lösen (Strg+A)", UiCommand.MarkAll));
+    }
+
+    private MenuItem SortMenu()
+    {
+        var sort = new MenuItem { Header = "Sortieren nach" };
+        sort.Items.Add(Item("Name (Strg+1)", UiCommand.SortName));
+        sort.Items.Add(Item("Erweiterung (Strg+2)", UiCommand.SortExtension));
+        sort.Items.Add(Item("Größe (Strg+3)", UiCommand.SortSize));
+        sort.Items.Add(Item("Datum (Strg+4)", UiCommand.SortModified));
+        return sort;
     }
 
     private MenuItem Item(string header, UiCommand command)

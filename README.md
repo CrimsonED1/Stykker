@@ -39,6 +39,7 @@ Startordner per Argument: `--left <ordner> --right <ordner>`. Fehlt ein Pfad, st
 - Die Menüleiste (Datei, Bearbeiten, Ansicht, Hilfe) enthält dieselben Befehle wie die Tasten.
 - Jedes Panel hat Laufwerkstabs. Ein Tab wechselt auf den Datenträger und öffnet dort den Ordner, der dort zuletzt offen war.
 - Rechtsklick auf einen Eintrag wählt ihn aus und öffnet das Kontextmenü: Öffnen, Zippen, Hier entpacken (nur bei ZIP-Archiven), Kopieren, Verschieben, Papierkorb, Pfad kopieren, Im Ordner anzeigen.
+- Rechtsklick auf leere Fläche (oder auf „..“) öffnet das Panelmenü: Neuer Ordner, Ordner neu laden, Sortieren nach, Alle markieren.
 - Zippen legt ein ZIP-Archiv im aktuellen Ordner an. Hier entpacken legt einen Ordner mit dem Namen des Archivs an und entpackt dort hinein.
 - „Windows-Menü anzeigen“ öffnet das native Kontextmenü der Shell wie im Explorer, mit den Erweiterungen des Systems (nur Windows).
 
@@ -82,3 +83,4 @@ Zwei Tests brauchen eine Umgebungsvariable und laufen sonst nicht: der 2-GB-Abbr
 - Wayland erlaubt Anwendungen keinen Fokuswechsel; Drag & Drop ist nicht umgesetzt (laut Plan ein Vorschlag).
 - Archive: nur ZIP, ohne Passwort und ohne 7z oder RAR. Keine Suche, kein Mehrfach-Umbenennen, kein Viewer, keine Netzwerkprotokolle (laut Plan nicht im MVP).
 - Zippen, Entpacken und die Laufwerksleiste sind unter Linux kompiliert, aber dort nicht ausgeführt. Unter Linux zeigt „Im Ordner anzeigen“ den Ordner über xdg-open, ein natives Kontextmenü gibt es nicht.
+- Auf Windows öffnen Umschalt+F10 und die Kontextmenü-Taste derzeit kein Menü. Die Tasten kommen an, die Ursache ist noch offen. Der Rechtsklick funktioniert.
