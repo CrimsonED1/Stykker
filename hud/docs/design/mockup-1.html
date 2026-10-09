@@ -1,0 +1,407 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>StykkerHUD mockup 1 — target state</title>
+<!--
+  StykkerHUD — Entwurf 1 (2026-10-08). Zielbild der Oberfläche, nicht der gebaute Stand:
+  Prozess-Aktionen, Datenträger, Netzwerk und Dauerbetrieb sind hier nur gezeichnet.
+  Die laufende Anwendung zeigt dieselben Bausteine mit echten Messwerten.
+
+  Farben, Formen und Bausteine kommen aus dem gemeinsamen Design-System der Stykker-Familie
+  (C:\_AI\Stykker\Design-System), verlinkt statt kopiert, damit der Entwurf nicht driftet.
+  Nur was das Design-System nicht hat, steht unten unter "nur für dieses Mockup":
+  Fensterrahmen, die geplanten Blöcke und die dichtere Prozesszeile mit Datenträger und Netzwerk.
+-->
+<link rel="stylesheet" href="../../../Design-System/tokens.css">
+<link rel="stylesheet" href="../../../Design-System/components/bundle.css">
+<style>
+/* ── nur für dieses Mockup: Fensterrahmen, geplante Blöcke, dichtere Prozesszeile ── */
+html,body{min-height:100%}
+.mock{max-width:1420px;margin:18px auto 28px;border:1px solid var(--line);border-radius:var(--radius-md);overflow:hidden;background:var(--bg)}
+.mock-bar{display:flex;align-items:center;gap:8px;padding:6px 12px;background:color-mix(in srgb,var(--ink) 4%,transparent);border-bottom:1px solid var(--line);font:var(--t-xs) var(--mono);color:var(--muted)}
+.mock-bar b{color:var(--ink);font-weight:600}
+.mock-win{margin-left:auto;display:flex;gap:6px;color:var(--muted)}
+.mock-win i{width:11px;height:11px;border:1px solid var(--line);border-radius:3px;display:inline-block}
+.mock-draft{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:12px 0 -2px;padding:0 2px}
+.mock-lead{color:var(--muted);font-size:var(--t-sm)}
+.mock-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(292px,1fr));gap:var(--gap)}
+.mock-title{display:flex;align-items:center;gap:8px;margin:0 0 8px;font:600 var(--t-md) var(--sans)}
+.mock-title .ic{color:var(--muted)}
+.mock-text{color:var(--muted);font-size:var(--t-sm);margin:0 0 8px}
+.mock-io{font:var(--t-xs) var(--mono);color:var(--muted);text-align:right;white-space:nowrap}
+.mock-io .up{color:var(--acc)}
+.mock .req{grid-template-columns:20px minmax(0,1.15fr) 62px minmax(50px,1fr) 58px 46px 54px 96px 88px 22px 44px 26px;gap:8px}
+.mock .req.head span{white-space:nowrap}
+.mock .req .act{padding:0;height:20px;width:22px;justify-content:center;font-size:12px}
+.mock .menu>div{right:0;left:auto;min-width:212px}
+.mock-pop{border:1px solid color-mix(in srgb,var(--bad) 35%,var(--line));border-radius:var(--radius-md);padding:12px;background:color-mix(in srgb,var(--bg) 88%,var(--ink))}
+.mock-pop h4{margin:0 0 4px;font-size:var(--t-md)}
+.mock-pop p{margin:0 0 10px;color:var(--muted);font-size:var(--t-sm)}
+.mock-vol{display:flex;align-items:center;gap:8px;margin:0 0 6px}
+.mock-vol .nm{font:var(--t-sm) var(--mono);color:var(--muted);min-width:26px}
+.mock-stack{display:flex;flex-direction:column;gap:8px}
+/* dieselben zwei Regeln wie in wwwroot/app.css der Anwendung: Werkzeugzeile und Kern-Raster */
+.hud-tools{display:flex;align-items:center;gap:8px;margin:8px 0 2px}
+.hud-tools .search{flex:1}
+.hud-cores{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:2px 14px;margin-top:10px}
+.hud-cores .num{min-width:44px}
+.hud-note{margin:0 0 10px}
+</style>
+</head>
+<body>
+<div class="mock">
+
+    <!-- Fensterrahmen: so sieht die Anwendung als Fenster aus -->
+    <div class="mock-bar"><b>StykkerHUD</b><span>—</span><span>http://127.0.0.1:8079</span><span class="mock-win"><i></i><i></i><i></i></span></div>
+
+    <div class="top">
+        <div class="brand"><span class="logo">◆</span> STYKKER <span class="acc">HUD</span></div>
+        <nav aria-label="Main"><a href="#" class="active" aria-current="page">Overview</a></nav>
+        <div class="strip">
+            <span class="stat" title="Processor load">CPU <span class="mini"><i id="t-cpu" style="width:11%"></i></span><b id="v-cpu">11</b>%</span>
+            <span class="stat" title="Memory in use">RAM <b id="v-ram">14.4</b> GB</span>
+            <span class="stat" title="Graphics processor">GPU <span class="mini"><i id="t-gpu" style="width:36%"></i></span><b id="v-gpu">36</b>%</span>
+            <span class="stat" title="Graphics memory in use">VRAM <b id="v-vram">12.8</b> GB</span>
+            <span class="stat" title="Processes">Processes <b id="v-procs">204</b></span>
+            <span class="stat" title="Time since the service started">Up <b id="v-uptime">3h 12m</b></span>
+            <div class="seg" role="group" aria-label="Theme">
+                <button type="button" data-theme-choice="dark" class="on">Dark</button>
+                <button type="button" data-theme-choice="titan">Titan</button>
+            </div>
+        </div>
+    </div>
+
+    <main>
+        <div class="mock-draft">
+            <span class="badge warn plain">Draft 1</span>
+            <span class="mock-lead">Target state — process actions, storage and network are built by now; only the resident mode is still drawn here.
+                Sample values taken from CRIM10 (RTX 5070 Ti, 16 cores, 32 GB).</span>
+        </div>
+
+        <div id="notes" style="margin-top:10px">
+            <div class="notice hud-note"><span class="badge warn plain">Hint</span><span class="txt">Board power limited to 250 W by the driver profile — clocks stay at 2505 MHz.</span><span class="acts"><button>Show profile</button><button class="quiet">Dismiss</button></span></div>
+        </div>
+
+        <div class="layout">
+            <div class="col">
+
+                <div class="sec">Processor<span class="right mono" id="v-cores">16 cores · 32 threads</span></div>
+                <div class="card">
+                    <div class="spark" style="height:84px">
+                        <svg viewBox="0 0 100 40" preserveAspectRatio="none">
+                            <path class="area" id="cpu-area" d=""></path>
+                            <path class="g1" id="cpu-g1" d=""></path>
+                            <path class="g2" id="cpu-g2" d=""></path>
+                            <path class="ln" id="cpu-line" d=""></path>
+                        </svg>
+                        <span class="tip" id="cpu-tip" style="top:70%"></span>
+                        <span class="lbl tl" id="cpu-peak">peak 68%</span>
+                        <span class="lbl bl">−5 min</span>
+                        <span class="lbl br">now</span>
+                    </div>
+                    <div class="hud-cores hud-grid" id="cores"></div>
+                </div>
+
+                <div class="sec">Processes<span class="right mono" id="v-proc-shown">40 of 204</span></div>
+                <div class="hud-tools">
+                    <div class="search"><input id="q" placeholder="Filter processes" aria-label="Filter processes"><span class="kbd">/</span></div>
+                    <div class="seg" role="group" aria-label="Sort by">
+                        <button type="button" class="on" data-sort="cpu">CPU</button>
+                        <button type="button" data-sort="ram">Memory</button>
+                        <button type="button" data-sort="gpu">GPU</button>
+                        <button type="button" data-sort="name">Name</button>
+                    </div>
+                </div>
+                <div class="reqs" id="procs">
+                    <div class="req head">
+                        <span></span>
+                        <span>Name</span>
+                        <span class="hostc">PID</span>
+                        <span>CPU</span>
+                        <span class="pp">Memory</span>
+                        <span class="pp">GPU</span>
+                        <span class="pp">VRAM</span>
+                        <span class="mock-io" style="text-align:left">Disk R/W</span>
+                        <span class="mock-io" style="text-align:left">Net ↓/↑</span>
+                        <span></span>
+                        <span class="ago">CPU time</span>
+                        <span></span>
+                    </div>
+                    <div id="proc-rows"></div>
+                </div>
+            </div>
+
+            <div class="col">
+                <div class="sec">Graphics<span class="right mono">RTX 5070 Ti</span></div>
+                <div class="card srv busy" style="--b:var(--b-llama)">
+                    <div class="tps"><b id="v-gpu-big">36</b><span>%</span></div>
+                    <div class="ctx" style="margin-top:8px">
+                        <div class="bar"><i id="t-vram" style="width:80%"></i></div>
+                        <span class="num" id="v-vram-text">12.8 / 16 GB</span>
+                    </div>
+                    <div class="mgrid" style="margin:10px 0 0">
+                        <span class="mc" title="Graphics memory in use"><svg class="ic"><use href="#i-vram"></use></svg><b id="v-gpu-vram">12.8</b><small>GB</small></span>
+                        <span class="mc" title="Graphics memory total"><svg class="ic"><use href="#i-layers"></use></svg><b>16</b><small>GB</small></span>
+                        <span class="mc" title="Temperature"><b id="v-gpu-temp">61</b><small>°C</small></span>
+                        <span class="mc warn" title="Board power draw"><b id="v-gpu-power">248</b><small>/250 W</small></span>
+                        <span class="mc" title="Graphics clock"><svg class="ic"><use href="#i-timer"></use></svg><b id="v-gpu-clock">2505</b><small>MHz</small></span>
+                        <span class="mc" title="Memory clock"><svg class="ic"><use href="#i-timer"></use></svg><b>14001</b><small>MHz</small></span>
+                    </div>
+                </div>
+
+                <div class="sec">Memory</div>
+                <div class="card">
+                    <div class="ctx"><div class="bar"><i id="t-ram" style="width:45%"></i></div><span class="num" id="v-ram-text">14.4 / 32 GB</span></div>
+                    <div class="ctx" style="margin-top:6px"><div class="bar"><i id="t-commit" style="width:52%"></i></div><span class="num" id="v-commit-text">19.5 / 37 GB</span></div>
+                    <div class="mgrid" style="margin:10px 0 0">
+                        <span class="mc" title="Cached"><svg class="ic"><use href="#i-ram"></use></svg><b>9.1</b><small>GB cached</small></span>
+                        <span class="mc" title="Page faults per second"><b>412</b><small>/s faults</small></span>
+                    </div>
+                </div>
+
+                <div class="sec">Storage<span class="right mono">planned</span></div>
+                <div class="card">
+                    <div class="mock-vol"><span class="nm">C:</span><div class="bar"><i style="width:78%"></i></div><span class="num">743 / 954 GB</span></div>
+                    <div class="mock-vol"><span class="nm">D:</span><div class="bar"><i style="width:41%"></i></div><span class="num">2.1 / 5.2 TB</span></div>
+                    <div class="mock-io" style="text-align:left;margin-top:8px" id="v-disk">read 18.4 MB/s  ·  write 6.2 MB/s</div>
+                </div>
+
+                <div class="sec">Network<span class="right mono">planned</span></div>
+                <div class="card">
+                    <div class="mock-grid" style="grid-template-columns:1fr 1fr;gap:8px">
+                        <span class="mc" title="Received"><b id="v-net-down">1.4</b><small>MB/s ↓</small></span>
+                        <span class="mc" title="Sent"><b id="v-net-up">0.3</b><small>MB/s ↑</small></span>
+                    </div>
+                    <div class="spark" style="height:56px;margin-top:10px">
+                        <svg viewBox="0 0 100 40" preserveAspectRatio="none">
+                            <path class="area" id="net-area" d=""></path>
+                            <path class="g1" id="net-g1" d=""></path>
+                            <path class="ln" id="net-line" d=""></path>
+                        </svg>
+                        <span class="lbl bl">Ethernet 2.5 GbE · 18 peers</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ── geplante Blöcke: genau das fehlt der gebauten Fassung noch ── -->
+        <div class="sec" style="margin-top:22px">Process actions<span class="right muted">built 2026-10-08 · asks as a bar above the list, not as a popover</span></div>
+        <div class="mock-grid">
+            <div class="card">
+                <div class="mock-title"><svg class="ic"><use href="#i-stop"></use></svg>Row menu</div>
+                <p class="mock-text">Every row gets one button. Dangerous entries are last and open a confirm popover; a dismissed
+                    stop gets Undo in a toast.</p>
+                <details class="menu" open>
+                    <summary class="btn sq" aria-label="More">⋯</summary>
+                    <div style="left:0;right:auto">
+                        <span class="grp" style="font-size:var(--t-xs);color:var(--muted);padding:6px 8px 2px;text-transform:uppercase;letter-spacing:.06em">llama-server</span>
+                        <button><svg class="ic"><use href="#i-open"></use></svg>Open file location</button>
+                        <button><svg class="ic"><use href="#i-slots"></use></svg>Priority: With</button>
+                        <button><svg class="ic"><use href="#i-layers"></use></svg>Affinity: 16 cores</button>
+                        <hr>
+                        <button class="danger"><svg class="ic"><use href="#i-stop"></use></svg>End task</button>
+                    </div>
+                </details>
+            </div>
+            <div class="card">
+                <div class="mock-title"><svg class="ic"><use href="#i-trash"></use></svg>Confirm and undo</div>
+                <div class="mock-pop">
+                    <h4>End llama-server (PID 12908)?</h4>
+                    <p>1.9 GB working set, 12.8 GB in graphics memory. Running work is lost.</p>
+                    <div class="row end"><button class="quiet">Cancel</button><button class="danger">End task</button></div>
+                </div>
+                <div class="mock-stack" style="margin-top:10px">
+                    <div class="toast" style="position:static;animation:none">llama-server stopped <button class="quiet">Undo</button></div>
+                    <div class="toast warn" style="position:static;animation:none">Priority change needs elevation</div>
+                </div>
+            </div>
+            <div class="card">
+                <div class="mock-title"><svg class="ic"><use href="#i-cpu"></use></svg>Process details</div>
+                <p class="mock-text">Toggled from the row: threads, handles, GPU engines, command line.</p>
+                <div class="mgrid" style="margin:0">
+                    <span class="mc" title="Threads"><svg class="ic"><use href="#i-slots"></use></svg><b>42</b></span>
+                    <span class="mc" title="Handles"><b>1 284</b></span>
+                    <span class="mc" title="GPU engine">3D <b>34</b><small>%</small></span>
+                    <span class="mc" title="Copy engine">Copy <b>2</b><small>%</small></span>
+                    <span class="mc" title="Started"><svg class="ic"><use href="#i-timer"></use></svg><b>3h 08m</b></span>
+                    <span class="mc" title="Command line"><svg class="ic"><use href="#i-file"></use></svg><b>…</b></span>
+                </div>
+            </div>
+        </div>
+
+        <div class="sec" style="margin-top:18px">Planned — resident mode<span class="right muted">not built</span></div>
+        <div class="mock-grid">
+            <div class="card">
+                <div class="mock-title"><svg class="ic"><use href="#i-host"></use></svg>Tray menu</div>
+                <p class="mock-text">Start with Windows, live only in the tray, and the tooltip carries the headline numbers.</p>
+                <div class="mock-stack">
+                    <label class="dr-check"><span class="switch"><input type="checkbox" checked><span></span></span>Start with Windows</label>
+                    <label class="dr-check"><span class="switch"><input type="checkbox" checked><span></span></span>Always on top</label>
+                    <label class="dr-check"><span class="switch"><input type="checkbox"><span></span></span>Window without GPU</label>
+                </div>
+            </div>
+            <div class="card">
+                <div class="mock-title"><svg class="ic"><use href="#i-info"></use></svg>System</div>
+                <div class="mgrid" style="margin:0">
+                    <span class="mc" title="Machine"><svg class="ic"><use href="#i-host"></use></svg><b>CRIM10</b></span>
+                    <span class="mc" title="Driver version"><b>581.29</b><small>driver</small></span>
+                    <span class="mc" title="Service uptime"><svg class="ic"><use href="#i-timer"></use></svg><b>3h 12m</b></span>
+                    <span class="mc" title="Sample rate"><b>1</b><small>Hz</small></span>
+                    <span class="mc" title="History kept"><svg class="ic"><use href="#i-layers"></use></svg><b>5</b><small>min</small></span>
+                    <span class="mc" title="Port"><svg class="ic"><use href="#i-port"></use></svg><b>8079</b></span>
+                </div>
+                <div class="mock-io" style="text-align:left;margin-top:10px">Mjpeg export, alerts by threshold and a CSV of the history are next.</div>
+            </div>
+        </div>
+    </main>
+</div>
+
+<script src="../../../Design-System/components/bundle.js"></script>
+<script>
+// Nur für dieses Mockup: erfundene, aber plausible Messwerte, damit Kurven und Zahlen leben.
+(() => {
+    "use strict";
+    const $ = (id) => document.getElementById(id);
+    const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+    const rnd = (min, max) => min + Math.random() * (max - min);
+    const walk = (v, step, min, max) => Math.max(min, Math.min(max, v + rnd(-step, step)));
+    const state = { sort: "cpu", query: "", order: null, cpu: [], net: [], gpu: 36, cpuLoad: 11 };
+
+    const processes = [
+        { name: "llama-server", pid: 12908, cpu: 46.2, ram: 1940, gpu: 72, vram: 12960, disk: "4.1 / 0.6", net: "0.1 / 1.2", state: "gen", time: "3:08" },
+        { name: "chrome", pid: 4660, cpu: 9.4, ram: 1440, gpu: 14, vram: 980, disk: "12.8 / 3.1", net: "1.4 / 0.2", state: "read", time: "1:41" },
+        { name: "msedgewebview2", pid: 29856, cpu: 4.1, ram: 268, gpu: 6, vram: 66, disk: "0.4 / 0.1", net: "0.0 / 0.0", state: "read", time: "0:52" },
+        { name: "StykkerHUD", pid: 22024, cpu: 1.2, ram: 84, gpu: 0, vram: 4, disk: "0.2 / 0.0", net: "0.0 / 0.0", state: "idle", time: "0:12" },
+        { name: "Code", pid: 9112, cpu: 3.6, ram: 812, gpu: 3, vram: 210, disk: "1.1 / 0.4", net: "0.1 / 0.1", state: "read", time: "2:19" },
+        { name: "steam", pid: 21960, cpu: 0.9, ram: 104, gpu: 1, vram: 48, disk: "0.6 / 0.2", net: "0.2 / 0.1", state: "idle", time: "8:16" },
+        { name: "explorer", pid: 5284, cpu: 0.4, ram: 132, gpu: 0, vram: 12, disk: "0.0 / 0.0", net: "0.0 / 0.0", state: "idle", time: "11:03" },
+        { name: "dwm", pid: 1520, cpu: 1.8, ram: 96, gpu: 4, vram: 320, disk: "0.0 / 0.0", net: "0.0 / 0.0", state: "idle", time: "6:40" },
+        { name: "MsMpEng", pid: 3104, cpu: 2.2, ram: 288, gpu: 0, vram: 0, disk: "8.2 / 0.1", net: "0.0 / 0.0", state: "read", time: "4:55" },
+        { name: "nvcontainer", pid: 1884, cpu: 0.6, ram: 64, gpu: 1, vram: 24, disk: "0.1 / 0.0", net: "0.0 / 0.0", state: "idle", time: "1:12" },
+        { name: "MSIAfterburner", pid: 2672, cpu: 0.5, ram: 14, gpu: 2, vram: 8, disk: "0.0 / 0.0", net: "0.0 / 0.0", state: "idle", time: "0:31" },
+        { name: "dotnet", pid: 17440, cpu: 0.3, ram: 148, gpu: 0, vram: 0, disk: "0.1 / 0.0", net: "0.0 / 0.0", state: "idle", time: "0:44" },
+        { name: "claude", pid: 2316, cpu: 0.2, ram: 255, gpu: 0, vram: 0, disk: "0.0 / 0.0", net: "0.1 / 0.1", state: "idle", time: "0:58" },
+        { name: "SearchHost", pid: 7308, cpu: 0.1, ram: 78, gpu: 0, vram: 0, disk: "0.0 / 0.0", net: "0.0 / 0.0", state: "idle", time: "0:22" }
+    ];
+    const icons = { idle: "s-idle", read: "s-read", gen: "s-gen" };
+
+    function path(values, height) {
+        if (values.length < 2) return "";
+        let d = "";
+        values.forEach((v, i) => {
+            const x = (i / (values.length - 1)) * 100;
+            const y = height - Math.max(0, Math.min(100, v)) * (height / 100);
+            d += (i ? " L" : "M") + x.toFixed(2) + " " + y.toFixed(2);
+        });
+        return d;
+    }
+    function draw(prefix, values) {
+        const d = path(values, 40);
+        const line = $(prefix + "-line"), glow = $(prefix + "-g1"), g2 = $(prefix + "-g2"), area = $(prefix + "-area");
+        if (line) line.setAttribute("d", d);
+        if (glow) glow.setAttribute("d", d);
+        if (g2) g2.setAttribute("d", d);
+        if (area) area.setAttribute("d", d ? d + " L100 40 L0 40 Z" : "");
+        const tip = $(prefix + "-tip");
+        if (tip && values.length) tip.style.top = (100 - values[values.length - 1]) + "%";
+    }
+    function rows() {
+        const q = state.query.toLowerCase();
+        const list = processes.filter((p) => !q || p.name.toLowerCase().includes(q));
+        const cmp = {
+            cpu: (a, b) => b.cpu - a.cpu,
+            ram: (a, b) => b.ram - a.ram,
+            gpu: (a, b) => b.gpu - a.gpu,
+            name: (a, b) => a.name.localeCompare(b.name)
+        }[state.sort];
+        return list.sort(cmp).slice(0, 40);
+    }
+    function rowHtml(p) {
+        const heat = p.cpu >= 25 ? "var(--bad)" : p.cpu >= 8 ? "var(--warn)" : "var(--muted)";
+        return `<div class="req" style="--b:${heat}">
+            <span class="cl" title="Process"><svg class="ic"><use href="#i-cpu"></use></svg></span>
+            <span class="mdl"><i></i><span>${esc(p.name)}</span></span>
+            <span class="hostc"><span class="chipi">${p.pid}</span></span>
+            <span class="dur"><span class="bar"><i style="width:${Math.min(100, p.cpu).toFixed(1)}%"></i></span><span class="pc">${p.cpu.toFixed(1)}%</span></span>
+            <span class="pp">${p.ram >= 1024 ? (p.ram / 1024).toFixed(1) + " GB" : Math.round(p.ram) + " MB"}</span>
+            <span class="pp">${p.gpu ? p.gpu + "%" : "–"}</span>
+            <span class="pp">${p.vram ? Math.round(p.vram) : "–"}</span>
+            <span class="mock-io">${p.disk}</span>
+            <span class="mock-io"><span class="up">${p.net.split(" / ")[0]}</span> / ${p.net.split(" / ")[1]}</span>
+            <span class="res"><span class="st" data-s="${p.state}" title="${p.state}"><svg class="ic"><use href="#${icons[p.state]}"></use></svg></span></span>
+            <span class="ago">${p.time}</span>
+            <span><details class="menu"><summary class="btn sq act" aria-label="More">⋯</summary>
+                <div><span class="grp" style="font-size:var(--t-xs);color:var(--muted);padding:6px 8px 2px;text-transform:uppercase;letter-spacing:.06em">${esc(p.name)}</span>
+                <button><svg class="ic"><use href="#i-open"></use></svg>Open file location</button>
+                <button><svg class="ic"><use href="#i-slots"></use></svg>Priority: Normal</button>
+                <hr><button class="danger"><svg class="ic"><use href="#i-stop"></use></svg>End task</button></div></details></span>
+        </div>`;
+    }
+    function render() {
+        const list = rows();
+        const host = $("proc-rows");
+        const order = list.map((p) => p.pid).join(",");
+        if (order !== state.order) {
+            state.order = order;
+            host.innerHTML = list.map(rowHtml).join("");
+        }
+        $("v-proc-shown").textContent = `${list.length} of ${processes.length + 190}`;
+    }
+    function tick() {
+        state.cpuLoad = walk(state.cpuLoad, 6, 2, 92);
+        state.gpu = walk(state.gpu, 9, 0, 100);
+        state.cpu.push(state.cpuLoad);
+        state.net.push(Math.max(0, walk(state.net[state.net.length - 1] || 12, 7, 0, 100)));
+        if (state.cpu.length > 300) state.cpu.shift();
+        if (state.net.length > 300) state.net.shift();
+
+        $("v-cpu").textContent = Math.round(state.cpuLoad);
+        $("t-cpu").style.width = state.cpuLoad.toFixed(0) + "%";
+        $("v-gpu").textContent = Math.round(state.gpu);
+        $("v-gpu-big").textContent = Math.round(state.gpu);
+        $("t-gpu").style.width = state.gpu.toFixed(0) + "%";
+        $("v-gpu-temp").textContent = Math.round(45 + state.gpu * 0.35);
+        $("v-gpu-power").textContent = Math.round(60 + state.gpu * 1.9);
+        $("v-disk").textContent = `read ${rnd(2, 24).toFixed(1)} MB/s  ·  write ${rnd(0.2, 8).toFixed(1)} MB/s`;
+        $("v-net-down").textContent = rnd(0.1, 4.2).toFixed(1);
+        $("v-net-up").textContent = rnd(0.05, 1.4).toFixed(2);
+        $("cpu-peak").textContent = "peak " + Math.round(Math.max(...state.cpu)) + "%";
+        draw("cpu", state.cpu);
+        draw("net", state.net);
+
+        const cores = $("cores");
+        if (cores.childElementCount !== 16) cores.innerHTML = Array.from({ length: 16 }, (_, i) =>
+            `<div class="ctx"><span class="num">${i}</span><span class="bar"><i></i></span><span class="num">–</span></div>`).join("");
+        for (const [i, cell] of [...cores.children].entries()) {
+            const v = Math.max(0, Math.min(100, state.cpuLoad + rnd(-28, 28)));
+            cell.querySelector(".bar i").style.width = v.toFixed(0) + "%";
+            cell.lastElementChild.textContent = Math.round(v) + "%";
+        }
+    }
+    for (const button of document.querySelectorAll(".seg button[data-sort]")) {
+        button.addEventListener("click", () => {
+            state.sort = button.dataset.sort;
+            state.order = null;
+            for (const other of document.querySelectorAll(".seg button[data-sort]")) other.classList.toggle("on", other === button);
+        });
+    }
+    for (const button of document.querySelectorAll(".seg button[data-theme-choice]")) {
+        button.addEventListener("click", () => {
+            document.documentElement.dataset.theme = button.dataset.themeChoice;
+            for (const other of document.querySelectorAll(".seg button[data-theme-choice]")) other.classList.toggle("on", other === button);
+        });
+    }
+    const filter = $("q");
+    if (filter) filter.addEventListener("input", () => { state.query = filter.value.trim(); state.order = null; });
+
+    for (let i = 0; i < 300; i++) state.cpu.push(Math.max(1, Math.min(95, 12 + Math.sin(i / 14) * 22 + rnd(-6, 6))));
+    for (let i = 0; i < 300; i++) state.net.push(Math.max(0, 12 + Math.sin(i / 9) * 10 + rnd(-6, 6)));
+    render();
+    tick();
+    setInterval(tick, 1000);
+})();
+</script>
+</body>
+</html>
