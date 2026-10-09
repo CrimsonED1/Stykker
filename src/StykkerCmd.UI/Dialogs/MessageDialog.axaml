@@ -1,0 +1,31 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="StykkerCmd.UI.Dialogs.MessageDialog"
+        Width="500" SizeToContent="Height" CanResize="False"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource card}"
+        Foreground="{DynamicResource ink}"
+        FontFamily="{DynamicResource SansFont}"
+        FontSize="13">
+
+    <Window.Styles>
+        <Style Selector="Button">
+            <Setter Property="Padding" Value="16,7" />
+            <Setter Property="MinWidth" Value="120" />
+            <Setter Property="Background" Value="{DynamicResource card-2}" />
+            <Setter Property="Foreground" Value="{DynamicResource ink}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource line}" />
+        </Style>
+        <Style Selector="Button.primary">
+            <Setter Property="Background" Value="{DynamicResource acc}" />
+            <Setter Property="Foreground" Value="{DynamicResource bg}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource acc}" />
+        </Style>
+    </Window.Styles>
+
+    <StackPanel Margin="22" Spacing="10">
+        <TextBlock x:Name="Heading" FontSize="16" FontWeight="SemiBold" TextWrapping="Wrap" />
+        <TextBlock x:Name="Body" Foreground="{DynamicResource muted}" TextWrapping="Wrap" Margin="0,0,0,12" />
+        <StackPanel x:Name="Buttons" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="10" />
+    </StackPanel>
+</Window>

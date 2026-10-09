@@ -1,0 +1,90 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:panels="clr-namespace:StykkerCmd.UI.Panels"
+        x:Class="StykkerCmd.UI.MainWindow"
+        Width="1180" Height="720" MinWidth="720" MinHeight="460"
+        Background="{DynamicResource bg}"
+        Foreground="{DynamicResource ink}"
+        FontFamily="{DynamicResource SansFont}"
+        FontSize="13">
+
+    <Window.Styles>
+        <!-- Panelrahmen: das aktive Panel bekommt den Akzentrahmen. Die Klasse "active" setzt PanelView.SetActive. -->
+        <Style Selector="Border.panel">
+            <Setter Property="Background" Value="{DynamicResource card}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource line}" />
+            <Setter Property="BorderThickness" Value="1" />
+        </Style>
+        <Style Selector="Border.panel.active">
+            <Setter Property="BorderBrush" Value="{DynamicResource acc}" />
+            <Setter Property="BorderThickness" Value="2" />
+        </Style>
+
+        <Style Selector="ListBoxItem">
+            <Setter Property="Padding" Value="8,0" />
+            <Setter Property="Foreground" Value="{DynamicResource ink}" />
+        </Style>
+        <Style Selector="ListBoxItem:selected">
+            <Setter Property="Background" Value="{DynamicResource line}" />
+        </Style>
+
+        <Style Selector="Button.key">
+            <Setter Property="Background" Value="{DynamicResource card-2}" />
+            <Setter Property="Foreground" Value="{DynamicResource ink}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource line}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="12,6" />
+            <Setter Property="Margin" Value="0,0,8,0" />
+            <Setter Property="FontSize" Value="12" />
+        </Style>
+    </Window.Styles>
+
+    <Grid RowDefinitions="Auto,*,Auto,Auto" Margin="14">
+        <!-- Kopfzeile -->
+        <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="2,0,2,12">
+            <TextBlock Text="StykkerCMD" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" />
+            <TextBlock Grid.Column="1" x:Name="ThemeLabel" Foreground="{DynamicResource muted}" FontSize="12"
+                       VerticalAlignment="Center" />
+        </Grid>
+
+        <!-- Panels -->
+        <Grid Grid.Row="1" ColumnDefinitions="*,*">
+            <panels:PanelView x:Name="LeftPanel" Grid.Column="0" Margin="0,0,7,0" />
+            <panels:PanelView x:Name="RightPanel" Grid.Column="1" Margin="7,0,0,0" />
+        </Grid>
+
+        <!-- Funktionsleiste: dieselben Befehle wie die Tasten -->
+        <WrapPanel Grid.Row="2" Margin="0,12,0,8">
+            <Button Classes="key" Tag="Copy" Content="F5  Kopieren" Click="OnFunctionButton" />
+            <Button Classes="key" Tag="Move" Content="F6  Verschieben" Click="OnFunctionButton" />
+            <Button Classes="key" Tag="MakeDirectory" Content="F7  Ordner" Click="OnFunctionButton" />
+            <Button Classes="key" Tag="Delete" Content="F8  Papierkorb" Click="OnFunctionButton" />
+            <Button Classes="key" Tag="ToggleTheme" Content="F9  Thema" Click="OnFunctionButton" />
+        </WrapPanel>
+
+        <!-- Statuszeile: letztes Ergebnis oder Tastenhinweise -->
+        <TextBlock Grid.Row="3" x:Name="StatusText" Foreground="{DynamicResource muted}" FontSize="12"
+                   TextTrimming="CharacterEllipsis" />
+
+        <!-- Fortschritt eines laufenden Auftrags: eine Ebene über dem Fenster, ohne eigenes Fenster.
+             Ein zweites Fenster würde beim Schließen den Vordergrund an andere Programme abgeben. -->
+        <Border x:Name="ProgressLayer" Grid.Row="0" Grid.RowSpan="4" IsVisible="False"
+                Background="{DynamicResource bg}" Opacity="0.94">
+            <Border Width="560" Padding="24" Background="{DynamicResource card}"
+                    BorderBrush="{DynamicResource acc}" BorderThickness="1"
+                    CornerRadius="{DynamicResource PanelRadius}"
+                    HorizontalAlignment="Center" VerticalAlignment="Center">
+                <StackPanel Spacing="10">
+                    <TextBlock x:Name="ProgressHeading" FontSize="16" FontWeight="SemiBold" TextWrapping="Wrap" />
+                    <TextBlock x:Name="ProgressCurrent" FontFamily="{DynamicResource MonoFont}" FontSize="12"
+                               Foreground="{DynamicResource muted}" TextTrimming="CharacterEllipsis" Margin="0,4,0,4" />
+                    <ProgressBar x:Name="ProgressMeter" Minimum="0" Maximum="100" Height="8"
+                                 Foreground="{DynamicResource acc}" Background="{DynamicResource line}" />
+                    <TextBlock x:Name="ProgressCounts" Foreground="{DynamicResource muted}" Margin="0,2,0,8" />
+                    <Button x:Name="ProgressCancel" Content="Abbrechen (Esc)" HorizontalAlignment="Right"
+                            MinWidth="150" Click="OnProgressCancel" />
+                </StackPanel>
+            </Border>
+        </Border>
+    </Grid>
+</Window>
