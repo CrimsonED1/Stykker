@@ -34,7 +34,7 @@ No path from the UI ends a whole process tree. The API takes `tree: true`, but n
 
 Windows does not give an ordinary program the CPU time of every process. Those processes are **left out of the list**: `System` (PID 4), `Registry`, `Memory Compression`, `lsass`, the antivirus engine and many services. In a measurement on 2026-10-09, 215 of 346 running processes were missing.
 
-Their load counts in the processor total of StykkerHUD, so the rows of this list can add up to **less than that total**. In the same measurement the listed rows added up to about half of the processor total, most of the rest being kernel time. A note line that counts the hidden processes is an open item.
+Their load counts in the processor total of StykkerHUD, so the rows of this list can add up to **less than that total**. In the same measurement the listed rows added up to about half of the processor total, most of the rest being kernel time. The list says how many processes it leaves out in a note line at the top, for example `Not listed: 114 of 233 processes.`
 
 GPU values per process come from the Windows GPU counters. Where those counters do not answer, the GPU and graphics-memory columns stay `–`, and the list says so in a note line.
 
@@ -77,7 +77,7 @@ Environment variable for the design system: `STYKKERSYS_DESIGN_SYSTEM`.
 ## Verifying
 
 ```powershell
-# unit tests (19)
+# unit tests (21)
 dotnet test tests\StykkerSys.Tests\StykkerSys.Tests.csproj
 
 # with the server running on port 8077 (needs Google Chrome and `npm install` once in tools/)
@@ -86,12 +86,11 @@ node tools\check-groups.mjs --port 8077    # 16 checks
 node tools\shot.mjs --port 8077 --out docs\screenshots --name sys
 ```
 
-Last run on 2026-10-09: 19/19 unit tests, 16/16 action checks, 16/16 grouping checks.
+Last run on 2026-10-09: 21/21 unit tests, 16/16 action checks, 16/16 grouping checks.
 
 ## Not built yet
 
 - **Affinity**: which processors a process may use.
 - **Ending a process tree** from the UI. The API takes `tree: true`; no button offers it yet.
-- **A note line that counts the hidden processes** (see above).
 - **Resident mode**: start with Windows and live only in the tray.
 - **Open decision**: Blazor/Photino or Avalonia for the interface. See [StykkerHUD's decision record](../hud/docs/entscheidungen.md).

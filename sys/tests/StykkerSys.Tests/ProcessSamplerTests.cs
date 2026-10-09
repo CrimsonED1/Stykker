@@ -68,4 +68,19 @@ public class ProcessSamplerTests
         Assert.All(snapshot.Processes, p => { Assert.Null(p.GpuPercent); Assert.Null(p.VramMb); Assert.Null(p.Path); });
         Assert.Contains(snapshot.Notes, n => n.Contains("GPU"));
     }
+
+    [Fact]
+    public void NoNoteWhileEveryProcessCanBeRead()
+    {
+        Assert.Null(ProcessSampler.UnreadableNote(0, 300));
+    }
+
+    [Fact]
+    public void TheNoteCountsTheProcessesTheListLeavesOut()
+    {
+        var note = ProcessSampler.UnreadableNote(215, 346);
+        Assert.NotNull(note);
+        Assert.Contains("215 of 346", note);
+        Assert.Contains("StykkerHUD", note);
+    }
 }

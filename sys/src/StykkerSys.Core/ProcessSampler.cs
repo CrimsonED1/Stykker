@@ -41,24 +41,33 @@ public sealed class ProcessSampler : ISampler<SysSnapshot>
         lock (_gate)
         {
             var now = DateTime.Now;
-            var processes = ReadProcesses(now);
+            var processes = ReadProcesses(now, out int unreadable);
             var util = _probe.ReadGpuUtil();
             // Der Speicher nur alle paar Takte: die Abfrage zählt jeden Grafikprozess der Maschine auf einmal durch.
             if (_tick++ % MemoryEveryTicks == 0) _gpuMem = _probe.ReadGpuMemory();
             AttachGpu(processes, util, _gpuMem);
 
-            var notes = new List<string>(1);
+            var notes = new List<string>(2);
             if (util == null && _gpuMem == null)
                 notes.Add("No GPU values per process – the Windows GPU counters did not answer.");
+            if (UnreadableNote(unreadable, processes.Count + unreadable) is { } hidden) notes.Add(hidden);
             return new SysSnapshot(now, (long)(now - _started).TotalSeconds, processes, notes.ToArray());
         }
     }
 
-    // Prozessorzeit je Prozess als Differenz zur letzten Messung; der erste Durchlauf liefert überall 0 %.
-    private List<ProcessSample> ReadProcesses(DateTime now)
+    // Die Hinweiszeile zu den Prozessen, die die Liste nicht zeigt; null, solange alle lesbar sind.
+    public static string? UnreadableNote(int unreadable, int total) =>
+        unreadable > 0
+            ? $"Not listed: {unreadable} of {total} processes. Windows does not show their CPU time to StykkerSYS (system processes and protected services); their load is still in the processor total on StykkerHUD."
+            : null;
+
+    // Prozessorzeit je Prozess als Differenz zur letzten Messung; der erste Durchlauf liefert überall 0 %. Zählt zugleich
+    // die Prozesse, deren Zeit Windows diesem Benutzer nicht herausgibt (System, geschützte Dienste): sie fehlen in der Liste.
+    private List<ProcessSample> ReadProcesses(DateTime now, out int unreadable)
     {
         var list = new List<ProcessSample>(256);
         var alive = new HashSet<int>();
+        unreadable = 0;
         foreach (var p in Process.GetProcesses())
         {
             try
@@ -80,10 +89,14 @@ public sealed class ProcessSampler : ISampler<SysSnapshot>
                 list.Add(new ProcessSample(pid, p.ProcessName, cpu, p.WorkingSet64 / 1048576.0, null, null,
                     p.Threads.Count, cpuMs / 1000.0, ProcessState.Of(cpu), priority, _probe.PathOf(pid)));
             }
-            catch (Exception ex) when (ex is InvalidOperationException or Win32Exception
-                                          or NotSupportedException or PlatformNotSupportedException)
+            catch (Win32Exception)
             {
-                // Beendet oder geschützt (viele Systemprozesse): die Zeile fehlt in diesem Durchlauf.
+                // Geschützt: Windows verweigert die Zeit. Die Zeile fehlt in diesem Durchlauf – und wird gezählt.
+                unreadable++;
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or NotSupportedException or PlatformNotSupportedException)
+            {
+                // Beendet, während die Liste entstand: nichts, was man zählen oder zeigen könnte.
             }
             finally { p.Dispose(); }
         }
