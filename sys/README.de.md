@@ -34,7 +34,7 @@ Aus der Oberfläche endet kein ganzer Prozessbaum. Die API kennt `tree: true`, a
 
 Windows gibt einem gewöhnlichen Programm nicht für jeden Prozess die CPU-Zeit heraus. Diese Prozesse fehlen **in der Liste**: `System` (PID 4), `Registry`, `Memory Compression`, `lsass`, die Antivirus-Engine und viele Dienste. Bei einer Messung am 2026-10-09 fehlten 215 von 346 laufenden Prozessen.
 
-Ihre Last zählt in der Prozessorsumme von StykkerHUD mit. Deshalb können die Zeilen dieser Liste **weniger als diese Summe** ergeben. Bei derselben Messung ergaben die gezeigten Zeilen etwa die Hälfte der Prozessorsumme, der Rest war vor allem Kernel-Zeit. Eine Hinweiszeile, die die verborgenen Prozesse zählt, steht als offener Punkt.
+Ihre Last zählt in der Prozessorsumme von StykkerHUD mit. Deshalb können die Zeilen dieser Liste **weniger als diese Summe** ergeben. Bei derselben Messung ergaben die gezeigten Zeilen etwa die Hälfte der Prozessorsumme, der Rest war vor allem Kernel-Zeit. Die Liste nennt oben in einer Hinweiszeile, wie viele Prozesse sie auslässt, zum Beispiel `Not listed: 114 of 233 processes.`
 
 GPU-Werte je Prozess kommen aus den Windows-GPU-Zählern. Antworten sie nicht, bleiben die Spalten GPU und Grafikspeicher bei `–`, und die Liste sagt es in einer Hinweiszeile.
 
@@ -77,7 +77,7 @@ Umgebungsvariable für das Design-System: `STYKKERSYS_DESIGN_SYSTEM`.
 ## Prüfen
 
 ```powershell
-# Komponententests (19)
+# Komponententests (21)
 dotnet test tests\StykkerSys.Tests\StykkerSys.Tests.csproj
 
 # mit laufendem Server auf Port 8077 (braucht Google Chrome und einmal `npm install` in tools/)
@@ -86,12 +86,11 @@ node tools\check-groups.mjs --port 8077    # 16 Prüfungen
 node tools\shot.mjs --port 8077 --out docs\screenshots --name sys
 ```
 
-Letzter Lauf am 2026-10-09: 19/19 Komponententests, 16/16 Aktionsprüfungen, 16/16 Gruppenprüfungen.
+Letzter Lauf am 2026-10-09: 21/21 Komponententests, 16/16 Aktionsprüfungen, 16/16 Gruppenprüfungen.
 
 ## Noch nicht gebaut
 
 - **Zugehörigkeit (Affinität)**: welche Prozessorkerne ein Prozess nutzen darf.
 - **Beenden eines ganzen Prozessbaums** aus der Oberfläche. Die API kennt `tree: true`; noch bietet kein Knopf es an.
-- **Eine Hinweiszeile, die die verborgenen Prozesse zählt** (siehe oben).
 - **Dauerbetrieb**: mit Windows starten und nur im Tray leben.
 - **Offene Entscheidung**: Blazor/Photino oder Avalonia für die Oberfläche. Siehe [die Entscheidungsnotiz von StykkerHUD](../hud/docs/entscheidungen.md).
