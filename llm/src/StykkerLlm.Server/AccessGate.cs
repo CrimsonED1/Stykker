@@ -277,8 +277,13 @@ public sealed class AccessGate(AccessControl access, string key, int port, Func<
             return;
         }
         var args = await ArgsAsync(ctx);
-        var (token, _) = access.AddLocalDevice(DeviceName(ctx, Arg(args, "name")), ctx.Connection.RemoteIpAddress?.ToString());
-        await Json(ctx, StatusCodes.Status200OK, $$"""{"ok":true,"token":{{JsonSerializer.Serialize(token)}}}""");
+        var added = access.AddLocalDevice(DeviceName(ctx, Arg(args, "name")), ctx.Connection.RemoteIpAddress?.ToString());
+        if (added is not { } made)
+        {
+            await Json(ctx, StatusCodes.Status503ServiceUnavailable, """{"ok":false}""");
+            return;
+        }
+        await Json(ctx, StatusCodes.Status200OK, $$"""{"ok":true,"token":{{JsonSerializer.Serialize(made.Token)}}}""");
     }
 
     // … und legt es in ihrer WebView als Cookie ab (ein Formular, das sie selbst abschickt). Nur von diesem PC, nur ein

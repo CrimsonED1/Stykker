@@ -143,7 +143,6 @@ public sealed class EngineHost : IDisposable
             {
                 try { await Engine.TickAsync(); Ticked?.Invoke(); } catch { }
                 Access.Maintain();          // abgelaufenen Code ersetzen, alte Kopplungsanfragen aufräumen
-                Access.WriteThrottled();
                 try { await Task.Delay(Math.Max(500, Engine.Settings.IntervalMs), ct); } catch { break; }
             }
         });
@@ -152,7 +151,6 @@ public sealed class EngineHost : IDisposable
     public void Dispose()
     {
         _cts?.Cancel();
-        Access.Write();
         try { Engine.Dispose(); } catch { }
         _platform.Dispose();
     }

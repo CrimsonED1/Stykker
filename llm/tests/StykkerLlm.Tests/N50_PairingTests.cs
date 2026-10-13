@@ -131,7 +131,9 @@ public class N50_PairingTests
     {
         var access = new AccessControl(TempPaths("local"), new FakePlatform());
         var code = access.Code;
-        var (token, device) = access.AddLocalDevice(Strings.ShellDeviceName, "127.0.0.1");
+        var added = access.AddLocalDevice(Strings.ShellDeviceName, "127.0.0.1");
+        Assert.IsNotNull(added, "die Ablage ist nicht gesperrt");
+        var (token, device) = added.Value;
         Assert.AreEqual(AccessRole.Admin, access.RoleOf(token));
         Assert.AreEqual(Strings.ShellDeviceName, device.Name);
         Assert.AreEqual(code, access.Code, "der Code fürs Handy bleibt gültig");
