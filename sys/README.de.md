@@ -31,7 +31,7 @@ Die Liste zeigt die Prozesse dieser Maschine. Was eine Anfrage darf, hängt davo
 - **Nur JSON.** Ohne `Content-Type: application/json` antworten die Aktionen mit `415`, damit ein Formular auf einer anderen Website sie nicht erreicht.
 - **Nie angefasst:** PID 4 und darunter (System und Ähnliches) sowie StykkerSYS selbst. Der Server lehnt mit `409` ab und sagt, warum.
 - **Zugriff verweigert:** Windows lehnt die Aktion ab; die Meldung rät, StykkerSYS für diesen Prozess als Administrator zu starten.
-- **Rahmen.** Nur diese Seite und die Zentrale auf dem `--hub-port` (Standard 8079) unter demselben Namen dürfen StykkerSYS im Frame zeigen.
+- **Frames.** Nur diese Seite und die Zentrale auf dem `--hub-port` (Standard 8079) unter demselben Namen dürfen StykkerSYS im Frame zeigen.
 
 Aus der Oberfläche endet kein ganzer Prozessbaum. Die API kennt `tree: true`, aber kein Knopf ruft es auf.
 
