@@ -220,7 +220,9 @@ Von dir entschieden am 2026-10-13:
 
 - **E: ja, alles Web.** CMD bekommt Web-UI und Server-Version, Avalonia entfällt. Die Frage Blazor oder Avalonia aus `hud/docs/entscheidungen.md` ist damit beantwortet.
 - **Branch `dev`** im Monorepo: dort läuft die laufende Arbeit, `main` bekommt nur geprüfte Stände.
-- **F (YARP) ist offen**, du hast nachgefragt, wofür. Gebraucht wird die Weiterleitung erst in Phase 4.
+- **F: Frames zuerst, YARP zusätzlich.** Die Zentrale ist eine Hülle: Leiste oben, das Modul im Frame darunter, für eigene Module wie für fremde Dienste. YARP (`Yarp.ReverseProxy`, freigegeben) kommt dazu, wo ein Frame allein nicht reicht, und später als einzige Tür des Knotens.
+- **Qwen Code ist der Testfall für fremde Dienste**, weil es das Einbetten verbietet. Der Versuch dazu ist gelaufen: [spike-frame-proxy.md](spike-frame-proxy.md). Mit YARP davor lässt sich Qwen einbetten, und das Handy braucht dann kein Qwen-Token mehr.
+- **Fremde Dienste als externe Module:** ein Eintrag in `stykker.json`, sichtbar nur für Geräte mit Rolle `admin` für diesen Eintrag.
 
 Über den Plan hinaus:
 
