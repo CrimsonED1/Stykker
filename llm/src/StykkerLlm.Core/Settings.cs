@@ -36,10 +36,26 @@ public sealed class AppPaths
         return DefaultCsv;
     }
 
-    public AppPaths(string root) => Root = root;
+    // true nur für die Vorgabe (%APPDATA%\StykkerLLM): dann liegt die Kopplung in der gemeinsamen Ablage
+    public bool IsDefault { get; }
+
+    public AppPaths(string root) : this(root, isDefault: false) { }
+
+    internal AppPaths(string root, bool isDefault)
+    {
+        Root = root;
+        IsDefault = isDefault;
+    }
+
+    // Die pairing.dat für diesen Datenordner. Ein Pfad aus --pairing-file hat Vorrang. Für die Vorgabe ist es die
+    // gemeinsame Ablage %APPDATA%\Stykker (HUD, SYS und LLM teilen sie), sonst eine pairing.dat im Datenordner.
+    public string PairingFile(string? explicitFile = null) =>
+        !string.IsNullOrWhiteSpace(explicitFile) ? Path.GetFullPath(explicitFile)
+        : IsDefault ? Stykker.Pairing.PairingStore.DefaultFile()
+        : Path.Combine(Root, Stykker.Pairing.PairingStore.FileName);
 
     public static AppPaths Default() =>
-        new(MigrateRoot(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData)));
+        new(MigrateRoot(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData)), isDefault: true);
 
     // %APPDATA%\StykkerLLM; alte Daten von %APPDATA%\StykkerSLM werden einmalig übernommen (Ordner wird umbenannt),
     // wenn der neue Ordner noch nicht existiert. Ein Fehler beim Verschieben darf den Start nie verhindern.

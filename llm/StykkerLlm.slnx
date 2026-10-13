@@ -10,4 +10,7 @@
   <Folder Name="/tests/">
     <Project Path="tests/StykkerLlm.Tests/StykkerLlm.Tests.csproj" />
   </Folder>
+  <Folder Name="/shared/">
+    <Project Path="../shared/src/Stykker.Pairing/Stykker.Pairing.csproj" />
+  </Folder>
 </Solution>
