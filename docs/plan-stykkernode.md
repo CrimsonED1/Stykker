@@ -216,6 +216,12 @@ Dabei entschieden, weil die Bibliothek es brauchte (Abschnitt 6, jeweils die Emp
 - **B:** `pairing.dat` ist eine eigene, geschützte Datei.
 - **C:** Rollen je Modul. Wer sich an einem Modul anmeldet, ist dort `admin` und überall sonst `viewer`.
 
+Von dir entschieden am 2026-10-13:
+
+- **E: ja, alles Web.** CMD bekommt Web-UI und Server-Version, Avalonia entfällt. Die Frage Blazor oder Avalonia aus `hud/docs/entscheidungen.md` ist damit beantwortet.
+- **Branch `dev`** im Monorepo: dort läuft die laufende Arbeit, `main` bekommt nur geprüfte Stände.
+- **F (YARP) ist offen**, du hast nachgefragt, wofür. Gebraucht wird die Weiterleitung erst in Phase 4.
+
 Über den Plan hinaus:
 
 - **Fehlversuche stehen in der Ablage**, nicht im Speicher. Sonst hätte jeder Prozess seine eigenen fünf Versuche.

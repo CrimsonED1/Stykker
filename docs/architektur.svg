@@ -1,155 +1,187 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="960" viewBox="0 0 1400 960" font-family="'Segoe UI', Arial, Helvetica, sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="1010" viewBox="0 0 1400 1010" font-family="'Segoe UI', Arial, Helvetica, sans-serif">
   <title>Stykker-Suite: Zielbild mit StykkerNode und zentraler Kopplung</title>
-  <desc>Entwurf vom 2026-10-10. Oben die Zugänge, in der Mitte der Knoten mit den Modulen, unten Plattform und Dateien. Nichts davon ist umgesetzt.</desc>
+  <desc>Stand 2026-10-13. Oben die Zugänge, in der Mitte der Knoten mit den Modulen als eigene Prozesse, unten die gemeinsamen Bibliotheken und Dateien. Farbe zeigt den Stand der Umsetzung.</desc>
   <defs>
     <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
       <path d="M0,0 L10,5 L0,10 z" fill="#37474f"/>
     </marker>
   </defs>
 
-  <rect x="0" y="0" width="1400" height="960" fill="#ffffff"/>
+  <rect x="0" y="0" width="1400" height="1010" fill="#ffffff"/>
 
   <text x="40" y="48" font-size="28" font-weight="700" fill="#1a1a1a">Stykker-Suite: Zielbild</text>
-  <text x="40" y="76" font-size="15" fill="#555555">Entwurf vom 2026-10-10, nichts davon ist umgesetzt. Durchgezogen = Ziel · gestrichelt = geplant oder offen.</text>
+  <text x="40" y="76" font-size="15" fill="#555555">Stand 2026-10-13 · jede Oberfläche ist Web · jedes Modul läuft auch allein, ohne Knoten</text>
 
-  <!-- Zugänge -->
-  <rect x="40" y="100" width="250" height="96" rx="10" fill="#f4f6f8" stroke="#78909c" stroke-width="1.5"/>
-  <text x="58" y="126" font-size="16" font-weight="700" fill="#1a1a1a">Browser und Handy</text>
-  <text x="58" y="148" font-size="13" fill="#333333">Web-UI · Kopplung mit Code/QR</text>
-  <text x="58" y="168" font-size="13" fill="#333333">Netz nur mit Home/VPN-Schalter</text>
+  <!-- ── Zugänge ── -->
+  <g font-size="13" fill="#333333">
+    <rect x="40" y="100" width="240" height="92" rx="10" fill="#f4f6f8" stroke="#78909c" stroke-width="1.5"/>
+    <text x="56" y="126" font-size="16" font-weight="700" fill="#1a1a1a">Browser und Handy</text>
+    <text x="56" y="148">Web-UI, Kopplung mit Code oder QR</text>
+    <text x="56" y="168">von außen nur mit Schalter Home/VPN</text>
 
-  <rect x="310" y="100" width="290" height="96" rx="10" fill="#f4f6f8" stroke="#78909c" stroke-width="1.5"/>
-  <text x="328" y="126" font-size="16" font-weight="700" fill="#1a1a1a">Fenster</text>
-  <text x="328" y="148" font-size="13" fill="#333333">StykkerUI · StykkerHUD · StykkerSYS</text>
-  <text x="328" y="168" font-size="13" fill="#333333">Hülle um die Web-UI, startet den Knoten</text>
+    <rect x="300" y="100" width="240" height="92" rx="10" fill="#f4f6f8" stroke="#78909c" stroke-width="1.5"/>
+    <text x="316" y="126" font-size="16" font-weight="700" fill="#1a1a1a">Fenster</text>
+    <text x="316" y="148">Photino-Hülle um dieselbe Web-UI</text>
+    <text x="316" y="168">startet den Knoten, wenn keiner läuft</text>
 
-  <rect x="620" y="100" width="230" height="96" rx="10" fill="#f4f6f8" stroke="#78909c" stroke-width="1.5"/>
-  <text x="638" y="126" font-size="16" font-weight="700" fill="#1a1a1a">Terminal</text>
-  <text x="638" y="148" font-size="13" fill="#333333">stykker, nur Anzeige</text>
-  <text x="638" y="168" font-size="13" fill="#333333">keine Knöpfe, keine Befehle</text>
+    <rect x="560" y="100" width="240" height="92" rx="10" fill="#f4f6f8" stroke="#78909c" stroke-width="1.5"/>
+    <text x="576" y="126" font-size="16" font-weight="700" fill="#1a1a1a">Modell-PCs</text>
+    <text x="576" y="148">StykkerHost wählt sich ausgehend ein</text>
+    <text x="576" y="168">Token statt Rolle, Protokoll bleibt</text>
 
-  <rect x="870" y="100" width="250" height="96" rx="10" fill="#f4f6f8" stroke="#78909c" stroke-width="1.5"/>
-  <text x="888" y="126" font-size="16" font-weight="700" fill="#1a1a1a">Coding-Tools</text>
-  <text x="888" y="148" font-size="13" fill="#333333">Claude Code, Qwen Code</text>
-  <text x="888" y="168" font-size="13" fill="#333333">Proxy :17500, ohne Knoten</text>
+    <rect x="820" y="100" width="240" height="92" rx="10" fill="#f4f6f8" stroke="#78909c" stroke-width="1.5"/>
+    <text x="836" y="126" font-size="16" font-weight="700" fill="#1a1a1a">Terminal</text>
+    <text x="836" y="148">stykker zeigt den LLM-Zustand</text>
+    <text x="836" y="168">nur Anzeige, keine Befehle</text>
 
-  <rect x="1140" y="100" width="220" height="96" rx="10" fill="#f4f6f8" stroke="#78909c" stroke-width="1.5"/>
-  <text x="1158" y="126" font-size="16" font-weight="700" fill="#1a1a1a">Modell-PCs</text>
-  <text x="1158" y="148" font-size="13" fill="#333333">StykkerHost</text>
-  <text x="1158" y="168" font-size="13" fill="#333333">wählt sich ausgehend ein</text>
+    <rect x="1080" y="100" width="280" height="92" rx="10" fill="#f4f6f8" stroke="#78909c" stroke-width="1.5"/>
+    <text x="1096" y="126" font-size="16" font-weight="700" fill="#1a1a1a">Coding-Tools</text>
+    <text x="1096" y="148">Claude Code, Qwen Code</text>
+    <text x="1096" y="168">sprechen den Proxy :17500 direkt an</text>
+  </g>
 
-  <!-- Zugriff auf den Knoten -->
-  <line x1="165" y1="196" x2="165" y2="234" stroke="#37474f" stroke-width="1.6" marker-end="url(#ah)"/>
-  <line x1="455" y1="196" x2="455" y2="234" stroke="#37474f" stroke-width="1.6" marker-end="url(#ah)"/>
-  <line x1="1250" y1="196" x2="1250" y2="234" stroke="#37474f" stroke-width="1.6" marker-end="url(#ah)"/>
-  <text x="468" y="222" font-size="12" font-style="italic" fill="#37474f">alle Zugänge gehen über das Gateway</text>
-
-  <!-- StykkerNode -->
-  <rect x="40" y="236" width="1320" height="404" rx="14" fill="#eef4ff" stroke="#2f5fb3" stroke-width="2"/>
-  <text x="60" y="262" font-size="18" font-weight="700" fill="#1b3f8b">StykkerNode</text>
-  <text x="186" y="262" font-size="15" fill="#1b3f8b">Knoten · eigener Prozess · Dauerbetrieb · startet alle Module</text>
+  <!-- ── StykkerNode ── -->
+  <rect x="40" y="240" width="1320" height="410" rx="14" fill="#fafbfc" stroke="#78909c" stroke-width="2" stroke-dasharray="8 5"/>
+  <text x="60" y="270" font-size="18" font-weight="700" fill="#1a1a1a">StykkerNode</text>
+  <text x="188" y="270" font-size="14" fill="#555555">der Knoten · eigener Prozess im Dauerbetrieb · startet die Module und beendet nur, was er selbst gestartet hat · Phase 4</text>
 
   <!-- Gateway -->
-  <rect x="60" y="280" width="280" height="88" rx="8" fill="#ffffff" stroke="#2f5fb3" stroke-width="1.2"/>
-  <text x="76" y="302" font-size="16" font-weight="700" fill="#1a1a1a">Gateway</text>
-  <text x="76" y="321" font-size="13" fill="#333333">ein Port nach außen</text>
-  <text x="76" y="339" font-size="13" fill="#333333">prüft Schalter und Kopplung</text>
-  <text x="76" y="357" font-size="13" fill="#333333">leitet /llm, /sys, /hud weiter</text>
+  <rect x="60" y="298" width="960" height="72" rx="8" fill="#ffffff" stroke="#78909c" stroke-width="1.5" stroke-dasharray="6 4"/>
+  <text x="76" y="323" font-size="16" font-weight="700" fill="#1a1a1a">Gateway</text>
+  <text x="160" y="323" font-size="13" fill="#333333">ein Port nach außen · prüft zuerst Netzschalter, Kopplung und Rolle</text>
+  <text x="76" y="344" font-size="13" fill="#333333">leitet /hud, /sys, /cmd, /llm an die Module weiter, auch WebSockets (Blazor, Hosts) · Host und Origin bleiben unverändert</text>
+  <text x="76" y="362" font-size="12" font-style="italic" fill="#8a5a00">Weiterleitung: YARP oder selbst geschrieben, noch offen</text>
 
-  <!-- Netzschalter -->
-  <rect x="360" y="280" width="200" height="88" rx="8" fill="#ffffff" stroke="#2f5fb3" stroke-width="1.2"/>
-  <text x="376" y="302" font-size="16" font-weight="700" fill="#1a1a1a">Home/VPN-Schalter</text>
-  <text x="376" y="321" font-size="13" fill="#333333">Netzzugriff an oder aus</text>
-  <text x="376" y="339" font-size="13" fill="#333333">gilt für alle Module</text>
+  <!-- Zugänge → Gateway -->
+  <line x1="160" y1="192" x2="160" y2="238" stroke="#37474f" stroke-width="1.6" marker-end="url(#ah)"/>
+  <line x1="420" y1="192" x2="420" y2="238" stroke="#37474f" stroke-width="1.6" marker-end="url(#ah)"/>
+  <line x1="680" y1="192" x2="680" y2="238" stroke="#37474f" stroke-width="1.6" marker-end="url(#ah)"/>
+  <text x="694" y="222" font-size="12" font-style="italic" fill="#37474f">eine Tür: alles von außen geht durch das Gateway des Knotens</text>
 
-  <!-- Entdeckung -->
-  <rect x="580" y="280" width="260" height="88" rx="8" fill="#ffffff" stroke="#2f5fb3" stroke-width="1.2"/>
-  <text x="596" y="302" font-size="16" font-weight="700" fill="#1a1a1a">Entdeckung, UDP 17501</text>
-  <text x="596" y="321" font-size="13" fill="#333333">ein Antwortender je PC</text>
-  <text x="596" y="339" font-size="13" fill="#333333">Antwort nennt die Module</text>
+  <!-- Coding-Tools → Proxy am LLM-Modul, am Gateway vorbei -->
+  <line x1="1270" y1="192" x2="1270" y2="408" stroke="#37474f" stroke-width="1.6" stroke-dasharray="2 4" marker-end="url(#ah)"/>
+  <text x="1262" y="222" font-size="12" font-style="italic" fill="#37474f" text-anchor="end">kein Web-Pfad, nicht über das Gateway</text>
 
-  <!-- Konfiguration -->
-  <rect x="860" y="280" width="230" height="88" rx="8" fill="#ffffff" stroke="#2f5fb3" stroke-width="1.2"/>
-  <text x="876" y="302" font-size="16" font-weight="700" fill="#1a1a1a">stykker.json</text>
-  <text x="876" y="321" font-size="13" fill="#333333">Module, Ports, Schalter</text>
-  <text x="876" y="339" font-size="13" fill="#333333">ohne Geheimnisse</text>
-  <text x="876" y="357" font-size="13" fill="#333333">neue Module tragen sich ein</text>
-
-  <!-- Kopplung -->
-  <rect x="1110" y="280" width="210" height="88" rx="8" fill="#ffffff" stroke="#2f5fb3" stroke-width="1.2"/>
-  <text x="1126" y="302" font-size="16" font-weight="700" fill="#1a1a1a">Kopplung zentral</text>
-  <text x="1126" y="321" font-size="13" fill="#333333">pairing.dat (DPAPI)</text>
-  <text x="1126" y="339" font-size="13" fill="#333333">Geräte, Code, Rollen</text>
-  <text x="1126" y="357" font-size="13" fill="#333333">für alle Module gleich</text>
-
-  <!-- Weiterleitung zu den Modulen -->
-  <line x1="210" y1="368" x2="210" y2="408" stroke="#2f5fb3" stroke-width="1.8" marker-end="url(#ah)"/>
-  <line x1="210" y1="392" x2="1170" y2="392" stroke="#2f5fb3" stroke-width="1.8"/>
-  <line x1="530" y1="392" x2="530" y2="408" stroke="#2f5fb3" stroke-width="1.8" marker-end="url(#ah)"/>
-  <line x1="850" y1="392" x2="850" y2="408" stroke="#2f5fb3" stroke-width="1.8" marker-end="url(#ah)"/>
-  <line x1="1170" y1="392" x2="1170" y2="408" stroke="#2f5fb3" stroke-width="1.8" stroke-dasharray="6 4" marker-end="url(#ah)"/>
-  <text x="700" y="386" font-size="13" font-style="italic" fill="#1b3f8b" text-anchor="middle">Weiterleitung über 127.0.0.1: nur der Knoten erreicht die Module</text>
+  <!-- Gateway → Module -->
+  <line x1="212" y1="370" x2="212" y2="408" stroke="#37474f" stroke-width="1.6" marker-end="url(#ah)"/>
+  <line x1="537" y1="370" x2="537" y2="408" stroke="#37474f" stroke-width="1.6" marker-end="url(#ah)"/>
+  <line x1="862" y1="370" x2="862" y2="408" stroke="#37474f" stroke-width="1.6" marker-end="url(#ah)"/>
+  <path d="M1020,334 H1110 V408" fill="none" stroke="#37474f" stroke-width="1.6" marker-end="url(#ah)"/>
+  <text x="876" y="393" font-size="12" font-style="italic" fill="#37474f">Module: nur 127.0.0.1</text>
 
   <!-- Module -->
-  <rect x="60" y="410" width="300" height="196" rx="10" fill="#e3f2fd" stroke="#1565c0" stroke-width="1.5"/>
-  <text x="76" y="436" font-size="16" font-weight="700" fill="#0d3b73">StykkerHUD · Zentrale</text>
-  <text x="76" y="458" font-size="13" fill="#333333">Core · Web · Server</text>
-  <text x="76" y="478" font-size="13" fill="#333333">Startseite: alle Module und Status</text>
-  <text x="76" y="496" font-size="13" fill="#333333">Geräte für alle Module verwalten</text>
-  <text x="76" y="514" font-size="13" fill="#333333">Monitor bleibt als Modul erhalten</text>
-  <text x="76" y="540" font-size="12" fill="#666666">Port intern 127.0.0.1</text>
+  <g font-size="13" fill="#333333">
+    <!-- HUD -->
+    <rect x="60" y="410" width="305" height="220" rx="10" fill="#f1f3f4" stroke="#5f6b73" stroke-width="1.5"/>
+    <text x="76" y="436" font-size="17" font-weight="700" fill="#1a1a1a">StykkerHUD</text>
+    <text x="349" y="436" font-size="13" fill="#555555" text-anchor="end">:8079</text>
+    <text x="76" y="458" font-weight="700" fill="#1a1a1a">die Zentrale</text>
+    <text x="76" y="478">Kachel je Modul mit Status</text>
+    <text x="76" y="496">Geräte und Rollen an einer Stelle</text>
+    <text x="76" y="514">Knotenstatus, Modul einzeln neu starten</text>
+    <text x="76" y="538">dazu der Monitor: CPU, RAM, GPU, Netz</text>
+    <rect x="76" y="556" width="84" height="26" rx="5" fill="#ffffff" stroke="#9aa5ab"/><text x="118" y="574" text-anchor="middle">Web</text>
+    <rect x="168" y="556" width="84" height="26" rx="5" fill="#ffffff" stroke="#9aa5ab"/><text x="210" y="574" text-anchor="middle">Server</text>
+    <rect x="260" y="556" width="84" height="26" rx="5" fill="#ffffff" stroke="#9aa5ab"/><text x="302" y="574" text-anchor="middle">Core</text>
+    <text x="76" y="612" font-size="12" font-style="italic" fill="#555555">läuft heute, nur lokal · Zentrale: Phase 5</text>
 
-  <rect x="380" y="410" width="300" height="196" rx="10" fill="#e8f5e9" stroke="#2e7d32" stroke-width="1.5"/>
-  <text x="396" y="436" font-size="16" font-weight="700" fill="#1b5e20">StykkerLLM</text>
-  <text x="396" y="458" font-size="13" fill="#333333">Core · Web · Server</text>
-  <text x="396" y="478" font-size="13" fill="#333333">Modelle, Server, Benchmarks</text>
-  <text x="396" y="496" font-size="13" fill="#333333">Proxy :17500 bleibt am Modul</text>
-  <text x="396" y="514" font-size="13" fill="#333333">Hosts über /hosts/connect</text>
-  <text x="396" y="540" font-size="12" fill="#666666">Port intern 127.0.0.1</text>
+    <!-- SYS -->
+    <rect x="385" y="410" width="305" height="220" rx="10" fill="#f1f3f4" stroke="#5f6b73" stroke-width="1.5"/>
+    <text x="401" y="436" font-size="17" font-weight="700" fill="#1a1a1a">StykkerSYS</text>
+    <text x="674" y="436" font-size="13" fill="#555555" text-anchor="end">:8077</text>
+    <text x="401" y="458" font-weight="700" fill="#1a1a1a">Prozessliste</text>
+    <text x="401" y="478">CPU, Speicher und GPU je Prozess</text>
+    <text x="401" y="496">beenden, Priorität, Dateiort öffnen</text>
+    <text x="401" y="520">Aktionen nur mit Rolle admin</text>
+    <text x="401" y="538">ein neu gekoppeltes Gerät sieht nur zu</text>
+    <rect x="401" y="556" width="84" height="26" rx="5" fill="#ffffff" stroke="#9aa5ab"/><text x="443" y="574" text-anchor="middle">Web</text>
+    <rect x="493" y="556" width="84" height="26" rx="5" fill="#ffffff" stroke="#9aa5ab"/><text x="535" y="574" text-anchor="middle">Server</text>
+    <rect x="585" y="556" width="84" height="26" rx="5" fill="#ffffff" stroke="#9aa5ab"/><text x="627" y="574" text-anchor="middle">Core</text>
+    <text x="401" y="612" font-size="12" font-style="italic" fill="#555555">läuft heute, nur lokal · Rollen: Phase 6</text>
 
-  <rect x="700" y="410" width="300" height="196" rx="10" fill="#e8f5e9" stroke="#2e7d32" stroke-width="1.5"/>
-  <text x="716" y="436" font-size="16" font-weight="700" fill="#1b5e20">StykkerSYS</text>
-  <text x="716" y="458" font-size="13" fill="#333333">Core · Web · Server</text>
-  <text x="716" y="478" font-size="13" fill="#333333">Prozesse: Priorität, Beenden</text>
-  <text x="716" y="496" font-size="13" fill="#333333">Beenden nur für Admin-Geräte</text>
-  <text x="716" y="514" font-size="13" fill="#333333">Freigabe je Gerät nötig</text>
-  <text x="716" y="540" font-size="12" fill="#666666">Port intern 127.0.0.1</text>
+    <!-- CMD -->
+    <rect x="710" y="410" width="305" height="220" rx="10" fill="#ffffff" stroke="#78909c" stroke-width="1.5" stroke-dasharray="6 4"/>
+    <text x="726" y="436" font-size="17" font-weight="700" fill="#1a1a1a">StykkerCMD</text>
+    <text x="999" y="436" font-size="13" fill="#555555" text-anchor="end">Port offen</text>
+    <text x="726" y="458" font-weight="700" fill="#1a1a1a">Dateimanager, zwei Panels</text>
+    <text x="726" y="478">bekommt Web-UI und Server-Version</text>
+    <text x="726" y="496">Core und Platform bleiben, Avalonia entfällt</text>
+    <text x="726" y="520">nur Rolle admin, nur gekoppelte Geräte,</text>
+    <text x="726" y="538">nur freigegebene Wurzelordner</text>
+    <rect x="726" y="556" width="84" height="26" rx="5" fill="#ffffff" stroke="#9aa5ab" stroke-dasharray="4 3"/><text x="768" y="574" text-anchor="middle">Web</text>
+    <rect x="818" y="556" width="84" height="26" rx="5" fill="#ffffff" stroke="#9aa5ab" stroke-dasharray="4 3"/><text x="860" y="574" text-anchor="middle">Server</text>
+    <rect x="910" y="556" width="84" height="26" rx="5" fill="#f1f3f4" stroke="#5f6b73"/><text x="952" y="574" text-anchor="middle">Core</text>
+    <text x="726" y="612" font-size="12" font-style="italic" fill="#555555">heute ein Avalonia-Fenster · Umbau: Phase 7</text>
 
-  <rect x="1020" y="410" width="300" height="196" rx="10" fill="#fafafa" stroke="#9e9e9e" stroke-width="1.5" stroke-dasharray="8 5"/>
-  <text x="1036" y="436" font-size="16" font-weight="700" fill="#424242">StykkerCMD (geplant)</text>
-  <text x="1036" y="458" font-size="13" fill="#333333">Core · Web · Server (neu)</text>
-  <text x="1036" y="478" font-size="13" fill="#333333">Dateiordner im Web</text>
-  <text x="1036" y="496" font-size="13" fill="#333333">nur Admin, nur gekoppelt</text>
-  <text x="1036" y="514" font-size="13" fill="#333333">Avalonia entfällt (Entscheidung E)</text>
-  <text x="1036" y="540" font-size="12" fill="#666666">Core und Platform bleiben</text>
+    <!-- LLM -->
+    <rect x="1035" y="410" width="305" height="220" rx="10" fill="#e3f0ff" stroke="#1565c0" stroke-width="2"/>
+    <text x="1051" y="436" font-size="17" font-weight="700" fill="#0d3c75">StykkerLLM</text>
+    <text x="1324" y="436" font-size="13" fill="#0d3c75" text-anchor="end">:8078 · Proxy :17500</text>
+    <text x="1051" y="458" font-weight="700" fill="#1a1a1a">das erste Modul</text>
+    <text x="1051" y="478">lokale LLM-Server messen und steuern</text>
+    <text x="1051" y="496">Proxy: eine URL für alle Modelle</text>
+    <text x="1051" y="520">Kopplung zieht in die gemeinsame Ablage,</text>
+    <text x="1051" y="538">alte Geräte und Hosts bleiben angemeldet</text>
+    <rect x="1051" y="556" width="84" height="26" rx="5" fill="#ffffff" stroke="#1565c0" stroke-dasharray="4 3"/><text x="1093" y="574" text-anchor="middle">Web</text>
+    <rect x="1143" y="556" width="84" height="26" rx="5" fill="#ffffff" stroke="#1565c0"/><text x="1185" y="574" text-anchor="middle">Server</text>
+    <rect x="1235" y="556" width="84" height="26" rx="5" fill="#ffffff" stroke="#1565c0"/><text x="1277" y="574" text-anchor="middle">Core</text>
+    <text x="1051" y="612" font-size="12" font-style="italic" fill="#0d3c75">nächster Schritt: Web abtrennen, Kopplung umstellen</text>
+  </g>
 
-  <!-- Plattform und Dateien -->
-  <rect x="40" y="668" width="640" height="120" rx="10" fill="#fff8e1" stroke="#b28704" stroke-width="1.5"/>
-  <text x="58" y="694" font-size="16" font-weight="700" fill="#5d4500">Plattform (Windows)</text>
-  <text x="58" y="718" font-size="13" fill="#333333">Prozesse, Priorität, Beenden, Dateipfade</text>
-  <text x="58" y="738" font-size="13" fill="#333333">GPU: NVML und PDH-Zähler</text>
-  <text x="58" y="758" font-size="13" fill="#333333">DPAPI · Tray · Autostart</text>
-  <text x="58" y="778" font-size="13" fill="#333333">Modellserver: llama.cpp, Ollama, LM Studio, vLLM</text>
+  <!-- Module → Kopplung -->
+  <path d="M212,630 V668 M537,630 V668 M862,630 V668 M1187,630 V668" fill="none" stroke="#37474f" stroke-width="1.4"/>
+  <path d="M212,668 H1187" fill="none" stroke="#37474f" stroke-width="1.4"/>
+  <line x1="250" y1="668" x2="250" y2="706" stroke="#37474f" stroke-width="1.6" marker-end="url(#ah)"/>
+  <text x="264" y="692" font-size="12" font-style="italic" fill="#37474f">jedes Modul und der Knoten benutzen dieselbe Bibliothek und dieselbe Datei</text>
 
-  <rect x="700" y="668" width="660" height="120" rx="10" fill="#f3e5f5" stroke="#7b1fa2" stroke-width="1.5"/>
-  <text x="718" y="694" font-size="16" font-weight="700" fill="#4a148c">Dateien</text>
-  <text x="718" y="718" font-size="13" fill="#333333">%APPDATA%\Stykker\stykker.json · Konfiguration</text>
-  <text x="718" y="738" font-size="13" fill="#333333">%APPDATA%\Stykker\pairing.dat · Kopplung (DPAPI)</text>
-  <text x="718" y="758" font-size="13" fill="#333333">%APPDATA%\StykkerLLM\ · LLM-Daten, Modelle, Logs</text>
-  <text x="718" y="778" font-size="13" fill="#333333">Als Dienst: %ProgramData%\Stykker\ statt %APPDATA%</text>
+  <!-- ── Gemeinsames ── -->
+  <g font-size="13" fill="#333333">
+    <rect x="40" y="708" width="420" height="150" rx="10" fill="#e6f4ea" stroke="#2e7d32" stroke-width="2"/>
+    <text x="56" y="734" font-size="16" font-weight="700" fill="#1b5e20">Stykker.Pairing</text>
+    <text x="444" y="734" font-size="13" font-weight="700" fill="#1b5e20" text-anchor="end">fertig · 42 Tests</text>
+    <text x="56" y="758">Zugangscode: sechs Ziffern, zehn Minuten, einmal gültig</text>
+    <text x="56" y="776">Anmeldung in beide Richtungen, Freigabe auch aus der Zentrale</text>
+    <text x="56" y="794">Geräte mit einer Rolle je Modul, Hosts mit Token</text>
+    <text x="56" y="812">mehrere Prozesse schreiben zugleich, ohne sich zu überschreiben</text>
+    <text x="56" y="836" font-size="12" font-style="italic" fill="#1b5e20">übernimmt access.dat und hosts.dat von StykkerLLM, einmalig</text>
 
-  <!-- Eigenständig -->
-  <rect x="40" y="810" width="1320" height="72" rx="10" fill="#ffffff" stroke="#78909c" stroke-width="1.5" stroke-dasharray="6 4"/>
-  <text x="58" y="834" font-size="15" font-weight="700" fill="#1a1a1a">Eigenständig bleibt jede App</text>
-  <text x="58" y="854" font-size="13" fill="#333333">StykkerLLM-Server.exe (8078), StykkerSYS-Server.exe (8077), StykkerHUD-Server.exe (8079)</text>
-  <text x="58" y="872" font-size="13" fill="#333333">laufen ohne Knoten und nutzen dieselbe Kopplung und Konfiguration.</text>
+    <rect x="480" y="708" width="270" height="150" rx="10" fill="#e6f4ea" stroke="#2e7d32" stroke-width="2"/>
+    <text x="496" y="734" font-size="16" font-weight="700" fill="#1b5e20">pairing.dat</text>
+    <text x="496" y="758">%APPDATA%\Stykker\</text>
+    <text x="496" y="776">an den Windows-Benutzer gebunden</text>
+    <text x="496" y="794">nur Hashes, nie ein Token</text>
+    <text x="496" y="812">Code, Geräte, Rollen, Hosts</text>
+    <text x="496" y="836" font-size="12" font-style="italic" fill="#1b5e20">eine Ablage für alle Module</text>
 
-  <!-- Legende und offene Punkte -->
-  <line x1="40" y1="906" x2="80" y2="906" stroke="#37474f" stroke-width="2"/>
-  <text x="90" y="910" font-size="13" fill="#333333">Ziel</text>
-  <line x1="150" y1="906" x2="190" y2="906" stroke="#9e9e9e" stroke-width="2" stroke-dasharray="6 4"/>
-  <text x="200" y="910" font-size="13" fill="#333333">geplant oder offen</text>
-  <text x="40" y="934" font-size="13" fill="#333333">Neues Modul: eigenes Server-Programm, in stykker.json eingetragen. Es sieht die vorhandene Kopplung und koppelt nicht neu.</text>
-  <text x="40" y="952" font-size="12" fill="#555555">Offen im Plan: A Kindprozesse oder ein Prozess · B eine oder zwei Dateien · C Rollen je Modul · D Knoten als Dauerbetrieb · E CMD ohne Avalonia · F Weiterleitung · G Knoten-Port</text>
+    <rect x="770" y="708" width="270" height="150" rx="10" fill="#ffffff" stroke="#78909c" stroke-width="1.5" stroke-dasharray="6 4"/>
+    <text x="786" y="734" font-size="16" font-weight="700" fill="#1a1a1a">stykker.json</text>
+    <text x="786" y="758">%APPDATA%\Stykker\</text>
+    <text x="786" y="776">lesbar, ohne Geheimnisse</text>
+    <text x="786" y="794">Knoten: Name, Port, Netzschalter</text>
+    <text x="786" y="812">Module: Programm, Port, Datenordner</text>
+    <text x="786" y="836" font-size="12" font-style="italic" fill="#555555">ohne Datei läuft alles wie heute · Phase 2</text>
+
+    <rect x="1060" y="708" width="300" height="150" rx="10" fill="#f1f3f4" stroke="#5f6b73" stroke-width="1.5"/>
+    <text x="1076" y="734" font-size="16" font-weight="700" fill="#1a1a1a">Stykker.Shared · Design-System</text>
+    <text x="1076" y="758">GPU-Zähler, Tray-Symbol, Messschleife</text>
+    <text x="1076" y="776">ein Server je Port, lokale Anfragen</text>
+    <text x="1076" y="794">Themen dark und titan für alle Oberflächen</text>
+    <text x="1076" y="836" font-size="12" font-style="italic" fill="#555555">heute von HUD und SYS benutzt</text>
+  </g>
+
+  <!-- ── Legende ── -->
+  <g font-size="13" fill="#333333">
+    <text x="40" y="900" font-size="14" font-weight="700" fill="#1a1a1a">Stand</text>
+    <rect x="40" y="916" width="34" height="20" rx="4" fill="#e6f4ea" stroke="#2e7d32" stroke-width="2"/>
+    <text x="84" y="931">fertig und getestet</text>
+    <rect x="250" y="916" width="34" height="20" rx="4" fill="#e3f0ff" stroke="#1565c0" stroke-width="2"/>
+    <text x="294" y="931">nächster Schritt</text>
+    <rect x="440" y="916" width="34" height="20" rx="4" fill="#f1f3f4" stroke="#5f6b73" stroke-width="1.5"/>
+    <text x="484" y="931">gibt es heute, wird noch angebunden</text>
+    <rect x="750" y="916" width="34" height="20" rx="4" fill="#ffffff" stroke="#78909c" stroke-width="1.5" stroke-dasharray="6 4"/>
+    <text x="794" y="931">geplant, noch nicht gebaut</text>
+    <text x="40" y="970" font-size="13" fill="#555555">Reihenfolge: Kopplung (fertig) → stykker.json → LLM als Modul → StykkerNode → HUD als Zentrale → SYS mit Rollen → CMD im Web → Dienst (optional).</text>
+    <text x="40" y="990" font-size="13" fill="#555555">Die Phasen 5 bis 7 hängen nicht voneinander ab, sobald der Knoten steht. Einzelheiten: plan-stykkernode.md.</text>
+  </g>
 </svg>
