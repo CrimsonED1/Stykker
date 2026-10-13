@@ -20,13 +20,18 @@ Each row has a menu (`⋯`):
 
 On a group row the menu applies to **all** members. *End all 10 tasks* asks once and then reports `10 of 10 done`, or `N of M done` with the first refusal.
 
-## Local only, this page only
+## Who may do what
 
-- **This machine only.** The server listens on `127.0.0.1`.
-- **This page only.** A request must carry the page's own `Origin` (or `Sec-Fetch-Site: same-origin`). Anything else is refused with `403`.
+The list shows the processes of this machine. What a request may do depends on where it comes from and on the role of its device. Sign-in and roles are described in [StykkerHUD](../hud/README.md#access-from-the-network).
+
+- **This PC.** Sees the list, ends processes, changes priorities and opens file locations. Requests from here count as `admin`.
+- **Devices on the network.** Only with the network switch on when the program starts, and only with a paired device. A `viewer` sees the list and nothing more. An `admin` may also end processes and change priorities. A device with no role for SYS counts as `viewer`.
+- **Open file location** works on this PC only, for every role. A device on the network gets `403` with the message "The Explorer opens on the PC. Use this from the PC itself."
+- **Origin.** A request that carries an `Origin` header must carry this page's own origin. Without an `Origin` header, `Sec-Fetch-Site` must be `same-origin` or absent. Anything else is refused with `403`.
 - **JSON only.** Without `Content-Type: application/json` the actions answer `415`, so a form on another website cannot reach them.
 - **Never touched:** PIDs 4 and below (System and the like) and StykkerSYS itself. The server refuses with `409` and says why.
 - **Access denied:** Windows refuses the action, and the message says to start StykkerSYS as administrator for that process.
+- **Frames.** Only this page, and the hub on the `--hub-port` (default 8079) under the same host name, may show StykkerSYS in a frame.
 
 No path from the UI ends a whole process tree. The API takes `tree: true`, but no button calls it.
 
@@ -44,7 +49,7 @@ GPU values per process come from the Windows GPU counters. Where those counters 
 |---|---|
 | `src/StykkerSys.Core/` | The model (`Samples.cs`), the actions and their refusals (`ProcessActions.cs`), the sampler (`ProcessSampler`: CPU share from time differences, memory every third tick, GPU attached per process) and `SysService` (the viewer loop). Knows no Windows API. |
 | `src/StykkerSys.Platform.Windows/` | `WindowsProcessProbe`: GPU per process through the shared counters, file paths through `OpenProcess` and `QueryFullProcessImageNameW`. `Shell.cs` opens Explorer with the file selected. |
-| `src/StykkerSys.Server/` | Blazor Server on `http://127.0.0.1:8077`: the page (`Processes.razor`, `sys.js`), `/api/snapshot`, the three action routes under `/api/process/`, and the tray icon. |
+| `src/StykkerSys.Server/` | Blazor Server on `http://127.0.0.1:8077`, on all addresses only when the network switch is on at start (see [Who may do what](#who-may-do-what)): the page (`Processes.razor`, `sys.js`), `/api/snapshot`, the three action routes under `/api/process/`, and the tray icon. |
 | `src/StykkerSys.UI/` | `StykkerSYS.exe`, the Photino window around those pages. Starts the server if none runs. |
 | `tests/StykkerSys.Tests/` | xUnit tests: state thresholds, refusals, end and priority on a sacrificial `ping`, the sampler with a fake probe, the Windows probe. |
 | `tools/check-actions.mjs` | End-to-end test of the actions on a sacrificial process: changes its priority, drives the row menu, checks that asking protects it, that cancelling ends nothing and that confirming ends it, plus the refusals (cross-site, foreign origin, non-JSON, system PID). |
@@ -71,6 +76,8 @@ src\StykkerSys.Server\bin\Debug\net10.0\StykkerSYS-Server.exe --port 8077
 | `--design-system <folder>` | where the design system is read from (default: the monorepo's `shared/design-system`) |
 | `--server <path>` (window) | the server to start when none runs |
 | `--gpu` (window) | draw through the graphics card. Without it the window draws in software |
+| `--pairing-file <file>` | the pairing file: devices, code and network switch. Default `%APPDATA%\Stykker\pairing.dat` |
+| `--hub-port <number>` | port of the hub that may show this page in a frame (default 8079) |
 
 Environment variable for the design system: `STYKKERSYS_DESIGN_SYSTEM`.
 
@@ -93,4 +100,4 @@ Last run on 2026-10-09: 21/21 unit tests, 16/16 action checks, 16/16 grouping ch
 - **Affinity**: which processors a process may use.
 - **Ending a process tree** from the UI. The API takes `tree: true`; no button offers it yet.
 - **Resident mode**: start with Windows and live only in the tray.
-- **Open decision**: Blazor/Photino or Avalonia for the interface. See [StykkerHUD's decision record](../hud/docs/entscheidungen.md).
+- **Decided on 2026-10-13:** the interface is web: Blazor, shown in a Photino window. See [StykkerHUD's decision record](../hud/docs/entscheidungen.md).
