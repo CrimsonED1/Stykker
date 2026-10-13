@@ -13,8 +13,38 @@ public static class SharedPairing
     {
         var store = new PairingStore(paths.PairingFile(file));
         LegacyLlmImport.ImportFromFolder(store, paths.Root, new LegacyProtector(platform));
+        RetireLegacy(store, paths.Root);
         Func<DateTime>? utc = now == null ? null : () => ToUtc(now());
         return new PairingService(store, utc);
+    }
+
+    // Eine übernommene alte Datei heißt danach *.bak. Gelöscht wird nichts. Ließ sie sich nicht lesen, bleibt sie liegen
+    // (das Protokoll vermerkt es, ohne den Inhalt zu nennen).
+    private static void RetireLegacy(PairingStore store, string root)
+    {
+        var imported = store.Read().Imported;
+        Retire(root, LegacyLlmImport.AccessFile, imported.Contains(LegacyLlmImport.AccessSource));
+        Retire(root, LegacyLlmImport.HostsFile, imported.Contains(LegacyLlmImport.HostsSource));
+    }
+
+    private static void Retire(string root, string file, bool imported)
+    {
+        var path = Path.Combine(root, file);
+        if (!File.Exists(path)) return;
+        if (!imported)
+        {
+            AppLog.Write($"{file} could not be imported (unreadable); it stays in the data folder");
+            return;
+        }
+        // Liegt schon eine .bak (eine ältere Datei, die jemand zurückgelegt hat), bekommt die neue einen Zeitstempel
+        var bak = path + ".bak";
+        if (File.Exists(bak)) bak = path + ".bak-" + DateTime.Now.ToString("yyyyMMdd-HHmmss");
+        try { File.Move(path, bak); }
+        catch (FileNotFoundException) { }   // ein anderer Prozess hat sie schon umbenannt
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            AppLog.Write($"{file} was imported but could not be renamed: {ex.GetType().Name}");
+        }
     }
 
     // Zeiten: die Oberflächen rechnen in Ortszeit, die Ablage speichert UTC. Eine Zeit ohne Angabe der Zone gilt als
