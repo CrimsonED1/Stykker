@@ -150,6 +150,35 @@ td.r,th.r{text-align:right}
 
 .note{margin-top:18px;color:var(--muted);font-size:12px}
 
+/* ── Hülle: die Leiste bleibt, das Modul läuft im Frame darunter ── */
+:root,[data-theme="dark"]{--m-ext:#ff6fb5}
+[data-theme="titan"]{--m-ext:#9a3b2e}
+nav .mod.ext::before{border-radius:1px;transform:rotate(45deg)}
+main.shell{max-width:none;padding:0}
+.framebar{display:flex;align-items:center;gap:10px;padding:6px 16px;border-bottom:1px solid var(--line);color:var(--muted);font-size:12px;flex-wrap:wrap}
+.framebar .grow{margin-left:auto;display:flex;align-items:center;gap:10px}
+.frame{min-height:calc(100vh - 82px);background:var(--bg)}
+.frame .inner{max-width:1360px;margin:0 auto;padding:14px 16px}
+.modnav{display:flex;align-items:center;gap:4px;margin-bottom:14px;flex-wrap:wrap}
+.modnav span{padding:5px 10px;border:1px solid transparent;border-radius:var(--radius-sm);color:var(--muted)}
+.modnav span.on{color:var(--ink);background:var(--card-2);border-color:var(--line)}
+.modnav .right{margin-left:auto;display:flex;gap:8px}
+/* Qwen bringt seine eigene Gestaltung mit: neutral dunkel, in beiden Themen gleich */
+.foreign{background:#0b0b0c;color:#e9e9ea;display:grid;grid-template-columns:52px 280px 1fr;min-height:calc(100vh - 82px);font-family:"Segoe UI",system-ui,sans-serif}
+.foreign .rail{border-right:1px solid #232326;display:grid;align-content:start;gap:14px;padding:14px 0;justify-items:center}
+.foreign .rail i{width:22px;height:22px;border-radius:6px;background:#1c1c1f}
+.foreign .rail i.on{background:#2a2a2f}
+.foreign .side{border-right:1px solid #232326;padding:14px}
+.foreign .side h3{font-size:16px;margin-bottom:14px}
+.foreign .side p{margin:6px 0;color:#8d8d93}
+.foreign .side p b{color:#e9e9ea;font-weight:600}
+.foreign .stage{display:grid;place-content:center;gap:14px;padding:24px;text-align:center}
+.foreign .stage h2{font-size:26px}
+.foreign .stage h2 em{font-style:normal;color:#7b6cf6}
+.foreign .composer{width:min(720px,70vw);text-align:left;background:#1d1d20;border:1px solid #3a4a7a;border-radius:10px;padding:14px;color:#8d8d93}
+.foreign .composer div{margin-top:26px;font-size:12px}
+@media (max-width:900px){.foreign{grid-template-columns:1fr}.foreign .rail,.foreign .side{display:none}}
+
 @media (max-width:1020px){.cols{grid-template-columns:1fr}}
 @media (max-width:640px){
   .tiles,.pair-wrap{grid-template-columns:1fr}
@@ -201,6 +230,8 @@ td.r,th.r{text-align:right}
       <button class="mod" style="--m:var(--m-hud)">Monitor</button>
       <button class="mod off">CMD</button>
       <span class="sep"></span>
+      <button data-view="qwen" class="mod ext" style="--m:var(--m-ext)">Qwen Code</button>
+      <span class="sep"></span>
       <button data-view="pair">Sign-in page</button>
     </nav>
     <div class="tools">
@@ -215,7 +246,7 @@ td.r,th.r{text-align:right}
 
 <!-- ═══ Hub ═══ -->
 <section class="view" id="hub">
-  <div class="head"><h1>Hub</h1><span class="muted">3 of 4 modules running · node up <span class="num">6 d 4 h</span></span></div>
+  <div class="head"><h1>Hub</h1><span class="muted">3 of 4 modules running · 1 external service · node up <span class="num">6 d 4 h</span></span></div>
   <div class="cols">
     <div class="stack">
       <div class="notice">
@@ -233,7 +264,7 @@ td.r,th.r{text-align:right}
             <div class="metric"><span class="v">17.2<small>/ 24 GB</small></span><span class="k"><svg class="ic"><use href="#i-vram"/></svg>VRAM</span></div>
           </div>
           <div class="bar-track"><i style="width:72%"></i></div>
-          <div class="tile-foot"><span class="role"><span class="role-tag admin">admin</span></span><span class="muted mono">/llm</span><button class="btn sm">Open<svg class="ic"><use href="#i-open"/></svg></button></div>
+          <div class="tile-foot"><span class="role"><span class="role-tag admin">admin</span></span><span class="muted mono">:8078</span><button class="btn sm">Open<svg class="ic"><use href="#i-open"/></svg></button></div>
         </article>
 
         <article class="card tile" style="--m:var(--m-sys)">
@@ -244,7 +275,7 @@ td.r,th.r{text-align:right}
             <div class="metric"><span class="v">14.3<small>%</small></span><span class="k"><svg class="ic"><use href="#i-cpu"/></svg>Top: llama-server</span></div>
           </div>
           <div class="bar-track"><i style="width:14%"></i></div>
-          <div class="tile-foot"><span class="role"><span class="role-tag">viewer</span> <span class="muted">· you can look, not end processes</span></span><span class="muted mono">/sys</span><button class="btn sm">Open<svg class="ic"><use href="#i-open"/></svg></button></div>
+          <div class="tile-foot"><span class="role"><span class="role-tag">viewer</span> <span class="muted">· you can look, not end processes</span></span><span class="muted mono">:8077</span><button class="btn sm">Open<svg class="ic"><use href="#i-open"/></svg></button></div>
         </article>
 
         <article class="card tile" style="--m:var(--m-hud)">
@@ -255,13 +286,19 @@ td.r,th.r{text-align:right}
             <div class="metric"><span class="v">61.0<small>%</small></span><span class="k"><svg class="ic"><use href="#i-vram"/></svg>GPU</span></div>
           </div>
           <div class="bar-track"><i style="width:23%"></i></div>
-          <div class="tile-foot"><span class="role"><span class="role-tag admin">admin</span></span><span class="muted mono">/hud</span><button class="btn sm">Open<svg class="ic"><use href="#i-open"/></svg></button></div>
+          <div class="tile-foot"><span class="role"><span class="role-tag admin">admin</span></span><span class="muted mono">:8079</span><button class="btn sm">Open<svg class="ic"><use href="#i-open"/></svg></button></div>
         </article>
 
         <article class="card tile off" style="--m:var(--m-cmd)">
           <div class="tile-top"><h2>CMD</h2><span class="what">File manager</span><span class="chip state"><span class="lamp"></span>Not connected</span></div>
           <p class="muted" style="margin:0">StykkerCMD has no web interface yet. Once it has one, it appears here and shares the devices you already paired. File access will need the <span class="mono">admin</span> role and a list of folders you allow.</p>
           <div class="tile-foot"><span class="role muted">Not installed as a module</span></div>
+        </article>
+
+        <article class="card tile" style="--m:var(--m-ext)">
+          <div class="tile-top"><h2>QWEN CODE</h2><span class="what">Coding agent · external</span><span class="chip on state"><span class="lamp good"></span>Reachable</span></div>
+          <p class="muted" style="margin:0">Not a Stykker program. The node shows it in a frame and signs in for you, so a paired device needs no second code. An external service has no viewer role: it is open to admins or to nobody.</p>
+          <div class="tile-foot"><span class="role"><span class="role-tag admin">admin only</span></span><span class="muted mono">:8076</span><button class="btn sm">Open<svg class="ic"><use href="#i-open"/></svg></button></div>
         </article>
 
       </div>
@@ -292,7 +329,7 @@ td.r,th.r{text-align:right}
 
 <!-- ═══ Devices ═══ -->
 <section class="view" id="devices">
-  <div class="head"><h1>Devices</h1><span class="muted">One list for every module. A device is a viewer in a module until you make it admin there.</span></div>
+  <div class="head"><h1>Devices</h1><span class="muted">One list for every module. A device is a viewer in a module until you make it admin there; an external service is admin or nothing.</span></div>
   <div class="stack">
     <div class="card request">
       <span class="label">Wants to pair</span>
@@ -309,13 +346,14 @@ td.r,th.r{text-align:right}
 
     <div class="card" style="padding:4px 4px 2px">
       <table>
-        <thead><tr><th>Device</th><th>LLM</th><th>SYS</th><th>Monitor</th><th>Last seen</th><th class="r"></th></tr></thead>
+        <thead><tr><th>Device</th><th>LLM</th><th>SYS</th><th>Monitor</th><th>Qwen Code</th><th>Last seen</th><th class="r"></th></tr></thead>
         <tbody>
           <tr>
             <td><div class="dev"><span class="lamp good"></span><div><b>This window</b><small>StykkerHUD on this PC · <span class="mono">127.0.0.1</span></small></div></div></td>
             <td data-k="LLM"><span class="seg"><span>viewer</span><span class="on admin">admin</span></span></td>
             <td data-k="SYS"><span class="seg"><span>viewer</span><span class="on admin">admin</span></span></td>
             <td data-k="Monitor"><span class="seg"><span>viewer</span><span class="on admin">admin</span></span></td>
+            <td data-k="Qwen Code"><span class="seg"><span>none</span><span class="on admin">admin</span></span></td>
             <td data-k="Last seen">now</td>
             <td class="r"><span class="muted">this device</span></td>
           </tr>
@@ -324,6 +362,7 @@ td.r,th.r{text-align:right}
             <td data-k="LLM"><span class="seg"><span>viewer</span><span class="on admin">admin</span></span></td>
             <td data-k="SYS"><span class="seg"><span class="on">viewer</span><span>admin</span></span></td>
             <td data-k="Monitor"><span class="seg"><span class="on">viewer</span><span>admin</span></span></td>
+            <td data-k="Qwen Code"><span class="seg"><span>none</span><span class="on admin">admin</span></span></td>
             <td data-k="Last seen">1 min ago</td>
             <td class="r"><button class="btn sm danger"><svg class="ic"><use href="#i-trash"/></svg>Remove</button></td>
           </tr>
@@ -332,6 +371,7 @@ td.r,th.r{text-align:right}
             <td data-k="LLM"><span class="seg"><span class="on">viewer</span><span>admin</span></span></td>
             <td data-k="SYS"><span class="seg"><span class="on">viewer</span><span>admin</span></span></td>
             <td data-k="Monitor"><span class="seg"><span class="on">viewer</span><span>admin</span></span></td>
+            <td data-k="Qwen Code"><span class="seg"><span class="on">none</span><span>admin</span></span></td>
             <td data-k="Last seen">yesterday, 22:14</td>
             <td class="r"><button class="btn sm danger"><svg class="ic"><use href="#i-trash"/></svg>Remove</button></td>
           </tr>
@@ -340,6 +380,7 @@ td.r,th.r{text-align:right}
             <td data-k="LLM"><span class="seg"><span class="on">viewer</span><span>admin</span></span></td>
             <td data-k="SYS"><span class="seg"><span>viewer</span><span class="on admin">admin</span></span></td>
             <td data-k="Monitor"><span class="seg"><span class="on">viewer</span><span>admin</span></span></td>
+            <td data-k="Qwen Code"><span class="seg"><span class="on">none</span><span>admin</span></span></td>
             <td data-k="Last seen">3 days ago</td>
             <td class="r"><button class="btn sm danger"><svg class="ic"><use href="#i-trash"/></svg>Remove</button></td>
           </tr>
@@ -367,42 +408,46 @@ td.r,th.r{text-align:right}
 
 <!-- ═══ Node ═══ -->
 <section class="view" id="node">
-  <div class="head"><h1>Node</h1><span class="muted">StykkerNode starts the modules and is the only door from the network.</span></div>
+  <div class="head"><h1>Node</h1><span class="muted">StykkerNode starts the modules and forwards to services that cannot be framed.</span></div>
   <div class="cols">
     <div class="stack">
       <div class="card" style="padding:4px 4px 2px">
         <table>
-          <thead><tr><th>Module</th><th>State</th><th>Listens on</th><th>Path</th><th>Up</th><th class="r"></th></tr></thead>
+          <thead><tr><th>Module</th><th>State</th><th>Listens on</th><th>In the hub</th><th>Up</th><th class="r"></th></tr></thead>
           <tbody>
             <tr>
               <td><div class="dev"><span class="lamp good"></span><div><b class="mono">LLM</b><small>StykkerLLM-Server · PID <span class="num">18 204</span></small></div></div></td>
-              <td data-k="State">Running</td><td data-k="Listens on" class="mono">127.0.0.1:8078</td><td data-k="Path" class="mono">/llm</td><td data-k="Up" class="num">6 d 4 h</td>
+              <td data-k="State">Running</td><td data-k="Listens on" class="mono">:8078</td><td data-k="In the hub">frame</td><td data-k="Up" class="num">6 d 4 h</td>
               <td class="r"><button class="btn sm"><svg class="ic"><use href="#i-restart"/></svg>Restart</button></td>
             </tr>
             <tr>
               <td><div class="dev"><span class="lamp warn"></span><div><b class="mono">SYS</b><small>StykkerSYS · PID <span class="num">9 112</span></small></div></div></td>
-              <td data-k="State">Restarted <span class="num">1×</span> today</td><td data-k="Listens on" class="mono">127.0.0.1:8077</td><td data-k="Path" class="mono">/sys</td><td data-k="Up" class="num">2 h 51 min</td>
+              <td data-k="State">Restarted <span class="num">1×</span> today</td><td data-k="Listens on" class="mono">:8077</td><td data-k="In the hub">frame</td><td data-k="Up" class="num">2 h 51 min</td>
               <td class="r"><button class="btn sm"><svg class="ic"><use href="#i-restart"/></svg>Restart</button></td>
             </tr>
             <tr>
               <td><div class="dev"><span class="lamp good"></span><div><b class="mono">HUD</b><small>StykkerHUD · PID <span class="num">4 660</span></small></div></div></td>
-              <td data-k="State">Running</td><td data-k="Listens on" class="mono">127.0.0.1:8079</td><td data-k="Path" class="mono">/hud</td><td data-k="Up" class="num">6 d 4 h</td>
+              <td data-k="State">Running</td><td data-k="Listens on" class="mono">:8079</td><td data-k="In the hub">frame</td><td data-k="Up" class="num">6 d 4 h</td>
               <td class="r"><button class="btn sm"><svg class="ic"><use href="#i-restart"/></svg>Restart</button></td>
             </tr>
             <tr>
               <td><div class="dev"><span class="lamp"></span><div><b class="mono">CMD</b><small class="muted">not in stykker.json</small></div></div></td>
-              <td data-k="State" class="muted">Not connected</td><td data-k="Listens on" class="muted">–</td><td data-k="Path" class="muted">–</td><td data-k="Up" class="muted">–</td>
+              <td data-k="State" class="muted">Not connected</td><td data-k="Listens on" class="muted">–</td><td data-k="In the hub" class="muted">–</td><td data-k="Up" class="muted">–</td>
               <td class="r"></td>
+            </tr>
+            <tr>
+              <td><div class="dev"><span class="lamp good"></span><div><b class="mono">Qwen Code</b><small>external · not started by the node</small></div></div></td>
+              <td data-k="State">Reachable</td><td data-k="Listens on" class="mono">127.0.0.1:51724</td><td data-k="In the hub">frame, port <span class="mono">8076</span></td><td data-k="Up" class="muted">–</td>
+              <td class="r"><span class="muted">forwarded</span></td>
             </tr>
           </tbody>
         </table>
       </div>
       <div class="card">
-        <span class="label">Recent</span>
-        <pre class="log"><b>13:02:42</b>  SYS answers on 127.0.0.1:8077
+        <span class="label">Recent</span>        <pre class="log"><b>13:02:42</b>  SYS answers on :8077
 <span class="w"><b>13:02:41</b>  SYS ended with code 1 – started again, the other modules kept running</span>
 <b>11:47:09</b>  192.168.0.77 refused: not paired
-<b>09:12:30</b>  host gpu-box connected through /llm/hosts/connect
+<b>09:12:30</b>  host gpu-box connected to LLM
 <b>09:12:02</b>  node started, 3 modules from stykker.json</pre>
       </div>
     </div>
@@ -412,7 +457,8 @@ td.r,th.r{text-align:right}
         <div class="switch"><span class="toggle on"></span><div><b>Home/VPN</b><div class="muted">Paired devices in your network can reach the node. Off: only this PC.</div></div></div>
         <dl class="kv" style="margin-top:12px">
           <dt>Node port</dt><dd class="mono">8075</dd>
-          <dt>Modules</dt><dd>only on <span class="mono">127.0.0.1</span></dd>
+          <dt>Modules</dt><dd>own port each, check pairing themselves</dd>
+          <dt>External services</dt><dd>own port each, <span class="mono">admin</span> only</dd>
           <dt>Proxy for coding tools</dt><dd class="mono">:17500 <span class="muted">(direct)</span></dd>
         </dl>
       </div>
@@ -460,9 +506,18 @@ td.r,th.r{text-align:right}
   <p class="note" style="text-align:center">From the network this page only answers while Home/VPN is on. It never shows the PC's own code to a device that is not this PC.</p>
 </section>
 
-<!-- ═══ Modul in der Zentrale: LLM ═══ -->
-<section class="view" id="llm">
-  <div class="crumb"><span>Hub</span><span>›</span><b style="color:var(--ink)">LLM</b><span class="role-tag admin" style="margin-left:6px">admin</span><span style="margin-left:auto" class="mono">http://workstation:8075/llm</span></div>
+<!-- ═══ Modul im Frame: LLM. Die Leiste oben gehört der Zentrale, alles darunter ist die Seite des Moduls. ═══ -->
+<section class="view framed" id="llm">
+  <div class="framebar">
+    <span class="lamp good"></span><b style="color:var(--ink)">LLM</b><span>own module · shown in a frame</span>
+    <span class="role-tag admin">admin</span>
+    <span class="grow"><span class="mono">http://workstation:8078/</span><button class="btn sm quiet">Open in its own tab<svg class="ic"><use href="#i-open"/></svg></button></span>
+  </div>
+  <div class="frame"><div class="inner">
+  <div class="modnav">
+    <span class="on">Monitor</span><span>Model tests</span><span>Benchmarks</span><span>Recordings</span>
+    <span class="right"><span class="chip"><svg class="ic"><use href="#i-vram"/></svg><span class="num">17.2 / 24 GB</span></span><span class="chip"><svg class="ic"><use href="#i-proxy"/></svg>Proxy on</span></span>
+  </div>
   <div class="cols">
     <div class="stack">
       <article class="card server">
@@ -499,9 +554,36 @@ td.r,th.r{text-align:right}
       </div>
       <div class="card">
         <span class="label">Inside the Hub</span>
-        <p class="muted" style="margin:0">This is the page StykkerLLM serves on its own port, reached under <span class="mono">/llm</span>. Same pages, same buttons. The bar on top comes from the Hub; devices and roles moved to <b style="color:var(--ink)">Devices</b>.</p>
+        <p class="muted" style="margin:0">This is the page StykkerLLM serves on its own port, shown in a frame. Same pages, same buttons. In the frame it leaves out its own brand line and follows the Hub's theme; devices and roles moved to <b style="color:var(--ink)">Devices</b>.</p>
       </div>
     </aside>
+  </div>
+  </div></div>
+</section>
+
+<!-- ═══ Fremder Dienst im Frame: Qwen Code, über die Weiterleitung des Knotens ═══ -->
+<section class="view framed" id="qwen">
+  <div class="framebar">
+    <span class="lamp good"></span><b style="color:var(--ink)">Qwen Code</b><span>external · through the node, which signs in for you</span>
+    <span class="role-tag admin">admin only</span>
+    <span class="grow"><span class="mono">http://workstation:8076/</span><button class="btn sm quiet">Open in its own tab<svg class="ic"><use href="#i-open"/></svg></button></span>
+  </div>
+  <div class="foreign">
+    <div class="rail"><i class="on"></i><i></i><i></i><i></i><i></i></div>
+    <div class="side">
+      <h3>Qwen Code</h3>
+      <p><b>New task</b></p>
+      <p style="margin-top:14px">Project</p>
+      <p><b>stykker</b></p>
+      <p>Hub shell with a frame</p>
+      <p>Pairing store, phase 1</p>
+      <p style="margin-top:14px">Archived</p>
+    </div>
+    <div class="stage">
+      <h2>Welcome to <em>Qwen Code</em></h2>
+      <div style="color:#8d8d93">What would you like to do?</div>
+      <div class="composer">Type a message or @ file path<div>Classifier Approval · coder-model</div></div>
+    </div>
   </div>
 </section>
 
@@ -509,12 +591,13 @@ td.r,th.r{text-align:right}
 
 <script>
 (function () {
-  var views = ['hub', 'devices', 'node', 'pair', 'llm'];
+  var views = ['hub', 'devices', 'node', 'pair', 'llm', 'qwen'];
   function show() {
     var parts = location.hash.replace('#', '').split(';');
     var view = views.indexOf(parts[0]) >= 0 ? parts[0] : 'hub';
     if (parts[1]) document.documentElement.dataset.theme = parts[1] === 'titan' ? 'titan' : 'dark';
     views.forEach(function (id) { document.getElementById(id).classList.toggle('show', id === view); });
+    document.querySelector('main').classList.toggle('shell', document.getElementById(view).classList.contains('framed'));
     document.querySelectorAll('#nav button').forEach(function (b) {
       if (b.dataset.view === view) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
     });

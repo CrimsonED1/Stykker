@@ -6,10 +6,11 @@ using Yarp.ReverseProxy.Forwarder;
 // Versuch: Hülle der Zentrale (Leiste + Frame) auf einem Port, auf einem zweiten Port eine Weiterleitung zu einem
 // fremden Web-Dienst, der sich von sich aus nicht einbetten lässt.
 //
-//   FrameProxy --target http://127.0.0.1:41999 [--hub 8075] [--frame 8076] [--token <Token des Dienstes>]
+//   FrameProxy --target http://127.0.0.1:41999 [--hub 8075] [--frame 8076] [--token <Token des Dienstes>] [--host <Adresse>]
 //
 // Mit --token setzt die Weiterleitung das Token des Dienstes selbst ein: der Browser braucht es dann nicht.
-// Der Versuch hört nur auf 127.0.0.1 und prüft keine Kopplung – das käme im Knoten davor.
+// Der Versuch hört nur auf 127.0.0.1 (oder --host) und prüft keine Kopplung – das käme im Knoten davor.
+// Die Hülle zeigt mit ?url=<Adresse> auch ein beliebiges Modul im Frame (für die eigenen Module, ohne Weiterleitung).
 
 string Arg(string name, string fallback) =>
     Array.IndexOf(args, name) is var i and >= 0 && i + 1 < args.Length ? args[i + 1] : fallback;
@@ -18,15 +19,16 @@ var hubPort = int.Parse(Arg("--hub", "8075"));
 var framePort = int.Parse(Arg("--frame", "8076"));
 var target = Arg("--target", "http://127.0.0.1:41999").TrimEnd('/');
 var token = Arg("--token", "");
-var hubOrigin = $"http://127.0.0.1:{hubPort}";
-var frameOrigin = $"http://127.0.0.1:{framePort}";
+var host = Arg("--host", "127.0.0.1");
+var hubOrigin = $"http://{host}:{hubPort}";
+var frameOrigin = $"http://{host}:{framePort}";
 
 var builder = WebApplication.CreateBuilder();
 builder.Logging.SetMinimumLevel(LogLevel.Warning);
 builder.WebHost.ConfigureKestrel(kestrel =>
 {
-    kestrel.Listen(IPAddress.Loopback, hubPort);
-    kestrel.Listen(IPAddress.Loopback, framePort);
+    kestrel.Listen(IPAddress.Parse(host), hubPort);
+    kestrel.Listen(IPAddress.Parse(host), framePort);
 });
 builder.Services.AddHttpForwarder();
 var app = builder.Build();
@@ -147,8 +149,8 @@ static class Shell
         <script>
           var query = new URLSearchParams(location.search);
           var direct = query.get('src') === 'direct';
-          var src = (direct ? '{{target}}' : '{{frameOrigin}}') + '/' + location.hash;
-          document.getElementById(direct ? 'direct' : 'via').className = 'on';
+          var src = query.get('url') || (direct ? '{{target}}' : '{{frameOrigin}}') + '/' + location.hash;
+          if (!query.get('url')) document.getElementById(direct ? 'direct' : 'via').className = 'on';
           document.getElementById('where').textContent = src.replace(/#.*/, '');
           document.getElementById('frame').src = src;
         </script>

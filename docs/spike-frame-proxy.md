@@ -37,6 +37,30 @@ Qwen lässt das Einbetten per Einstellung nur für Browser-Erweiterungen zu (`ch
 - **Ein Port je fremdem Dienst, kein Pfad.** Die Qwen-Oberfläche liegt an der Wurzel ihrer Adresse. Im Versuch hat die Weiterleitung einen eigenen Port; unter `/qwen` ist es nicht versucht.
 - **Token-Einsatz macht die doppelte Kopplung überflüssig.** Prüft der Knoten vor der Weiterleitung die Stykker-Kopplung und setzt dann das Token ein, braucht das Handy keinen QR-Code von Qwen mehr.
 
+## Eigene Module im Frame
+
+Zweiter Teil, selber Tag: StykkerHUD, StykkerSYS und StykkerLLM (im Simulator) direkt im Frame der Hülle, ohne Weiterleitung.
+
+| Fall | Ergebnis |
+|---|---|
+| HUD und SYS im Frame | Laden und zeigen Werte. Sie senden kein Einbett-Verbot. |
+| LLM im Frame, unverändert | Blockiert: Blazor Server setzt von sich aus `frame-ancestors 'self'`, und die Hülle auf einem anderen Port ist für den Browser eine andere Herkunft. |
+| LLM im Frame, mit `--hub-port` | Lädt, die Blazor-Verbindung (`/_blazor`) steht. |
+| Gerät an LLM `:8090` angemeldet, Frame zeigt eine zweite LLM-Instanz auf `:8091` mit derselben Geräteliste | Ohne neue Anmeldung drin. Das Cookie gilt für den Rechnernamen, nicht für den Port, und es wird im Frame mitgeschickt. |
+| Dasselbe mit einem Gerät ohne Anmeldung | Die Anmeldeseite erscheint im Frame. |
+| Hülle unter einem anderen Rechnernamen als das Modul | Blockiert (und ohne das Verbot käme die Anmeldeseite: der Browser gibt das Cookie dann nicht in den Frame). |
+
+Daraus folgt:
+
+- **`--hub-port` in StykkerLLM** (neu, `llm/src/StykkerLlm.Core/Server/FramePolicy.cs`): erlaubt genau die Zentrale unter demselben Rechnernamen und diesem Port. Ohne den Schalter bleibt alles wie bisher. Der Port kommt später aus `stykker.json`.
+- **Hülle und Module müssen unter demselben Rechnernamen aufgerufen werden.** Sonst gilt die Anmeldung im Frame nicht.
+- **Die gemeinsame Geräteliste trägt die Anmeldung über die Module.** Das war die Annahme hinter „ein neues Modul sieht die vorhandene Kopplung“; mit zwei LLM-Instanzen und kopierter `access.dat` ist sie im Browser bestätigt.
+- **Doppelte Kopfzeile:** Im Frame steht unter der Leiste der Zentrale die eigene Kopfzeile des Moduls mit Marke und Thema. Ein Modul braucht eine eingebettete Darstellung ohne Marke, die dem Thema der Zentrale folgt. Im Mockup ist das so gezeichnet, gebaut ist es nicht.
+
+Bilder: `design/screenshots/frame-hud.png`, `frame-llm.png`, `frame-llm-other-port.png`. Von SYS im Frame gibt es bewusst kein Bild im Repo: es zeigt die Prozesse der Maschine.
+
+HUD und SYS prüfen noch keine Kopplung und hören nur auf `127.0.0.1`. Im Netz lassen sie sich so erst zeigen, wenn sie die gemeinsame Prüfung haben (Phasen 5 und 6) oder der Knoten davor steht.
+
 ## Was der Versuch nicht zeigt
 
 - **Keine Kopplung davor.** Der Versuch hört nur auf `127.0.0.1` und prüft niemanden. Mit Token-Einsatz wäre er im Netz eine offene Tür zu einem Coding-Agenten. Im Knoten gehört die Prüfung von Kopplung und Rolle `admin` vor die Weiterleitung.
@@ -44,7 +68,7 @@ Qwen lässt das Einbetten per Einstellung nur für Browser-Erweiterungen zu (`ch
 - **Nicht gegen die Desktop-App.** Deren Daemon hat einen zufälligen Port und ein Token, das nur die App kennt. Der Weg dorthin (Token übergeben, oder über den Local-Control-Port mit einem eigenen Geräte-Token) ist offen.
 - **Nicht am Handy** und nur mit Edge.
 - **Service Worker und PWA** von Qwen im Frame sind nicht geprüft.
-- **Unsere eigenen Module im Frame** sind nicht geprüft. Die Annahme, dass das Geräte-Cookie über die Ports hinweg gilt, steht noch aus.
+- **Aktionen im Frame** (ein Modell stoppen, einen Prozess beenden) sind nicht ausgelöst worden, nur das Laden und die laufende Anzeige.
 
 ## Nachstellen
 
