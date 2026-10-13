@@ -1,5 +1,9 @@
 # Model hosts
 
+> Since the shared pairing (step L2) the hosts are kept in the shared file `pairing.dat` (`shared/src/Stykker.Pairing`).
+> There is no `hosts.dat` any more: an old one is imported once and kept as `hosts.dat.bak`. The token rules below
+> are unchanged.
+
 One PC runs **StykkerLLM-Server** (the web interface, the proxy, the model tests). Other PCs that only run models
 run **StykkerHost**: no window, no web page, just a tray icon. The server shows and controls them, and its proxy uses
 their models as if they were local.

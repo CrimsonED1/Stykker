@@ -1,6 +1,6 @@
 # Plan: StykkerNode, zentrale Kopplung und Zentrale
 
-Stand 2026-10-13 · **Phase 1 umgesetzt** (`shared/src/Stykker.Pairing`, Abschnitt 10), alles andere Entwurf · Bild: [architektur.svg](architektur.svg) · Was als Nächstes kommt: [naechste-schritte.md](naechste-schritte.md)
+Stand 2026-10-13 · **Phase 1 umgesetzt** (`shared/src/Stykker.Pairing`, Abschnitt 10), **StykkerLLM an der Kopplung umgesetzt** (L2, Abschnitt 10), alles andere Entwurf · Bild: [architektur.svg](architektur.svg) · Was als Nächstes kommt: [naechste-schritte.md](naechste-schritte.md)
 
 ## 1. Anforderungen
 
@@ -35,7 +35,7 @@ Aus dem Code geprüft am 2026-10-10.
 
 | Werkzeug | Web-UI | Server-Version | Kopplung heute | Erreichbar heute |
 |---|---|---|---|---|
-| StykkerLLM | ja (Razor) | ja, `StykkerLLM-Server`, Port 8078 | eigene: `access.dat` (Geräte, Code, Netzschalter), `hosts.dat` (Host-Token, eigener Code) | Netz nur mit Schalter Home/VPN |
+| StykkerLLM | ja (Razor) | ja, `StykkerLLM-Server`, Port 8078 | gemeinsam: `pairing.dat` (Geräte, Code, Rollen, Hosts; seit L2) | Netz nur mit Schalter Home/VPN |
 | StykkerSYS | ja | ja, Port 8077 | keine | nur 127.0.0.1 |
 | StykkerHUD | ja | ja, Port 8079 | keine | nur 127.0.0.1 |
 | StykkerCMD | nein (Avalonia) | nein | keine | nur das Fenster |
@@ -199,7 +199,7 @@ Zusätzlich zu bestätigen, ohne Frage: Name `StykkerNode`, Konfiguration `stykk
 
 ### Phase 1: `Stykker.Pairing` (2026-10-13)
 
-Seit der Zugangsprüfung vom selben Tag nutzen HUD und SYS die Bibliothek. StykkerLLM läuft unverändert mit `access.dat` und `hosts.dat`.
+Seit der Zugangsprüfung vom selben Tag nutzen HUD und SYS die Bibliothek, seit L2 (unten) auch StykkerLLM.
 
 | Datei | Inhalt |
 |---|---|
@@ -274,8 +274,8 @@ Noch nicht da:
 - **Kein HTTPS.** Im Heimnetz und über Tailscale wandert das Cookie im Klartext. Für die Installation als App verlangen Android und iOS außerhalb von `localhost` in der Regel HTTPS; über Tailscale ginge das mit dessen Zertifikaten. Offen.
 - **Kopplung andersherum** (das neue Gerät zeigt den Code) hat die Seite noch nicht, und keinen QR-Code.
 - **Loopback gilt als Admin.** Hinter einer Weiterleitung auf derselben Maschine träfe das auf jede Anfrage zu; vor dem Knoten braucht es den Knotenschlüssel aus Abschnitt 4.6.
-- **LLM ist nicht dabei:** es hat weiter seine eigene Anmeldung in `access.dat`, bis L2 umgesetzt ist.
-- **LLM hat keine eingebettete Darstellung:** im Frame steht seine eigene Marke, und es nimmt sein eigenes Thema.
+- **LLM ist seit L2 dabei** (unten): eine Anmeldung für alle drei Module.
+- **LLM im Frame** hat seit L2 die eingebettete Darstellung (unten).
 - **Geräte, Rollen, Knoten** aus dem Mockup fehlen. Jedes Modul meldet sich noch selbst an.
 - **Kein Service Worker:** das Manifest reicht zum Installieren; ohne Netz zeigt die App nichts.
 - **Der Verweis „Processes“ im Monitor** zeigt fest auf `127.0.0.1:8077` und öffnet SYS im Frame ohne eingebettete Darstellung.
@@ -286,4 +286,49 @@ Offen aus Phase 1:
 - Der **Host-Code** gilt nur in dem Prozess, der ihn zeigt. Für LLM reicht das; die Zentrale kann ihn so nicht anzeigen.
 - Der **Netzschalter** steht noch in `pairing.dat` und zieht in Phase 2 nach `stykker.json`.
 - Die Sperre heißt `Local\…` (je Windows-Sitzung). Der Dienst in Phase 8 braucht `Global\…`.
-- Zeiten stehen in UTC in der Ablage; StykkerLLM rechnet mit Ortszeit. Der Adapter in L2 muss umrechnen.
+- Zeiten stehen in UTC in der Ablage; StykkerLLM rechnet mit Ortszeit. Der Adapter in L2 rechnet um (unten).
+
+### StykkerLLM an der gemeinsamen Kopplung (L2, 2026-10-13)
+
+Eine Anmeldung gilt für HUD, SYS und LLM. `AccessControl` und `HostRegistry` sind dünne Adapter auf `Stykker.Pairing`: Namen und Aufrufe bleiben, die Ablage ist jetzt die gemeinsame.
+
+| Datei | Inhalt |
+|---|---|
+| `llm/src/StykkerLlm.Core/Server/SharedPairing.cs` | Öffnet die Ablage eines Datenordners und übernimmt `access.dat` und `hosts.dat` einmal; danach heißen sie `*.bak`. Rechnet Ortszeit und UTC um. |
+| `llm/src/StykkerLlm.Core/Server/AccessControl.cs` | Geräte je Modul. Ein Gerät aus der Zentrale ist hier `viewer`, ein Gerät, das sich hier anmeldet, `admin`. Der Code ist nur für Admins lesbar. |
+| `llm/src/StykkerLlm.Core/Host/HostRegistry.cs` | Die Hosts in der Ablage, nur mit dem Hash ihres Tokens. |
+| `llm/src/StykkerLlm.Core/Settings.cs` | `AppPaths.PairingFile()`: für die Vorgabe die gemeinsame Ablage, sonst `pairing.dat` im Datenordner; `--pairing-file` hat Vorrang. `AppPaths.FromDataDir()`: der Vorgabe-Ordner über `--data-dir` ist die Vorgabe. |
+| `llm/src/StykkerLlm.Server/EngineHost.cs`, `Program.cs`, `AccessGate.cs` | Ein Dienst für Geräte und Hosts. `--pairing-file`; `--hub-port` mit Vorgabe 8079 (`0` schaltet das Einbetten ab). `/api/ping` mit `module`, `version`, `gate: "pairing-v1"`; `app` bleibt. |
+| `llm/src/StykkerLlm.Server/wwwroot/ui.js`, `app.css` | Eingebettet (`?embed=1&theme=…`): ohne Marke, im Thema der Zentrale. Die Wahl merkt sich die Sitzung, nur im Frame. |
+| `llm/src/StykkerLlm.UI/Program.cs` | Reicht `--pairing-file` nur weiter, wenn das Fenster es selbst bekommen hat (Entwickler-Schalter). |
+| `hud/src/StykkerHud.Server/Program.cs`, `wwwroot/hub.js`, `hub.css` | Die Zentrale zeigt die Rolle `llm` je Gerät und ändert sie. |
+| `llm/tests/StykkerLlm.Tests/N66_SharedPairingTests.cs` | 19 neue Tests: Lage der Ablage, Adapter, fremde Änderungen, Übernahme, Rollen je Modul. |
+
+Dabei entschieden, weil die Umsetzung es verlangte:
+
+- **Vorgabe-Ordner über `--data-dir`:** Fenster und Terminal starten den Server immer mit `--data-dir`. Ohne diese Regel hätte der Server eine zweite `pairing.dat` neben `access.dat` angelegt, und die Anmeldung wäre nur beim Start aus dem Browser gemeinsam gewesen.
+- **`--hub-port` mit Vorgabe 8079:** LLM lässt sich jetzt auch aus dem Fenster heraus in die Zentrale einbetten. Bisher ging das nur, wenn jemand den Server von Hand mit dem Schalter startete.
+- **Gesperrte Ablage:** Dann schlägt nur die eine Anmeldung fehl. `HostRegistry.Add` gibt die Ausnahme weiter, weil `HostPairing` unverändert bleibt (siehe unten, nicht geprüft).
+
+Geprüft (2026-10-13, wie angegeben):
+
+- **Build:** LLM, HUD und SYS ohne Warnungen.
+- **Tests:** LLM 605, davon 604 bestanden und 1 übersprungen (der Scan des echten Modellordners). Vorher 586: 585 bestanden, 1 übersprungen. Shared: 63 in `Stykker.Shared.Tests` und 42 in `Stykker.Pairing.Tests`, alle bestanden. SYS: 21 bestanden.
+- **Probelauf mit zwei Prozessen und einer Test-Ablage** (LLM auf 8090, HUD auf 8093, `--pairing-file` in einem Temp-Ordner, Abfragen mit `curl`):
+  - LLM koppelt ein Gerät mit dem Code der Zentrale. Die Zentrale listet es mit `llm: admin`, `hud: viewer`, `sys: viewer`.
+  - Die Zentrale setzt `llm` auf `viewer`. LLM erkennt das beim nächsten Zugriff.
+  - Der Viewer bekommt `/api/state` ohne Zugangscode.
+  - Die Zentrale entfernt das Gerät. LLM antwortet dem Cookie mit 401.
+  - Die echte `%APPDATA%\Stykker\pairing.dat` wurde nicht berührt.
+- **Browser:** Eingebettet in einem Frame im selben Ursprung: Klasse `embed`, Thema der Zentrale, Marke ausgeblendet, Navigation und Statusleiste da. Das bleibt nach einem Seitenwechsel per Klick, nach fünf Sekunden und nach einem vollen Neuladen. Ein eigener Tab zeigt die volle Oberfläche. In der Zentrale steht die Spalte LLM mit der Rolle; bei 375 Pixeln gibt es keinen Überlauf und die Schalter brechen nicht um. Keine Fehler in der Konsole.
+- **Übernahme:** Tests für eine alte `access.dat` (Gerät mit altem Cookie und Rolle), eine alte `hosts.dat` (Host mit altem Token), den zweiten Start ohne Doppeleinträge, ein entferntes Gerät, das nicht zurückkommt, Rollen ohne Feld und `hub`, eine Ablage mit Geräten und Code der Zentrale, und eine unlesbare Datei, die liegen bleibt.
+
+Noch nicht geprüft:
+
+- **Echtes Handy, Windows-Firewall, Tailscale.** Die Browser-Prüfung kam von dieser Maschine über `127.0.0.1`.
+- **Echter StykkerHost auf einem zweiten PC.** Geprüft ist nur der Test mit der alten `hosts.dat` als Vorlage.
+- **Die echte `access.dat` des Besitzers.** Ihre Übernahme läuft beim ersten Start der neuen Version; danach liegt sie als `access.dat.bak`.
+- **LLM im Frame der echten Zentrale** (Fall 2 der Prüfliste): der Probelauf hatte keine `stykker.json`. Geprüft ist die Einbettung über ein Frame im selben Ursprung.
+- **Netzschalter über alle drei Module:** im Probelauf liefen LLM und HUD zusammen, SYS nicht.
+- **Die Sperre über zehn Sekunden** (ein anderer Prozess hält die Ablage): nicht ausgelöst.
+- **Bilder** für `hud/docs/screenshots/`: nicht gemacht. Dafür braucht es eine Auswahl ohne SYS.

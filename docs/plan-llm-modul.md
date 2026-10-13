@@ -1,6 +1,6 @@
 # Plan: StykkerLLM als erstes Modul
 
-Stand 2026-10-10 · **Entwurf, nichts umgesetzt** · Teil von [plan-stykkernode.md](plan-stykkernode.md), Phasen 1 bis 3 · Bild: [architektur.svg](architektur.svg)
+Stand 2026-10-13 · **L2 umgesetzt** (Kopplung, siehe [plan-stykkernode.md](plan-stykkernode.md), Abschnitt 10) · L4: nur `/api/ping` · der Rest ist Entwurf · Teil von [plan-stykkernode.md](plan-stykkernode.md), Phasen 1 bis 3 · Bild: [architektur.svg](architektur.svg)
 
 ## 1. Ziel
 
@@ -46,7 +46,9 @@ Projekte nach dem Umbau:
 
 ### L2: Kopplung zentral
 
-- Ablage `%APPDATA%\Stykker\pairing.dat`, Zugriff über `Stykker.Pairing` (Plan Knoten, Abschnitt 4.1).
+**Stand 2026-10-13: umgesetzt.** Was gebaut und geprüft ist, steht in [plan-stykkernode.md](plan-stykkernode.md), Abschnitt 10, „StykkerLLM an der gemeinsamen Kopplung“. Offen bleiben dort die Prüfungen am echten Handy und an einem zweiten PC (Abnahme 3).
+
+- Ablage `%APPDATA%\Stykker\pairing.dat` (für den Vorgabe-Ordner), Zugriff über `Stykker.Pairing` (Plan Knoten, Abschnitt 4.1).
 - **Migration beim ersten Start:** `access.dat` und `hosts.dat` werden gelesen. Geräte, Rollen, Netzschalter und Host-Token-Hashes werden übernommen. Die Originale bleiben als `*.bak` liegen und werden nicht gelöscht.
 - **Pflicht, sonst sind alle Geräte abgemeldet:**
   - Hash-Verfahren und Präfix `StykkerLLM.device.v1|` bleiben unverändert.
@@ -66,7 +68,7 @@ Projekte nach dem Umbau:
 
 ### L4: Modul-Vertrag
 
-- `GET /api/ping`: zusätzlich `module: "llm"`, `version` und `gate: "pairing-v1"`. Nur Felder hinzufügen. Zustandsfelder werden nie umbenannt (`llm/AGENTS.md`).
+- `GET /api/ping`: zusätzlich `module: "llm"`, `version` und `gate: "pairing-v1"`. Nur Felder hinzufügen. Zustandsfelder werden nie umbenannt (`llm/AGENTS.md`). **Umgesetzt** (2026-10-13, geprüft mit einem Probelauf).
 - `GET /api/module` (neu): Name, Version, Kachel-Status (Server läuft, Modelle geladen, Auslastung). Ab Rolle `viewer`.
 - **Entdeckung:** Der `DiscoveryResponder` läuft nur in der Standalone-Hülle. Ist ein Knoten aktiv, antwortet nur er, also ein Antwortender je PC. Die Antwort behält `app: "StykkerLLM-Server"`, weil installierte StykkerHost-Versionen danach suchen.
 

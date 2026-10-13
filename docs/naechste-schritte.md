@@ -8,7 +8,7 @@ Die Reihenfolge folgt einem Ziel: **die Zentrale als App auf dem Handy, mit eine
 
 | Gebaut und geprüft | Fehlt dafür noch |
 |---|---|
-| Gemeinsame Kopplung (`Stykker.Pairing`), eine Ablage für alle Module | StykkerLLM nutzt sie noch nicht |
+| Gemeinsame Kopplung (`Stykker.Pairing`), eine Ablage für HUD, SYS und LLM | Prüfung am echten Handy und an einem zweiten PC (Schritt 1, Abnahme 3 in [plan-llm-modul.md](plan-llm-modul.md)) |
 | Zentrale im HUD unter `/hub`: Leiste, Übersicht, Module im Frame, einklappbar | Qwen Code und andere fremde Dienste sind nicht eingetragen |
 | Zugangsprüfung für HUD und SYS, Geräte mit Rolle je Modul | kein HTTPS, nicht am echten Handy geprüft |
 | Versuch: fremde Dienste über YARP einbetten (Qwen Code) | nur ein Versuch unter `spikes/`, keine Prüfung davor |
@@ -32,8 +32,9 @@ Die Reihenfolge folgt einem Ziel: **die Zentrale als App auf dem Handy, mit eine
   - *Eigene Zertifizierungsstelle fürs Heimnetz:* geht ohne Tailscale, dafür muss jedes Handy der Stelle einmal vertrauen.
 - **Nicht** `tailscale serve` davorsetzen: dann käme jede Anfrage von dieser Maschine, und die Prüfung hielte sie für lokal (Abschnitt 4.6 im Plan).
 
-### 3. StykkerLLM an die gemeinsame Kopplung
+### 3. StykkerLLM an die gemeinsame Kopplung (umgesetzt am 2026-10-13)
 
+- **Stand:** umgesetzt. Was gebaut und geprüft ist, steht in [plan-stykkernode.md](plan-stykkernode.md), Abschnitt 10. Offen sind die Prüfungen am echten Handy, an einem zweiten PC mit einem echten StykkerHost und mit der echten `access.dat` des Besitzers.
 - **Was:** `AccessControl` und `HostRegistry` lesen und schreiben `pairing.dat` statt `access.dat` und `hosts.dat`. Die alten Dateien werden einmal übernommen. Das ist Schritt L2 aus [plan-llm-modul.md](plan-llm-modul.md).
 - **Warum:** Heute meldet man sich an der Zentrale an und im Frame bei LLM noch einmal. Danach gilt eine Anmeldung für alle drei.
 - **Dazu gehört:** die eingebettete Darstellung für LLM (ohne eigene Marke, im Thema der Zentrale) und LLM in der Geräteliste der Zentrale.

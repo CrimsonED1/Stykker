@@ -126,7 +126,9 @@ stykker help | version
 - **Sign in**: the phone scans the QR code or types the **six-digit code** (valid 10 minutes, once). The code is in
   ☰ → Phone access and in the terminal display (`c`). Or the new device shows a code and you approve it on a device that is
   already signed in.
-- **Roles**: *Admin* may do everything, *Viewer* only looks (no actions, no access code).
+- **Roles**: *Admin* may do everything, *Viewer* only looks (no actions, no access code). Roles are per module. One sign-in
+  works for HUD, SYS and LLM: a device that signed in at the hub is a *Viewer* here until you change it there (the Monitor,
+  SYS and LLM columns of the hub).
 - **Model hosts** (☰ → Hosts): pair a PC running `StykkerHost.exe` with a six-digit code, then see its GPU, start and
   stop its models; the proxy uses them like local ones. See [docs/hosts.md](docs/hosts.md).
 - **Metrics** for status bars and dashboards: `http://127.0.0.1:8078/api/metrics` (Prometheus text, this machine only).
