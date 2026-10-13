@@ -1,0 +1,537 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stykker Hub – mockup</title>
+<!--
+  Mockup der Zentrale (docs/plan-stykkernode.md, Phase 5). Statische Seite, keine Daten vom Server:
+  alle Zahlen, Geräte und Namen sind erfunden. Ansichten über die Leiste oben oder #hub, #devices, #node, #pair, #llm;
+  Thema über den Knopf rechts oder ";titan" hinter der Ansicht (#devices;titan).
+  Farben sind die Token aus shared/design-system/tokens.css, hier eingebettet, damit die Datei allein öffnet.
+-->
+<style>
+:root,[data-theme="dark"]{--bg:#060916;--bg-top:#0e1430;--card:#111a33;--card-2:#0e0f26;--border:#4fe3ff40;--line:#24325a;--fuge:var(--line);--track:#ffffff1c;--ink:#e8eeff;--muted:#8292b8;--na:#7a87ab;--acc:#4fe3ff;--acc-t:var(--acc);--on-acc:#060916;--good:#6cffb0;--warn:#ffc857;--bad:#ff5c7a;--b-llama:#4fe3ff;--b-ollama:#b18cff;--m-llm:#4fe3ff;--m-sys:#a77bff;--m-hud:#6cffb0;--m-cmd:#ffb35c;--disp:var(--card-2);--phos:var(--acc);--shadow-menu:0 8px 20px rgba(0,0,0,.45);--glow:1}
+[data-theme="titan"]{--bg:#d9dcdb;--bg-top:#d9dcdb;--card:#cbd0cf;--card-2:#bfc5c4;--border:#7e8789;--line:#a9b0b1;--fuge:#7e8789;--track:#7e878940;--ink:#1a1e20;--muted:#484f52;--na:#4f5659;--acc:#bd5017;--acc-t:#8f3a0c;--on-acc:#ffffff;--good:#256030;--warn:#734f08;--bad:#962817;--b-llama:#c2531a;--b-ollama:#1f6e73;--m-llm:#c2531a;--m-sys:#4a5a6a;--m-hud:#256030;--m-cmd:#a67c1e;--disp:#141819;--phos:#7cff9e;--shadow-menu:none;--glow:0}
+:root{--gap:12px;--radius:12px;--radius-md:8px;--radius-sm:6px;--radius-xs:4px;--font-sans:"Segoe UI Variable Text","Segoe UI",system-ui,sans-serif;--font-mono:"Cascadia Mono","Cascadia Code",Consolas,ui-monospace,monospace}
+[data-theme="titan"]{--radius:2px;--radius-md:2px;--radius-sm:2px;--radius-xs:1px}
+
+*{box-sizing:border-box}
+html{background:var(--bg)}
+body{margin:0;font:13px/1.45 var(--font-sans);color:var(--ink);background:linear-gradient(var(--bg-top),var(--bg) 900px) no-repeat var(--bg);min-height:100vh}
+button,select,input{font:inherit;color:inherit}
+.mono,.num{font-family:var(--font-mono);font-variant-numeric:tabular-nums}
+.muted{color:var(--muted)}
+.ic{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+h1,h2,h3{margin:0;font-weight:600}
+h2{font-size:15px}
+.label{font-size:11px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}
+
+/* ── Kopf: Marke, Module, Ansichten ── */
+header{position:sticky;top:0;z-index:5;background:var(--bg-top);border-bottom:1px solid var(--line)}
+.bar{max-width:1360px;margin:0 auto;padding:0 16px;display:flex;align-items:center;gap:18px;min-height:48px;flex-wrap:wrap}
+.brand{font-family:var(--font-mono);font-weight:700;letter-spacing:.14em;white-space:nowrap}
+.brand b{color:var(--acc);text-shadow:0 0 calc(10px*var(--glow)) var(--acc)}
+nav{display:flex;gap:2px;flex:1;min-width:0;overflow-x:auto}
+nav button{background:none;border:0;padding:14px 10px 12px;border-bottom:2px solid transparent;color:var(--muted);cursor:pointer;white-space:nowrap}
+nav button:hover{color:var(--ink)}
+nav button[aria-current="page"]{color:var(--ink);border-bottom-color:var(--acc)}
+nav .sep{width:1px;background:var(--line);margin:12px 8px}
+nav .mod::before{content:"";display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:7px;background:var(--m,var(--muted));vertical-align:1px}
+nav .mod.off::before{background:none;border:1px solid var(--na)}
+.tools{display:flex;align-items:center;gap:10px;white-space:nowrap}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:3px 8px;border:1px solid var(--line);border-radius:var(--radius-xs);font-size:12px;color:var(--muted)}
+.chip.on{color:var(--good);border-color:color-mix(in srgb,var(--good) 45%,transparent)}
+.chip.warn{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 45%,transparent)}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:6px 11px;background:var(--card-2);border:1px solid var(--line);border-radius:var(--radius-sm);cursor:pointer;white-space:nowrap}
+.btn:hover{border-color:var(--border)}
+.btn.primary{background:var(--acc);border-color:var(--acc);color:var(--on-acc);font-weight:600}
+.btn.quiet{background:none}
+.btn.danger:hover{border-color:var(--bad);color:var(--bad)}
+.btn.sm{padding:3px 8px;font-size:12px}
+
+main{max-width:1360px;margin:0 auto;padding:16px}
+.view{display:none}
+.view.show{display:block}
+.head{display:flex;align-items:baseline;gap:12px;margin:2px 0 14px;flex-wrap:wrap}
+.head h1{font-size:20px}
+.cols{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:var(--gap);align-items:start}
+.stack{display:grid;gap:var(--gap)}
+.card{background:linear-gradient(var(--card),var(--card-2));border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px}
+[data-theme="titan"] .card{background:var(--card);border-color:var(--fuge)}
+.card>.label{display:block;margin-bottom:10px}
+.well{background:var(--card-2);border:1px solid var(--line);border-radius:var(--radius-sm);padding:8px 10px}
+
+/* ── Zentrale: Kacheln ── */
+.tiles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--gap)}
+.tile{position:relative;padding-left:18px;display:grid;gap:10px}
+.tile::before{content:"";position:absolute;left:0;top:12px;bottom:12px;width:3px;border-radius:2px;background:var(--m);box-shadow:0 0 calc(10px*var(--glow)) var(--m)}
+.tile.off{border-style:dashed;border-color:var(--line)}
+.tile.off::before{background:var(--na);box-shadow:none}
+.tile-top{display:flex;align-items:center;gap:10px}
+.tile-top h2{font-family:var(--font-mono);letter-spacing:.06em}
+.tile-top .what{color:var(--muted)}
+.tile-top .state{margin-left:auto}
+.metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.metric{display:grid;gap:2px}
+.metric .v{font:600 20px/1.1 var(--font-mono);font-variant-numeric:tabular-nums}
+.metric .v small{font-size:11px;font-weight:400;color:var(--muted);margin-left:3px}
+.metric .k{display:flex;align-items:center;gap:5px;font-size:12px;color:var(--muted)}
+.bar-track{height:4px;background:var(--track);border-radius:2px;overflow:hidden}
+.bar-track i{display:block;height:100%;background:var(--m,var(--acc))}
+.tile-foot{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.tile-foot .role{margin-right:auto}
+.role-tag{font:600 11px var(--font-mono);letter-spacing:.08em;text-transform:uppercase;padding:2px 6px;border-radius:var(--radius-xs);border:1px solid var(--line);color:var(--muted)}
+.role-tag.admin{color:var(--acc-t);border-color:color-mix(in srgb,var(--acc) 50%,transparent)}
+
+/* ── Code-Anzeige ── */
+.code{display:flex;align-items:center;gap:12px}
+.digits{font:600 28px/1 var(--font-mono);letter-spacing:.12em;padding:10px 14px;background:var(--disp);border:1px solid var(--line);border-radius:var(--radius-sm);color:var(--phos);text-shadow:0 0 calc(12px*var(--glow)) var(--phos)}
+[data-theme="titan"] .digits{text-shadow:0 0 10px var(--phos)}
+.qr{width:72px;height:72px;flex:none;background:#fff;border-radius:var(--radius-xs);padding:5px}
+.qr svg{display:block;width:100%;height:100%}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:4px 12px}
+.kv dt{color:var(--muted)}
+.kv dd{margin:0;text-align:right}
+.request{display:grid;gap:8px}
+.request .who{display:flex;align-items:center;gap:8px}
+
+/* ── Tabellen ── */
+table{width:100%;border-collapse:collapse}
+th{font-size:11px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);text-align:left;padding:6px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:middle}
+tr:last-child td{border-bottom:0}
+td.r,th.r{text-align:right}
+.dev{display:flex;align-items:center;gap:10px}
+.dev b{font-weight:600}
+.dev small{display:block;color:var(--muted);font-size:12px}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:var(--radius-xs);overflow:hidden}
+.seg span{padding:2px 7px;font:600 11px var(--font-mono);letter-spacing:.06em;text-transform:uppercase;color:var(--na)}
+.seg span.on{background:var(--card-2);color:var(--ink)}
+.seg span.on.admin{background:color-mix(in srgb,var(--acc) 22%,transparent);color:var(--acc-t)}
+.lamp{width:8px;height:8px;border-radius:50%;flex:none;background:var(--na)}
+.lamp.good{background:var(--good);box-shadow:0 0 calc(8px*var(--glow)) var(--good)}
+.lamp.warn{background:var(--warn)}
+.lamp.bad{background:var(--bad)}
+.notice{display:flex;align-items:center;gap:10px;padding:9px 12px;border:1px solid color-mix(in srgb,var(--warn) 50%,transparent);border-radius:var(--radius-sm);background:color-mix(in srgb,var(--warn) 9%,transparent)}
+.notice .btn{margin-left:auto}
+
+/* ── Schalter ── */
+.switch{display:flex;align-items:center;gap:10px}
+.toggle{width:34px;height:18px;border-radius:9px;background:var(--track);border:1px solid var(--line);position:relative;flex:none}
+.toggle::after{content:"";position:absolute;top:2px;left:2px;width:12px;height:12px;border-radius:50%;background:var(--muted)}
+.toggle.on{background:color-mix(in srgb,var(--good) 35%,transparent);border-color:var(--good)}
+.toggle.on::after{left:18px;background:var(--good)}
+.log{font:12px/1.6 var(--font-mono);color:var(--muted);margin:0;white-space:pre-wrap}
+.log b{color:var(--ink);font-weight:400}
+.log .w{color:var(--warn)}
+
+/* ── Anmeldeseite ── */
+.pair-wrap{display:grid;grid-template-columns:repeat(2,minmax(0,380px));gap:24px;justify-content:center;padding-top:24px}
+.pair{display:grid;gap:14px;padding:22px}
+.pair h2{font-size:17px}
+.boxes{display:flex;gap:8px}
+.boxes span{flex:1;height:52px;display:grid;place-items:center;font:600 24px var(--font-mono);background:var(--disp);border:1px solid var(--line);border-radius:var(--radius-sm);color:var(--phos)}
+.boxes span.cur{border-color:var(--acc);box-shadow:0 0 0 2px color-mix(in srgb,var(--acc) 35%,transparent)}
+.pair .digits{font-size:34px;text-align:center}
+.steps{margin:0;padding-left:18px;color:var(--muted)}
+.steps li{margin:2px 0}
+
+/* ── Modul in der Zentrale (LLM) ── */
+.crumb{display:flex;align-items:center;gap:8px;color:var(--muted);margin-bottom:12px}
+.server{position:relative;padding-left:18px;display:grid;gap:10px;--m:var(--b-llama)}
+.server.ollama{--m:var(--b-ollama)}
+.server::before{content:"";position:absolute;left:0;top:12px;bottom:12px;width:3px;border-radius:2px;background:var(--m)}
+.server-top{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.tps{font:600 26px/1 var(--font-mono);font-variant-numeric:tabular-nums}
+.tps small{font-size:12px;font-weight:400;color:var(--muted);margin-left:4px}
+.spark{height:34px;width:100%}
+.spark path{fill:none;stroke:var(--m);stroke-width:1.5}
+
+.note{margin-top:18px;color:var(--muted);font-size:12px}
+
+@media (max-width:1020px){.cols{grid-template-columns:1fr}}
+@media (max-width:640px){
+  .tiles,.pair-wrap{grid-template-columns:1fr}
+  .tools .chip{display:none}
+  .bar{gap:8px}
+  table,tbody,tr,td{display:block}
+  thead{display:none}
+  tr{border-bottom:1px solid var(--line);padding:8px 0}
+  td{border:0;padding:3px 10px}
+  td.r{text-align:left}
+  td[data-k]::before{content:attr(data-k);display:inline-block;width:72px;color:var(--muted);font-size:12px}
+}
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-users" viewBox="0 0 16 16"><circle cx="6" cy="5.5" r="2.5"/><path d="M1.5 14c.5-3 2.2-4.5 4.5-4.5s4 1.5 4.5 4.5"/><path d="M10.5 3.2a2.5 2.5 0 0 1 0 4.6M12.5 9.8c1.2.6 1.8 2 2 4.2"/></symbol>
+  <symbol id="i-host" viewBox="0 0 16 16"><rect x="1.5" y="2.5" width="13" height="8.5" rx="1"/><path d="M6 14h4M8 11v3"/></symbol>
+  <symbol id="i-restart" viewBox="0 0 16 16"><path d="M13.5 8A5.5 5.5 0 1 1 11.6 3.8"/><path d="M12 1.5v2.75H9.25"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 16 16"><path d="M2.5 4h11M6 4V2.5h4V4M4 4l.75 9.5h6.5L12 4"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 16 16"><rect x="3" y="7" width="10" height="7" rx="1.5"/><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2"/></symbol>
+  <symbol id="i-cpu" viewBox="0 0 16 16"><rect x="4" y="4" width="8" height="8" rx="1"/><rect x="6.5" y="6.5" width="3" height="3"/><path d="M6 4V2M10 4V2M6 14v-2M10 14v-2M4 6H2M4 10H2M14 6h-2M14 10h-2"/></symbol>
+  <symbol id="i-ram" viewBox="0 0 16 16"><rect x="1.5" y="4.5" width="13" height="6" rx="1"/><path d="M4 7h1.5M7.25 7h1.5M10.5 7H12M3.5 10.5v2M6 10.5v2M10 10.5v2M12.5 10.5v2"/></symbol>
+  <symbol id="i-vram" viewBox="0 0 16 16"><rect x="3" y="4" width="10" height="8" rx="1.5"/><path d="M5.5 4V2M8 4V2M10.5 4V2M5.5 14v-2M8 14v-2M10.5 14v-2M6 7h4v2H6z"/></symbol>
+  <symbol id="i-open" viewBox="0 0 16 16"><path d="M9 2.5h4.5V7M13.5 2.5 7.5 8.5M11.5 9.5v4h-9v-9h4"/></symbol>
+  <symbol id="i-port" viewBox="0 0 16 16"><path d="M5.5 2v3M10.5 2v3M3.5 5h9v3a4.5 4.5 0 0 1-9 0zM8 12.5V15"/></symbol>
+  <symbol id="i-proxy" viewBox="0 0 16 16"><path d="M2 5h10M9.5 2.5 12 5 9.5 7.5M14 11H4M6.5 8.5 4 11l2.5 2.5"/></symbol>
+  <symbol id="i-info" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.25"/><path d="M8 7.25v4M8 4.75v.01"/></symbol>
+  <symbol id="i-file" viewBox="0 0 16 16"><path d="M4 1.75h5.5L12.5 5v9.25h-8.5z"/><path d="M9.5 1.75V5h3"/><path d="M6.5 8.5h4M6.5 11h3"/></symbol>
+  <symbol id="i-layers" viewBox="0 0 16 16"><path d="M8 2 14 5 8 8 2 5z"/><path d="M2 8l6 3 6-3M2 11l6 3 6-3"/></symbol>
+  <symbol id="i-timer" viewBox="0 0 16 16"><circle cx="8" cy="9" r="5.25"/><path d="M8 6.5V9l1.75 1.25M6.5 1.75h3"/></symbol>
+  <symbol id="i-x" viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8"/></symbol>
+  <symbol id="r-ok" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.25"/><path d="M5 8.25 7 10.25 11 6"/></symbol>
+  <symbol id="b-llama" viewBox="0 0 16 16"><path d="M8 1.5 13.6 4.75v6.5L8 14.5 2.4 11.25v-6.5z"/><path d="M5.5 6.5h5M5.5 9.5h3"/></symbol>
+  <symbol id="qr" viewBox="0 0 21 21"><path fill="#000" stroke="none" d="M0 0h7v7H0zM1 1v5h5V1zM2 2h3v3H2zM14 0h7v7h-7zM15 1v5h5V1zM16 2h3v3h-3zM0 14h7v7H0zM1 15v5h5v-5zM2 16h3v3H2zM8 0h1v2H8zM10 1h2v1h-2zM9 3h1v2H9zM11 4h2v1h-2zM8 6h2v1H8zM12 6h1v2h-1zM0 8h2v1H0zM3 8h1v2H3zM5 9h3v1H5zM9 8h2v2H9zM13 9h2v1h-2zM16 8h1v2h-1zM18 8h3v1h-3zM19 10h2v1h-2zM0 11h1v2H0zM2 11h3v1H2zM6 11h1v2H6zM8 11h1v3H8zM10 11h3v1h-3zM14 11h1v2h-1zM16 12h2v1h-2zM10 13h1v2h-1zM12 13h1v1h-1zM8 15h2v1H8zM11 15h3v1h-3zM15 14h1v3h-1zM17 14h2v2h-2zM20 13h1v3h-1zM9 17h1v2H9zM11 17h2v1h-2zM14 18h3v1h-3zM18 17h1v2h-1zM8 20h3v1H8zM12 19h1v2h-1zM16 20h2v1h-2zM19 19h2v2h-2z"/></symbol>
+</svg>
+
+<header>
+  <div class="bar">
+    <div class="brand"><b>◆</b> STYKKER <b>HUB</b></div>
+    <nav id="nav" aria-label="Views">
+      <button data-view="hub">Hub</button>
+      <button data-view="devices">Devices</button>
+      <button data-view="node">Node</button>
+      <span class="sep"></span>
+      <button data-view="llm" class="mod" style="--m:var(--m-llm)">LLM</button>
+      <button class="mod" style="--m:var(--m-sys)">SYS</button>
+      <button class="mod" style="--m:var(--m-hud)">Monitor</button>
+      <button class="mod off">CMD</button>
+      <span class="sep"></span>
+      <button data-view="pair">Sign-in page</button>
+    </nav>
+    <div class="tools">
+      <span class="chip on"><svg class="ic"><use href="#i-port"/></svg>Home/VPN on</span>
+      <span class="chip"><svg class="ic"><use href="#i-host"/></svg><span class="mono">workstation</span></span>
+      <button class="btn sm quiet" id="theme">Titan</button>
+    </div>
+  </div>
+</header>
+
+<main>
+
+<!-- ═══ Hub ═══ -->
+<section class="view" id="hub">
+  <div class="head"><h1>Hub</h1><span class="muted">3 of 4 modules running · node up <span class="num">6 d 4 h</span></span></div>
+  <div class="cols">
+    <div class="stack">
+      <div class="notice">
+        <svg class="ic" style="color:var(--warn)"><use href="#i-info"/></svg>
+        <span><b>“Living room TV”</b> wants to pair and shows <span class="mono">731 204</span>.</span>
+        <button class="btn sm">Review</button>
+      </div>
+      <div class="tiles">
+
+        <article class="card tile" style="--m:var(--m-llm)">
+          <div class="tile-top"><h2>LLM</h2><span class="what">Local model servers</span><span class="chip on state"><span class="lamp good"></span>Running</span></div>
+          <div class="metrics">
+            <div class="metric"><span class="v">48.7<small>t/s</small></span><span class="k"><svg class="ic"><use href="#i-timer"/></svg>Generating</span></div>
+            <div class="metric"><span class="v">2<small>models</small></span><span class="k"><svg class="ic"><use href="#i-layers"/></svg>Loaded</span></div>
+            <div class="metric"><span class="v">17.2<small>/ 24 GB</small></span><span class="k"><svg class="ic"><use href="#i-vram"/></svg>VRAM</span></div>
+          </div>
+          <div class="bar-track"><i style="width:72%"></i></div>
+          <div class="tile-foot"><span class="role"><span class="role-tag admin">admin</span></span><span class="muted mono">/llm</span><button class="btn sm">Open<svg class="ic"><use href="#i-open"/></svg></button></div>
+        </article>
+
+        <article class="card tile" style="--m:var(--m-sys)">
+          <div class="tile-top"><h2>SYS</h2><span class="what">Process list</span><span class="chip on state"><span class="lamp good"></span>Running</span></div>
+          <div class="metrics">
+            <div class="metric"><span class="v">131<small>shown</small></span><span class="k"><svg class="ic"><use href="#i-layers"/></svg>Processes</span></div>
+            <div class="metric"><span class="v">215<small>hidden</small></span><span class="k"><svg class="ic"><use href="#i-lock"/></svg>No CPU time</span></div>
+            <div class="metric"><span class="v">14.3<small>%</small></span><span class="k"><svg class="ic"><use href="#i-cpu"/></svg>Top: llama-server</span></div>
+          </div>
+          <div class="bar-track"><i style="width:14%"></i></div>
+          <div class="tile-foot"><span class="role"><span class="role-tag">viewer</span> <span class="muted">· you can look, not end processes</span></span><span class="muted mono">/sys</span><button class="btn sm">Open<svg class="ic"><use href="#i-open"/></svg></button></div>
+        </article>
+
+        <article class="card tile" style="--m:var(--m-hud)">
+          <div class="tile-top"><h2>MONITOR</h2><span class="what">This machine</span><span class="chip on state"><span class="lamp good"></span>Running</span></div>
+          <div class="metrics">
+            <div class="metric"><span class="v">23.0<small>%</small></span><span class="k"><svg class="ic"><use href="#i-cpu"/></svg>CPU</span></div>
+            <div class="metric"><span class="v">21.4<small>/ 64 GB</small></span><span class="k"><svg class="ic"><use href="#i-ram"/></svg>Memory</span></div>
+            <div class="metric"><span class="v">61.0<small>%</small></span><span class="k"><svg class="ic"><use href="#i-vram"/></svg>GPU</span></div>
+          </div>
+          <div class="bar-track"><i style="width:23%"></i></div>
+          <div class="tile-foot"><span class="role"><span class="role-tag admin">admin</span></span><span class="muted mono">/hud</span><button class="btn sm">Open<svg class="ic"><use href="#i-open"/></svg></button></div>
+        </article>
+
+        <article class="card tile off" style="--m:var(--m-cmd)">
+          <div class="tile-top"><h2>CMD</h2><span class="what">File manager</span><span class="chip state"><span class="lamp"></span>Not connected</span></div>
+          <p class="muted" style="margin:0">StykkerCMD has no web interface yet. Once it has one, it appears here and shares the devices you already paired. File access will need the <span class="mono">admin</span> role and a list of folders you allow.</p>
+          <div class="tile-foot"><span class="role muted">Not installed as a module</span></div>
+        </article>
+
+      </div>
+    </div>
+
+    <aside class="stack">
+      <div class="card">
+        <span class="label">Add a device</span>
+        <div class="code">
+          <div class="digits">482 913</div>
+          <div class="qr"><svg><use href="#qr"/></svg></div>
+        </div>
+        <p class="muted" style="margin:10px 0 0">Type this code on the new device or scan it. Valid for <span class="num">7:42</span>, then replaced. It works once.</p>
+        <div style="display:flex;gap:8px;margin-top:10px"><button class="btn sm">New code</button><button class="btn sm quiet">Enter a code shown elsewhere</button></div>
+      </div>
+      <div class="card">
+        <span class="label">Node</span>
+        <dl class="kv">
+          <dt>Address</dt><dd class="mono">http://workstation:8075</dd>
+          <dt>Reachable from</dt><dd>Home network and VPN</dd>
+          <dt>Devices</dt><dd><span class="num">5</span> paired · <span class="num">2</span> online</dd>
+          <dt>Model hosts</dt><dd><span class="num">1</span> connected</dd>
+        </dl>
+      </div>
+    </aside>
+  </div>
+</section>
+
+<!-- ═══ Devices ═══ -->
+<section class="view" id="devices">
+  <div class="head"><h1>Devices</h1><span class="muted">One list for every module. A device is a viewer in a module until you make it admin there.</span></div>
+  <div class="stack">
+    <div class="card request">
+      <span class="label">Wants to pair</span>
+      <div class="who">
+        <svg class="ic muted"><use href="#i-host"/></svg>
+        <span><b>Living room TV</b> <span class="muted">· asked at LLM · <span class="mono">192.168.0.40</span> · 2 min ago</span></span>
+        <span class="digits" style="font-size:18px;padding:5px 10px;margin-left:auto">731 204</span>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <span class="muted">Check that the device shows these digits, then choose what it may do in LLM:</span>
+        <span style="margin-left:auto;display:flex;gap:8px"><button class="btn sm">Deny</button><button class="btn sm">Allow as viewer</button><button class="btn sm primary">Allow as admin</button></span>
+      </div>
+    </div>
+
+    <div class="card" style="padding:4px 4px 2px">
+      <table>
+        <thead><tr><th>Device</th><th>LLM</th><th>SYS</th><th>Monitor</th><th>Last seen</th><th class="r"></th></tr></thead>
+        <tbody>
+          <tr>
+            <td><div class="dev"><span class="lamp good"></span><div><b>This window</b><small>StykkerHUD on this PC · <span class="mono">127.0.0.1</span></small></div></div></td>
+            <td data-k="LLM"><span class="seg"><span>viewer</span><span class="on admin">admin</span></span></td>
+            <td data-k="SYS"><span class="seg"><span>viewer</span><span class="on admin">admin</span></span></td>
+            <td data-k="Monitor"><span class="seg"><span>viewer</span><span class="on admin">admin</span></span></td>
+            <td data-k="Last seen">now</td>
+            <td class="r"><span class="muted">this device</span></td>
+          </tr>
+          <tr>
+            <td><div class="dev"><span class="lamp good"></span><div><b>Chrome on Android</b><small>paired at LLM, 1 Oct · <span class="mono">192.168.0.23</span></small></div></div></td>
+            <td data-k="LLM"><span class="seg"><span>viewer</span><span class="on admin">admin</span></span></td>
+            <td data-k="SYS"><span class="seg"><span class="on">viewer</span><span>admin</span></span></td>
+            <td data-k="Monitor"><span class="seg"><span class="on">viewer</span><span>admin</span></span></td>
+            <td data-k="Last seen">1 min ago</td>
+            <td class="r"><button class="btn sm danger"><svg class="ic"><use href="#i-trash"/></svg>Remove</button></td>
+          </tr>
+          <tr>
+            <td><div class="dev"><span class="lamp"></span><div><b>Firefox on Windows</b><small>paired at LLM, 2 Oct · <span class="mono">192.168.0.31</span></small></div></div></td>
+            <td data-k="LLM"><span class="seg"><span class="on">viewer</span><span>admin</span></span></td>
+            <td data-k="SYS"><span class="seg"><span class="on">viewer</span><span>admin</span></span></td>
+            <td data-k="Monitor"><span class="seg"><span class="on">viewer</span><span>admin</span></span></td>
+            <td data-k="Last seen">yesterday, 22:14</td>
+            <td class="r"><button class="btn sm danger"><svg class="ic"><use href="#i-trash"/></svg>Remove</button></td>
+          </tr>
+          <tr>
+            <td><div class="dev"><span class="lamp"></span><div><b>Safari on iPad</b><small>paired at SYS, 11 Oct · <span class="mono">10.8.0.6</span> (VPN)</small></div></div></td>
+            <td data-k="LLM"><span class="seg"><span class="on">viewer</span><span>admin</span></span></td>
+            <td data-k="SYS"><span class="seg"><span>viewer</span><span class="on admin">admin</span></span></td>
+            <td data-k="Monitor"><span class="seg"><span class="on">viewer</span><span>admin</span></span></td>
+            <td data-k="Last seen">3 days ago</td>
+            <td class="r"><button class="btn sm danger"><svg class="ic"><use href="#i-trash"/></svg>Remove</button></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card" style="padding:4px 4px 2px">
+      <table>
+        <thead><tr><th>Model host</th><th>Used by</th><th>Token</th><th>Connected</th><th class="r"></th></tr></thead>
+        <tbody>
+          <tr>
+            <td><div class="dev"><span class="lamp good"></span><div><b class="mono">gpu-box</b><small>paired 5 Oct · runs models for this PC</small></div></div></td>
+            <td data-k="Used by">LLM</td>
+            <td data-k="Token"><span class="mono muted">stored as hash only</span></td>
+            <td data-k="Connected">since 09:12</td>
+            <td class="r"><button class="btn sm danger"><svg class="ic"><use href="#i-trash"/></svg>Remove</button></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="muted" style="margin:0">Removing a device signs it out of every module at once. A model host signs in with its token and never sees the interface.</p>
+  </div>
+</section>
+
+<!-- ═══ Node ═══ -->
+<section class="view" id="node">
+  <div class="head"><h1>Node</h1><span class="muted">StykkerNode starts the modules and is the only door from the network.</span></div>
+  <div class="cols">
+    <div class="stack">
+      <div class="card" style="padding:4px 4px 2px">
+        <table>
+          <thead><tr><th>Module</th><th>State</th><th>Listens on</th><th>Path</th><th>Up</th><th class="r"></th></tr></thead>
+          <tbody>
+            <tr>
+              <td><div class="dev"><span class="lamp good"></span><div><b class="mono">LLM</b><small>StykkerLLM-Server · PID <span class="num">18 204</span></small></div></div></td>
+              <td data-k="State">Running</td><td data-k="Listens on" class="mono">127.0.0.1:8078</td><td data-k="Path" class="mono">/llm</td><td data-k="Up" class="num">6 d 4 h</td>
+              <td class="r"><button class="btn sm"><svg class="ic"><use href="#i-restart"/></svg>Restart</button></td>
+            </tr>
+            <tr>
+              <td><div class="dev"><span class="lamp warn"></span><div><b class="mono">SYS</b><small>StykkerSYS · PID <span class="num">9 112</span></small></div></div></td>
+              <td data-k="State">Restarted <span class="num">1×</span> today</td><td data-k="Listens on" class="mono">127.0.0.1:8077</td><td data-k="Path" class="mono">/sys</td><td data-k="Up" class="num">2 h 51 min</td>
+              <td class="r"><button class="btn sm"><svg class="ic"><use href="#i-restart"/></svg>Restart</button></td>
+            </tr>
+            <tr>
+              <td><div class="dev"><span class="lamp good"></span><div><b class="mono">HUD</b><small>StykkerHUD · PID <span class="num">4 660</span></small></div></div></td>
+              <td data-k="State">Running</td><td data-k="Listens on" class="mono">127.0.0.1:8079</td><td data-k="Path" class="mono">/hud</td><td data-k="Up" class="num">6 d 4 h</td>
+              <td class="r"><button class="btn sm"><svg class="ic"><use href="#i-restart"/></svg>Restart</button></td>
+            </tr>
+            <tr>
+              <td><div class="dev"><span class="lamp"></span><div><b class="mono">CMD</b><small class="muted">not in stykker.json</small></div></div></td>
+              <td data-k="State" class="muted">Not connected</td><td data-k="Listens on" class="muted">–</td><td data-k="Path" class="muted">–</td><td data-k="Up" class="muted">–</td>
+              <td class="r"></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="card">
+        <span class="label">Recent</span>
+        <pre class="log"><b>13:02:42</b>  SYS answers on 127.0.0.1:8077
+<span class="w"><b>13:02:41</b>  SYS ended with code 1 – started again, the other modules kept running</span>
+<b>11:47:09</b>  192.168.0.77 refused: not paired
+<b>09:12:30</b>  host gpu-box connected through /llm/hosts/connect
+<b>09:12:02</b>  node started, 3 modules from stykker.json</pre>
+      </div>
+    </div>
+    <aside class="stack">
+      <div class="card">
+        <span class="label">Network</span>
+        <div class="switch"><span class="toggle on"></span><div><b>Home/VPN</b><div class="muted">Paired devices in your network can reach the node. Off: only this PC.</div></div></div>
+        <dl class="kv" style="margin-top:12px">
+          <dt>Node port</dt><dd class="mono">8075</dd>
+          <dt>Modules</dt><dd>only on <span class="mono">127.0.0.1</span></dd>
+          <dt>Proxy for coding tools</dt><dd class="mono">:17500 <span class="muted">(direct)</span></dd>
+        </dl>
+      </div>
+      <div class="card">
+        <span class="label">Files</span>
+        <dl class="kv">
+          <dt><svg class="ic" style="vertical-align:-3px"><use href="#i-file"/></svg> stykker.json</dt><dd>modules, ports, switch</dd>
+          <dt><svg class="ic" style="vertical-align:-3px"><use href="#i-lock"/></svg> pairing.dat</dt><dd>devices, roles, hosts</dd>
+        </dl>
+        <p class="muted" style="margin:10px 0 0">Both in <span class="mono">%APPDATA%\Stykker</span>. The pairing file is bound to your Windows account.</p>
+      </div>
+      <div class="card">
+        <span class="label">Without the node</span>
+        <p class="muted" style="margin:0">Every module still starts on its own port and uses the same devices. The node only adds one address for all of them.</p>
+      </div>
+    </aside>
+  </div>
+</section>
+
+<!-- ═══ Sign-in page ═══ -->
+<section class="view" id="pair">
+  <div class="head"><h1>Sign-in page</h1><span class="muted">What a device sees before it is paired. The same page in every module and at the node.</span></div>
+  <div class="pair-wrap">
+    <div class="card pair">
+      <div class="brand" style="font-size:12px"><b>◆</b> STYKKER</div>
+      <h2>Enter the code from your PC</h2>
+      <p class="muted" style="margin:0">Open the Hub on the PC, or the Stykker window. It shows six digits under “Add a device”.</p>
+      <div class="boxes"><span>4</span><span>8</span><span>2</span><span class="cur"></span><span></span><span></span></div>
+      <button class="btn primary" style="justify-content:center">Sign in</button>
+      <p class="muted" style="margin:0;font-size:12px">The code works once and for ten minutes. After five wrong tries the PC shows a new one.</p>
+    </div>
+    <div class="card pair">
+      <div class="brand" style="font-size:12px"><b>◆</b> STYKKER</div>
+      <h2>Or let the PC allow this device</h2>
+      <p class="muted" style="margin:0">No keyboard here? This device shows a code instead.</p>
+      <div class="digits">731 204</div>
+      <ol class="steps">
+        <li>On a device that is already signed in, open <b style="color:var(--ink)">Devices</b>.</li>
+        <li>Compare the digits and choose viewer or admin.</li>
+        <li>This page continues by itself.</li>
+      </ol>
+      <div class="chip warn" style="justify-self:start"><svg class="ic"><use href="#i-timer"/></svg>Waiting · <span class="num">9:12</span> left</div>
+    </div>
+  </div>
+  <p class="note" style="text-align:center">From the network this page only answers while Home/VPN is on. It never shows the PC's own code to a device that is not this PC.</p>
+</section>
+
+<!-- ═══ Modul in der Zentrale: LLM ═══ -->
+<section class="view" id="llm">
+  <div class="crumb"><span>Hub</span><span>›</span><b style="color:var(--ink)">LLM</b><span class="role-tag admin" style="margin-left:6px">admin</span><span style="margin-left:auto" class="mono">http://workstation:8075/llm</span></div>
+  <div class="cols">
+    <div class="stack">
+      <article class="card server">
+        <div class="server-top">
+          <svg class="ic" style="color:var(--m)"><use href="#b-llama"/></svg>
+          <b class="mono">qwen3-coder-30b-q5</b><span class="muted">llama.cpp · <span class="mono">:8180</span></span>
+          <span class="chip on" style="margin-left:auto"><span class="lamp good"></span>Generating</span>
+        </div>
+        <div style="display:flex;align-items:end;gap:18px;flex-wrap:wrap">
+          <div class="tps">48.7<small>t/s</small></div>
+          <div class="metric"><span class="k"><svg class="ic"><use href="#i-vram"/></svg><span class="num">13.9 GB</span></span></div>
+          <div class="metric"><span class="k"><svg class="ic"><use href="#i-layers"/></svg><span class="num">2 / 4 slots</span></span></div>
+          <div style="flex:1;min-width:160px"><svg class="spark" viewBox="0 0 300 34" preserveAspectRatio="none"><path d="M0,26 20,24 40,25 60,18 80,20 100,12 120,14 140,9 160,13 180,8 200,11 220,6 240,10 260,7 280,9 300,5"/></svg></div>
+        </div>
+        <div style="display:flex;gap:8px"><button class="btn sm">Stop</button><button class="btn sm quiet">Save as profile</button></div>
+      </article>
+      <article class="card server ollama">
+        <div class="server-top">
+          <svg class="ic" style="color:var(--m)"><use href="#b-llama"/></svg>
+          <b class="mono">gemma-4-12b</b><span class="muted">Ollama · on host <span class="mono">gpu-box</span></span>
+          <span class="chip" style="margin-left:auto"><span class="lamp"></span>Idle</span>
+        </div>
+        <div style="display:flex;align-items:end;gap:18px;flex-wrap:wrap">
+          <div class="tps muted">–<small>t/s</small></div>
+          <div class="metric"><span class="k"><svg class="ic"><use href="#i-vram"/></svg><span class="num">3.3 GB</span></span></div>
+          <div class="metric"><span class="k"><svg class="ic"><use href="#i-timer"/></svg>last request <span class="num">12 min</span> ago</span></div>
+        </div>
+      </article>
+    </div>
+    <aside class="stack">
+      <div class="card">
+        <span class="label">Proxy</span>
+        <div class="switch"><span class="toggle on"></span><div><b class="mono">:17500</b><div class="muted">One URL for every model. Coding tools talk to it directly, not through the node.</div></div></div>
+      </div>
+      <div class="card">
+        <span class="label">Inside the Hub</span>
+        <p class="muted" style="margin:0">This is the page StykkerLLM serves on its own port, reached under <span class="mono">/llm</span>. Same pages, same buttons. The bar on top comes from the Hub; devices and roles moved to <b style="color:var(--ink)">Devices</b>.</p>
+      </div>
+    </aside>
+  </div>
+</section>
+
+</main>
+
+<script>
+(function () {
+  var views = ['hub', 'devices', 'node', 'pair', 'llm'];
+  function show() {
+    var parts = location.hash.replace('#', '').split(';');
+    var view = views.indexOf(parts[0]) >= 0 ? parts[0] : 'hub';
+    if (parts[1]) document.documentElement.dataset.theme = parts[1] === 'titan' ? 'titan' : 'dark';
+    views.forEach(function (id) { document.getElementById(id).classList.toggle('show', id === view); });
+    document.querySelectorAll('#nav button').forEach(function (b) {
+      if (b.dataset.view === view) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
+    });
+    document.getElementById('theme').textContent = document.documentElement.dataset.theme === 'titan' ? 'Dark' : 'Titan';
+  }
+  document.getElementById('nav').addEventListener('click', function (e) {
+    var b = e.target.closest('button[data-view]');
+    if (b) location.hash = b.dataset.view;
+  });
+  document.getElementById('theme').addEventListener('click', function () {
+    var root = document.documentElement;
+    root.dataset.theme = root.dataset.theme === 'titan' ? 'dark' : 'titan';
+    show();
+  });
+  window.addEventListener('hashchange', show);
+  show();
+})();
+</script>
+</body>
+</html>
