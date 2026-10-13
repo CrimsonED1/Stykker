@@ -10,6 +10,8 @@ From the repository root that is `../Docs`. It holds the notes this repository d
 where, how the local models are wired up, the hardware. It is not part of the repository, so on another machine it
 may be missing; say so then instead of guessing.
 
+Work orders and plans written for an agent go into that `Docs` folder too, not into this repository.
+
 Inside the repository:
 
 | You want to know … | Read |
