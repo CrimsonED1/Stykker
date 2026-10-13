@@ -115,6 +115,21 @@ public class N66_SharedPairingTests
     }
 
     [TestMethod]
+    public void Host_AddedHere_IsFoundByAnotherService_AndIsNotADevice()
+    {
+        var paths = NewPaths("host");
+        var registry = new HostRegistry(paths, new FakePlatform());
+        var (entry, token) = registry.Add("gpu-box", DateTime.Now);
+
+        var found = OtherModule(paths).FindHost(token);
+        Assert.IsNotNull(found, "der Host steht in der gemeinsamen Ablage");
+        Assert.AreEqual("gpu-box", found.Name);
+        // Hosts haben keine Rollen und sind keine Browser-Geräte
+        Assert.AreEqual(0, new AccessControl(paths, new FakePlatform()).DeviceCount);
+        Assert.AreEqual(entry.Id, registry.Find(token)?.Id);
+    }
+
+    [TestMethod]
     public void PairingFile_IsNotPlainJson_OnWindows()
     {
         if (!OperatingSystem.IsWindows()) return;   // außerhalb von Windows bleibt die Datei Klartext (wie vorher)
