@@ -1,6 +1,6 @@
 # Plan: StykkerNode, zentrale Kopplung und Zentrale
 
-Stand 2026-10-13 · **Phase 1 umgesetzt** (`shared/src/Stykker.Pairing`, Abschnitt 10), alles andere Entwurf · Bild: [architektur.svg](architektur.svg) · Nächster Schritt: [plan-llm-modul.md](plan-llm-modul.md)
+Stand 2026-10-13 · **Phase 1 umgesetzt** (`shared/src/Stykker.Pairing`, Abschnitt 10), alles andere Entwurf · Bild: [architektur.svg](architektur.svg) · Was als Nächstes kommt: [naechste-schritte.md](naechste-schritte.md)
 
 ## 1. Anforderungen
 
