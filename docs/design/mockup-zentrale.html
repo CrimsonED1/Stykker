@@ -2,7 +2,8 @@
 <html lang="en" data-theme="dark">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0e1430">
 <title>Stykker Hub – mockup</title>
 <!--
   Mockup der Zentrale (docs/plan-stykkernode.md, Phase 5). Statische Seite, keine Daten vom Server:
@@ -157,14 +158,14 @@ nav .mod.ext::before{border-radius:1px;transform:rotate(45deg)}
 main.shell{max-width:none;padding:0}
 .framebar{display:flex;align-items:center;gap:10px;padding:6px 16px;border-bottom:1px solid var(--line);color:var(--muted);font-size:12px;flex-wrap:wrap}
 .framebar .grow{margin-left:auto;display:flex;align-items:center;gap:10px}
-.frame{min-height:calc(100vh - 82px);background:var(--bg)}
+.frame{min-height:calc(100vh - var(--bar-h) - 34px);background:var(--bg)}
 .frame .inner{max-width:1360px;margin:0 auto;padding:14px 16px}
 .modnav{display:flex;align-items:center;gap:4px;margin-bottom:14px;flex-wrap:wrap}
 .modnav span{padding:5px 10px;border:1px solid transparent;border-radius:var(--radius-sm);color:var(--muted)}
 .modnav span.on{color:var(--ink);background:var(--card-2);border-color:var(--line)}
 .modnav .right{margin-left:auto;display:flex;gap:8px}
 /* Qwen bringt seine eigene Gestaltung mit: neutral dunkel, in beiden Themen gleich */
-.foreign{background:#0b0b0c;color:#e9e9ea;display:grid;grid-template-columns:52px 280px 1fr;min-height:calc(100vh - 82px);font-family:"Segoe UI",system-ui,sans-serif}
+.foreign{background:#0b0b0c;color:#e9e9ea;display:grid;grid-template-columns:52px 280px 1fr;min-height:calc(100vh - var(--bar-h) - 34px);font-family:"Segoe UI",system-ui,sans-serif}
 .foreign .rail{border-right:1px solid #232326;display:grid;align-content:start;gap:14px;padding:14px 0;justify-items:center}
 .foreign .rail i{width:22px;height:22px;border-radius:6px;background:#1c1c1f}
 .foreign .rail i.on{background:#2a2a2f}
@@ -178,6 +179,38 @@ main.shell{max-width:none;padding:0}
 .foreign .composer{width:min(720px,70vw);text-align:left;background:#1d1d20;border:1px solid #3a4a7a;border-radius:10px;padding:14px;color:#8d8d93}
 .foreign .composer div{margin-top:26px;font-size:12px}
 @media (max-width:900px){.foreign{grid-template-columns:1fr}.foreign .rail,.foreign .side{display:none}}
+
+/* ── Leiste ein- und ausklappen ──
+   Am PC ist sie offen und lässt sich wegklappen. Am Handy (und als installierte App) ist sie zu: das Modul bekommt
+   den ganzen Bildschirm, und das Symbol öffnet die Leiste als Menü über der Seite. */
+:root{--bar-h:49px}
+html.folded{--bar-h:0px}
+html.folded header{display:none}
+#unfold{display:none;position:fixed;z-index:6;top:8px;right:12px;width:32px;height:32px;padding:0;border-radius:var(--radius-sm);background:var(--bg-top);border:1px solid var(--border);cursor:pointer;font:700 14px var(--font-mono)}
+#unfold b{color:var(--acc);text-shadow:0 0 calc(10px*var(--glow)) var(--acc)}
+html.folded #unfold{display:grid;place-items:center}
+/* Das Symbol sitzt in der Ecke: die Zeile des Moduls rückt dafür ein */
+html.folded .framebar{padding-right:56px}
+@media (max-width:640px),(display-mode:standalone){
+  #unfold{z-index:30;top:auto;bottom:max(16px,env(safe-area-inset-bottom));right:16px;width:48px;height:48px;border-radius:50%;font-size:20px;box-shadow:var(--shadow-menu)}
+  /* Eingeklappt gehört der ganze Bildschirm dem Modul: auch die Zeile mit Name und Adresse weicht */
+  html.folded .framebar{display:none}
+  html.folded{--bar-h:-34px}
+  html:not(.folded) header{position:fixed;inset:0;z-index:20;overflow:auto;border-bottom:0}
+  html:not(.folded) .bar{flex-direction:column;align-items:stretch;gap:0;padding:14px 16px calc(84px + env(safe-area-inset-bottom))}
+  html:not(.folded) .brand{padding:6px 0 14px}
+  html:not(.folded) nav{flex-direction:column;overflow:visible;flex:none}
+  html:not(.folded) nav button{padding:14px 4px;border-bottom:1px solid var(--line);text-align:left;font-size:15px}
+  html:not(.folded) nav button[aria-current="page"]{border-bottom-color:var(--line);color:var(--acc-t)}
+  html:not(.folded) nav .sep{width:auto;height:0;margin:8px 0;background:none}
+  html:not(.folded) .tools{flex-wrap:wrap;padding-top:16px}
+  html:not(.folded) .tools .chip{display:inline-flex}
+  html:not(.folded) #fold{display:none}
+  html:not(.folded) #unfold{display:grid;place-items:center}
+  html:not(.folded) #unfold b{display:none}
+  html:not(.folded) #unfold::after{content:"✕";color:var(--ink);font:400 18px var(--font-sans)}
+  html:not(.folded) body{overflow:hidden}
+}
 
 @media (max-width:1020px){.cols{grid-template-columns:1fr}}
 @media (max-width:640px){
@@ -211,6 +244,7 @@ main.shell{max-width:none;padding:0}
   <symbol id="i-file" viewBox="0 0 16 16"><path d="M4 1.75h5.5L12.5 5v9.25h-8.5z"/><path d="M9.5 1.75V5h3"/><path d="M6.5 8.5h4M6.5 11h3"/></symbol>
   <symbol id="i-layers" viewBox="0 0 16 16"><path d="M8 2 14 5 8 8 2 5z"/><path d="M2 8l6 3 6-3M2 11l6 3 6-3"/></symbol>
   <symbol id="i-timer" viewBox="0 0 16 16"><circle cx="8" cy="9" r="5.25"/><path d="M8 6.5V9l1.75 1.25M6.5 1.75h3"/></symbol>
+  <symbol id="i-up" viewBox="0 0 16 16"><path d="M4 10l4-4 4 4"/></symbol>
   <symbol id="i-x" viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8"/></symbol>
   <symbol id="r-ok" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.25"/><path d="M5 8.25 7 10.25 11 6"/></symbol>
   <symbol id="b-llama" viewBox="0 0 16 16"><path d="M8 1.5 13.6 4.75v6.5L8 14.5 2.4 11.25v-6.5z"/><path d="M5.5 6.5h5M5.5 9.5h3"/></symbol>
@@ -238,9 +272,12 @@ main.shell{max-width:none;padding:0}
       <span class="chip on"><svg class="ic"><use href="#i-port"/></svg>Home/VPN on</span>
       <span class="chip"><svg class="ic"><use href="#i-host"/></svg><span class="mono">workstation</span></span>
       <button class="btn sm quiet" id="theme">Titan</button>
+      <button class="btn sm quiet" id="fold" title="Hide the bar" aria-label="Hide the bar"><svg class="ic"><use href="#i-up"/></svg></button>
     </div>
   </div>
 </header>
+<!-- Eingeklappt bleibt nur dieses Symbol: am PC oben rechts, am Handy unten rechts in Daumennähe. -->
+<button id="unfold" title="Show the bar" aria-label="Show the bar" aria-expanded="false"><b>◆</b></button>
 
 <main>
 
@@ -594,6 +631,7 @@ main.shell{max-width:none;padding:0}
   var views = ['hub', 'devices', 'node', 'pair', 'llm', 'qwen'];
   function show() {
     var parts = location.hash.replace('#', '').split(';');
+    if (parts[2]) setFolded(parts[2] !== 'open', false);
     var view = views.indexOf(parts[0]) >= 0 ? parts[0] : 'hub';
     if (parts[1]) document.documentElement.dataset.theme = parts[1] === 'titan' ? 'titan' : 'dark';
     views.forEach(function (id) { document.getElementById(id).classList.toggle('show', id === view); });
@@ -603,9 +641,29 @@ main.shell{max-width:none;padding:0}
     });
     document.getElementById('theme').textContent = document.documentElement.dataset.theme === 'titan' ? 'Dark' : 'Titan';
   }
+  // Handy und installierte App: Leiste zu, bis das Symbol sie öffnet. Am PC offen. Die Wahl bleibt je Gerät gemerkt.
+  var small = window.matchMedia('(max-width:640px),(display-mode:standalone)');
+  function key() { return 'stykker-hub-bar-' + (small.matches ? 'phone' : 'desktop'); }
+  function setFolded(folded, remember) {
+    document.documentElement.classList.toggle('folded', folded);
+    document.getElementById('unfold').setAttribute('aria-expanded', String(!folded));
+    if (remember && !small.matches) { try { localStorage.setItem(key(), folded ? 'folded' : 'open'); } catch (e) { /* ohne Speicher: gilt bis zum Neuladen */ } }
+  }
+  function initialFolded() {
+    if (small.matches) return true;             // am Handy immer zu: das Menü ist eine Aktion, kein Zustand
+    try { return localStorage.getItem(key()) === 'folded'; } catch (e) { return false; }
+  }
+  setFolded(initialFolded(), false);
+  small.addEventListener('change', function () { setFolded(initialFolded(), false); });
+  document.getElementById('fold').addEventListener('click', function () { setFolded(true, true); });
+  document.getElementById('unfold').addEventListener('click', function () {
+    setFolded(!document.documentElement.classList.contains('folded'), true);
+  });
   document.getElementById('nav').addEventListener('click', function (e) {
     var b = e.target.closest('button[data-view]');
-    if (b) location.hash = b.dataset.view;
+    if (!b) return;
+    location.hash = b.dataset.view;
+    if (small.matches) setFolded(true, false);  // gewählt: Menü zu, das Modul hat wieder den ganzen Bildschirm
   });
   document.getElementById('theme').addEventListener('click', function () {
     var root = document.documentElement;
