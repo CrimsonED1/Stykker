@@ -24,9 +24,9 @@ There is **one UI codebase for the window, the phone and other PCs: the Razor pa
 
 ## Branches
 
-- **`dev`**: all ongoing work happens here (commit to `dev` or to a short-lived branch merged into `dev`).
-- **`main`**: stable; only receives tested merges from `dev` for a release (tag `v*` starts the release workflow).
-- Never push to `main` or create tags/releases without the owner's approval.
+- **Work on `main` is fine.** Since StykkerLLM lives in the monorepo there is no `dev` branch to go through
+  (see the [`AGENTS.md`](../AGENTS.md) of the monorepo). Use a short-lived branch for a large or risky change.
+- A release is a tag `llm-v…`. Create tags and releases only when the owner asks for them.
 
 ## Build, test, run
 

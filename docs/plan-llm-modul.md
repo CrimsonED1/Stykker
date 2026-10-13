@@ -109,4 +109,4 @@ Alles muss stimmen:
 - **Bindung des Proxys 17500:** Ob er nur auf Loopback lauscht oder auch im Netz erreichbar ist, habe ich noch nicht geprüft. Das klärt sich vor L5.
 - **Gerätecookie:** gilt zwei Jahre (`SetCookie`). Die Laufzeit für Geräte, die über die Zentrale verwaltet werden, sollte überdacht werden.
 - **Tests `N50`, `N57` und `S2`:** Sie brauchen angepasste Aufrufe, wenn sich die Namen der Adapter ändern. Die Prüfungen selbst bleiben.
-- **Commits:** nur auf Auftrag. Die Arbeit läuft auf Branch `dev`, wie in `llm/AGENTS.md` beschrieben.
+- **Commits:** nur auf Auftrag. Gearbeitet wird auf `main`; einen Branch `dev` braucht es nicht (`AGENTS.md` im Wurzelordner).

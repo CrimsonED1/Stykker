@@ -12,6 +12,8 @@ Each tool builds on its own and has its own README and license.
 
 The license of a tool is the `LICENSE` file in its folder.
 
+Working on the code, by hand or with a coding agent: read [`AGENTS.md`](AGENTS.md) first.
+
 [`shared/`](shared/) holds the code the tools share (`Stykker.Shared`, C#, see its [README](shared/README.md)) and the design system they are styled with ([`shared/design-system/`](shared/design-system/)).
 
 ## Build

@@ -176,7 +176,7 @@ Zusätzlich zu bestätigen, ohne Frage: Name `StykkerNode`, Konfiguration `stykk
 - Cookie-Name, Hash-Verfahren, Rollennamen.
 - Ports im eigenständigen Betrieb: LLM 8078 und 17500, SYS 8077, HUD 8079.
 - Jede App startet allein und ohne Knoten.
-- Keine neue NuGet-Abhängigkeit ohne Freigabe. Die Regeln in `llm/AGENTS.md` gelten im Modul weiter, unter anderem die Arbeit auf Branch `dev`.
+- Keine neue NuGet-Abhängigkeit ohne Freigabe. Die Regeln in `llm/AGENTS.md` gelten im Modul weiter.
 - Keine Commits und Pushes ohne Auftrag.
 
 ## 8. Risiken
@@ -199,7 +199,7 @@ Zusätzlich zu bestätigen, ohne Frage: Name `StykkerNode`, Konfiguration `stykk
 
 ### Phase 1: `Stykker.Pairing` (2026-10-13)
 
-Branch `feature/stykker-pairing`. Kein Werkzeug benutzt die Bibliothek bisher; StykkerLLM läuft unverändert mit `access.dat` und `hosts.dat`.
+Seit der Zugangsprüfung vom selben Tag nutzen HUD und SYS die Bibliothek. StykkerLLM läuft unverändert mit `access.dat` und `hosts.dat`.
 
 | Datei | Inhalt |
 |---|---|
@@ -219,7 +219,7 @@ Dabei entschieden, weil die Bibliothek es brauchte (Abschnitt 6, jeweils die Emp
 Von dir entschieden am 2026-10-13:
 
 - **E: ja, alles Web.** CMD bekommt Web-UI und Server-Version, Avalonia entfällt. Die Frage Blazor oder Avalonia aus `hud/docs/entscheidungen.md` ist damit beantwortet.
-- **Branch `dev`** im Monorepo: dort läuft die laufende Arbeit, `main` bekommt nur geprüfte Stände.
+- **Gearbeitet wird auf `main`.** Der Branch `dev` vom 13.10. ist am selben Tag nach `main` gemergt; er muss nicht weitergeführt werden (siehe `AGENTS.md` im Wurzelordner).
 - **F: Frames zuerst, YARP zusätzlich.** Die Zentrale ist eine Hülle: Leiste oben, das Modul im Frame darunter, für eigene Module wie für fremde Dienste. YARP (`Yarp.ReverseProxy`, freigegeben) kommt dazu, wo ein Frame allein nicht reicht, und später als einzige Tür des Knotens.
 - **Qwen Code ist der Testfall für fremde Dienste**, weil es das Einbetten verbietet. Der Versuch dazu ist gelaufen: [spike-frame-proxy.md](spike-frame-proxy.md). Mit YARP davor lässt sich Qwen einbetten, und das Handy braucht dann kein Qwen-Token mehr.
 - **Fremde Dienste als externe Module:** ein Eintrag in `stykker.json`, sichtbar nur für Geräte mit Rolle `admin` für diesen Eintrag.
@@ -232,7 +232,7 @@ Von dir entschieden am 2026-10-13:
 
 ### Zentrale im HUD, erster Teil (2026-10-13)
 
-Vorgezogen aus Phase 5, zusammen mit dem Teil von Phase 2, den sie braucht. Branch `dev`.
+Vorgezogen aus Phase 5, zusammen mit dem Teil von Phase 2, den sie braucht.
 
 | Wo | Was |
 |---|---|
@@ -247,7 +247,7 @@ Geprüft im Browser (Edge über Playwright, alles auf `127.0.0.1`): Übersicht m
 
 ### Zugangsprüfung für HUD und SYS (2026-10-13)
 
-Die gemeinsame Prüfung aus Abschnitt 4.3 (`gate: pairing-v1`), für HUD und SYS. Branch `dev`.
+Die gemeinsame Prüfung aus Abschnitt 4.3 (`gate: pairing-v1`), für HUD und SYS.
 
 | Wo | Was |
 |---|---|
