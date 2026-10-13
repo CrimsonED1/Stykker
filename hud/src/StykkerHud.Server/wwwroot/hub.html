@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0e1430">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Stykker">
+<title>Stykker Hub</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/hub-icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/hub-icon-192.png">
+<link rel="stylesheet" href="/ds/tokens.css">
+<link rel="stylesheet" href="/hub.css">
+<script>
+  // Vor dem ersten Zeichnen: Thema und der Zustand der Leiste, damit nichts springt.
+  try {
+    var theme = localStorage.getItem("stykkerhud.theme");
+    if (theme) document.documentElement.dataset.theme = theme;
+  } catch (e) { }
+  var small = matchMedia("(max-width:640px),(display-mode:standalone)").matches, folded = small;
+  try { if (!small) folded = localStorage.getItem("stykkerhub.bar") === "folded"; } catch (e) { }
+  if (folded) document.documentElement.classList.add("folded");
+</script>
+</head>
+<body>
+
+<header id="bar">
+  <div class="bar">
+    <div class="brand"><b>◆</b> STYKKER <b>HUB</b></div>
+    <nav id="nav" aria-label="Modules"></nav>
+    <div class="tools">
+      <button type="button" class="btn" id="theme"></button>
+      <button type="button" class="btn" id="fold" title="Hide the bar" aria-label="Hide the bar">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 10l4-4 4 4"/></svg>
+      </button>
+    </div>
+  </div>
+</header>
+<!-- Eingeklappt bleibt nur dieses Symbol: am PC oben rechts, am Handy unten rechts in Daumennähe. -->
+<button type="button" id="unfold" title="Show the bar" aria-label="Show the bar" aria-expanded="true"><b>◆</b></button>
+
+<main id="overview" hidden>
+  <div class="head"><h1>Hub</h1><span class="muted" id="summary"></span></div>
+  <div class="tiles" id="tiles"></div>
+  <p class="muted note">Devices, roles and the node are not built yet. Each module still signs in by itself.</p>
+</main>
+
+<iframe id="frame" title="Module" hidden allow="clipboard-read; clipboard-write"></iframe>
+
+<script src="/hub.js"></script>
+</body>
+</html>

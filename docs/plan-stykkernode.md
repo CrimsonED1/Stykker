@@ -230,6 +230,30 @@ Von dir entschieden am 2026-10-13:
 - **Freigabe aus einem anderen Prozess** (Zentrale gibt frei, Modul hat die Anfrage angenommen): Die Anfrage steht mit zwei Hashes in der Ablage. Das Token hält nur der annehmende Prozess im Speicher; startet er neu, verfällt die Anfrage.
 - **Einmalige Übernahme:** `imported` merkt sich die übernommenen Quellen. Ein zentral entferntes Gerät kommt nicht aus der alten Datei zurück.
 
+### Zentrale im HUD, erster Teil (2026-10-13)
+
+Vorgezogen aus Phase 5, zusammen mit dem Teil von Phase 2, den sie braucht. Branch `dev`.
+
+| Wo | Was |
+|---|---|
+| `shared/src/Stykker.Shared/Config/HubModules.cs` | Liest die Module aus `%APPDATA%\Stykker\stykker.json`. Ohne Datei: Monitor, SYS (8077), LLM (8078). Eigene Module hängen am Rechnernamen der Anfrage, ein fremder Dienst an seiner Adresse. |
+| `hud/…/wwwroot/hub.html`, `hub.js`, `hub.css` | Die Hülle unter `/hub`: Leiste, Übersicht mit einer Kachel je Modul, das gewählte Modul im Frame. Die Leiste klappt ein; am Handy und als installierte App ist sie zu und öffnet sich über ein Symbol als Menü. |
+| `hud/…/Program.cs` | `/hub`, `/api/hub` (Module und ob ihr Port antwortet), `/manifest.webmanifest`. |
+| `hud`, `sys`: `App.razor`, `app.css` | Eingebettete Darstellung: `?embed=1` nimmt Marke und Themenwahl weg, `?theme=` folgt dem Thema der Zentrale. |
+| `llm`: `--hub-port` | Erlaubt der Zentrale das Einbetten (siehe [spike-frame-proxy.md](spike-frame-proxy.md)). |
+| `shared/…/Web/DesignSystemHost.cs` | Die Vorgabe für das Design-System wird vom Programmordner aufwärts gesucht. Der feste Pfad `C:\_AI\…` stimmte seit dem Umzug der Repo nicht mehr: HUD und SYS liefen ohne ihre Stile. |
+
+Geprüft im Browser (Edge über Playwright, alles auf `127.0.0.1`): Übersicht mit drei Kacheln, Monitor, SYS und LLM im Frame, Themenwechsel wirkt im Frame, Einklappen am PC, Start eingeklappt in Handybreite, Menü öffnet und schließt nach der Wahl. Bilder: `hud/docs/screenshots/hub-*.png` (ohne SYS: dessen Bild zeigt die Prozesse der Maschine und bleibt draußen).
+
+Noch nicht da:
+
+- **Am Handy nicht erreichbar.** HUD und SYS hören nur auf `127.0.0.1` und prüfen keine Kopplung. Der nächste Schritt ist die gemeinsame Zugangsprüfung auf `Stykker.Pairing` für HUD und SYS; erst dann lässt sich die Zentrale als App auf dem Handy installieren.
+- **LLM hat keine eingebettete Darstellung:** im Frame steht seine eigene Marke, und es nimmt sein eigenes Thema.
+- **Geräte, Rollen, Knoten** aus dem Mockup fehlen. Jedes Modul meldet sich noch selbst an.
+- **Kein Service Worker:** das Manifest reicht zum Installieren; ohne Netz zeigt die App nichts.
+- **Der Verweis „Processes“ im Monitor** zeigt fest auf `127.0.0.1:8077` und öffnet SYS im Frame ohne eingebettete Darstellung.
+- **`stykker.json`** kennt bisher nur `modules`; Knoten und Netzschalter (Abschnitt 4.2) fehlen.
+
 Offen aus Phase 1:
 
 - Der **Host-Code** gilt nur in dem Prozess, der ihn zeigt. Für LLM reicht das; die Zentrale kann ihn so nicht anzeigen.

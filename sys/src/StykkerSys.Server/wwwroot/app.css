@@ -20,3 +20,6 @@
 #procs .req .mdl .chipi.cnt{color:var(--acc)}
 #procs .req.child .cl{margin-left:14px}
 #procs .req.child .mdl{opacity:.9}
+
+/* In der Zentrale (Frame, ?embed=1): die Marke und die Themenwahl stehen schon in deren Leiste. */
+.embed .top .brand,.embed .top .seg[aria-label="Theme"]{display:none}

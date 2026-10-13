@@ -18,3 +18,6 @@
 /* Die Engine-Aufteilung der Grafikkarte fehlt ohne die Leistungsindikatoren: leere Behälter müssen dann wirklich
    verschwinden – das display:flex/grid des Design-Systems schlägt sonst das hidden-Attribut. */
 #gpu-stack[hidden],#gpu-engines[hidden]{display:none}
+
+/* In der Zentrale (Frame, ?embed=1): die Marke und die Themenwahl stehen schon in deren Leiste. */
+.embed .top .brand,.embed .top .seg[aria-label="Theme"]{display:none}

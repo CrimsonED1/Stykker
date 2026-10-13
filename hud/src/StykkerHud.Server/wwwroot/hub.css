@@ -1,0 +1,74 @@
+/* Die Hülle der Zentrale (/hub): Leiste oben, das Modul im Frame darunter. Farben nur aus tokens.css.
+   Die Bausteine des Design-Systems (bundle.css) bleiben draußen: die Hülle soll die Seite im Frame nicht nachahmen,
+   und sie muss auch dann klein bleiben, wenn sie als App auf dem Handy startet. */
+*{box-sizing:border-box}
+html,body{height:100%}
+html{background:var(--bg)}
+body{margin:0;display:flex;flex-direction:column;font:13px/1.45 var(--font-sans);color:var(--ink);background:var(--bg)}
+button{font:inherit;color:inherit}
+.muted{color:var(--muted)}
+.mono{font-family:var(--font-mono)}
+
+header{flex:none;background:var(--bg-top);border-bottom:1px solid var(--line)}
+.bar{display:flex;align-items:center;gap:18px;padding:0 16px;min-height:48px}
+.brand{font-family:var(--font-mono);font-weight:700;letter-spacing:.14em;white-space:nowrap}
+.brand b,#unfold b{color:var(--acc)}
+[data-theme="dark"] .brand b,[data-theme="dark"] #unfold b{text-shadow:0 0 10px var(--acc)}
+nav{display:flex;gap:2px;flex:1;min-width:0;overflow-x:auto}
+nav button{background:none;border:0;border-bottom:2px solid transparent;padding:14px 10px 12px;color:var(--muted);cursor:pointer;white-space:nowrap}
+nav button:hover{color:var(--ink)}
+nav button[aria-current="page"]{color:var(--ink);border-bottom-color:var(--acc)}
+nav .sep{width:1px;background:var(--line);margin:12px 8px;flex:none}
+nav .mod::before{content:"";display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:7px;vertical-align:1px;border:1px solid var(--na)}
+nav .mod.up::before{background:var(--good);border-color:var(--good)}
+nav .mod.ext::before{border-radius:1px;transform:rotate(45deg)}
+.tools{display:flex;align-items:center;gap:8px}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:4px 9px;background:none;border:1px solid var(--line);border-radius:var(--radius-sm);cursor:pointer;font-size:12px;white-space:nowrap}
+.btn:hover{border-color:var(--border)}
+.btn svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+[data-theme="titan"] .btn,[data-theme="titan"] #unfold{border-radius:2px}
+
+iframe{flex:1;width:100%;min-height:0;border:0;background:var(--bg)}
+iframe[hidden],main[hidden]{display:none}
+
+main{flex:1;overflow:auto;width:100%;max-width:1360px;margin:0 auto;padding:16px}
+.head{display:flex;align-items:baseline;gap:12px;margin:2px 0 14px;flex-wrap:wrap}
+h1{margin:0;font-size:20px;font-weight:600}
+h2{margin:0;font:600 15px var(--font-mono);letter-spacing:.06em}
+.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:var(--gap)}
+.tile{position:relative;display:grid;gap:10px;padding:12px 14px 12px 18px;background:var(--card);border:1px solid var(--border);border-radius:var(--radius)}
+[data-theme="titan"] .tile{border-color:var(--fuge);border-radius:2px}
+.tile::before{content:"";position:absolute;left:0;top:12px;bottom:12px;width:3px;border-radius:2px;background:var(--na)}
+.tile.up::before{background:var(--good)}
+.tile.down{border-style:dashed;border-color:var(--line)}
+.tile-top{display:flex;align-items:center;gap:10px}
+.state{margin-left:auto;display:inline-flex;align-items:center;gap:6px;padding:3px 8px;border:1px solid var(--line);border-radius:var(--radius-xs);font-size:12px;color:var(--muted)}
+.tile.up .state{color:var(--good);border-color:color-mix(in srgb,var(--good) 45%,transparent)}
+.state i{width:8px;height:8px;border-radius:50%;background:var(--na)}
+.tile.up .state i{background:var(--good)}
+.tile-foot{display:flex;align-items:center;gap:8px}
+.tile-foot .mono{margin-right:auto;color:var(--muted);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.note{margin:16px 0 0;font-size:12px}
+
+/* ── Leiste ein- und ausklappen ──
+   Am PC ist sie offen und lässt sich wegklappen. Am Handy und als installierte App ist sie zu: das Modul bekommt
+   den ganzen Bildschirm, und das Symbol öffnet die Leiste als Menü über der Seite. */
+html.folded header{display:none}
+#unfold{display:none;position:fixed;z-index:6;top:8px;right:12px;width:32px;height:32px;padding:0;place-items:center;border-radius:var(--radius-sm);background:var(--bg-top);border:1px solid var(--border);cursor:pointer;font:700 14px var(--font-mono)}
+html.folded #unfold{display:grid}
+@media (max-width:640px),(display-mode:standalone){
+  #unfold{z-index:30;top:auto;bottom:max(16px,env(safe-area-inset-bottom));right:16px;width:48px;height:48px;border-radius:50%;font-size:20px;box-shadow:var(--shadow-menu)}
+  html:not(.folded) header{position:fixed;inset:0;z-index:20;overflow:auto;border-bottom:0}
+  html:not(.folded) .bar{flex-direction:column;align-items:stretch;gap:0;padding:14px 16px calc(84px + env(safe-area-inset-bottom))}
+  html:not(.folded) .brand{padding:6px 0 14px}
+  html:not(.folded) nav{flex-direction:column;overflow:visible;flex:none}
+  html:not(.folded) nav button{padding:14px 4px;border-bottom:1px solid var(--line);text-align:left;font-size:15px}
+  html:not(.folded) nav button[aria-current="page"]{border-bottom-color:var(--line);color:var(--acc-t)}
+  html:not(.folded) nav .sep{width:auto;height:0;margin:8px 0;background:none}
+  html:not(.folded) .tools{padding-top:16px}
+  html:not(.folded) #fold{display:none}
+  html:not(.folded) #unfold{display:grid}
+  html:not(.folded) #unfold b{display:none}
+  html:not(.folded) #unfold::after{content:"✕";color:var(--ink);font:400 18px var(--font-sans)}
+  main{padding-bottom:calc(84px + env(safe-area-inset-bottom))}
+}

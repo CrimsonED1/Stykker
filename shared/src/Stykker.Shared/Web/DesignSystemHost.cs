@@ -7,7 +7,23 @@ namespace Stykker.Shared.Web;
 // Änderung dort wirkt beim nächsten Laden, und es gibt genau eine Fassung für die ganze Familie.
 public static class DesignSystemHost
 {
-    public const string DefaultFolder = @"C:\_AI\Stykker\MonoRepo\shared\design-system";
+    // Früher der feste Ort der Monorepo. Sie ist seither umgezogen; der Wert bleibt als letzte Rückfallstufe.
+    public const string LegacyFolder = @"C:\_AI\Stykker\MonoRepo\shared\design-system";
+
+    // Die Vorgabe: shared/design-system der Monorepo, in der das Programm liegt – gesucht vom Programmordner aufwärts.
+    // So folgt sie der Repo, wohin die auch zieht, statt an einem Laufwerk zu hängen.
+    public static readonly string DefaultFolder = FindFrom(AppContext.BaseDirectory) ?? LegacyFolder;
+
+    // Der erste Ordner oberhalb von start, der shared/design-system/tokens.css enthält; null, wenn es keinen gibt.
+    public static string? FindFrom(string start)
+    {
+        for (var directory = new DirectoryInfo(start); directory != null; directory = directory.Parent)
+        {
+            var candidate = Path.Combine(directory.FullName, "shared", "design-system");
+            if (File.Exists(Path.Combine(candidate, "tokens.css"))) return candidate;
+        }
+        return null;
+    }
 
     // Reihenfolge: --design-system <Ordner>, dann die Umgebungsvariable des Werkzeugs, dann die Vorgabe.
     public static string Resolve(string[] args, string environmentVariable) =>

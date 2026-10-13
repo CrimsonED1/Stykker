@@ -18,6 +18,10 @@
             if (theme) document.documentElement.dataset.theme = theme;
         } catch { }
         if (new URLSearchParams(location.search).has("shell")) document.documentElement.classList.add("shell");
+        // In der Zentrale (Frame): ohne eigene Marke, im Thema der Zentrale – das dort gewählte, nicht das hier gemerkte.
+        const query = new URLSearchParams(location.search);
+        if (query.has("embed")) document.documentElement.classList.add("embed");
+        if (query.get("theme") === "dark" || query.get("theme") === "titan") document.documentElement.dataset.theme = query.get("theme");
     </script>
 </head>
 <body>

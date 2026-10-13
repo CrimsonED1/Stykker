@@ -33,5 +33,27 @@ public class DesignSystemHostTests
     public void AFlagWithoutAValueFallsBack() =>
         Assert.Equal(DesignSystemHost.DefaultFolder, DesignSystemHost.Resolve(new[] { "--design-system" }, NewVariable()));
 
+    [Fact]
+    public void TheDefaultIsFoundAboveTheProgramFolder_WhereverTheRepoLives()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "stykker-ds-" + Guid.NewGuid().ToString("N"));
+        var design = Path.Combine(root, "shared", "design-system");
+        var program = Path.Combine(root, "hud", "src", "Server", "bin", "Debug", "net10.0");
+        Directory.CreateDirectory(design);
+        Directory.CreateDirectory(program);
+        File.WriteAllText(Path.Combine(design, "tokens.css"), ":root{}");
+        try
+        {
+            Assert.Equal(design, DesignSystemHost.FindFrom(program));
+            Assert.Null(DesignSystemHost.FindFrom(Path.GetPathRoot(root)!));
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
+    // Die Tests liegen in der Monorepo: von hier aus muss die Vorgabe das echte Design-System treffen.
+    [Fact]
+    public void TheDefaultPointsAtTheDesignSystemOfThisRepo() =>
+        Assert.True(File.Exists(Path.Combine(DesignSystemHost.DefaultFolder, "tokens.css")), DesignSystemHost.DefaultFolder);
+
     private static string NewVariable() => "STYKKER_TEST_" + Guid.NewGuid().ToString("N");
 }

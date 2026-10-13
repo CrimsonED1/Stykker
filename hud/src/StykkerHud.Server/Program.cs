@@ -1,3 +1,4 @@
+using Stykker.Shared.Config;
 using Stykker.Shared.Web;
 using Stykker.Shared.Windows;
 using StykkerHud.Core;
@@ -18,10 +19,13 @@ if (args.Contains("--help") || args.Contains("-h"))
           --basic           no system access: every value shows "-" (for trying that mode on Windows)
           --design-system <folder>
                             the shared design system served under /ds
-                            (default C:\_AI\Stykker\MonoRepo\shared\design-system)
+                            (default: shared/design-system of the repository this program is in)
           --help            this text
 
-        Endpoints: / (web interface), /api/snapshot (the current reading and the history as JSON).
+        Endpoints: / (the monitor), /hub (the hub: every Stykker module under one bar, each in a frame),
+        /api/snapshot (the current reading and the history as JSON), /api/hub (the modules and whether they run).
+
+        The hub lists the modules from %APPDATA%\Stykker\stykker.json; without that file SYS (8077) and LLM (8078).
 
         The server binds the port immediately and reads nothing until a viewer appears: the measuring loop
         starts with the first request and stops again 15 seconds after the last one. A closed window therefore
@@ -66,6 +70,30 @@ DesignSystemHost.Map(app, DesignSystemHost.Resolve(args, "STYKKERHUD_DESIGN_SYST
 // Die Seiten der Razor-Komponenten tragen Anti-Fälschungs-Metadaten: ohne diese Middleware antwortet "/" mit 500.
 app.UseAntiforgery();
 app.MapGet("/api/snapshot", (HudService service) => Results.Json(service.Snapshot()));
+
+// Die Zentrale: Leiste oben, das gewählte Modul im Frame darunter (docs/plan-stykkernode.md). Die Module stehen in
+// stykker.json; ohne Datei gilt die Suite auf ihren festen Ports. Eigene Module hängen am Rechnernamen der Anfrage.
+// Über den Dateianbieter statt über einen Pfad: aus dem Build-Ordner liegen die Dateien in den Quellen, nicht in wwwroot.
+IResult WebFile(string name, string contentType)
+{
+    var file = app.Environment.WebRootFileProvider.GetFileInfo(name);
+    return file.Exists ? Results.Stream(file.CreateReadStream(), contentType) : Results.NotFound();
+}
+app.MapGet("/hub", () => WebFile("hub.html", "text/html; charset=utf-8"));
+app.MapGet("/manifest.webmanifest", () => WebFile("manifest.webmanifest", "application/manifest+json"));
+app.MapGet("/api/hub", async (HttpContext context) =>
+{
+    var modules = HubModules.Load();
+    var host = context.Request.Host.Host;
+    var answers = await Task.WhenAll(modules.Select(async module =>
+    {
+        var address = module.AddressFor(context.Request.Scheme, host);
+        // Ohne eigene Adresse ist der Eintrag die Zentrale selbst: sie antwortet gerade, also läuft sie.
+        bool up = address == null || await HubProbe.AnswersAsync(module, address, context.RequestAborted);
+        return new { id = module.Id, name = module.Name, url = address ?? "/", external = module.External, up };
+    }));
+    return Results.Json(new { modules = answers });
+});
 
 app.MapRazorComponents<App>();
 
