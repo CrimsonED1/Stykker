@@ -89,7 +89,7 @@ th{font-size:11px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;
 td{padding:8px;border-top:1px solid var(--line);vertical-align:middle}
 td small{display:block;color:var(--muted);font-size:12px}
 td:last-child,th:last-child{text-align:right}
-.seg{display:inline-flex;border:1px solid var(--line);border-radius:var(--radius-xs);overflow:hidden}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:var(--radius-xs);overflow:hidden;white-space:nowrap}
 .seg button{padding:2px 7px;border:0;background:none;cursor:pointer;font:600 11px var(--font-mono);letter-spacing:.06em;text-transform:uppercase;color:var(--na)}
 .seg button.on{background:var(--card-2);color:var(--ink)}
 .seg button.on[data-role="admin"]{background:color-mix(in srgb,var(--acc) 22%,transparent);color:var(--acc-t)}
