@@ -39,6 +39,20 @@ public class N66_SharedPairingTests
     }
 
     [TestMethod]
+    public void FromDataDir_TheDefaultFolder_IsTheDefault_AndOtherFoldersAreNot()
+    {
+        // Das Fenster startet den Server mit --data-dir <Vorgabe>: auch dann gilt die gemeinsame Ablage (ohne Migration)
+        var defaultRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "StykkerLLM");
+        var asDefault = AppPaths.FromDataDir(defaultRoot + Path.DirectorySeparatorChar);
+        Assert.IsTrue(asDefault.IsDefault);
+        Assert.AreEqual(PairingStore.DefaultFile(), asDefault.PairingFile());
+
+        var other = AppPaths.FromDataDir(TempDir("other"));
+        Assert.IsFalse(other.IsDefault);
+        Assert.AreEqual(Path.Combine(other.Root, "pairing.dat"), other.PairingFile());
+    }
+
+    [TestMethod]
     public void PairingFile_BlankExplicit_IsIgnored()
     {
         var root = TempDir("blank");

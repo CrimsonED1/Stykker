@@ -57,6 +57,19 @@ public sealed class AppPaths
     public static AppPaths Default() =>
         new(MigrateRoot(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData)), isDefault: true);
 
+    // Der Datenordner aus --data-dir, oder die Vorgabe. Ein Pfad, der auf die Vorgabe zeigt, IST die Vorgabe: das Fenster
+    // startet den Server immer mit --data-dir, und die Kopplung soll trotzdem in der gemeinsamen Ablage liegen.
+    // Der Vorgabe-Zweig verschiebt nichts (die Migration macht Default(), das Fenster hat sie schon ausgeführt).
+    public static AppPaths FromDataDir(string? dataDir)
+    {
+        if (string.IsNullOrWhiteSpace(dataDir)) return Default();
+        var full = Path.GetFullPath(dataDir);
+        var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        var defaultRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "StykkerLLM");
+        bool isDefault = string.Equals(full.TrimEnd('\\', '/'), Path.GetFullPath(defaultRoot).TrimEnd('\\', '/'), comparison);
+        return new AppPaths(full, isDefault);
+    }
+
     // %APPDATA%\StykkerLLM; alte Daten von %APPDATA%\StykkerSLM werden einmalig übernommen (Ordner wird umbenannt),
     // wenn der neue Ordner noch nicht existiert. Ein Fehler beim Verschieben darf den Start nie verhindern.
     internal static string MigrateRoot(string appData)

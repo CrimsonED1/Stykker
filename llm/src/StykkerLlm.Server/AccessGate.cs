@@ -43,9 +43,11 @@ public sealed class AccessGate(AccessControl access, string key, int port, Func<
         // 1) Erkennung: läuft der Server, und ist er fürs Heimnetz freigegeben? (der Name hilft beim Koppeln eines Hosts)
         if (path.StartsWith("/api/ping", StringComparison.OrdinalIgnoreCase))
         {
+            // "app" bleibt: installierte StykkerHost-Versionen suchen danach. Neu sind nur die Felder hinten dran.
             await Json(ctx, StatusCodes.Status200OK,
                 $"{{\"ok\":true,\"app\":\"StykkerLLM-Server\",\"port\":{port},\"remote\":{Json(access.RemoteEnabled)},\"needsCode\":true," +
-                $"\"name\":{JsonSerializer.Serialize(Environment.MachineName)}}}");
+                $"\"name\":{JsonSerializer.Serialize(Environment.MachineName)},\"module\":\"llm\"," +
+                $"\"version\":{JsonSerializer.Serialize(AppLog.Version())},\"gate\":\"pairing-v1\"}}");
             return false;
         }
 
