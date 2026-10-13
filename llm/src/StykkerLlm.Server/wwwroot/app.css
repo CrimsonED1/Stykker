@@ -679,3 +679,5 @@ html.shell .bar>div,html.shell .spark-tip,html.shell .hchip .mini i{box-shadow:n
 html.shell .big,html.shell .kpi,html.shell .kpi>div,html.shell .brand .logo,html.shell .brand .acc,html.shell td.num b,html.shell .meter .v b,html.shell .req .spd,html.shell .pf-tps b{text-shadow:none!important}
 .lampi{display:inline-flex}.lampi .ic{width:14px;height:14px}.lampi.ok{color:var(--good)}.lampi.bad{color:var(--bad)}.lampi:not(.ok):not(.bad){color:var(--muted)}
 .end-lost{color:var(--bad)}
+/* Im Frame der Zentrale (?embed=1, Klasse embed am html): die Marke steht schon in deren Leiste. Navigation und Status bleiben. */
+.embed .top .brand{display:none}
