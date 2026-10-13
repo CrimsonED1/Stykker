@@ -44,7 +44,25 @@
 <main id="overview" hidden>
   <div class="head"><h1>Hub</h1><span class="muted" id="summary"></span></div>
   <div class="tiles" id="tiles"></div>
-  <p class="muted note">Devices, roles and the node are not built yet. Each module still signs in by itself.</p>
+  <!-- Nur an der Maschine selbst: Netzschalter, Code und Geräte. Ein Gerät im Netz bekommt diesen Teil nicht. -->
+  <section id="access" hidden>
+    <div class="head sub"><h1>Devices</h1><span class="muted">One list for the monitor and SYS. A new device may watch; make it an admin where it should act.</span></div>
+    <div class="access">
+      <div class="panel">
+        <span class="label">Network access</span>
+        <div class="row"><b id="remote-state"></b><button type="button" class="btn" id="remote-toggle"></button></div>
+        <p class="muted" id="remote-note"></p>
+        <div id="addresses" class="mono"></div>
+      </div>
+      <div class="panel">
+        <span class="label">Add a device</span>
+        <div class="row"><span class="digits" id="code"></span><button type="button" class="btn" id="code-new">New code</button></div>
+        <p class="muted">Open one of the addresses on the new device and type this code. Valid for <span class="mono" id="code-left"></span>, and once.</p>
+      </div>
+    </div>
+    <div class="panel" id="devices"></div>
+  </section>
+  <p class="muted note">StykkerLLM keeps its own sign-in for now. The node from the plan is not built yet.</p>
 </main>
 
 <iframe id="frame" title="Module" hidden allow="clipboard-read; clipboard-write"></iframe>

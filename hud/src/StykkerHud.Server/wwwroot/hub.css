@@ -72,3 +72,32 @@ html.folded #unfold{display:grid}
   html:not(.folded) #unfold::after{content:"✕";color:var(--ink);font:400 18px var(--font-sans)}
   main{padding-bottom:calc(84px + env(safe-area-inset-bottom))}
 }
+
+/* ── Geräte und Netz (nur an der Maschine) ── */
+.head.sub{margin-top:26px}
+.access{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:var(--gap);margin-bottom:var(--gap)}
+.panel{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px}
+[data-theme="titan"] .panel{border-color:var(--fuge);border-radius:2px}
+.panel p{margin:8px 0 0}
+.label{display:block;margin-bottom:8px;font-size:11px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}
+.row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.row .btn{margin-left:auto}
+.digits{font:600 26px/1 var(--font-mono);letter-spacing:.12em;padding:8px 12px;background:var(--disp);border:1px solid var(--line);border-radius:var(--radius-sm);color:var(--phos)}
+#addresses{margin-top:8px;display:grid;gap:2px;font-size:12px}
+table{width:100%;border-collapse:collapse}
+th{font-size:11px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);text-align:left;padding:4px 8px 6px}
+td{padding:8px;border-top:1px solid var(--line);vertical-align:middle}
+td small{display:block;color:var(--muted);font-size:12px}
+td:last-child,th:last-child{text-align:right}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:var(--radius-xs);overflow:hidden}
+.seg button{padding:2px 7px;border:0;background:none;cursor:pointer;font:600 11px var(--font-mono);letter-spacing:.06em;text-transform:uppercase;color:var(--na)}
+.seg button.on{background:var(--card-2);color:var(--ink)}
+.seg button.on[data-role="admin"]{background:color-mix(in srgb,var(--acc) 22%,transparent);color:var(--acc-t)}
+@media (max-width:640px){
+  table,tbody,tr,td{display:block}
+  thead{display:none}
+  tr{border-top:1px solid var(--line);padding:6px 0}
+  td{border:0;padding:3px 0}
+  td:last-child{text-align:left}
+  td[data-k]::before{content:attr(data-k);display:inline-block;width:72px;color:var(--muted);font-size:12px}
+}

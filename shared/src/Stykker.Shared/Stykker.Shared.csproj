@@ -14,4 +14,9 @@
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Die Zugangsprüfung (Web/PairingGate.cs) liest die gemeinsame Kopplung. -->
+    <ProjectReference Include="..\Stykker.Pairing\Stykker.Pairing.csproj" />
+  </ItemGroup>
+
 </Project>

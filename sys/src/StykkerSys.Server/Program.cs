@@ -1,3 +1,4 @@
+using Stykker.Pairing;
 using Stykker.Shared;
 using Stykker.Shared.Web;
 using Stykker.Shared.Windows;
@@ -36,6 +37,12 @@ int port = int.TryParse(args.SkipWhile(a => a != "--port").Skip(1).FirstOrDefaul
 bool noBrowser = args.Contains("--no-browser");
 bool basic = args.Contains("--basic");
 string url = $"http://127.0.0.1:{port}/";
+// Die gemeinsame Kopplung aller Module (docs/plan-stykkernode.md). --pairing-file nimmt eine andere Ablage (Versuche).
+var pairing = new PairingService(new PairingStore(args.SkipWhile(a => a != "--pairing-file").Skip(1).FirstOrDefault() ?? PairingStore.DefaultFile()));
+// Im Netz nur, wenn der Netzschalter beim Start an ist (er wird in der Zentrale umgelegt und wirkt nach dem nächsten Start).
+bool network = pairing.RemoteEnabled;
+// Port der Zentrale, die diese Seite in einem Frame zeigen darf
+int hubPort = int.TryParse(args.SkipWhile(a => a != "--hub-port").Skip(1).FirstOrDefault(), out var parsedHub) ? parsedHub : 8079;
 
 // Ein Server je Port: läuft schon einer, öffnet ein zweiter Start nur die Oberfläche.
 using var single = ToolHost.ClaimPort("StykkerSYS", port, out bool first);
@@ -46,8 +53,8 @@ if (!first)
 }
 
 var builder = WebApplication.CreateBuilder(new WebApplicationOptions { Args = args, ContentRootPath = AppContext.BaseDirectory });
-// Nur die eigene Maschine: kein Schalter, kein Zugangscode, keine Fernbedienung.
-builder.WebHost.UseUrls($"http://127.0.0.1:{port}");
+// Ohne Netzschalter nur die eigene Maschine. Mit ihm auch das Netz – dort prüft PairingGate jede Anfrage.
+builder.WebHost.UseUrls(network ? $"http://*:{port}" : $"http://127.0.0.1:{port}");
 // Aus dem Build-Ordner (nicht veröffentlicht): CSS und die Seiten aus den Quellen statt aus wwwroot
 if (!Directory.Exists(Path.Combine(AppContext.BaseDirectory, "wwwroot"))) builder.WebHost.UseStaticWebAssets();
 builder.Logging.SetMinimumLevel(LogLevel.Warning);
@@ -62,6 +69,10 @@ var app = builder.Build();
 
 // Die Liste wird hier absichtlich NICHT angefasst: sie entsteht beim ersten Abruf und liest nur, solange jemand
 // zusieht (siehe SysService). So ist der Server nach dem Start sofort da, auch wenn noch kein Fenster offen ist.
+
+// Zugang: diese Maschine ohne Anmeldung, das Netz nur mit Netzschalter und gekoppeltem Gerät. Steht vor allem anderen.
+PairingGate.Use(app, pairing, new PairingGateOptions("sys", "StykkerSYS"));
+FrameAncestors.Use(app, hubPort);
 app.UseStaticFiles();
 DesignSystemHost.Map(app, DesignSystemHost.Resolve(args, "STYKKERSYS_DESIGN_SYSTEM"));
 
@@ -73,10 +84,17 @@ app.MapGet("/api/snapshot", (SysService service) => Results.Json(service.Snapsho
 // Drei Türen, alle nur für diese Maschine und nur für die eigene Seite: der Rumpf muss JSON sein (ein fremdes
 // Formular kann das ohne CORS-Prüfung nicht senden) und die Herkunft muss die eigene sein. Zusätzlich bleiben
 // System-PIDs und dieses Werkzeug selbst gesperrt (siehe ProcessActions).
-app.MapPost("/api/process/end", (HttpContext ctx, ProcessEndRequest body) => LocalRequests.Guarded(ctx, () => ProcessActions.End(body.Pid, body.Tree)));
-app.MapPost("/api/process/priority", (HttpContext ctx, ProcessPriorityRequest body) => LocalRequests.Guarded(ctx, () => ProcessActions.SetPriority(body.Pid, body.Level ?? "")));
+// Ein Gerät aus dem Netz braucht dafür die Rolle admin in SYS; ein neu gekoppeltes Gerät ist Viewer und sieht nur zu.
+IResult AdminOnly(HttpContext ctx, Func<ActionResult> action) => PairingGate.IsAdmin(ctx)
+    ? LocalRequests.Guarded(ctx, action)
+    : Results.Json(new ActionResult(false, "This device may only watch. The PC can make it an admin of SYS in the Stykker hub."), statusCode: StatusCodes.Status403Forbidden);
+app.MapPost("/api/process/end", (HttpContext ctx, ProcessEndRequest body) => AdminOnly(ctx, () => ProcessActions.End(body.Pid, body.Tree)));
+app.MapPost("/api/process/priority", (HttpContext ctx, ProcessPriorityRequest body) => AdminOnly(ctx, () => ProcessActions.SetPriority(body.Pid, body.Level ?? "")));
 // Der Pfad kommt von der Sonde, wie in der Liste: so findet „Ordner öffnen" jeden Pfad, den die Liste zeigt.
-app.MapPost("/api/process/open", (HttpContext ctx, ProcessOpenRequest body, IProcessProbe probe) => LocalRequests.Guarded(ctx, () =>
+// Der Explorer öffnet sich am PC: das hat nur von dort aus Sinn.
+app.MapPost("/api/process/open", (HttpContext ctx, ProcessOpenRequest body, IProcessProbe probe) => !PairingGate.IsLocal(ctx)
+    ? Results.Json(new ActionResult(false, "The Explorer opens on the PC. Use this from the PC itself."), statusCode: StatusCodes.Status403Forbidden)
+    : LocalRequests.Guarded(ctx, () =>
 {
     string? path = probe.PathOf(body.Pid);
     if (path == null) return new ActionResult(false, $"No file path for PID {body.Pid}: Windows gave none, or the process is protected.");

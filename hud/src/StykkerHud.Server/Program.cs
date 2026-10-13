@@ -1,3 +1,6 @@
+using System.Net.NetworkInformation;
+using System.Net.Sockets;
+using Stykker.Pairing;
 using Stykker.Shared.Config;
 using Stykker.Shared.Web;
 using Stykker.Shared.Windows;
@@ -38,6 +41,11 @@ int port = int.TryParse(args.SkipWhile(a => a != "--port").Skip(1).FirstOrDefaul
 bool noBrowser = args.Contains("--no-browser");
 bool basic = args.Contains("--basic");
 string url = $"http://127.0.0.1:{port}/";
+// Die gemeinsame Kopplung aller Module (docs/plan-stykkernode.md). --pairing-file nimmt eine andere Ablage (Versuche).
+var pairing = new PairingService(new PairingStore(args.SkipWhile(a => a != "--pairing-file").Skip(1).FirstOrDefault() ?? PairingStore.DefaultFile()));
+// Der Port wird nur dann im Netz geöffnet, wenn der Netzschalter beim Start an ist. Ein Umschalten wirkt nach dem
+// nächsten Start: so fragt die Windows-Firewall nicht bei jedem, der den Monitor nur lokal benutzt.
+bool network = pairing.RemoteEnabled;
 
 // Ein Server je Port: läuft schon einer, öffnet ein zweiter Start nur die Oberfläche.
 using var single = ToolHost.ClaimPort("StykkerHUD", port, out bool first);
@@ -48,8 +56,8 @@ if (!first)
 }
 
 var builder = WebApplication.CreateBuilder(new WebApplicationOptions { Args = args, ContentRootPath = AppContext.BaseDirectory });
-// Nur die eigene Maschine: kein Schalter, kein Zugangscode, keine Fernbedienung.
-builder.WebHost.UseUrls($"http://127.0.0.1:{port}");
+// Ohne Netzschalter nur die eigene Maschine. Mit ihm auch das Netz – dort prüft PairingGate jede Anfrage.
+builder.WebHost.UseUrls(network ? $"http://*:{port}" : $"http://127.0.0.1:{port}");
 // Aus dem Build-Ordner (nicht veröffentlicht): CSS und die Seiten aus den Quellen statt aus wwwroot
 if (!Directory.Exists(Path.Combine(AppContext.BaseDirectory, "wwwroot"))) builder.WebHost.UseStaticWebAssets();
 builder.Logging.SetMinimumLevel(LogLevel.Warning);
@@ -64,6 +72,10 @@ var app = builder.Build();
 
 // Die Messschleife wird hier absichtlich NICHT angefasst: sie entsteht beim ersten Abruf und liest nur, solange
 // jemand zusieht (siehe HudService). So ist der Server nach dem Start sofort da, auch wenn noch kein Fenster offen ist.
+
+// Zugang: diese Maschine ohne Anmeldung, das Netz nur mit Netzschalter und gekoppeltem Gerät. Steht vor allem anderen.
+PairingGate.Use(app, pairing, new PairingGateOptions("hud", "StykkerHUD", Home: "/hub"));
+FrameAncestors.Use(app, hubPort: 0);   // die Zentrale zeigt sich nur selbst in einem Frame (den Monitor)
 app.UseStaticFiles();
 DesignSystemHost.Map(app, DesignSystemHost.Resolve(args, "STYKKERHUD_DESIGN_SYSTEM"));
 
@@ -94,6 +106,47 @@ app.MapGet("/api/hub", async (HttpContext context) =>
     }));
     return Results.Json(new { modules = answers });
 });
+
+// ── Zugang verwalten: Netzschalter, Code, Geräte. Nur an dieser Maschine und nur von der eigenen Seite. ──
+bool Local(HttpContext context) => PairingGate.IsLocal(context) && LocalRequests.SameOrigin(context);
+app.MapGet("/api/hub/access", (HttpContext context) =>
+{
+    // Ein Gerät im Netz erfährt hier nur, dass es nicht an der Maschine sitzt: kein Code, keine Geräteliste.
+    if (!PairingGate.IsLocal(context)) return Results.Json(new { local = false });
+    pairing.Maintain();
+    return Results.Json(new
+    {
+        local = true,
+        remote = pairing.RemoteEnabled,
+        listening = network,
+        code = PairingCodes.Pretty(pairing.Code),
+        expiresIn = (int)Math.Max(0, (pairing.CodeExpires - DateTime.UtcNow).TotalSeconds),
+        addresses = LanAddresses().Select(address => $"http://{address}:{port}/hub"),
+        devices = pairing.Devices.Select(d => new
+        {
+            id = d.Id, name = d.Name, address = d.Address, lastSeen = d.LastSeen,
+            roles = new { hud = d.RoleIn("hud"), sys = d.RoleIn("sys") },
+        }),
+    });
+});
+app.MapPost("/api/hub/remote", (HttpContext context, bool on) =>
+{
+    if (!Local(context)) return Results.StatusCode(StatusCodes.Status403Forbidden);
+    pairing.SetRemote(on);
+    return Results.Json(new { remote = on });
+});
+app.MapPost("/api/hub/code", (HttpContext context) =>
+{
+    if (!Local(context)) return Results.StatusCode(StatusCodes.Status403Forbidden);
+    pairing.RotateCode();
+    return Results.Json(new { ok = true });
+});
+app.MapPost("/api/hub/devices/{id}/role", (HttpContext context, string id, string module, string role) =>
+    !Local(context) ? Results.StatusCode(StatusCodes.Status403Forbidden)
+    : pairing.SetRole(id, module, role) ? Results.Json(new { ok = true }) : Results.NotFound());
+app.MapDelete("/api/hub/devices/{id}", (HttpContext context, string id) =>
+    !Local(context) ? Results.StatusCode(StatusCodes.Status403Forbidden)
+    : pairing.RemoveDevice(id) ? Results.Json(new { ok = true }) : Results.NotFound());
 
 app.MapRazorComponents<App>();
 
@@ -129,6 +182,15 @@ if (OperatingSystem.IsWindows() && !args.Contains("--no-tray") && TrayIcon.Possi
 
 await app.WaitForShutdownAsync();
 if (tray != null && OperatingSystem.IsWindows()) tray.Dispose();
+
+// Die IPv4-Adressen dieser Maschine im Netz, unter denen ein Handy die Zentrale öffnen kann.
+static IEnumerable<string> LanAddresses() =>
+    NetworkInterface.GetAllNetworkInterfaces()
+        .Where(n => n.OperationalStatus == OperationalStatus.Up && n.NetworkInterfaceType != NetworkInterfaceType.Loopback)
+        .SelectMany(n => n.GetIPProperties().UnicastAddresses)
+        .Where(a => a.Address.AddressFamily == AddressFamily.InterNetwork && !a.Address.ToString().StartsWith("169.254.", StringComparison.Ordinal))
+        .Select(a => a.Address.ToString())
+        .Distinct();
 
 // Die Windows-Sonde nur auf Windows; sonst (oder mit --basic) antwortet die Anzeige überall „–".
 static ISystemProbe CreateProbe(bool basic)

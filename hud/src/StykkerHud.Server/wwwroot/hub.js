@@ -90,8 +90,83 @@
   function load() {
     return fetch("/api/hub", { cache: "no-store" })
       .then(function (r) { return r.json(); })
-      .then(function (data) { modules = data.modules || []; show(); })
+      .then(function (data) { modules = data.modules || []; show(); return loadAccess(); })
       .catch(function () { /* die Zentrale antwortet gerade nicht: der letzte Stand bleibt stehen */ });
+  }
+
+  // ── Geräte und Netz: nur an der Maschine selbst (die Antwort sagt, ob wir dort sind) ──
+  function post(url, method) {
+    return fetch(url, { method: method || "POST", headers: { "Content-Type": "application/json" } }).then(loadAccess);
+  }
+  function when(iso) {
+    if (!iso) return "never";
+    var date = new Date(iso);
+    return isNaN(date) ? "" : date.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+  }
+  function roleSwitch(device, module) {
+    var seg = el("span", { class: "seg" });
+    ["viewer", "admin"].forEach(function (role) {
+      var button = el("button", { type: "button", "data-role": role }, role);
+      if (device.roles[module] === role) button.className = "on";
+      button.addEventListener("click", function () {
+        post("/api/hub/devices/" + encodeURIComponent(device.id) + "/role?module=" + module + "&role=" + role);
+      });
+      seg.append(button);
+    });
+    return seg;
+  }
+  function drawAccess(access) {
+    var section = document.getElementById("access");
+    section.hidden = !access.local;
+    if (!access.local) return;
+    document.getElementById("remote-state").textContent = access.remote ? "On: paired devices in your network" : "Off: only this PC";
+    var toggle = document.getElementById("remote-toggle");
+    toggle.textContent = access.remote ? "Turn off" : "Turn on";
+    toggle.onclick = function () { post("/api/hub/remote?on=" + !access.remote); };
+    document.getElementById("remote-note").textContent = access.remote !== access.listening
+      ? "Restart StykkerHUD and StykkerSYS for this to take effect: the port is opened or closed at start."
+      : access.remote ? "Open one of these on the device:" : "Nothing outside this PC can reach the hub.";
+    var addresses = document.getElementById("addresses");
+    addresses.replaceChildren();
+    if (access.remote && access.listening) access.addresses.forEach(function (a) { addresses.append(el("span", null, a)); });
+
+    document.getElementById("code").textContent = access.code;
+    document.getElementById("code-left").textContent = Math.floor(access.expiresIn / 60) + ":" + String(access.expiresIn % 60).padStart(2, "0");
+    document.getElementById("code-new").onclick = function () { post("/api/hub/code"); };
+
+    var devices = document.getElementById("devices");
+    devices.replaceChildren();
+    if (!access.devices.length) {
+      devices.append(el("span", { class: "muted" }, "No device is paired yet. Turn on network access, open an address on the phone and type the code."));
+      return;
+    }
+    var table = el("table");
+    var head = el("tr");
+    ["Device", "Monitor", "SYS", "Last seen", ""].forEach(function (h) { head.append(el("th", null, h)); });
+    var thead = el("thead");
+    thead.append(head);
+    table.append(thead);
+    var body = el("tbody");
+    access.devices.forEach(function (device) {
+      var row = el("tr");
+      var name = el("td");
+      name.append(el("b", null, device.name), el("small", { class: "mono" }, device.address || ""));
+      var monitor = el("td", { "data-k": "Monitor" }); monitor.append(roleSwitch(device, "hud"));
+      var sys = el("td", { "data-k": "SYS" }); sys.append(roleSwitch(device, "sys"));
+      var remove = el("button", { type: "button", class: "btn" }, "Remove");
+      remove.addEventListener("click", function () { post("/api/hub/devices/" + encodeURIComponent(device.id), "DELETE"); });
+      var last = el("td"); last.append(remove);
+      row.append(name, monitor, sys, el("td", { "data-k": "Last seen" }, when(device.lastSeen)), last);
+      body.append(row);
+    });
+    table.append(body);
+    devices.append(table);
+  }
+  function loadAccess() {
+    return fetch("/api/hub/access", { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(drawAccess)
+      .catch(function () { });
   }
 
   // ── Leiste ──

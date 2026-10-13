@@ -245,9 +245,36 @@ Vorgezogen aus Phase 5, zusammen mit dem Teil von Phase 2, den sie braucht. Bran
 
 Geprüft im Browser (Edge über Playwright, alles auf `127.0.0.1`): Übersicht mit drei Kacheln, Monitor, SYS und LLM im Frame, Themenwechsel wirkt im Frame, Einklappen am PC, Start eingeklappt in Handybreite, Menü öffnet und schließt nach der Wahl. Bilder: `hud/docs/screenshots/hub-*.png` (ohne SYS: dessen Bild zeigt die Prozesse der Maschine und bleibt draußen).
 
+### Zugangsprüfung für HUD und SYS (2026-10-13)
+
+Die gemeinsame Prüfung aus Abschnitt 4.3 (`gate: pairing-v1`), für HUD und SYS. Branch `dev`.
+
+| Wo | Was |
+|---|---|
+| `shared/…/Web/PairingGate.cs` | Diese Maschine kommt ohne Anmeldung herein und ist Admin, wie bisher. Aus dem Netz nur mit Netzschalter und gekoppeltem Gerät (Cookie `stykker_device`, wie bei LLM). Offen sind nur `/api/ping`, `/pair` und Manifest samt Symbolen. Die Anmeldeseite steht für sich, ohne Design-System. |
+| `shared/…/Web/FrameAncestors.cs` | Einbetten nur durch die Seite selbst und die Zentrale unter demselben Rechnernamen. |
+| `hud/…/Program.cs` | Prüfung vor allem anderen. `/api/hub/access`, `/remote`, `/code`, `/devices/…`: Netzschalter, Code und Geräte, nur an der Maschine und nur von der eigenen Seite. |
+| `hud/…/hub.*` | Bereich „Devices“ in der Übersicht: Netzschalter mit den Adressen, Code mit Restzeit, Geräteliste mit Rolle je Modul und Entfernen. Ein Gerät im Netz bekommt diesen Bereich nicht. |
+| `sys/…/Program.cs` | Prüfung vor allem anderen. Beenden und Priorität nur mit Rolle `admin`; „Dateiort öffnen“ nur an der Maschine. `--hub-port` (Vorgabe 8079). |
+
+Der Port wird nur im Netz geöffnet, wenn der Netzschalter beim Start an ist. Umschalten wirkt nach dem nächsten Start von HUD und SYS; so fragt die Windows-Firewall niemanden, der die Werkzeuge nur lokal benutzt.
+
+Geprüft im Browser mit einer Test-Ablage (`--pairing-file`), das „Handy“ über die Netzadresse dieser Maschine:
+
+- Schalter aus: aus dem Netz keine Verbindung. Schalter an, nach Neustart: `/hub` führt zur Anmeldeseite, `/api/snapshot` antwortet 401, `/api/ping` ist offen.
+- Falscher Code: abgewiesen. Richtiger Code: Cookie, weiter zur Zentrale.
+- Das Gerät ist in HUD `admin`, in SYS `viewer`. SYS im Frame auf dem anderen Port nimmt dasselbe Cookie.
+- Als Viewer einen Prozess beenden: 403. Nach dem Klick auf `admin` in der Zentrale: die Aktion läuft (geprüft mit einer PID, die es nicht gibt).
+- Netzschalter und Geräteliste vom Handy aus: 403 und leer.
+- Entfernen in der Zentrale: HUD und SYS antworten dem Gerät sofort 401.
+
 Noch nicht da:
 
-- **Am Handy nicht erreichbar.** HUD und SYS hören nur auf `127.0.0.1` und prüfen keine Kopplung. Der nächste Schritt ist die gemeinsame Zugangsprüfung auf `Stykker.Pairing` für HUD und SYS; erst dann lässt sich die Zentrale als App auf dem Handy installieren.
+- **Nicht am echten Handy geprüft**, und nicht über die Windows-Firewall hinweg: die Anfragen kamen von dieser Maschine über ihre Netzadresse. Beim ersten Start mit Netzschalter fragt die Firewall für `StykkerHUD-Server.exe` und `StykkerSYS-Server.exe`.
+- **Kein HTTPS.** Im Heimnetz und über Tailscale wandert das Cookie im Klartext. Für die Installation als App verlangen Android und iOS außerhalb von `localhost` in der Regel HTTPS; über Tailscale ginge das mit dessen Zertifikaten. Offen.
+- **Kopplung andersherum** (das neue Gerät zeigt den Code) hat die Seite noch nicht, und keinen QR-Code.
+- **Loopback gilt als Admin.** Hinter einer Weiterleitung auf derselben Maschine träfe das auf jede Anfrage zu; vor dem Knoten braucht es den Knotenschlüssel aus Abschnitt 4.6.
+- **LLM ist nicht dabei:** es hat weiter seine eigene Anmeldung in `access.dat`, bis L2 umgesetzt ist.
 - **LLM hat keine eingebettete Darstellung:** im Frame steht seine eigene Marke, und es nimmt sein eigenes Thema.
 - **Geräte, Rollen, Knoten** aus dem Mockup fehlen. Jedes Modul meldet sich noch selbst an.
 - **Kein Service Worker:** das Manifest reicht zum Installieren; ohne Netz zeigt die App nichts.
