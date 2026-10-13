@@ -36,6 +36,8 @@ var paths = dataDir != null ? new AppPaths(Path.GetFullPath(dataDir)) : AppPaths
 Directory.CreateDirectory(paths.Root);
 int port = int.TryParse(args.SkipWhile(a => a != "--port").Skip(1).FirstOrDefault(), out var pp) ? pp : 8078;
 bool noBrowser = args.Contains("--no-browser");
+// Port der Zentrale, die diese Oberfläche in einem Frame zeigt (docs/plan-stykkernode.md); 0 = keine
+int hubPort = int.TryParse(args.SkipWhile(a => a != "--hub-port").Skip(1).FirstOrDefault(), out var hp) ? hp : 0;
 AppLog.Init("StykkerLLM-Server", paths);
 AppLog.CatchUnhandled();
 AppLog.Write($"start: port {port}, args {string.Join(' ', args.Where(a => a.StartsWith("--", StringComparison.Ordinal)))}");
@@ -103,6 +105,17 @@ var launcher = app.Services.GetRequiredService<ActionContext>().Launcher;
 engineHost.StartProfile = launcher.StartProfileAsync;
 engineHost.UnloadServer = launcher.UnloadIfIdleAsync;   // Leerlauf-Entladen
 var gate = new AccessGate(engineHost.Access, engineHost.Key, port, () => ThemeCatalog.Find(engineHost.Engine.Settings.Theme));
+
+// ── Einbetten: mit --hub-port darf die Zentrale (derselbe Rechnername, dieser Port) die Oberfläche in einem Frame zeigen ──
+if (hubPort > 0)
+{
+    app.Use(async (ctx, next) =>
+    {
+        ctx.Response.Headers.ContentSecurityPolicy =
+            "frame-ancestors " + FramePolicy.Ancestors(ctx.Request.Scheme, ctx.Request.Host.Value, hubPort);
+        await next();
+    });
+}
 
 // ── Zugang: Schlüssel (Fenster/TUI) oder Gerätecookie (Browser); von außen nur mit Home/VPN ──
 app.Use(async (ctx, next) =>
@@ -275,7 +288,11 @@ app.MapGet("/api/log", (string? path, AppPaths data) =>
 });
 
 app.MapStaticAssets();
-app.MapRazorComponents<App>().AddInteractiveServerRenderMode();
+// Blazor setzt von sich aus "frame-ancestors 'self'". Mit Zentrale kommt der Kopf von oben (FramePolicy), sonst bleibt die Vorgabe.
+app.MapRazorComponents<App>().AddInteractiveServerRenderMode(options =>
+{
+    if (hubPort > 0) options.ContentSecurityFrameAncestorsPolicy = null;
+});
 
 engineHost.Start();
 try { await app.StartAsync(); }
