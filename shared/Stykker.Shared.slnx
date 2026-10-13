@@ -1,8 +1,11 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/Stykker.Shared/Stykker.Shared.csproj" />
+    <Project Path="src/Stykker.Pairing/Stykker.Pairing.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Stykker.Shared.Tests/Stykker.Shared.Tests.csproj" />
+    <Project Path="tests/Stykker.Pairing.Tests/Stykker.Pairing.Tests.csproj" />
+    <Project Path="tests/Stykker.Pairing.LockProbe/Stykker.Pairing.LockProbe.csproj" />
   </Folder>
 </Solution>

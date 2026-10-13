@@ -19,16 +19,33 @@ The rule for what belongs here: code that two tools use, or that would otherwise
 | `Sampling/ViewerLoop.cs` | Measures only while someone looks: the first read starts a one-second loop, and 15 seconds without a read stop it. | StykkerHUD, StykkerSYS |
 | `ActionResult.cs` | `ActionResult(bool Ok, string Message)`: the answer of an action. | StykkerSYS |
 
+## Stykker.Pairing
+
+A second library in `src/Stykker.Pairing`: pairing for all tools. One file, `%APPDATA%\Stykker\pairing.dat`, holds the access code, the paired devices with a role per tool, and the model hosts. A tool that starts later reads the same file and knows the devices that paired elsewhere; there they are viewers until someone gives them more.
+
+No tool uses it yet. StykkerLLM is the first to move over (`docs/plan-llm-modul.md`).
+
+| File | Contents |
+|---|---|
+| `PairingStore.cs` | The file. Several processes read and write it: a named mutex per file, a fresh read before every write, atomic replace. Bound to the Windows user with DPAPI; plain JSON elsewhere. |
+| `PairingService.cs` | The rules: a six-digit code that lasts ten minutes and one sign-in, pairing in both directions, devices, roles per tool, hosts. |
+| `PairingCodes.cs` | Codes, tokens and their hash. The hash is the one StykkerLLM stored devices with, so they stay signed in. |
+| `LegacyLlmImport.cs` | Takes over `access.dat` and `hosts.dat` from StykkerLLM's data folder, once. |
+
+It has no ASP.NET reference and no package dependency.
+
 ## Build and test
 
 ```powershell
 dotnet build Stykker.Shared.slnx -c Debug
-dotnet test tests\Stykker.Shared.Tests\Stykker.Shared.Tests.csproj
+dotnet test Stykker.Shared.slnx
 ```
 
-The PDH and tray parts only work on Windows. The project targets `net10.0` and references ASP.NET Core (`FrameworkReference Microsoft.AspNetCore.App`), because `Web/` uses its types.
+The PDH and tray parts only work on Windows. `Stykker.Shared` targets `net10.0` and references ASP.NET Core (`FrameworkReference Microsoft.AspNetCore.App`), because `Web/` uses its types.
 
-Last run on 2026-10-09: 32 of 32 tests passed, the build shows no warnings.
+`tests/Stykker.Pairing.LockProbe` is a helper program, not a test project: the pairing tests start it several times at once to write the same file.
+
+Last run on 2026-10-13: 32 of 32 tests passed in `Stykker.Shared.Tests` and 42 of 42 in `Stykker.Pairing.Tests`, the build shows no warnings.
 
 ## Using it from a tool
 

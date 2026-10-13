@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Stykker.Pairing: die Kopplung für alle Module – Zugangscode, Geräte, Rollen je Modul, Hosts, eine Ablage
+       (pairing.dat), die mehrere Prozesse zugleich lesen und schreiben. Ohne ASP.NET und ohne Oberfläche. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>Stykker.Pairing</AssemblyName>
+    <RootNamespace>Stykker.Pairing</RootNamespace>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Stykker.Pairing.Tests" />
+  </ItemGroup>
+
+</Project>

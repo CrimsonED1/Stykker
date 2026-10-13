@@ -1,0 +1,43 @@
+{
+  "RemoteEnabled": true,
+  "Code": "482913",
+  "CodeCreated": "2026-10-09T11:02:17.4410000+02:00",
+  "Devices": [
+    {
+      "Id": "a1b2c3d4",
+      "Name": "Chrome on Android",
+      "Created": "2026-10-01T08:15:00.0000000+02:00",
+      "LastSeen": "2026-10-09T10:58:41.0000000+02:00",
+      "Address": "192.168.0.23",
+      "Role": "admin",
+      "Hash": "FIXTURE-ADMIN-HASH"
+    },
+    {
+      "Id": "e5f6a7b8",
+      "Name": "Firefox on Windows",
+      "Created": "2026-10-02T19:40:00.0000000+02:00",
+      "Address": "192.168.0.31",
+      "Role": "viewer",
+      "Hash": "FIXTURE-VIEWER-HASH"
+    },
+    {
+      "Id": "0c0d0e0f",
+      "Name": "Old window",
+      "Created": "2026-07-14T12:00:00.0000000+02:00",
+      "Hash": "FIXTURE-NOROLE-HASH"
+    },
+    {
+      "Id": "99aa88bb",
+      "Name": "Old hub",
+      "Created": "2026-08-20T12:00:00.0000000+02:00",
+      "Role": "hub",
+      "Hash": "FIXTURE-HUB-HASH"
+    },
+    {
+      "Id": "",
+      "Name": "broken entry",
+      "Created": "2026-08-20T12:00:00.0000000+02:00",
+      "Hash": ""
+    }
+  ]
+}

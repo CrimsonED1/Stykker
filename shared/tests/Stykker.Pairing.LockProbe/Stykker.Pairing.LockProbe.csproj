@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Hilfsprogramm für den Zwei-Prozess-Test der Kopplungsablage: trägt Geräte ein, eins je Schreibvorgang. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Stykker.Pairing\Stykker.Pairing.csproj" />
+  </ItemGroup>
+
+</Project>
