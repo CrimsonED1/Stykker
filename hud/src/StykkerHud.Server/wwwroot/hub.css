@@ -84,6 +84,19 @@ html.folded #unfold{display:grid}
 .row .btn{margin-left:auto}
 .digits{font:600 26px/1 var(--font-mono);letter-spacing:.12em;padding:8px 12px;background:var(--disp);border:1px solid var(--line);border-radius:var(--radius-sm);color:var(--phos)}
 #addresses{margin-top:8px;display:grid;gap:2px;font-size:12px}
+#qr-box{margin-top:12px}
+#qr-box .row{margin-bottom:6px}
+#qr-box label{font-size:12px}
+#qr-box select{font-size:12px;color:var(--ink);background:var(--disp);border:1px solid var(--line);border-radius:var(--radius-xs);padding:2px 6px;max-width:100%}
+.qr{display:block;width:min(220px,100%);height:auto;margin:4px 0 6px;padding:8px;background:#fff;border-radius:8px}
+#waiting{margin-bottom:var(--gap)}
+#waiting-list{display:grid;font-size:13px}
+.waiting-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:8px 0;border-top:1px solid var(--line)}
+.waiting-row:first-child{border-top:0}
+.waiting-info{flex:1;min-width:0}
+.waiting-code{letter-spacing:.12em;color:var(--phos)}
+#waiting .approve{margin-top:12px}
+#approve-code{width:11ch;padding:8px 10px;font:600 18px/1 var(--font-mono);letter-spacing:.12em;text-align:center;color:var(--phos);background:var(--disp);border:1px solid var(--line);border-radius:var(--radius-sm)}
 table{width:100%;border-collapse:collapse}
 th{font-size:11px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);text-align:left;padding:4px 8px 6px}
 td{padding:8px;border-top:1px solid var(--line);vertical-align:middle}

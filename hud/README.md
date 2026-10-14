@@ -59,11 +59,13 @@ By default nobody outside this PC can reach StykkerHUD or StykkerSYS. Access fro
 - **This PC is admin.** Requests from this machine come in without a code and count as `admin`. This holds for StykkerHUD and StykkerSYS.
 - **Network switch.** The network is off by default. The switch is in the hub, under "Network access", with the buttons "Turn on" and "Turn off". The server opens its port to the network only if the switch is on when the program starts; otherwise it listens on `127.0.0.1` alone. So a change takes effect after a restart of StykkerHUD and StykkerSYS, as the hub also says. Turning the switch off blocks outside requests at once, but the port stays open until the next restart.
 - **Code.** With the switch on, the hub shows the code under "Add a device", together with this PC's addresses, port and `/hub`. The code has six digits, shown as `482 913`. It is valid for ten minutes and works once. After five wrong entries the PC shows a new one. "New code" replaces it at once.
-- **Sign-in.** A device enters the code on the sign-in page `/pair`. It then holds the cookie `stykker_device`: HttpOnly, SameSite=Lax, valid for 730 days. The `Secure` flag is set only for HTTPS. Devices and codes are kept in `%APPDATA%\Stykker\pairing.dat`, which Windows protects for the signed-in user. Only a hash of each device's token is stored.
+- **QR code.** With the switch on and the port open, the hub shows a QR code under "Add a device" for one of its addresses. The list offers this PC's addresses and the names from `hostNames` in `stykker.json`; the first one is the default. The code leads to `http://<address>:<port>/pair?code=…`, so a phone that scans it signs in at once. The picture is fetched again when the code changes. Without the switch, or with the port not open, there is no QR code, only the hint.
+- **The other way round.** On the sign-in page a device can show its own six digits instead of typing a code: "Show a code on this device instead". The hub lists it under "Waiting devices" with its name, its module, the digits and the time left. "Approve" makes the device `admin` at the module it asked at, "Approve as viewer" makes it `viewer` there, and "Deny" refuses it. The device then opens the hub on its own. A request lasts ten minutes; eight can wait at once, and a ninth is refused.
+- **Sign-in.** A device enters the code on the sign-in page `/pair` (or scans the QR code). It then holds the cookie `stykker_device`: HttpOnly, SameSite=Lax, valid for 730 days. The token travels only in that cookie, never in an answer's body. The `Secure` flag is set only for HTTPS. Devices and codes are kept in `%APPDATA%\Stykker\pairing.dat`, which Windows protects for the signed-in user. Only a hash of each device's token is stored.
 - **Roles.** Each device has a role per module: `admin` or `viewer`. A device that signs in at a module is `admin` there and `viewer` at every other module. The hub's device list changes the role per module (one column each, such as "Monitor", "SYS", "LLM" and "Qwen Code") and removes devices. A forwarded service has no sign-in page of its own, so a device is `admin` there only when the PC sets it.
 - **What roles change.** In StykkerSYS, `admin` may end processes and change priorities, `viewer` only watches (see [StykkerSYS](../sys/README.md#who-may-do-what)). The monitor has no actions, so its roles change nothing yet. For a forwarded service the role decides whether its frame opens: `admin` gets through, `viewer` gets `403`. Set it in the device list under that service's column.
-- **Who manages.** The network switch, the code and the device list can only be operated on this PC, and only from the hub page itself. A device on the network does not see the code or the device list; its request for them answers only `local: false`.
-- **Without sign-in from the network.** With the switch on, these paths need no device: `/api/ping`, `/manifest.webmanifest`, the icons `/hub-icon…` and the sign-in page `/pair`. Everything else needs a valid device. An API call, or any request other than GET, gets `401`; any other GET request is redirected to `/pair`. With the switch off, outside requests get `403`, even for these paths.
+- **Who manages.** The network switch, the code, the QR code, the waiting devices and the device list can only be operated on this PC, and only from the hub page itself. A device on the network does not see the code or the device list; its request for them answers only `local: false`.
+- **Without sign-in from the network.** With the switch on, these paths need no device: `/api/ping`, `/manifest.webmanifest`, the icons `/hub-icon…` and the sign-in page `/pair` with its two calls for the other way round (`/pair/request`, `/pair/poll`). Everything else needs a valid device. An API call, or any request other than GET, gets `401`; any other GET request is redirected to `/pair`. With the switch off, outside requests get `403`, even for these paths.
 - **Host name.** Every request to StykkerHUD and StykkerSYS must name an IP address, `localhost`, or this PC's name (with or without its own DNS suffix). Any other host name gets `403`, even from this PC, which blocks DNS rebinding.
 - **Other sites cannot embed the monitor.** Its pages allow framing only from themselves (`frame-ancestors 'self'`), so no other website can show them in a frame.
 - **Frames for forwarded services.** The hub removes the `X-Frame-Options` header of a forwarded service's answer and sets `frame-ancestors` to the hub's own address. The service can then be shown in the hub's frame, and in no other site's.
@@ -135,6 +137,10 @@ node tools\shot.mjs --port 8079 --out docs\screenshots --name hud --wait 25
 # behaviour of the running page
 node tools\check-ui.mjs --port 8079
 
+# pairing: the QR code and the other way round, with a second browser as the phone. Needs a hub that was
+# started with the network switch on, --pairing-file and --hub-config (see the head of the script)
+node tools\check-pairing.mjs --port 8090
+
 # a forwarded service (Qwen Code): needs the built server and the cli.js of Qwen Code.
 # It starts its own hub and its own qwen serve on 127.0.0.1, with temp folders and the
 # ports 8090, 8091, 8092, 41998 and 41999; it stops only the processes it started.
@@ -145,7 +151,7 @@ node tools\check-proxy.mjs --qwen-cli <path to cli.js>
 
 Each shot run writes `hud-measure.json` (DOM measurements, console problems, failed requests), the two theme pictures, a full-page PNG and a small review picture. A run that reports `problems: none` has no 404 and no console error. The DOM measurements are the check; the picture only confirms them.
 
-Last run on 2026-10-09: `check-ui` 18/18 checks passed, no problems. Last run on 2026-10-14: `check-proxy` 48/48 checks passed.
+Last run on 2026-10-09: `check-ui` 18/18 checks passed, no problems. Last run on 2026-10-14: `check-proxy` 48/48 checks passed, `check-pairing` 13/13 checks passed.
 
 ## Design mockups
 

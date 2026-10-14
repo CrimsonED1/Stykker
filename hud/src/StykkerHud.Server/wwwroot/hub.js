@@ -9,6 +9,8 @@
   var small = matchMedia("(max-width:640px),(display-mode:standalone)");
   var modules = [];
   var shown = null;   // Adresse, die der Frame gerade zeigt: ein Statusabruf lädt das Modul nicht neu
+  var lastAccess = null;   // der letzte Stand von /api/hub/access (für die Wahl der Adresse des QR-Codes)
+  var qrKey = "", qrRound = 0, devicesKey = "", waitingKey = "";
 
   function el(tag, attrs, text) {
     var node = document.createElement(tag);
@@ -119,6 +121,7 @@
     var section = document.getElementById("access");
     section.hidden = !access.local;
     if (!access.local) return;
+    lastAccess = access;
     document.getElementById("remote-state").textContent = access.remote ? "On: paired devices in your network" : "Off: only this PC";
     var toggle = document.getElementById("remote-toggle");
     toggle.textContent = access.remote ? "Turn off" : "Turn on";
@@ -133,8 +136,14 @@
     document.getElementById("code").textContent = access.code;
     document.getElementById("code-left").textContent = Math.floor(access.expiresIn / 60) + ":" + String(access.expiresIn % 60).padStart(2, "0");
     document.getElementById("code-new").onclick = function () { post("/api/hub/code"); };
+    drawQr(access);
+    drawWaiting(access.requests || []);
 
+    // Die Geräteliste wird nur neu aufgebaut, wenn sich etwas geändert hat: der Abruf kommt alle paar Sekunden
     var devices = document.getElementById("devices");
+    var key = JSON.stringify([access.devices, access.modules]);
+    if (key === devicesKey) return;
+    devicesKey = key;
     devices.replaceChildren();
     if (!access.devices.length) {
       devices.append(el("span", { class: "muted" }, "No device is paired yet. Turn on network access, open an address on the phone and type the code."));
@@ -168,6 +177,81 @@
     table.append(body);
     devices.append(table);
   }
+  // ── QR-Code: die Adresse wählt man aus der Liste (Vorgabe: die erste); neu geholt, wenn der Code wechselt ──
+  function drawQr(access) {
+    var box = document.getElementById("qr-box");
+    var names = access.qrAddresses || [];
+    var show = access.remote && access.listening && names.length > 0;
+    box.hidden = !show;
+    if (!show) return;
+    var select = document.getElementById("qr-address");
+    var list = names.join("|");
+    if (select.dataset.list !== list) {
+      select.dataset.list = list;
+      select.replaceChildren();
+      names.forEach(function (n) { select.append(el("option", { value: n }, n)); });
+    }
+    var key = select.value + "|" + access.code;
+    if (key === qrKey) return;
+    qrKey = key;
+    qrRound += 1;
+    document.getElementById("qr").src = "/api/hub/qr?address=" + encodeURIComponent(select.value) + "&r=" + qrRound;
+  }
+  document.getElementById("qr-address").addEventListener("change", function () { if (lastAccess) drawQr(lastAccess); });
+
+  // ── Wartende Geräte: Name, Modul, Ziffern und Restzeit; „Deny“ je Anfrage ──
+  function drawWaiting(requests) {
+    var key = JSON.stringify(requests.map(function (r) { return [r.id, r.name, r.moduleName, r.code]; }));
+    if (key === waitingKey) return;   // dieselbe Liste: nichts neu aufbauen, die Restzeit läuft in tickWaiting
+    waitingKey = key;
+    var list = document.getElementById("waiting-list");
+    list.replaceChildren();
+    if (!requests.length) {
+      list.append(el("span", { class: "muted" }, "No device is waiting."));
+      return;
+    }
+    requests.forEach(function (r) {
+      var row = el("div", { class: "waiting-row" });
+      var info = el("div", { class: "waiting-info" });
+      var left = el("span", { class: "muted left" });
+      left.dataset.end = String(Date.now() + r.expiresIn * 1000);
+      info.append(el("b", null, r.name), document.createTextNode(" for " + r.moduleName + " · "),
+        el("span", { class: "mono waiting-code" }, r.code), document.createTextNode(" · "), left);
+      var deny = el("button", { type: "button", class: "btn" }, "Deny");
+      deny.addEventListener("click", function () { post("/api/hub/requests/" + encodeURIComponent(r.id) + "/deny"); });
+      row.append(info, deny);
+      list.append(row);
+    });
+    tickWaiting();
+  }
+  function tickWaiting() {
+    document.querySelectorAll("#waiting-list .left").forEach(function (node) {
+      var left = Math.max(0, Math.floor((Number(node.dataset.end) - Date.now()) / 1000));
+      node.textContent = Math.floor(left / 60) + ":" + String(left % 60).padStart(2, "0") + " left";
+    });
+  }
+
+  // Die Ziffern in das Feld, Freigabe als Admin oder als Zuschauer. Die Ziffern gehen im Körper, nicht in der Adresse.
+  function approve(role) {
+    var input = document.getElementById("approve-code");
+    var note = document.getElementById("approve-note");
+    note.textContent = "";
+    fetch("/api/hub/requests/approve", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code: input.value, role: role }) })
+      .then(function (r) { return r.json().then(function (answer) { return { ok: r.ok, answer: answer }; }); })
+      .then(function (res) {
+        if (res.ok) {
+          input.value = "";
+          note.textContent = res.answer.name + " is signed in as " + role + ".";
+        } else {
+          note.textContent = res.answer.message || "Could not approve.";
+        }
+        return loadAccess();
+      })
+      .catch(function () { note.textContent = "The hub did not answer. Try again."; });
+  }
+  document.getElementById("approve-admin").addEventListener("click", function () { approve("admin"); });
+  document.getElementById("approve-viewer").addEventListener("click", function () { approve("viewer"); });
+
   function loadAccess() {
     return fetch("/api/hub/access", { cache: "no-store" })
       .then(function (r) { return r.json(); })
@@ -213,4 +297,7 @@
 
   load();
   setInterval(load, 15000);
+  // Auf der Übersicht am PC kommen Geräte und Wartende schneller: das Handy wartet auf die Freigabe
+  setInterval(function () { if (!overview.hidden && !document.getElementById("access").hidden) loadAccess(); }, 3000);
+  setInterval(tickWaiting, 1000);
 })();

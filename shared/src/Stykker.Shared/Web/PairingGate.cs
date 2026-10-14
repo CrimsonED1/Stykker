@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.NetworkInformation;
+using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Stykker.Pairing;
@@ -110,7 +111,7 @@ public static class PairingGate
                     context.Response.Redirect("/pair");
                     return;
                 default:
-                    await PairAsync(context, pairing, options);
+                    await PairAsync(context, pairing, options, path);
                     return;
             }
         });
@@ -131,8 +132,11 @@ public static class PairingGate
         address == null ? null : (address.IsIPv4MappedToIPv6 ? address.MapToIPv4() : address).ToString();
 
     // /pair zeigt die Anmeldeseite; /pair?code=… meldet das Gerät an, legt das Cookie und führt zur Startseite.
-    private static async Task PairAsync(HttpContext context, PairingService pairing, PairingGateOptions options)
+    // /pair/request und /pair/poll sind die Kopplung andersherum (JSON).
+    private static async Task PairAsync(HttpContext context, PairingService pairing, PairingGateOptions options, string path)
     {
+        if (path.Equals("/pair/request", StringComparison.OrdinalIgnoreCase)) { await RequestAsync(context, pairing, options); return; }
+        if (path.Equals("/pair/poll", StringComparison.OrdinalIgnoreCase)) { await PollAsync(context, pairing); return; }
         var response = context.Response;
         response.Headers.CacheControl = "no-store";
         response.ContentType = "text/html; charset=utf-8";
@@ -150,7 +154,13 @@ public static class PairingGate
             await response.WriteAsync(PairPage(options, "That code is wrong or no longer valid. The PC shows the current one."));
             return;
         }
-        response.Cookies.Append(CookieName, paired.Value.Token, new CookieOptions
+        SetDeviceCookie(context, paired.Value.Token);
+        response.Redirect(options.Home);
+    }
+
+    // Das Gerät-Cookie: derselbe Name und dieselbe Laufzeit wie bei der Anmeldung mit dem Code
+    private static void SetDeviceCookie(HttpContext context, string token) =>
+        context.Response.Cookies.Append(CookieName, token, new CookieOptions
         {
             HttpOnly = true,
             SameSite = SameSiteMode.Lax,
@@ -158,7 +168,84 @@ public static class PairingGate
             MaxAge = CookieLifetime,
             Path = "/",
         });
-        response.Redirect(options.Home);
+
+    // Das neue Gerät bekommt Id, Secret und sechs Ziffern. Mehr als MaxPendingRequests offene Anfragen gibt es nicht (429).
+    private static async Task RequestAsync(HttpContext context, PairingService pairing, PairingGateOptions options)
+    {
+        var response = context.Response;
+        if (!HttpMethods.IsPost(context.Request.Method)) { await WriteMethodRefused(response); return; }
+        var made = pairing.RequestPairing(DeviceName(context.Request.Headers.UserAgent.ToString()), AddressText(context.Connection.RemoteIpAddress), options.Module);
+        if (made == null)
+        {
+            await WriteJson(response, StatusCodes.Status429TooManyRequests,
+                JsonSerializer.Serialize(new { ok = false, message = "Too many devices are waiting. Approve or deny one on the PC first." }));
+            return;
+        }
+        await WriteJson(response, StatusCodes.Status200OK, RequestBody(made.Value.Request, made.Value.Secret, DateTime.UtcNow));
+    }
+
+    // Nachfragen mit Id und Secret im JSON-Körper (nicht in der Adresse). cookie=1 ist Pflicht: die Freigabe kommt nur als
+    // Cookie, nie in den Körper. Ohne cookie=1 bleibt die Anfrage unberührt.
+    private static async Task PollAsync(HttpContext context, PairingService pairing)
+    {
+        var response = context.Response;
+        if (!HttpMethods.IsPost(context.Request.Method)) { await WriteMethodRefused(response); return; }
+        if (context.Request.Query["cookie"].ToString() != "1")
+        {
+            await WriteJson(response, StatusCodes.Status400BadRequest,
+                JsonSerializer.Serialize(new { ok = false, message = "cookie=1 is needed: the device gets its token as a cookie only." }));
+            return;
+        }
+        var (id, secret) = await ReadIdAndSecretAsync(context.Request);
+        var (status, token) = pairing.Poll(id, secret);
+        if (token != null) SetDeviceCookie(context, token);
+        await WriteJson(response, StatusCodes.Status200OK, PollBody(status));
+    }
+
+    // Antwort auf /pair/request: Id und Secret zum Nachfragen, die Ziffern zum Anzeigen. Ein Token steht nie darin.
+    public static string RequestBody(PairRequest request, string secret, DateTime now) =>
+        JsonSerializer.Serialize(new
+        {
+            ok = true,
+            id = request.Id,
+            secret,
+            code = PairingCodes.Pretty(request.Code),
+            seconds = Math.Max(0, (int)(request.Expires - now).TotalSeconds),
+        });
+
+    // Antwort auf /pair/poll: nur der Status. Bei Freigabe liegt das Token im Cookie, nie im Körper.
+    public static string PollBody(string status) => JsonSerializer.Serialize(new { ok = true, status });
+
+    private static async Task<(string? Id, string? Secret)> ReadIdAndSecretAsync(HttpRequest request)
+    {
+        try
+        {
+            using var document = await JsonDocument.ParseAsync(request.Body);
+            return (ReadString(document.RootElement, "id"), ReadString(document.RootElement, "secret"));
+        }
+        catch (JsonException)
+        {
+            return (null, null);
+        }
+    }
+
+    private static string? ReadString(JsonElement root, string name) =>
+        root.ValueKind == JsonValueKind.Object && root.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
+            ? value.GetString()
+            : null;
+
+    private static Task WriteMethodRefused(HttpResponse response)
+    {
+        response.Headers.Allow = "POST";
+        return WriteJson(response, StatusCodes.Status405MethodNotAllowed, JsonSerializer.Serialize(new { ok = false, message = "Use POST." }));
+    }
+
+    private static Task WriteJson(HttpResponse response, int status, string body)
+    {
+        response.StatusCode = status;
+        response.ContentType = "application/json; charset=utf-8";
+        response.Headers.CacheControl = "no-store";
+        return response.WriteAsync(body);
     }
 
     // "Chrome on Android": genug, um das Handy in der Geräteliste vom Tablet zu unterscheiden.
@@ -198,6 +285,11 @@ public static class PairingGate
           button{width:100%;margin-top:12px;padding:11px;font:600 15px inherit;color:#060916;background:#4fe3ff;border:0;border-radius:6px;cursor:pointer}
           .error{color:#ff5c7a}
           small{display:block;margin-top:14px;color:#8292b8}
+          hr{border:0;border-top:1px solid #24325a;margin:18px 0}
+          .small{color:#8292b8}
+          button.alt{background:transparent;color:#4fe3ff;border:1px solid #24325a}
+          button:disabled{opacity:.5;cursor:default}
+          .digits{font:600 40px "Cascadia Mono",Consolas,monospace;letter-spacing:.12em;text-align:center;color:#4fe3ff;margin:12px 0 6px}
         </style>
         </head>
         <body>
@@ -210,8 +302,66 @@ public static class PairingGate
             <input name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9 \-]*" maxlength="9" aria-label="Code" autofocus required>
             <button type="submit">Sign in</button>
           </form>
+          <hr>
+          <p>No code at hand? Show one on this device and approve it on the PC.</p>
+          <button type="button" id="rq-go" class="alt" onclick="rq()">Show a code on this device instead</button>
+          <div id="rq" aria-live="polite"></div>
           <small>The code works once and for ten minutes. After five wrong tries the PC shows a new one.</small>
         </main>
+        <script>
+        const HOME = {{JsonSerializer.Serialize(options.Home)}};
+        const T = {
+          failed: "Could not get a code. Try again.",
+          waiting: "Waiting for approval on the PC.",
+          left: "left",
+          denied: "Request denied on the PC.",
+          expired: "The code has expired. Reload the page for a new one."
+        };
+        function line(box, text, cls) {
+          const p = document.createElement("p");
+          if (cls) p.className = cls;
+          p.textContent = text;
+          box.appendChild(p);
+          return p;
+        }
+        async function rq() {
+          const box = document.getElementById("rq");
+          const go = document.getElementById("rq-go");
+          box.textContent = "";
+          let j;
+          try {
+            const r = await fetch("/pair/request", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+            j = await r.json();
+          } catch (e) {
+            j = { ok: false, message: T.failed };
+          }
+          if (!j.ok) {
+            line(box, j.message || T.failed, "error");
+            return;
+          }
+          go.hidden = true;
+          line(box, j.code, "digits");
+          const info = line(box, "", "small");
+          const end = Date.now() + j.seconds * 1000;
+          const body = JSON.stringify({ id: j.id, secret: j.secret });
+          const tick = async () => {
+            let s = "pending";
+            try {
+              const p = await fetch("/pair/poll?cookie=1", { method: "POST", headers: { "Content-Type": "application/json" }, body: body });
+              s = (await p.json()).status || "pending";
+            } catch (e) {
+              s = "pending";
+            }
+            if (s === "approved") { location.href = HOME; return; }
+            if (s === "denied") { info.textContent = T.denied; return; }
+            if (s === "expired" || s === "unknown" || Date.now() >= end) { info.textContent = T.expired; return; }
+            const left = Math.max(0, Math.floor((end - Date.now()) / 1000));
+            info.textContent = T.waiting + " " + Math.floor(left / 60) + ":" + String(left % 60).padStart(2, "0") + " " + T.left;
+            setTimeout(tick, 2000);
+          };
+          tick();
+        }
+        </script>
         </body>
         </html>
         """;
