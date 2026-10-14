@@ -93,8 +93,9 @@ Architecture notes: `docs/architecture.md`. UI rules: `docs/ui.md`. Model hosts:
 
 ## Ports and files
 
-- 8078 web/API, 8079 hub (the default of `--hub-port`: the hub may show this page in a frame; `0` turns that off),
-  17500 proxy, 17501 UDP server discovery (used by StykkerHost's pairing page).
+- 8078 web/API, 17500 proxy, 17501 UDP server discovery (used by StykkerHost's pairing page).
+- `--hub-port` (default 8079; `0` = off) opens no port. It names the hub port that may show this page in a frame
+  (`frame-ancestors`, same host name).
 - Pairing (devices, access code, roles, hosts) is one file for HUD, SYS and LLM, DPAPI on Windows: `pairing.dat`. With the
   default data folder it is `%APPDATA%\Stykker\pairing.dat`; with another `--data-dir` it is `pairing.dat` inside that
   folder. `--pairing-file <file>` picks any file. A `--data-dir` that is the default folder counts as the default.
