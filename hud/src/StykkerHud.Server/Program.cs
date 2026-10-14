@@ -1,5 +1,6 @@
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
+using System.Text.Json;
 using Stykker.Pairing;
 using Stykker.Shared.Config;
 using Stykker.Shared.Web;
@@ -154,13 +155,38 @@ app.MapGet("/api/hub/access", (HttpContext context) =>
         code = PairingCodes.Pretty(pairing.Code),
         expiresIn = (int)Math.Max(0, (pairing.CodeExpires - DateTime.UtcNow).TotalSeconds),
         addresses = LanAddresses().Select(address => $"http://{address}:{port}/hub"),
+        // Die Adressen, die der QR-Code wählen darf (die Adressen dieses PCs und die Zusatznamen aus stykker.json)
+        qrAddresses = ReachableNames(extraHostNames),
         modules = columns.Select(c => new { id = c.Id, name = c.Name }),
         devices = pairing.Devices.Select(d => new
         {
             id = d.Id, name = d.Name, address = d.Address, lastSeen = d.LastSeen,
             roles = columns.ToDictionary(c => c.Id, c => d.RoleIn(c.Id)),
         }),
+        // Geräte, die sich ohne Anmeldung gemeldet haben und auf Freigabe warten (Ziffern nur hier an der Maschine)
+        requests = pairing.PendingRequests.Select(r => new
+        {
+            id = r.Id,
+            name = r.Name,
+            module = r.Module,
+            moduleName = columns.Where(c => c.Id == r.Module).Select(c => c.Name).FirstOrDefault() ?? r.Module,
+            code = PairingCodes.Pretty(r.Code),
+            expiresIn = (int)Math.Max(0, (r.Expires - DateTime.UtcNow).TotalSeconds),
+        }),
     });
+});
+// Der QR-Code für das Handy: die Adresse der Zentrale mit dem Code, den sie gerade zeigt. Nur an dieser Maschine. Die
+// Adresse muss eine der Adressen sein, die /api/hub/access nennt, oder ein Name aus hostNames (sonst 400). Ohne
+// Netzschalter, oder wenn der Port nicht im Netz steht, gibt es keinen QR-Code (409).
+app.MapGet("/api/hub/qr", (HttpContext context, string? address) =>
+{
+    if (!PairingGate.IsLocal(context)) return Results.StatusCode(StatusCodes.Status403Forbidden);
+    if (string.IsNullOrEmpty(address) || !ReachableNames(extraHostNames).Contains(address, StringComparer.OrdinalIgnoreCase))
+        return Results.Json(new { ok = false, message = "That address is not one of this PC's addresses." }, statusCode: StatusCodes.Status400BadRequest);
+    if (!network || !pairing.RemoteEnabled)
+        return Results.Json(new { ok = false, message = "Network access is off." }, statusCode: StatusCodes.Status409Conflict);
+    context.Response.Headers.CacheControl = "no-store";
+    return Results.Content(QrCode.Encode($"http://{address}:{port}/pair?code={pairing.Code}").ToSvg(6, 3), "image/svg+xml; charset=utf-8");
 });
 app.MapPost("/api/hub/remote", (HttpContext context, bool on) =>
 {
@@ -180,6 +206,22 @@ app.MapPost("/api/hub/devices/{id}/role", (HttpContext context, string id, strin
 app.MapDelete("/api/hub/devices/{id}", (HttpContext context, string id) =>
     !Local(context) ? Results.StatusCode(StatusCodes.Status403Forbidden)
     : pairing.RemoveDevice(id) ? Results.Json(new { ok = true }) : Results.NotFound());
+// Kopplung andersherum: die sechs Ziffern eines wartenden Geräts freigeben. Rolle wie bei PairingService.Approve: die
+// Vorgabe ist admin in dem Modul, an dem das Gerät angefragt hat. Die Ziffern stehen im Körper, nicht in der Adresse.
+app.MapPost("/api/hub/requests/approve", (HttpContext context, JsonElement body) =>
+{
+    if (!Local(context)) return Results.StatusCode(StatusCodes.Status403Forbidden);
+    string role = JsonText(body, "role") ?? PairingRoles.Admin;
+    if (!PairingRoles.IsValid(role))
+        return Results.Json(new { ok = false, message = "Role must be admin or viewer." }, statusCode: StatusCodes.Status400BadRequest);
+    var approved = pairing.Approve(JsonText(body, "code"), role);
+    if (approved == null)
+        return Results.Json(new { ok = false, message = "No device is waiting with these six digits." }, statusCode: StatusCodes.Status404NotFound);
+    return Results.Json(new { ok = true, name = approved.Name, module = approved.Module });
+});
+app.MapPost("/api/hub/requests/{id}/deny", (HttpContext context, string id) =>
+    !Local(context) ? Results.StatusCode(StatusCodes.Status403Forbidden)
+    : pairing.Deny(id) ? Results.Json(new { ok = true }) : Results.NotFound());
 
 app.MapRazorComponents<App>();
 
@@ -231,6 +273,17 @@ static List<(string Id, string Name)> AccessColumns(IEnumerable<HubModule> modul
         if (module.Id != HubModules.MonitorId && columns.All(c => c.Id != module.Id)) columns.Add((module.Id, module.Name));
     return columns;
 }
+
+// Die Namen, unter denen die Zentrale im Netz erreichbar ist: die IPv4-Adressen dieser Maschine und die Zusatznamen
+// aus stykker.json ("hostNames"). Der QR-Code darf nur eines davon nehmen.
+static List<string> ReachableNames(IReadOnlyList<string> extraNames) =>
+    LanAddresses().Concat(extraNames).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+
+// Ein Textfeld aus dem JSON-Körper einer Anfrage (null, wenn es fehlt oder kein Text ist)
+static string? JsonText(JsonElement body, string name) =>
+    body.ValueKind == JsonValueKind.Object && body.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
+        ? value.GetString()
+        : null;
 
 // Die IPv4-Adressen dieser Maschine im Netz, unter denen ein Handy die Zentrale öffnen kann.
 static IEnumerable<string> LanAddresses() =>

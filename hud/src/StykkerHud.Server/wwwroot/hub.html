@@ -58,7 +58,23 @@
         <span class="label">Add a device</span>
         <div class="row"><span class="digits" id="code"></span><button type="button" class="btn" id="code-new">New code</button></div>
         <p class="muted">Open one of the addresses on the new device and type this code. Valid for <span class="mono" id="code-left"></span>, and once.</p>
+        <!-- Nur mit eingeschaltetem Netz: der QR-Code führt das Handy zur Anmeldung mit diesem Code -->
+        <div id="qr-box" hidden>
+          <div class="row"><label class="muted" for="qr-address">Address</label><select id="qr-address" class="mono"></select></div>
+          <img id="qr" class="qr" alt="QR code: scan it with the phone to sign in">
+          <p class="muted">Or scan this code with the phone camera. It works once.</p>
+        </div>
       </div>
+    </div>
+    <div class="panel" id="waiting">
+      <span class="label">Waiting devices</span>
+      <div id="waiting-list"></div>
+      <div class="row approve">
+        <input id="approve-code" inputmode="numeric" autocomplete="off" maxlength="7" placeholder="000 000" aria-label="The six digits the device shows">
+        <button type="button" class="btn" id="approve-admin">Approve</button>
+        <button type="button" class="btn" id="approve-viewer">Approve as viewer</button>
+      </div>
+      <p class="muted" id="approve-note" aria-live="polite"></p>
     </div>
     <div class="panel" id="devices"></div>
   </section>
