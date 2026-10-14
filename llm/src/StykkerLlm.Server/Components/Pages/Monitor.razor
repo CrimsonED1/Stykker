@@ -431,10 +431,11 @@
             <div class="pxs-item">
                 <span class="lampi @(pv.Ready ? "ok" : pv.HasKey ? "bad" : "")" title="@(pv.Error.Length > 0 ? pv.Error : pv.Ready ? Strings.PxReachable : Strings.PxUnreachable)"><Icon Name="@(pv.Ready ? "r-ok" : pv.HasKey ? "r-err" : "s-idle")" Title="@(pv.Ready ? Strings.PxReachable : Strings.PxUnreachable)" /></span>
                 <span class="n" title="@pv.Url">@pv.Name</span>
-                <span class="muted small" title="@string.Join(", ", pv.Models)">@Strings.PxModels(pv.Models.Length)</span>
+                <span class="muted small" title="@string.Join(", ", pv.Offered)">@Strings.ProxyProviderOffered(pv.Offered.Length, pv.Models.Length)</span>
                 <span class="small @(pv.HasKey ? "muted" : "warnc")"><Icon Name="lock" Class="sm" /> @(pv.HasKey ? Strings.PxKeyStored : Strings.PxKeyMissing)</span>
                 @if (CanWrite && !ro)
                 {
+                    <button class="ghost" title="@Strings.ProxyProviderModelsHint" aria-label="@Strings.ProxyProviderModelsButton" @onclick="() => _modelsFor = pp.Url">@Strings.ProxyProviderModelsButton</button>
                     <button class="ib quiet" title="@Strings.PxSetKey" aria-label="@Strings.PxSetKey" @onclick="() => _keyFor = pp.Url"><Icon Name="edit" /></button>
                     <button class="ib quiet danger" title="@Strings.PxRemove" aria-label="@Strings.PxRemove" @onclick="() => RemoveProvider(pp.Url)"><Icon Name="trash" /></button>
                 }
@@ -451,6 +452,13 @@
         @if (_add == "provider")
         {
             <div class="pxs-form">
+                <div class="row">
+                    @foreach (var pr in ProviderPresets.All)
+                    {
+                        var preset = pr;
+                        <button class="ghost" title="@Strings.ProxyProviderPresetHint" @onclick="() => UsePreset(preset)">@preset.Name</button>
+                    }
+                </div>
                 <input placeholder="@Strings.ProxyProviderNameLabel" @bind="_pName" @bind:event="oninput" />
                 <input placeholder="@Strings.ProxyProviderUrlLabel" @bind="_pUrl" @bind:event="oninput" />
                 <input type="password" placeholder="@Strings.ProxyProviderKeyLabel" @bind="_pKey" @bind:event="oninput" autocomplete="off" />
@@ -470,6 +478,14 @@
 </div>
 </aside>
 </div>
+
+@* Auswahl der Modelle eines Anbieters: ein Dialog über der Seite (wie der Befehlsfenster), ganz am Ende, damit er nichts festhält *@
+@if (_modelsFor is { } mUrl && Providers.Any(x => x.Url == mUrl))
+{
+    var mp = Providers.First(x => x.Url == mUrl);
+    var (listed, chosen) = Host.Engine.Proxies.ProviderModelLists(mUrl);
+    <ProviderModelsDialog @key="mUrl" Name="@mp.Name" Listed="listed" Chosen="chosen" OnSave="models => SaveModels(mUrl, models)" OnClose="CloseModels" />
+}
 
 @code {
     private Timer? _t;
@@ -628,8 +644,31 @@
 
     private void AddProviderForm()
     {
+        var url = ProviderKeys.Normalize(_pUrl);
         AddProvider();
-        if (_pName.Length == 0 && _pUrl.Length == 0) _add = null;   // angenommen: Felder sind geleert
+        // angenommen: Felder sind geleert; ein neuer Anbieter bietet noch nichts an, darum gleich die Auswahl öffnen
+        if (_pName.Length == 0 && _pUrl.Length == 0) { _add = null; _modelsFor = url; }
+    }
+
+    // Auswahl der Modelle eines Anbieters: der Dialog ist für genau diesen Anbieter offen (null = zu)
+    private string? _modelsFor;
+
+    private void CloseModels() => _modelsFor = null;
+
+    private async Task SaveModels(string url, string[] models)
+    {
+        if (!CanWrite) return;
+        var req = new ActionRequest { Action = "provider.models", Arg = url };
+        req.Values["models"] = string.Join('\n', models);
+        var r = await Web.RunAsync(req);
+        if (r.Ok) { _modelsFor = null; Toast.Show(r.Message); } else _flash = r.Message;
+    }
+
+    // Vorlage gewählt: Name und Basis-URL stehen im Formular, der Schlüssel fehlt noch
+    private void UsePreset((string Name, string BaseUrl) preset)
+    {
+        _pName = preset.Name;
+        _pUrl = preset.BaseUrl;
     }
 
     private static string BackendColor(BackendKind k) => k switch
@@ -716,7 +755,7 @@
     private void RemoveRemote(string url) { if (CanWrite) Host.Engine.Proxies.RemoveRemote(url); }
 
     // ── Cloud-Anbieter: der Schlüssel geht nur an den Proxy (dort DPAPI-geschützt) und wird nie wieder angezeigt *─
-    private IReadOnlyList<(string Name, string Url, bool HasKey, bool Ready, string[] Models, string Error)> Providers
+    private IReadOnlyList<(string Name, string Url, bool HasKey, bool Ready, string[] Models, string Error, string[] Offered)> Providers
         => Host.Engine.Proxies.ProviderStates();
 
     private string KeyFor(string url) => _pKeys.TryGetValue(url, out var k) ? k : "";

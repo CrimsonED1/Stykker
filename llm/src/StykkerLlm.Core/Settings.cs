@@ -108,6 +108,18 @@ public sealed class ProxyProvider
 {
     public string Name { get; set; } = "";
     public string BaseUrl { get; set; } = "";
+    // Die Modelle, die der Proxy von diesem Anbieter anbietet. Die Liste kommt live vom Anbieter; gewählt wird hier.
+    // null = alle, wie vor der Auswahl (Einträge aus älteren Versionen); eine leere Liste = keines.
+    public List<string>? Models { get; set; }
+}
+
+// Bekannte Anbieter zum Vorausfüllen des Formulars: nur Name und Basis-URL. Den Schlüssel trägt der Nutzer selbst ein.
+public static class ProviderPresets
+{
+    public static readonly (string Name, string BaseUrl)[] All =
+    {
+        ("NVIDIA", "https://integrate.api.nvidia.com/v1"),
+    };
 }
 
 public sealed class AppSettings

@@ -1,0 +1,58 @@
+@* Auswahl der Modelle eines Anbieters: ein Dialog über der Seite, mit Suche. Die beim Öffnen gewählten Modelle bleiben oben
+   (ModelPickOrder). Die Reihenfolge steht fest, solange der Dialog offen ist, damit eine Zeile nicht unter dem Mauszeiger springt. *@
+
+@{ var rows = ModelPickOrder.Arrange(Listed, _pinned, _search); }
+<div class="modal-back">
+    <div class="modal mpick" role="dialog" aria-modal="true" aria-label="@Strings.ProxyProviderModelsTitle(Name)">
+        <h2>@Strings.ProxyProviderModelsTitle(Name)</h2>
+        <div class="muted small">@Strings.ProxyProviderModelsHint</div>
+        <input type="search" class="mpick-search" placeholder="@Strings.ProxyProviderModelsSearch" aria-label="@Strings.ProxyProviderModelsSearch"
+               @bind="_search" @bind:event="oninput" autocomplete="off" />
+        <div class="small muted">@Strings.ProxyProviderModelsChosen(_checked.Count, Listed.Length)</div>
+        <div class="mpick-list" role="group" aria-label="@Strings.ProxyProviderModelsTitle(Name)">
+            @foreach (var m in rows)
+            {
+                var model = m;
+                <label class="mpick-row @(_pinned.Contains(m) ? "pinned" : "")">
+                    <input type="checkbox" checked="@_checked.Contains(m)" @onchange="e => Toggle(model, e.Value is true)" />
+                    <span>@m</span>
+                    @if (!Listed.Contains(m)) { <small class="muted">@Strings.ProxyProviderModelsNotListed</small> }
+                </label>
+            }
+            @if (rows.Count == 0)
+            {
+                <div class="muted small mpick-none">@(Listed.Length == 0 && _checked.Count == 0 ? Strings.ProxyProviderModelsEmpty : Strings.ProxyProviderModelsNoMatch)</div>
+            }
+        </div>
+        <div class="row end">
+            <button class="ghost" @onclick="() => OnClose.InvokeAsync()">@Strings.Cancel</button>
+            <button class="primary" @onclick="() => OnSave.InvokeAsync(_checked.ToArray())">@Strings.BtnProxyProviderModelsSave</button>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public string Name { get; set; } = "";
+    // Alles, was der Anbieter gerade listet
+    [Parameter] public string[] Listed { get; set; } = Array.Empty<string>();
+    // Was gewählt ist (ohne Auswahl: alles, was gelistet ist)
+    [Parameter] public string[] Chosen { get; set; } = Array.Empty<string>();
+    [Parameter] public EventCallback<string[]> OnSave { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private string _search = "";
+    private readonly HashSet<string> _checked = new(StringComparer.Ordinal);
+    private HashSet<string> _pinned = new(StringComparer.Ordinal);
+
+    // Beim Öffnen einmal festhalten: das ist die Auswahl, die oben bleibt
+    protected override void OnInitialized()
+    {
+        foreach (var m in Chosen) _checked.Add(m);
+        _pinned = new HashSet<string>(Chosen, StringComparer.Ordinal);
+    }
+
+    private void Toggle(string model, bool on)
+    {
+        if (on) _checked.Add(model); else _checked.Remove(model);
+    }
+}

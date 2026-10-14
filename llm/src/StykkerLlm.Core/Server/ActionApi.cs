@@ -308,6 +308,13 @@ public static class ActionApi
                     e.Proxies.RemoveProvider(req.Arg ?? "");
                     return Ok(Strings.ProxyProviderRemoved);
                 }
+                // Die gewählten Modelle eines Anbieters, eines je Zeile im Feld „models" (leer = keines)
+                case "provider.models":
+                {
+                    var chosen = (req.Get("models") ?? "").Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                    e.Proxies.SetProviderModels(req.Arg ?? "", chosen, out var merr);
+                    return merr == null ? Ok(Strings.ProxyProviderModelsSaved) : ActionResult.Fail(merr);
+                }
 
                 // ── Aufnahmen ──
                 case "record.start":
