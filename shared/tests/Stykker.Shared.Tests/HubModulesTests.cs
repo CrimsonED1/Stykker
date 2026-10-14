@@ -79,4 +79,102 @@ public class HubModulesTests
         }
         finally { Directory.Delete(dir, recursive: true); }
     }
+
+    [Fact]
+    public void A_file_without_the_new_fields_reads_as_before()
+    {
+        var modules = HubModules.Parse("""
+            { "modules": [
+                { "id": "llm", "name": "LLM", "port": 8078 },
+                { "id": "qwen", "name": "Qwen Code", "url": "http://pc:8076", "external": true }
+            ] }
+            """);
+
+        Assert.All(modules, m => Assert.Null(m.Target));
+        Assert.All(modules, m => Assert.Null(m.Start));
+        Assert.Equal(8078, modules[0].Port);
+        Assert.Equal("http://pc:8076/", modules[1].Url);
+        Assert.True(modules[1].External);
+    }
+
+    [Fact]
+    public void A_complete_external_entry_keeps_its_target_and_start()
+    {
+        var module = Assert.Single(HubModules.Parse("""
+            { "modules": [ { "id": "qwen", "name": "Qwen Code", "external": true, "port": 8076,
+                "target": "http://127.0.0.1:41999",
+                "start": { "command": "node", "args": ["C:\\x\\cli.js", "serve", "--port", "41999"],
+                           "env": { "QWEN_HOME": "C:\\x\\home" }, "tokenEnv": "QWEN_SERVER_TOKEN" } } ] }
+            """));
+
+        Assert.Equal(8076, module.Port);
+        Assert.Equal("http://127.0.0.1:41999", module.Target);
+        Assert.Equal("node", module.Start!.Command);
+        Assert.Equal(["C:\\x\\cli.js", "serve", "--port", "41999"], module.Start.Args);
+        Assert.Equal("C:\\x\\home", module.Start.Env["QWEN_HOME"]);
+        Assert.Equal("QWEN_SERVER_TOKEN", module.Start.TokenEnv);
+        Assert.Equal("http://pc:8076/", module.AddressFor("http", "pc"));
+    }
+
+    [Fact]
+    public void A_target_on_another_machine_is_dropped_and_the_entry_stays()
+    {
+        var module = Assert.Single(HubModules.Parse("""
+            { "modules": [ { "id": "qwen", "external": true, "port": 8076, "target": "http://192.168.0.5:41999",
+                "start": { "command": "node", "tokenEnv": "QWEN_SERVER_TOKEN" } } ] }
+            """));
+
+        Assert.Equal(8076, module.Port);
+        Assert.Null(module.Target);
+        Assert.Null(module.Start);
+    }
+
+    [Theory]
+    [InlineData("http://127.0.0.1:41999", "http://127.0.0.1:41999")]
+    [InlineData("http://127.0.0.1:41999/", "http://127.0.0.1:41999")]
+    [InlineData("http://localhost:41999", "http://localhost:41999")]
+    [InlineData("https://127.0.0.1:41999", null)]
+    [InlineData("http://127.0.0.1", null)]
+    [InlineData("http://127.0.0.1:0", null)]
+    [InlineData("http://127.0.0.1:70000", null)]
+    [InlineData("http://127.0.0.1:41999/path", null)]
+    [InlineData("http://127.0.0.1:41999?x=1", null)]
+    [InlineData("http://user@127.0.0.1:41999", null)]
+    [InlineData("http://127.0.0.1.nip.io:41999", null)]
+    [InlineData("http://[::1]:41999", null)]
+    [InlineData("", null)]
+    public void Only_the_local_target_forms_are_accepted(string target, string? expected) =>
+        Assert.Equal(expected, HubModules.LocalTarget(target));
+
+    [Fact]
+    public void A_target_without_a_port_on_an_internal_entry_is_ignored()
+    {
+        var module = Assert.Single(HubModules.Parse("""
+            { "modules": [ { "id": "llm", "port": 8078, "target": "http://127.0.0.1:41999",
+                "start": { "command": "node", "tokenEnv": "X" } } ] }
+            """));
+
+        Assert.Null(module.Target);
+        Assert.Null(module.Start);
+    }
+
+    [Theory]
+    [InlineData("""{ "command": "", "tokenEnv": "QWEN_SERVER_TOKEN" }""")]
+    [InlineData("""{ "tokenEnv": "QWEN_SERVER_TOKEN" }""")]
+    [InlineData("""{ "command": "node" }""")]
+    [InlineData("""{ "command": "node", "tokenEnv": "not a name" }""")]
+    [InlineData("""{ "command": "node", "tokenEnv": "QWEN_SERVER_TOKEN", "args": "serve" }""")]
+    [InlineData("""{ "command": "node", "tokenEnv": "QWEN_SERVER_TOKEN", "args": ["serve", 41999] }""")]
+    [InlineData("""{ "command": "node", "tokenEnv": "QWEN_SERVER_TOKEN", "env": { "QWEN_HOME": 1 } }""")]
+    [InlineData("""{ "command": "node", "tokenEnv": "QWEN_SERVER_TOKEN", "env": { "bad name": "x" } }""")]
+    public void A_broken_start_leaves_out_only_the_start(string start)
+    {
+        var module = Assert.Single(HubModules.Parse($$"""
+            { "modules": [ { "id": "qwen", "external": true, "port": 8076, "target": "http://127.0.0.1:41999", "start": {{start}} } ] }
+            """));
+
+        Assert.Equal(8076, module.Port);
+        Assert.Equal("http://127.0.0.1:41999", module.Target);
+        Assert.Null(module.Start);
+    }
 }
