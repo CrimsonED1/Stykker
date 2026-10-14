@@ -370,4 +370,20 @@ Noch nicht geprüft:
 - **Andere fremde Dienste.** Geprüft ist nur Qwen Code. `start` setzt voraus, dass ein Dienst `--hostname` und `--require-auth` kennt; für andere Dienste ist das nicht geprüft.
 - **Arbeitsordner des Dienstes.** Er erbt den der Zentrale und lässt sich noch nicht einstellen.
 - **Tailscale-Namen (MagicDNS).** Ein Name wie `<PC>.<Tailnet>.ts.net` wird nur angenommen, wenn die DNS-Endung des PCs genau dieses Tailnet ist. Sonst ist er abgewiesen. Offen ist, ob das Tailnet als Angabe in `stykker.json` eingetragen werden soll.
-- **Die Module selbst.** Der Host-Kopf wird nur an der Weiterleitung geprüft. LLM prüft ihn nur, solange der Netzschalter aus ist (`AccessGate`, Prüfung 5 dort). HUD und SYS prüfen ihn nirgends. Auf den eigenen Ports dieser Module gilt Loopback als Admin, also besteht dort DNS-Rebinding weiter. Das ist nicht geschlossen.
+- **Die Module selbst.** Der Host-Kopf wird an der Weiterleitung geprüft und seit „Host-Prüfung für HUD und SYS“ auch auf den Ports von HUD und SYS. LLM prüft ihn nur, solange der Netzschalter aus ist (`AccessGate`, Prüfung 5 dort). Bei eingeschaltetem Netz besteht dort DNS-Rebinding weiter. Das ist nicht geschlossen.
+
+### Host-Prüfung für HUD und SYS (2026-10-14)
+
+Die Zugangsprüfung (`PairingGate`) prüft den Host-Kopf vor allem anderen, auf den Ports von HUD und SYS und für jede Anfrage, auch für `/api/ping`, `/pair` und das Manifest. Erlaubt sind eine IP-Adresse, `localhost`, der Rechnername und der Rechnername mit der DNS-Endung dieses PCs: dieselbe Regel wie bei der Weiterleitung (`ServiceProxyRules.HostAllowed`). Jeder andere Name bekommt 403 mit „Wrong host name. Open this page by the PC's address.“. Vorher war Loopback Admin, ohne Blick auf den Host-Kopf. So erreichte eine fremde Seite, deren Name auf 127.0.0.1 zeigt, `/api/process/end` (SYS) sowie `/api/hub/access` und `/api/hub/remote` (HUD).
+
+Geprüft (2026-10-14):
+
+- **Build:** Shared, HUD und SYS ohne Warnungen.
+- **Tests:** `Stykker.Shared.Tests` 167 von 167 (vorher 145), `Stykker.Pairing.Tests` 51 von 51, SYS 21 von 21.
+- **Probelauf:** HUD auf Port 8090 und SYS auf Port 8092, mit einer Ablage in einem Temp-Ordner, Anfragen mit `curl` von 127.0.0.1. Fremder Host: 403 auf allen geprüften Wegen, auch mit passender Origin und bei `POST /api/process/priority`. Die Hosts `127.0.0.1`, `localhost` und der Rechnername antworten wie vorher. Zum Vergleich mit dem Stand vor der Änderung: der fremde Host bekam dort 200 bzw. 409.
+
+Noch nicht geprüft:
+
+- **LLM.** Dort prüft `AccessGate` den Host nur bei ausgeschaltetem Netz. Bei eingeschaltetem Netz braucht es dieselbe Regel. LLM hängt nicht an `Stykker.Shared`; offen ist, ob die Regel dorthin wandert oder kopiert wird.
+- **Tailscale-Namen (MagicDNS).** Sie werden abgewiesen, außer die DNS-Endung des PCs ist das Tailnet. Offen ist, ob das Tailnet in `stykker.json` eingetragen werden soll.
+- **Geräte im Netz.** Der Probelauf kam von 127.0.0.1. Ein Handy über die Netzadresse ist nicht geprüft.
