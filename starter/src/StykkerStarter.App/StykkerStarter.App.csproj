@@ -3,7 +3,7 @@
   <!-- StykkerStarter.exe: Tray, Photino-Fenster, Nachrichten zwischen Seite und Core. Die Seite und das Design-System
        werden eingebettet; es gibt keinen Server und keinen Port. -->
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework>net10.0-windows</TargetFramework>
     <OutputType>WinExe</OutputType>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>

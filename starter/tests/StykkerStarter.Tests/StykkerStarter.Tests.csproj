@@ -3,7 +3,7 @@
   <!-- Tests für Stykker Starter. Dateien nur in echten Temp-Ordnern, Prozesse nur über die eigene PID oder das
        TestTarget, das der Test selbst startet. Nie %LOCALAPPDATA%\Stykker\Starter, nie die Registry. -->
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework>net10.0-windows</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <IsPackable>false</IsPackable>

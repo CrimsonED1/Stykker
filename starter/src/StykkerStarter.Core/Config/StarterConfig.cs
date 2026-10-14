@@ -54,10 +54,13 @@ public sealed class CopyRecord
 // lässt die alte Datei stehen.
 public static class ConfigStore
 {
+    // camelCase in der Datei; beim Lesen egal, ob Groß- oder Kleinschreibung (eine von Hand geänderte Datei bleibt
+    // gültig, und ein Name, der nicht passt, darf nicht still auf den Standard fallen und die Datei überschreiben)
     private static readonly JsonSerializerOptions Options = new()
     {
         WriteIndented = true,
-        Converters = { new JsonStringEnumConverter() },
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        PropertyNameCaseInsensitive = true,
     };
 
     public static StarterConfig Load(DataLayout layout)

@@ -47,6 +47,20 @@ public class ConfigStoreTests
     }
 
     [Fact]
+    public void A_hand_written_file_with_other_case_is_read_as_written()
+    {
+        using var temp = new TempFolder();
+        var layout = new DataLayout(temp.Sub("data"));
+        TempFolder.Write(layout.ConfigFile,
+            "{\"settings\":{\"checkIntervalMinutes\":30},\"programs\":[{\"id\":\"a\",\"name\":\"A\",\"sourceExe\":\"x.exe\"}]}");
+
+        var config = ConfigStore.Load(layout);
+
+        Assert.Equal(30, config.Settings.CheckIntervalMinutes);
+        Assert.Equal("x.exe", Assert.Single(config.Programs).SourceExe);
+    }
+
+    [Fact]
     public void Config_holds_no_process_ids_or_secrets()
     {
         using var temp = new TempFolder();

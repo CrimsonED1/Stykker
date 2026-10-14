@@ -65,7 +65,7 @@ public sealed class ProgramService
         if (dir == null || !Directory.Exists(dir)) return new StartOutcome(false, null, "there is no local copy yet");
         if (IsRunning(program)) return new StartOutcome(true, RunningProcesses(program)[0].Pid, "already running");
         var outcome = StartFrom(program, dir);
-        _log?.Write($"start {program.Id}: {(outcome.Ok ? "ok" : "failed")}, {outcome.Message}");
+        _log?.Write($"start {program.Id}: {(outcome.Ok ? "ok" : "failed")}, pid {outcome.Pid}, {outcome.Message}");
         return outcome;
     }
 
@@ -108,7 +108,7 @@ public sealed class ProgramService
         }
 
         var started = StartFrom(program, newDir);
-        _log?.Write($"start {program.Id} {plan.Version}: {(started.Ok ? "ok" : "failed")}, {started.Message}");
+        _log?.Write($"start {program.Id} {plan.Version}: {(started.Ok ? "ok" : "failed")}, pid {started.Pid}, {started.Message}");
         if (started.Ok)
         {
             program.CurrentFolder = plan.Folder;

@@ -6,16 +6,108 @@
 <title>Stykker Starter</title>
 <link rel="stylesheet" href="ds/tokens.css">
 <link rel="stylesheet" href="ds/bundle.css">
+<link rel="stylesheet" href="app.css">
 </head>
 <body>
-<main style="padding:24px;font-family:var(--font-sans,system-ui)">
-  <h1 style="font-size:15px;margin:0">Stykker Starter</h1>
-  <p class="muted">Programs appear here.</p>
+<header class="bar">
+  <div class="brand"><b>◆</b> STYKKER <b>STARTER</b></div>
+  <nav id="nav">
+    <button data-v="apps" aria-current="page">Programs</button>
+    <button data-v="add">Add a program</button>
+    <button data-v="copy">Copying</button>
+    <button data-v="update">Update</button>
+    <button data-v="settings">Settings</button>
+  </nav>
+  <button class="btn sm" id="theme">Titan</button>
+</header>
+
+<main class="stage">
+
+  <!-- Programme -->
+  <section class="view show" id="v-apps">
+    <div class="win">
+      <div class="title"><span class="name"><b>◆</b> PROGRAMS</span></div>
+      <div class="body">
+        <div class="row head">
+          <h2>Programs</h2><span class="muted small" id="apps-sub"></span>
+          <span class="sp"></span>
+          <button class="btn sm" id="btn-check">Check now</button>
+          <button class="btn sm primary" id="btn-add">+ Add a program</button>
+        </div>
+        <div class="apps" id="apps-list"></div>
+      </div>
+      <div class="foot" id="apps-foot"></div>
+    </div>
+  </section>
+
+  <!-- Programm hinzufügen -->
+  <section class="view" id="v-add">
+    <div class="win">
+      <div class="title"><span class="name"><b>◆</b> ADD A PROGRAM</span></div>
+      <div class="body">
+        <div class="form">
+          <div class="field">
+            <span class="label">Program file</span>
+            <div class="inline"><input class="mono" id="f-path" placeholder="a .exe file, on a share or in a build folder"><button class="btn" id="f-browse">Browse…</button></div>
+            <span class="muted small">The whole folder of this file is copied. The program then runs from the copy, so the source can be replaced while it runs.</span>
+          </div>
+          <div class="found" id="f-info"><span class="muted">Choose a program file to see what is found.</span></div>
+          <div class="field"><span class="label">Name</span><input id="f-name"></div>
+          <div class="field"><span class="label">Arguments</span><input class="mono" id="f-args" placeholder="none"></div>
+          <label class="check"><input type="checkbox" id="f-start" checked><span>Start this program when the Starter starts</span></label>
+          <label class="check"><input type="checkbox" id="f-noask"><span>Update without asking (a running program is updated when it is started again)</span></label>
+          <label class="check"><input type="checkbox" id="f-keep" checked><span>Keep the previous version, so I can go back</span></label>
+          <div class="row"><button class="btn primary" id="f-go" disabled>Copy and start</button><button class="btn quiet" id="f-cancel">Cancel</button></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Kopieren -->
+  <section class="view" id="v-copy">
+    <div class="win">
+      <div class="title"><span class="name"><b>◆</b> COPYING</span></div>
+      <div class="body" id="copy-body"></div>
+    </div>
+  </section>
+
+  <!-- Update -->
+  <section class="view" id="v-update">
+    <div class="win">
+      <div class="title"><span class="name"><b>◆</b> LAST UPDATE</span></div>
+      <div class="body" id="update-body"></div>
+    </div>
+  </section>
+
+  <!-- Einstellungen -->
+  <section class="view" id="v-settings">
+    <div class="win">
+      <div class="title"><span class="name"><b>◆</b> SETTINGS</span></div>
+      <div class="body">
+        <div class="form">
+          <div class="field"><span class="label">Check the sources every</span>
+            <select id="s-interval"><option value="5">5 min</option><option value="10">10 min</option><option value="30">30 min</option><option value="60">hour</option></select>
+          </div>
+          <label class="check"><input type="checkbox" id="s-start"><span>Start the Starter with Windows (in the tray)</span></label>
+          <label class="check"><input type="checkbox" id="s-ask"><span>Ask before updating a running program</span></label>
+          <label class="check"><input type="checkbox" id="s-stopped"><span>Update stopped programs without asking</span></label>
+          <div class="field"><span class="label">Versions kept per program</span>
+            <select id="s-kept"><option value="1">1</option><option value="2">2</option><option value="3">3</option></select>
+          </div>
+          <div class="field"><span class="label">Local copies</span>
+            <div class="inline"><input class="mono" id="s-dir" readonly><button class="btn" id="s-open">Open</button></div>
+          </div>
+          <div class="row"><button class="btn primary" id="s-save">Save settings</button><span class="sp"></span><button class="btn quiet danger" id="s-cleanup">Remove unused copies</button></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
 </main>
+
+<div class="notice" id="notice" role="status"></div>
+
 <script src="ds/bundle.js"></script>
-<script>
-  // Die Seite meldet sich, sobald ihr Skript läuft. Vorher schickt C# nichts an sie.
-  try { window.external.sendMessage('shell.ready'); } catch (e) { }
-</script>
+<script src="app.js"></script>
 </body>
 </html>
