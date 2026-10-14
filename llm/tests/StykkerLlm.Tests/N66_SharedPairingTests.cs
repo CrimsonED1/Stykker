@@ -53,6 +53,36 @@ public class N66_SharedPairingTests
     }
 
     [TestMethod]
+    public void FromDataDir_TheDefaultFolderInOtherSpellings_IsTheDefault()
+    {
+        // Derselbe Ordner, anders geschrieben: Trenner am Ende (\ oder /), ein ..-Segment und auf Windows andere Groß-/Kleinschreibung
+        var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+        var defaultRoot = Path.Combine(appData, "StykkerLLM");
+        var spellings = new List<string> { defaultRoot + "\\", defaultRoot + "/", Path.Combine(appData, "Other", "..", "StykkerLLM") };
+        if (OperatingSystem.IsWindows()) spellings.Add(defaultRoot.ToUpperInvariant());
+        foreach (var dir in spellings)
+        {
+            var paths = AppPaths.FromDataDir(dir);
+            Assert.IsTrue(paths.IsDefault, dir);
+            Assert.AreEqual(PairingStore.DefaultFile(), paths.PairingFile(), dir);
+        }
+    }
+
+    [TestMethod]
+    public void FromDataDir_SimilarFolders_AreNotTheDefault()
+    {
+        // Nur der genaue Ordner zählt: Namensvetter, gleichnamiger Ordner anderswo, Unterordner und der übergeordnete Ordner nicht
+        var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+        var defaultRoot = Path.Combine(appData, "StykkerLLM");
+        foreach (var dir in new[] { defaultRoot + "2", Path.Combine(appData, "Other", "StykkerLLM"), Path.Combine(defaultRoot, "sub"), appData })
+        {
+            var paths = AppPaths.FromDataDir(dir);
+            Assert.IsFalse(paths.IsDefault, dir);
+            Assert.AreEqual(Path.Combine(paths.Root, "pairing.dat"), paths.PairingFile(), dir);
+        }
+    }
+
+    [TestMethod]
     public void PairingFile_BlankExplicit_IsIgnored()
     {
         var root = TempDir("blank");
