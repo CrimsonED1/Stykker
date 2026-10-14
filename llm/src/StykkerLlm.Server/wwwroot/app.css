@@ -189,6 +189,16 @@ input[type=checkbox],input[type=radio]{accent-color:var(--acc)}
 .modal{animation:pop .22s cubic-bezier(.2,1.2,.4,1)}
 .modal h2{margin-top:0;font-size:16px;letter-spacing:.06em}
 .modal .row.end{justify-content:flex-end;margin-top:14px}
+/* Modelle eines Cloud-Anbieters wählen: Suche, Liste mit Häkchen, die gewählten zuerst (ProviderModelsDialog.razor) */
+.mpick{max-width:520px}
+.mpick h2{margin-bottom:6px}
+.mpick-search{width:100%;margin:10px 0 6px}
+.mpick-list{max-height:52vh;overflow:auto;border:1px solid var(--line);border-radius:10px;margin-top:6px}
+.mpick-row{display:flex;align-items:center;gap:10px;padding:7px 10px;border-bottom:1px solid var(--line);cursor:pointer;min-width:0}
+.mpick-row:last-child{border-bottom:0}
+.mpick-row span{flex:1;min-width:0;overflow-wrap:anywhere}
+.mpick-row.pinned{background:rgb(var(--acc-rgb)/.08)}
+.mpick-none{padding:12px 10px}
 label.check{display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin:6px 0 2px}
 @keyframes fade{from{opacity:0}to{opacity:1}}
 @keyframes pop{from{opacity:0;transform:translateY(10px) scale(.96)}to{opacity:1;transform:none}}

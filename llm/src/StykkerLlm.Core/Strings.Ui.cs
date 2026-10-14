@@ -202,6 +202,19 @@ public static partial class Strings
         "Requests to a provider leave this computer. Stykker stores the key protected for your Windows user, never in clear text, and sends it only as \"Authorization: Bearer\" to that provider.";
     public const string ProxyProviderNameLabel = "Name";
     public const string ProxyProviderUrlLabel = "Base URL (https://openrouter.ai/api/v1)";
+    public const string ProxyProviderPresetHint = "Fills in the name and base URL of a known provider. Add the key yourself.";
+    // Auswahl der Modelle eines Anbieters (Dialog „Models of …")
+    public const string ProxyProviderModelsButton = "Models";
+    public const string ProxyProviderModelsSearch = "Search models";
+    public const string ProxyProviderModelsHint = "Chosen models stay on top. Only chosen models are offered in the model choice.";
+    public const string ProxyProviderModelsNotListed = "not listed now";
+    public const string ProxyProviderModelsEmpty = "The provider has not listed any model yet.";
+    public const string ProxyProviderModelsNoMatch = "No model matches the search.";
+    public const string ProxyProviderModelsSaved = "The models were saved.";
+    public const string BtnProxyProviderModelsSave = "Save";
+    public static string ProxyProviderModelsTitle(string name) => $"Models of {name}";
+    public static string ProxyProviderModelsChosen(int chosen, int listed) => $"{chosen} of {listed} chosen";
+    public static string ProxyProviderOffered(int offered, int listed) => $"{offered} of {listed} offered";
     public const string ProxyProviderKeyLabel = "API key";
     public const string ProxyProviderEmpty = "No cloud provider added.";
     public static string ProxyProviderModels(int count) => count == 1 ? "1 model" : $"{count} models";

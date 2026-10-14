@@ -192,8 +192,10 @@ public sealed class ProxyManager : IDisposable
         if (string.IsNullOrWhiteSpace(key)) { error = Strings.ProxyProviderKeyMissing; return; }
         if (name.Length == 0) name = ProviderLabel(url);
         _keys?.Set(url, key);
+        // Ein neuer Anbieter bietet erst die Modelle an, die der Nutzer wählt; ein schon eingetragener behält seine Auswahl
+        var previous = _settings.ProxyProviders.FirstOrDefault(p => ProviderKeys.Normalize(p.BaseUrl).Equals(url, StringComparison.OrdinalIgnoreCase));
         _settings.ProxyProviders.RemoveAll(p => ProviderKeys.Normalize(p.BaseUrl).Equals(url, StringComparison.OrdinalIgnoreCase));
-        _settings.ProxyProviders.Add(new ProxyProvider { Name = name, BaseUrl = url });
+        _settings.ProxyProviders.Add(new ProxyProvider { Name = name, BaseUrl = url, Models = previous != null ? previous.Models : new() });
         _settings.Save();
         lock (_providerLock) _provider.Remove(url);
         RefreshProviders();
@@ -212,6 +214,43 @@ public sealed class ProxyManager : IDisposable
         RefreshProviders();
         PushTargets();
     }
+
+    // Welche Modelle eines Anbieters angeboten werden: die Auswahl des Nutzers (null = alle, siehe ProxyProvider.Models)
+    public void SetProviderModels(string url, IEnumerable<string> models, out string? error)
+    {
+        error = null;
+        url = ProviderKeys.Normalize(url);
+        var entry = _settings.ProxyProviders.FirstOrDefault(p => ProviderKeys.Normalize(p.BaseUrl).Equals(url, StringComparison.OrdinalIgnoreCase));
+        if (entry == null) { error = Strings.ProxyProviderUnknown; return; }
+        entry.Models = models.Select(m => (m ?? "").Trim()).Where(m => m.Length > 0).Distinct(StringComparer.Ordinal).ToList();
+        // War ein abgewähltes Modell das Ziel, gilt wieder Auto (wie beim Entfernen des Anbieters)
+        var target = _settings.ProxyTarget;
+        if (ProxyTarget.IsCloudKey(target) && ProviderBaseUrl(target).Equals(url, StringComparison.OrdinalIgnoreCase)
+            && !entry.Models.Contains(target[(target.IndexOf('|') + 1)..]))
+            SetTarget("");
+        else
+        {
+            _settings.Save();
+            PushTargets();
+        }
+    }
+
+    // Für den Auswahl-Dialog: was der Anbieter zuletzt gelistet hat, und was davon gewählt ist (ohne Auswahl: alles)
+    public (string[] Listed, string[] Chosen) ProviderModelLists(string url)
+    {
+        // Ohne laufenden Proxy holt sonst niemand die Liste; gedrosselt und im Hintergrund, der Dialog zeichnet sie nach
+        RefreshProviders();
+        url = ProviderKeys.Normalize(url);
+        var entry = _settings.ProxyProviders.FirstOrDefault(p => ProviderKeys.Normalize(p.BaseUrl).Equals(url, StringComparison.OrdinalIgnoreCase));
+        ProviderState? st;
+        lock (_providerLock) st = _provider.TryGetValue(url, out var cur) ? cur : null;
+        var listed = st?.Models ?? Array.Empty<string>();
+        return (listed, entry?.Models?.ToArray() ?? listed);
+    }
+
+    // Die Modelle eines Anbieters, die der Proxy anbietet: die gewählten (null = alle)
+    private static string[] OfferedOf(ProxyProvider p, string[] listed)
+        => p.Models is { } chosen ? listed.Where(m => chosen.Contains(m)).ToArray() : listed;
 
     // Anbieter mit seinem Schlüssel wieder entfernen
     public void RemoveProvider(string url)
@@ -247,13 +286,15 @@ public sealed class ProxyManager : IDisposable
             return (string.IsNullOrWhiteSpace(r.Name) ? r.Url : r.Name, url, st?.Ready == true, st?.Models ?? Array.Empty<string>());
         }).ToList();
 
-    public IReadOnlyList<(string Name, string Url, bool HasKey, bool Ready, string[] Models, string Error)> ProviderStates()
+    // Models: alle, die der Anbieter listet. Offered: davon die, die der Proxy anbietet (die gewählten).
+    public IReadOnlyList<(string Name, string Url, bool HasKey, bool Ready, string[] Models, string Error, string[] Offered)> ProviderStates()
         => _settings.ProxyProviders.Select(p =>
         {
             var url = ProviderKeys.Normalize(p.BaseUrl);
             ProviderState? st;
             lock (_providerLock) st = _provider.TryGetValue(url, out var cur) ? cur : null;
-            return (string.IsNullOrWhiteSpace(p.Name) ? ProviderLabel(url) : p.Name, url, _keys?.Has(url) == true, st?.Ready == true, st?.Models ?? Array.Empty<string>(), st?.Error ?? "");
+            var listed = st?.Models ?? Array.Empty<string>();
+            return (string.IsNullOrWhiteSpace(p.Name) ? ProviderLabel(url) : p.Name, url, _keys?.Has(url) == true, st?.Ready == true, listed, st?.Error ?? "", OfferedOf(p, listed));
         }).ToList();
 
     // Proxy auch im LAN anbieten (oder zurück auf Loopback) – bindet neu
@@ -504,7 +545,7 @@ public sealed class ProxyManager : IDisposable
             string name = string.IsNullOrWhiteSpace(p.Name) ? ProviderLabel(url) : p.Name;
             ProviderState? st;
             lock (_providerLock) st = _provider.TryGetValue(url, out var cur) ? cur : null;
-            foreach (var m in st?.Models ?? Array.Empty<string>())
+            foreach (var m in OfferedOf(p, st?.Models ?? Array.Empty<string>()))
                 targets.Add(new ProxyTarget(ProxyTarget.CloudKey(url, m), url, m, BackendKind.LmStudio, st?.Ready == true, false,
                     ServerKey: "", Remote: true, PublicModel: $"{name}/{m}", DisplayName: $"{name} · {m}", Cloud: true));
         }

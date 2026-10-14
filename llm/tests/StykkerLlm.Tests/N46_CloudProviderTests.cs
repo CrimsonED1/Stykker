@@ -72,6 +72,13 @@ public class N46_CloudProviderTests
         return (int)resp.StatusCode + " " + await resp.Content.ReadAsStringAsync();
     }
 
+    // Die Auswahl der Modelle: ein neuer Anbieter bietet erst an, was der Nutzer wählt
+    private static void Choose(ProxyManager pm, string url, params string[] models)
+    {
+        pm.SetProviderModels(url, models, out var error);
+        Assert.IsNull(error);
+    }
+
     // Der Schlüssel liegt verschlüsselt im Datenordner, wird wieder lesbar und steht nirgends im Klartext
     [TestMethod]
     public void ProviderKey_IsStoredProtectedAndNeverInClearText()
@@ -167,6 +174,147 @@ public class N46_CloudProviderTests
         finally { Directory.Delete(dir, true); }
     }
 
+    // Die Vorlage „NVIDIA" füllt nur Name und Basis-URL; eingetragen wird sie wie jeder andere Anbieter, mit Schlüssel
+    [TestMethod]
+    public void Preset_Nvidia_IsAddedLikeAnyOtherProvider()
+    {
+        var dir = TempDir();
+        try
+        {
+            var preset = ProviderPresets.All.Single(p => p.Name == "NVIDIA");
+            Assert.AreEqual("https://integrate.api.nvidia.com/v1", preset.BaseUrl);
+
+            var settings = new AppSettings();
+            var keys = new ProviderKeys(dir, new FakePlatform { UserProtection = true });
+            using var http = new HttpClient(new FakeHandler());
+            using var pm = new ProxyManager(() => Array.Empty<ServerWatcher>(), settings, _ => { }, http: http, keys: keys);
+            pm.AddProvider(preset.Name, preset.BaseUrl, "sk-test", out var error);
+            Assert.IsNull(error);
+            Assert.AreEqual("NVIDIA", settings.ProxyProviders.Single().Name);
+            Assert.AreEqual(preset.BaseUrl, settings.ProxyProviders.Single().BaseUrl);
+            Assert.IsTrue(pm.HasProviderKey(preset.BaseUrl), "der Schlüssel kommt vom Nutzer, die Vorlage liefert keinen");
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    // Ein neuer Anbieter bietet erst an, was der Nutzer wählt; die Liste selbst kommt trotzdem vollständig vom Anbieter
+    [TestMethod]
+    public async Task NewProvider_OffersOnlyTheChosenModels()
+    {
+        var dir = TempDir();
+        using var provider = new FakeProvider();
+        try
+        {
+            var settings = new AppSettings { ProxyEnabled = true, ProxyPort = 0 };
+            var plat = new FakePlatform { UserProtection = true };
+            using var http = RequestProxy.CreateClient();
+            using var pm = new ProxyManager(() => Array.Empty<ServerWatcher>(), settings, _ => { }, http: http, keys: new ProviderKeys(dir, plat));
+            pm.AddProvider("Cloud", provider.Url, "sk-cloud", out var error);
+            Assert.IsNull(error);
+            Assert.IsTrue(pm.Toggle(out error), error);
+
+            await WaitUntil(() => pm.ProviderStates().Any(p => p.Models.Length > 0));
+            var st = pm.ProviderStates().Single();
+            CollectionAssert.AreEqual(new[] { "m1", "m2" }, st.Models, "die Liste steht vollständig da");
+            Assert.AreEqual(0, st.Offered.Length);
+            Assert.AreEqual(0, pm.Choices().Count(c => c.Cloud), "ohne Auswahl wird kein Modell angeboten");
+
+            Choose(pm, provider.Url, "m2");
+            CollectionAssert.AreEqual(new[] { "m2" }, pm.ProviderStates().Single().Offered);
+            var offered = pm.Choices().Where(c => c.Cloud).ToList();
+            Assert.AreEqual(1, offered.Count);
+            Assert.AreEqual("Cloud/m2", offered[0].Model);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    // Ein Eintrag aus einer älteren Version (ohne Auswahl) bietet weiterhin alle Modelle an
+    [TestMethod]
+    public async Task LegacyProvider_WithoutAChoice_OffersAllItsModels()
+    {
+        var dir = TempDir();
+        using var provider = new FakeProvider();
+        try
+        {
+            var settings = new AppSettings { ProxyEnabled = true, ProxyPort = 0 };
+            settings.ProxyProviders.Add(new ProxyProvider { Name = "Cloud", BaseUrl = provider.Url });   // Models bleibt null
+            var keys = new ProviderKeys(dir, new FakePlatform { UserProtection = true });
+            keys.Set(provider.Url, "sk-cloud");
+            using var http = RequestProxy.CreateClient();
+            using var pm = new ProxyManager(() => Array.Empty<ServerWatcher>(), settings, _ => { }, http: http, keys: keys);
+            Assert.IsTrue(pm.Toggle(out var error), error);
+
+            await WaitUntil(() => pm.Choices().Count(c => c.Cloud) == 2);
+            Assert.AreEqual(2, pm.Choices().Count(c => c.Cloud), "ohne Auswahl bleibt es bei allen Modellen");
+            Assert.IsNull(settings.ProxyProviders.Single().Models);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    // Ein abgewähltes Modell, das gerade Ziel war, fällt auf Auto zurück (wie beim Entfernen des Anbieters)
+    [TestMethod]
+    public async Task UnchosenModel_WhichWasTheTarget_FallsBackToAuto()
+    {
+        var dir = TempDir();
+        using var provider = new FakeProvider();
+        try
+        {
+            var settings = new AppSettings { ProxyEnabled = true, ProxyPort = 0 };
+            var plat = new FakePlatform { UserProtection = true };
+            using var http = RequestProxy.CreateClient();
+            using var pm = new ProxyManager(() => Array.Empty<ServerWatcher>(), settings, _ => { }, http: http, keys: new ProviderKeys(dir, plat));
+            pm.AddProvider("Cloud", provider.Url, "sk-cloud", out var error);
+            Assert.IsNull(error);
+            Assert.IsTrue(pm.Toggle(out error), error);
+            Choose(pm, provider.Url, "m1", "m2");
+            await WaitUntil(() => pm.Choices().Any(c => c.Cloud));
+
+            pm.SetChoice(pm.Choices().First(c => c.Model == "Cloud/m2"));
+            Assert.AreEqual(ProxyTarget.CloudKey(provider.Url, "m2"), pm.ChoiceValue());
+
+            Choose(pm, provider.Url, "m1");
+            Assert.AreEqual("", pm.ChoiceValue(), "das abgewählte Ziel gilt nicht mehr, es ist wieder Auto");
+            Assert.IsFalse(pm.Choices().Any(c => c.Model == "Cloud/m2"));
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    // Nur ein eingetragener Anbieter bekommt eine Auswahl; Leerzeichen und Doppelte fallen weg
+    [TestMethod]
+    public void SetProviderModels_OnlyForAListedProvider_AndCleansTheList()
+    {
+        var dir = TempDir();
+        try
+        {
+            var settings = new AppSettings();
+            using var http = new HttpClient(new FakeHandler());
+            using var pm = new ProxyManager(() => Array.Empty<ServerWatcher>(), settings, _ => { }, http: http,
+                keys: new ProviderKeys(dir, new FakePlatform { UserProtection = true }));
+            pm.AddProvider("Cloud", "https://api.example.com/v1", "sk-1", out _);
+
+            pm.SetProviderModels("https://api.other.com/v1", new[] { "m1" }, out var error);
+            Assert.AreEqual(Strings.ProxyProviderUnknown, error);
+
+            pm.SetProviderModels("https://api.example.com/v1", new[] { " m1 ", "m1", "" }, out error);
+            Assert.IsNull(error);
+            CollectionAssert.AreEqual(new[] { "m1" }, settings.ProxyProviders.Single().Models);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    // Im Auswahl-Dialog bleiben die beim Öffnen gewählten Modelle oben, auch wenn der Suchtext filtert
+    [TestMethod]
+    public void ModelPickOrder_KeepsChosenOnTopWhileSearching()
+    {
+        var listed = new[] { "zeta", "alpha", "beta/x", "gamma" };
+        var pinned = new[] { "gamma", "zeta", "old-model" };   // old-model listet der Anbieter nicht mehr, ist aber gewählt
+
+        CollectionAssert.AreEqual(new[] { "gamma", "old-model", "zeta", "alpha", "beta/x" }, ModelPickOrder.Arrange(listed, pinned, "").ToList());
+        // „ta“ trifft zeta und beta/x; gamma passt nicht, bleibt gewählt, fällt nur aus dem Filter
+        CollectionAssert.AreEqual(new[] { "zeta", "beta/x" }, ModelPickOrder.Arrange(listed, pinned, "TA").ToList());
+        CollectionAssert.AreEqual(new[] { "alpha" }, ModelPickOrder.Arrange(listed, pinned, "al").ToList());
+    }
+
     // Die Modelle kommen live vom Anbieter und stehen im Proxy als „<Anbieter>/<Modell>"
     [TestMethod]
     public async Task ProviderModels_AreFetchedLiveAndOfferedAsProviderSlashModel()
@@ -185,6 +333,7 @@ public class N46_CloudProviderTests
             Assert.IsNull(error);
             Assert.IsTrue(pm.Toggle(out error), error);
 
+            Choose(pm, provider.Url, "m1", "m2");
             await WaitUntil(() => pm.Choices().Any(c => c.Cloud));
             var choices = pm.Choices().Where(c => c.Cloud).ToList();
             Assert.AreEqual(2, choices.Count, "beide Modelle des Anbieters stehen zur Wahl");
@@ -218,6 +367,7 @@ public class N46_CloudProviderTests
             pm.AddProvider("Cloud", provider.Url, "sk-cloud", out var error);
             Assert.IsNull(error);
             Assert.IsTrue(pm.Toggle(out error), error);
+            Choose(pm, provider.Url, "m1");
             await WaitUntil(() => pm.Choices().Any(c => c.Cloud));
 
             // Ausdrücklich gewählt (nie automatisch)
@@ -288,6 +438,7 @@ public class N46_CloudProviderTests
             using var http = RequestProxy.CreateClient();
             using var pm = new ProxyManager(() => Array.Empty<ServerWatcher>(), settings, _ => { }, http: http, keys: new ProviderKeys(dir, plat));
             pm.AddProvider("Cloud", provider.Url, "sk-cloud", out _);
+            Choose(pm, provider.Url, "m1", "m2");
             Assert.IsTrue(pm.Toggle(out var error), error);
             await WaitUntil(() => pm.Choices().Any(c => c.Cloud));
 
@@ -380,6 +531,11 @@ public class N46_CloudProviderTests
             add.Values["name"] = "Cloud";
             add.Values["url"] = provider.Url;
             Assert.IsTrue((await ActionApi.ExecuteAsync(add, ctx, new RemotePrompt())).Ok);
+
+            // Die Auswahl über die Aktion, so wie die Oberfläche sie schickt
+            var pick = new ActionRequest { Action = "provider.models", Arg = provider.Url };
+            pick.Values["models"] = "m1";
+            Assert.IsTrue((await ActionApi.ExecuteAsync(pick, ctx, new RemotePrompt())).Ok);
 
             await WaitUntil(() => engine.Proxies.Choices().Any(c => c.Cloud));
             var choice = engine.Proxies.Choices().First(c => c.Model == "Cloud/m1");
