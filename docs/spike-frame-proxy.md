@@ -75,11 +75,11 @@ HUD und SYS prüfen noch keine Kopplung und hören nur auf `127.0.0.1`. Im Netz 
 ```powershell
 # 1. ein Qwen-Daemon zum Testen (eigener Datenordner, damit nichts Echtes berührt wird)
 $env:QWEN_HOME = "$env:TEMP\qwen-spike"; $env:QWEN_SERVER_TOKEN = "frame-spike-token"
-node <fork>\dist\cli.js serve --port 41999 --hostname 127.0.0.1 --no-open
+node <fork>\dist\cli.js serve --port 17451 --hostname 127.0.0.1 --no-open
 
-# 2. Hülle auf 8075, Weiterleitung auf 8076, Token wird eingesetzt
-dotnet run --project spikes\frame-proxy -- --target http://127.0.0.1:41999 --token frame-spike-token
+# 2. Hülle auf 17400, Weiterleitung auf 17450, Token wird eingesetzt
+dotnet run --project spikes\frame-proxy -- --target http://127.0.0.1:17451 --token frame-spike-token
 
-# 3. http://127.0.0.1:8075/            Qwen über die Weiterleitung
-#    http://127.0.0.1:8075/?src=direct  zum Vergleich direkt (bleibt leer)
+# 3. http://127.0.0.1:17400/            Qwen über die Weiterleitung
+#    http://127.0.0.1:17400/?src=direct  zum Vergleich direkt (bleibt leer)
 ```

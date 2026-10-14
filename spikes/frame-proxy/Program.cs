@@ -6,7 +6,7 @@ using Yarp.ReverseProxy.Forwarder;
 // Versuch: Hülle der Zentrale (Leiste + Frame) auf einem Port, auf einem zweiten Port eine Weiterleitung zu einem
 // fremden Web-Dienst, der sich von sich aus nicht einbetten lässt.
 //
-//   FrameProxy --target http://127.0.0.1:41999 [--hub 8075] [--frame 8076] [--token <Token des Dienstes>] [--host <Adresse>]
+//   FrameProxy --target http://127.0.0.1:17451 [--hub 17400] [--frame 17450] [--token <Token des Dienstes>] [--host <Adresse>]
 //
 // Mit --token setzt die Weiterleitung das Token des Dienstes selbst ein: der Browser braucht es dann nicht.
 // Der Versuch hört nur auf 127.0.0.1 (oder --host) und prüft keine Kopplung – das käme im Knoten davor.
@@ -15,9 +15,9 @@ using Yarp.ReverseProxy.Forwarder;
 string Arg(string name, string fallback) =>
     Array.IndexOf(args, name) is var i and >= 0 && i + 1 < args.Length ? args[i + 1] : fallback;
 
-var hubPort = int.Parse(Arg("--hub", "8075"));
-var framePort = int.Parse(Arg("--frame", "8076"));
-var target = Arg("--target", "http://127.0.0.1:41999").TrimEnd('/');
+var hubPort = int.Parse(Arg("--hub", "17400"));
+var framePort = int.Parse(Arg("--frame", "17450"));
+var target = Arg("--target", "http://127.0.0.1:17451").TrimEnd('/');
 var token = Arg("--token", "");
 var host = Arg("--host", "127.0.0.1");
 var hubOrigin = $"http://{host}:{hubPort}";

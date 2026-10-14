@@ -7,6 +7,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## Unreleased
 
 ### Changed
+- **Ports in one block.** The suite moves to 17400–17499, below the LLM proxy (17500): the hub (StykkerHUD) listens on
+  **17400** (was 8079), StykkerLLM's web and API on **17401** (was 8078), StykkerSYS on **17402** (was 8077). Foreign
+  services start at 17450. The window, `--port`, the `--hub-port` default and the search answer (UDP 17501) follow; the
+  proxy (17500) and the search port (17501) stay. An explicit `--port` still wins.
+- **Old port 8078 for installed model hosts, for a while.** StykkerHost agents installed before this change saved an
+  address with `:8078`. On the default port the server also listens on 8078, and there only for `/hosts/connect` and
+  `POST /hosts/pair`. Every other request on 8078 gets `410 Gone` with the text "Stykker LLM moved to port 17401.". A host
+  that connects over 8078 writes one line to the log asking for a new pairing; if 8078 is in use, the server starts
+  without it and logs that. **This transition is removed in a later version.** Pair the hosts again with the address on
+  port 17401 before then.
 - **Host name check on every path.** The server refuses a request whose Host header does not name this PC, before anything
   else: `/pair`, `/api/ping`, `/api/state` and all other paths, also with Home/VPN off. The two model-host ways
   (`/hosts/connect`, `POST /hosts/pair`) are the exception; they keep their own token and code checks. Behaviour change:
@@ -15,7 +25,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   `pairing.dat`. Roles are per module: a device that signed in at the hub is a *Viewer* here until it is changed there.
   The old `access.dat` and `hosts.dat` are imported once and kept as `access.dat.bak` and `hosts.dat.bak`.
 - **In the hub's frame** LLM shows no brand of its own and takes the hub's theme. Behaviour change: the server now allows
-  the hub on port 8079 (same host name) to show the page in a frame, also when the window starts it. The server opens no
+  the hub on port 17400 (same host name) to show the page in a frame, also when the window starts it. The server opens no
   extra port; `--hub-port 0` turns the permission off.
 - `/api/ping` adds `module`, `version` and `gate`. Nothing was renamed.
 

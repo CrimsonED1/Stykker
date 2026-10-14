@@ -2,7 +2,7 @@
 
 Live-Monitor für diese Maschine: Prozessor, Speicher, Grafik, Datenträger und Netzwerk. Teil der Stykker-Suite, aufgebaut auf dem gemeinsamen Design-System aus [`shared/design-system`](../shared/design-system/): dieselben Farben, Komponenten und beiden Themen (*Dark*, *Spacepunk Titan*).
 
-Die Prozessliste gehört nicht mehr zu diesem Werkzeug. Sie steht in [StykkerSYS](../sys/README.de.md), die der Reiter **Processes** auf Port 8077 öffnet.
+Die Prozessliste gehört nicht mehr zu diesem Werkzeug. Sie steht in [StykkerSYS](../sys/README.de.md), die der Reiter **Processes** auf Port 17402 öffnet.
 
 ![StykkerHUD, Thema Dark](docs/screenshots/hud-dark.jpg)
 
@@ -19,7 +19,7 @@ Die Oberfläche ist ein Instrumentenfeld, keine Tabelle: jede Zahl steht in eine
 
 ## Die Zentrale
 
-Die Zentrale ist die eine Adresse für die Stykker-Werkzeuge dieser Maschine: `/hub` auf dem Port des Monitors, standardmäßig `http://127.0.0.1:8079/hub`.
+Die Zentrale ist die eine Adresse für die Stykker-Werkzeuge dieser Maschine: `/hub` auf dem Port des Monitors, standardmäßig `http://127.0.0.1:17400/hub`.
 
 - **Leiste.** Eine Leiste oben nennt die Module. Der Winkel rechts klappt sie ein; übrig bleibt ein Zeichen (`◆`) in der Ecke. Am PC merkt sich der Browser diese Wahl.
 - **Übersicht.** Ohne gewähltes Modul zeigt die Zentrale je Modul eine Kachel: Name, „Running“ oder „Not running“, Adresse und den Knopf **Open**, der aus bleibt, solange das Modul nicht antwortet. Die Überschrift zählt die laufenden Module.
@@ -27,18 +27,18 @@ Die Zentrale ist die eine Adresse für die Stykker-Werkzeuge dieser Maschine: `/
 - **Module** kommen aus `%APPDATA%\Stykker\stykker.json`:
 
   ```json
-  { "modules": [ { "id": "sys", "name": "SYS", "port": 8077 } ] }
+  { "modules": [ { "id": "sys", "name": "SYS", "port": 17402 } ] }
   ```
 
-  Ein Eintrag mit `port` ist ein Modul dieser Maschine. Die Zentrale öffnet es unter demselben Namen, unter dem sie selbst geöffnet wurde, damit die Anmeldung auch in den Frame geht. Ein Eintrag mit `url` ist ein fremder Web-Dienst und wird unverändert gezeigt. Ohne Datei, oder wenn sie kein gültiges Modul nennt, gilt die Vorgabe: der Monitor selbst, SYS auf 8077 und LLM auf 8078.
+  Ein Eintrag mit `port` ist ein Modul dieser Maschine. Die Zentrale öffnet es unter demselben Namen, unter dem sie selbst geöffnet wurde, damit die Anmeldung auch in den Frame geht. Ein Eintrag mit `url` ist ein fremder Web-Dienst und wird unverändert gezeigt. Ohne Datei, oder wenn sie kein gültiges Modul nennt, gilt die Vorgabe: der Monitor selbst, SYS auf 17402 und LLM auf 17401.
 - **Weitergeleitete Dienste.** Ein fremder Eintrag mit `port` und `target` läuft anderswo auf diesem PC, und die Zentrale leitet ihn weiter: die Zentrale hört auf `port`, die Weiterleitung geht nur an `target`. Als Ziel gilt nur `http://127.0.0.1:<Port>` oder `http://localhost:<Port>`. Beispiel für Qwen Code, mit Platzhaltern für die Pfade:
 
   ```json
   { "modules": [
-    { "id": "qwen", "name": "Qwen Code", "external": true, "port": 8076,
-      "target": "http://127.0.0.1:41999",
+    { "id": "qwen", "name": "Qwen Code", "external": true, "port": 17450,
+      "target": "http://127.0.0.1:17451",
       "start": { "command": "node",
-                 "args": ["<Pfad zu cli.js>", "serve", "--port", "41999", "--no-open"],
+                 "args": ["<Pfad zu cli.js>", "serve", "--port", "17451", "--no-open"],
                  "env": { "QWEN_HOME": "<Ordner>" },
                  "tokenEnv": "QWEN_SERVER_TOKEN" } } ] }
   ```
@@ -77,7 +77,7 @@ Standardmäßig erreicht niemand außerhalb dieses PCs StykkerHUD oder StykkerSY
 |---|---|
 | `src/StykkerHud.Core/` | Das Modell (`Samples.cs`), die Messung (`MetricsSampler`) und der Dienst (`HudService`, eine Messschleife aus `shared/`). Kennt kein Betriebssystem. |
 | `src/StykkerHud.Platform.Windows/` | Die Windows-Seite: CPU und Speicher (`kernel32`, `ntdll`), GPU (`nvml.dll`), Datenträgerdurchsatz (`pdh.dll`), Netzwerkzähler. Jeder Teil ist verzichtbar: fehlt einer, zeigt sein Wert `–`. |
-| `src/StykkerHud.Server/` | Blazor Server auf `http://127.0.0.1:8079`, mit Tray-Symbol. Liefert den Monitor, die Zentrale unter `/hub` und `/api/snapshot`. Nur an diesem PC, außer der Netzschalter ist beim Start an (siehe [Zugang aus dem Netz](#zugang-aus-dem-netz)). Leitet die fremden Dienste aus `stykker.json` weiter und startet sie (`ServiceForwarding.cs`, `ServiceProcesses.cs`; die Regeln stehen in `shared/…/Web/ServiceProxyRules.cs`). |
+| `src/StykkerHud.Server/` | Blazor Server auf `http://127.0.0.1:17400`, mit Tray-Symbol. Liefert den Monitor, die Zentrale unter `/hub` und `/api/snapshot`. Nur an diesem PC, außer der Netzschalter ist beim Start an (siehe [Zugang aus dem Netz](#zugang-aus-dem-netz)). Leitet die fremden Dienste aus `stykker.json` weiter und startet sie (`ServiceForwarding.cs`, `ServiceProcesses.cs`; die Regeln stehen in `shared/…/Web/ServiceProxyRules.cs`). |
 | `src/StykkerHud.UI/` | `StykkerHUD.exe`, das Photino-Fenster (WebView2) um diese Seiten. |
 | `../shared/` | `Stykker.Shared`: GPU-Zählerabfragen, PDH-Wrapper, Tray-Symbol, Design-System-Hosting, Messschleife. Siehe [dessen README](../shared/README.md). |
 | `tools/shot.mjs` | Misst die gerenderte Seite (Werte, Farben, Geometrie, beide Themen) und schreibt die Bilder. |
@@ -97,12 +97,12 @@ dotnet build StykkerHud.slnx -c Debug
 src\StykkerHud.UI\bin\Debug\net10.0\StykkerHUD.exe
 
 # nur der Server, im Browser
-src\StykkerHud.Server\bin\Debug\net10.0\StykkerHUD-Server.exe --port 8079
+src\StykkerHud.Server\bin\Debug\net10.0\StykkerHUD-Server.exe --port 17400
 ```
 
 | Schalter | Wirkung |
 |---|---|
-| `--port <Zahl>` | Web-Port (Standard 8079) |
+| `--port <Zahl>` | Web-Port (Standard 17400) |
 | `--no-tray` / `--no-browser` | kein Tray-Symbol / kein Browser beim Start |
 | `--basic` | kein Systemzugriff: jeder Wert zeigt `–` |
 | `--design-system <Ordner>` | woher das Design-System gelesen wird (siehe unten) |
@@ -130,12 +130,12 @@ Zwei Layout-Regeln sind wichtig: `.mgrid` passt seine Spalten an die Karte an (`
 Braucht Node.js und Google Chrome. Einmal `npm install` im Ordner `tools/`.
 
 ```powershell
-# Bilder und Messwerte der laufenden Anwendung (Port 8079 muss antworten);
+# Bilder und Messwerte der laufenden Anwendung (Port 17400 muss antworten);
 # --wait hält die Seite so viele Sekunden offen, damit die Prozessorkurve eine Form hat
-node tools\shot.mjs --port 8079 --out docs\screenshots --name hud --wait 25
+node tools\shot.mjs --port 17400 --out docs\screenshots --name hud --wait 25
 
 # Verhalten der laufenden Seite
-node tools\check-ui.mjs --port 8079
+node tools\check-ui.mjs --port 17400
 
 # Kopplung: QR-Code und der umgekehrte Weg, ein zweiter Browser als Handy. Braucht eine Zentrale, die mit
 # eingeschaltetem Netzschalter gestartet wurde, mit --pairing-file und --hub-config (siehe Kopf des Skripts)

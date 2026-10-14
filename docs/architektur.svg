@@ -75,7 +75,7 @@
     <!-- HUD -->
     <rect x="60" y="410" width="305" height="220" rx="10" fill="#f1f3f4" stroke="#5f6b73" stroke-width="1.5"/>
     <text x="76" y="436" font-size="17" font-weight="700" fill="#1a1a1a">StykkerHUD</text>
-    <text x="349" y="436" font-size="13" fill="#555555" text-anchor="end">:8079</text>
+    <text x="349" y="436" font-size="13" fill="#555555" text-anchor="end">:17400</text>
     <text x="76" y="458" font-weight="700" fill="#1a1a1a">die Zentrale</text>
     <text x="76" y="478">Kachel je Modul mit Status</text>
     <text x="76" y="496">Geräte und Rollen an einer Stelle</text>
@@ -89,7 +89,7 @@
     <!-- SYS -->
     <rect x="385" y="410" width="305" height="220" rx="10" fill="#f1f3f4" stroke="#5f6b73" stroke-width="1.5"/>
     <text x="401" y="436" font-size="17" font-weight="700" fill="#1a1a1a">StykkerSYS</text>
-    <text x="674" y="436" font-size="13" fill="#555555" text-anchor="end">:8077</text>
+    <text x="674" y="436" font-size="13" fill="#555555" text-anchor="end">:17402</text>
     <text x="401" y="458" font-weight="700" fill="#1a1a1a">Prozessliste</text>
     <text x="401" y="478">CPU, Speicher und GPU je Prozess</text>
     <text x="401" y="496">beenden, Priorität, Dateiort öffnen</text>
@@ -117,7 +117,7 @@
     <!-- LLM -->
     <rect x="1035" y="410" width="305" height="220" rx="10" fill="#e3f0ff" stroke="#1565c0" stroke-width="2"/>
     <text x="1051" y="436" font-size="17" font-weight="700" fill="#0d3c75">StykkerLLM</text>
-    <text x="1324" y="436" font-size="13" fill="#0d3c75" text-anchor="end">:8078 · Proxy :17500</text>
+    <text x="1324" y="436" font-size="13" fill="#0d3c75" text-anchor="end">:17401 · Proxy :17500</text>
     <text x="1051" y="458" font-weight="700" fill="#1a1a1a">das erste Modul</text>
     <text x="1051" y="478">lokale LLM-Server messen und steuern</text>
     <text x="1051" y="496">Proxy: eine URL für alle Modelle</text>

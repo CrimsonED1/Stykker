@@ -4,7 +4,7 @@ Stand 2026-10-13 · **L2 umgesetzt** (Kopplung, siehe [plan-stykkernode.md](plan
 
 ## 1. Ziel
 
-StykkerLLM bleibt eigenständig: `StykkerLLM-Server.exe` auf Port 8078, Fenster und Terminal wie heute. Zusätzlich nutzt es die zentrale Kopplung und Konfiguration und kann unter dem Knoten laufen, ohne dass es dafür neu gebaut werden muss.
+StykkerLLM bleibt eigenständig: `StykkerLLM-Server.exe` auf Port 17401, Fenster und Terminal wie heute. Zusätzlich nutzt es die zentrale Kopplung und Konfiguration und kann unter dem Knoten laufen, ohne dass es dafür neu gebaut werden muss.
 
 Die Logik liegt schon in `Core`. Die Arbeit sitzt an drei Stellen: Kopplung, Programmaufbau (`Server/Program.cs`) und Zugangsprüfung (`Server/AccessGate.cs`).
 
@@ -91,7 +91,7 @@ Projekte nach dem Umbau:
 
 Alles muss stimmen:
 
-1. **Eigenständig wie heute:** `StykkerLLM-Server.exe --no-browser` startet auf 8078. Die Anmeldung mit dem Code geht. `StykkerUI.exe` öffnet sich, `stykker.exe` zeigt den Zustand.
+1. **Eigenständig wie heute:** `StykkerLLM-Server.exe --no-browser` startet auf 17401. Die Anmeldung mit dem Code geht. `StykkerUI.exe` öffnet sich, `stykker.exe` zeigt den Zustand.
 2. **Bestehende Geräte bleiben angemeldet:** Ein Gerät, das vor dem Umbau angemeldet war, ist nach dem Umbau noch angemeldet.
 3. **Hosts verbinden sich weiter:** Ein StykkerHost mit der bisherigen Version verbindet sich nach dem Umbau weiter, ohne neu zu koppeln. Test auf einem zweiten PC mit alter und neuer Version.
 4. **Neues Modul erbt die Kopplung:** Ein zweiter Prozess, der nur `Stykker.Pairing` nutzt (ein Testprogramm, später das neue Modul), liest dieselbe `pairing.dat`. Das LLM-Gerät ist dort bekannt, mit Rolle `viewer`, ohne neu zu koppeln. SYS selbst bekommt die Prüfung erst in Phase 6.

@@ -32,7 +32,7 @@ Die Liste zeigt die Prozesse dieser Maschine. Was eine Anfrage darf, hängt davo
 - **Nur JSON.** Ohne `Content-Type: application/json` antworten die Aktionen mit `415`, damit ein Formular auf einer anderen Website sie nicht erreicht.
 - **Nie angefasst:** PID 4 und darunter (System und Ähnliches) sowie StykkerSYS selbst. Der Server lehnt mit `409` ab und sagt, warum.
 - **Zugriff verweigert:** Windows lehnt die Aktion ab; die Meldung rät, StykkerSYS für diesen Prozess als Administrator zu starten.
-- **Frames.** Nur diese Seite und die Zentrale auf dem `--hub-port` (Standard 8079) unter demselben Namen dürfen StykkerSYS im Frame zeigen.
+- **Frames.** Nur diese Seite und die Zentrale auf dem `--hub-port` (Standard 17400) unter demselben Namen dürfen StykkerSYS im Frame zeigen.
 
 Aus der Oberfläche endet kein ganzer Prozessbaum. Die API kennt `tree: true`, aber kein Knopf ruft es auf.
 
@@ -50,7 +50,7 @@ GPU-Werte je Prozess kommen aus den Windows-GPU-Zählern. Antworten sie nicht, b
 |---|---|
 | `src/StykkerSys.Core/` | Das Modell (`Samples.cs`), die Aktionen und ihre Ablehnungen (`ProcessActions.cs`), die Messung (`ProcessSampler`: CPU-Anteil aus Zeitdifferenzen, Speicher alle drei Takte, GPU je Prozess angehängt) und `SysService` (die Messschleife). Kennt keine Windows-API. |
 | `src/StykkerSys.Platform.Windows/` | `WindowsProcessProbe`: GPU je Prozess über die gemeinsamen Zähler, Dateipfade über `OpenProcess` und `QueryFullProcessImageNameW`. `Shell.cs` öffnet den Explorer mit markierter Datei. |
-| `src/StykkerSys.Server/` | Blazor Server auf `http://127.0.0.1:8077`, auf allen Adressen nur bei eingeschaltetem Netzschalter beim Start (siehe [Wer was darf](#wer-was-darf)): die Seite (`Processes.razor`, `sys.js`), `/api/snapshot`, die drei Aktionswege unter `/api/process/` und das Tray-Symbol. |
+| `src/StykkerSys.Server/` | Blazor Server auf `http://127.0.0.1:17402`, auf allen Adressen nur bei eingeschaltetem Netzschalter beim Start (siehe [Wer was darf](#wer-was-darf)): die Seite (`Processes.razor`, `sys.js`), `/api/snapshot`, die drei Aktionswege unter `/api/process/` und das Tray-Symbol. |
 | `src/StykkerSys.UI/` | `StykkerSYS.exe`, das Photino-Fenster um diese Seiten. Startet den Server, falls keiner läuft. |
 | `tests/StykkerSys.Tests/` | xUnit-Tests: Zustandsgrenzen, Ablehnungen, Beenden und Priorität an einem Opfer-`ping`, die Messung mit einer Attrappe, die Windows-Sonde. |
 | `tools/check-actions.mjs` | Ende-zu-Ende-Prüfung der Aktionen an einem Opferprozess: ändert seine Priorität, bedient das Zeilenmenü, prüft dass Nachfragen ihn schützt, Abbrechen nichts ändert und Bestätigen ihn beendet, dazu die Ablehnungen (fremde Herkunft, Cross-Site, kein JSON, System-PID). |
@@ -66,19 +66,19 @@ dotnet build StykkerSys.slnx -c Debug
 src\StykkerSys.UI\bin\Debug\net10.0\StykkerSYS.exe
 
 # nur der Server, im Browser
-src\StykkerSys.Server\bin\Debug\net10.0\StykkerSYS-Server.exe --port 8077
+src\StykkerSys.Server\bin\Debug\net10.0\StykkerSYS-Server.exe --port 17402
 ```
 
 | Schalter | Wirkung |
 |---|---|
-| `--port <Zahl>` | Web-Port (Standard 8077) |
+| `--port <Zahl>` | Web-Port (Standard 17402) |
 | `--no-tray` / `--no-browser` | kein Tray-Symbol / kein Browser beim Start |
 | `--basic` | keine GPU-Werte und keine Dateipfade; CPU und Speicher werden weiter gezeigt |
 | `--design-system <Ordner>` | woher das Design-System gelesen wird (Standard: `shared/design-system` der Monorepo) |
 | `--server <Pfad>` (Fenster) | der Server, der gestartet wird, wenn keiner läuft |
 | `--gpu` (Fenster) | zeichnet über die Grafikkarte (ohne den Schalter zeichnet das Fenster in Software) |
 | `--pairing-file <Datei>` | die Kopplungsablage: Geräte, Code und Netzschalter. Standard `%APPDATA%\Stykker\pairing.dat` |
-| `--hub-port <Zahl>` | Port der Zentrale, die diese Seite im Frame zeigen darf (Standard 8079) |
+| `--hub-port <Zahl>` | Port der Zentrale, die diese Seite im Frame zeigen darf (Standard 17400) |
 
 Umgebungsvariable für das Design-System: `STYKKERSYS_DESIGN_SYSTEM`.
 
@@ -88,10 +88,10 @@ Umgebungsvariable für das Design-System: `STYKKERSYS_DESIGN_SYSTEM`.
 # Komponententests (21)
 dotnet test tests\StykkerSys.Tests\StykkerSys.Tests.csproj
 
-# mit laufendem Server auf Port 8077 (braucht Google Chrome und einmal `npm install` in tools/)
-node tools\check-actions.mjs --port 8077   # 16 Prüfungen
-node tools\check-groups.mjs --port 8077    # 16 Prüfungen
-node tools\shot.mjs --port 8077 --out docs\screenshots --name sys
+# mit laufendem Server auf Port 17402 (braucht Google Chrome und einmal `npm install` in tools/)
+node tools\check-actions.mjs --port 17402   # 16 Prüfungen
+node tools\check-groups.mjs --port 17402    # 16 Prüfungen
+node tools\shot.mjs --port 17402 --out docs\screenshots --name sys
 ```
 
 Letzter Lauf am 2026-10-09: 21/21 Komponententests, 16/16 Aktionsprüfungen, 16/16 Gruppenprüfungen.

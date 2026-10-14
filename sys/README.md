@@ -32,7 +32,7 @@ The list shows the processes of this machine. What a request may do depends on w
 - **JSON only.** Without `Content-Type: application/json` the actions answer `415`, so a form on another website cannot reach them.
 - **Never touched:** PIDs 4 and below (System and the like) and StykkerSYS itself. The server refuses with `409` and says why.
 - **Access denied:** Windows refuses the action, and the message says to start StykkerSYS as administrator for that process.
-- **Frames.** Only this page, and the hub on the `--hub-port` (default 8079) under the same host name, may show StykkerSYS in a frame.
+- **Frames.** Only this page, and the hub on the `--hub-port` (default 17400) under the same host name, may show StykkerSYS in a frame.
 
 No path from the UI ends a whole process tree. The API takes `tree: true`, but no button calls it.
 
@@ -50,7 +50,7 @@ GPU values per process come from the Windows GPU counters. Where those counters 
 |---|---|
 | `src/StykkerSys.Core/` | The model (`Samples.cs`), the actions and their refusals (`ProcessActions.cs`), the sampler (`ProcessSampler`: CPU share from time differences, memory every third tick, GPU attached per process) and `SysService` (the viewer loop). Knows no Windows API. |
 | `src/StykkerSys.Platform.Windows/` | `WindowsProcessProbe`: GPU per process through the shared counters, file paths through `OpenProcess` and `QueryFullProcessImageNameW`. `Shell.cs` opens Explorer with the file selected. |
-| `src/StykkerSys.Server/` | Blazor Server on `http://127.0.0.1:8077`, on all addresses only when the network switch is on at start (see [Who may do what](#who-may-do-what)): the page (`Processes.razor`, `sys.js`), `/api/snapshot`, the three action routes under `/api/process/`, and the tray icon. |
+| `src/StykkerSys.Server/` | Blazor Server on `http://127.0.0.1:17402`, on all addresses only when the network switch is on at start (see [Who may do what](#who-may-do-what)): the page (`Processes.razor`, `sys.js`), `/api/snapshot`, the three action routes under `/api/process/`, and the tray icon. |
 | `src/StykkerSys.UI/` | `StykkerSYS.exe`, the Photino window around those pages. Starts the server if none runs. |
 | `tests/StykkerSys.Tests/` | xUnit tests: state thresholds, refusals, end and priority on a sacrificial `ping`, the sampler with a fake probe, the Windows probe. |
 | `tools/check-actions.mjs` | End-to-end test of the actions on a sacrificial process: changes its priority, drives the row menu, checks that asking protects it, that cancelling ends nothing and that confirming ends it, plus the refusals (cross-site, foreign origin, non-JSON, system PID). |
@@ -66,19 +66,19 @@ dotnet build StykkerSys.slnx -c Debug
 src\StykkerSys.UI\bin\Debug\net10.0\StykkerSYS.exe
 
 # server alone, in the browser
-src\StykkerSys.Server\bin\Debug\net10.0\StykkerSYS-Server.exe --port 8077
+src\StykkerSys.Server\bin\Debug\net10.0\StykkerSYS-Server.exe --port 17402
 ```
 
 | Switch | Effect |
 |---|---|
-| `--port <number>` | web port (default 8077) |
+| `--port <number>` | web port (default 17402) |
 | `--no-tray` / `--no-browser` | no tray icon / do not open a browser |
 | `--basic` | no GPU values and no file paths; CPU and memory are still shown |
 | `--design-system <folder>` | where the design system is read from (default: the monorepo's `shared/design-system`) |
 | `--server <path>` (window) | the server to start when none runs |
 | `--gpu` (window) | draw through the graphics card. Without it the window draws in software |
 | `--pairing-file <file>` | the pairing file: devices, code and network switch. Default `%APPDATA%\Stykker\pairing.dat` |
-| `--hub-port <number>` | port of the hub that may show this page in a frame (default 8079) |
+| `--hub-port <number>` | port of the hub that may show this page in a frame (default 17400) |
 | `--hub-config <file>` | the hub's `stykker.json`, only its `"hostNames"` are read (default `%APPDATA%\Stykker\stykker.json`) |
 
 Environment variable for the design system: `STYKKERSYS_DESIGN_SYSTEM`.
@@ -89,10 +89,10 @@ Environment variable for the design system: `STYKKERSYS_DESIGN_SYSTEM`.
 # unit tests (21)
 dotnet test tests\StykkerSys.Tests\StykkerSys.Tests.csproj
 
-# with the server running on port 8077 (needs Google Chrome and `npm install` once in tools/)
-node tools\check-actions.mjs --port 8077   # 16 checks
-node tools\check-groups.mjs --port 8077    # 16 checks
-node tools\shot.mjs --port 8077 --out docs\screenshots --name sys
+# with the server running on port 17402 (needs Google Chrome and `npm install` once in tools/)
+node tools\check-actions.mjs --port 17402   # 16 checks
+node tools\check-groups.mjs --port 17402    # 16 checks
+node tools\shot.mjs --port 17402 --out docs\screenshots --name sys
 ```
 
 Last run on 2026-10-09: 21/21 unit tests, 16/16 action checks, 16/16 grouping checks.

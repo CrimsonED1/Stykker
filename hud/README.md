@@ -2,7 +2,7 @@
 
 Live monitor for this machine: processor, memory, graphics, storage and network. Part of the Stykker suite, built on the shared design system in [`shared/design-system`](../shared/design-system/): the same tokens, components and two themes (*Dark*, *Spacepunk Titan*).
 
-The process list is no longer part of this tool. It lives in [StykkerSYS](../sys/README.md), which the **Processes** tab opens on port 8077.
+The process list is no longer part of this tool. It lives in [StykkerSYS](../sys/README.md), which the **Processes** tab opens on port 17402.
 
 ![StykkerHUD, Dark theme](docs/screenshots/hud-dark.jpg)
 
@@ -19,7 +19,7 @@ The interface is an instrument panel, not a table dump: every figure is monospac
 
 ## The hub
 
-The hub is the single address for the Stykker tools of this machine: `/hub` on the monitor's port, `http://127.0.0.1:8079/hub` by default.
+The hub is the single address for the Stykker tools of this machine: `/hub` on the monitor's port, `http://127.0.0.1:17400/hub` by default.
 
 - **Bar.** A bar at the top lists the modules. The arrow on its right folds it away, leaving one symbol (`◆`) in the corner. On this PC the choice is remembered in the browser.
 - **Overview.** With no module chosen, the hub shows one tile per module: its name, "Running" or "Not running", its address and an **Open** button, which stays disabled while the module does not answer. The heading counts the running modules.
@@ -27,18 +27,18 @@ The hub is the single address for the Stykker tools of this machine: `/hub` on t
 - **Modules** come from `%APPDATA%\Stykker\stykker.json`:
 
   ```json
-  { "modules": [ { "id": "sys", "name": "SYS", "port": 8077 } ] }
+  { "modules": [ { "id": "sys", "name": "SYS", "port": 17402 } ] }
   ```
 
-  An entry with a `port` is a module of this machine. The hub opens it under the same host name the hub was opened with, so the sign-in goes into the frame too. An entry with a `url` is an outside web service and is shown as it is. Without the file, or when it names no valid module, the defaults apply: the monitor itself, SYS on 8077 and LLM on 8078.
+  An entry with a `port` is a module of this machine. The hub opens it under the same host name the hub was opened with, so the sign-in goes into the frame too. An entry with a `url` is an outside web service and is shown as it is. Without the file, or when it names no valid module, the defaults apply: the monitor itself, SYS on 17402 and LLM on 17401.
 - **Forwarded services.** An external entry with a `port` and a `target` runs elsewhere on this PC and the hub forwards it: the hub listens on `port`, and the forwarding goes to `target` only. Only `http://127.0.0.1:<port>` and `http://localhost:<port>` are accepted as a target. Example for Qwen Code, with placeholders for the paths:
 
   ```json
   { "modules": [
-    { "id": "qwen", "name": "Qwen Code", "external": true, "port": 8076,
-      "target": "http://127.0.0.1:41999",
+    { "id": "qwen", "name": "Qwen Code", "external": true, "port": 17450,
+      "target": "http://127.0.0.1:17451",
       "start": { "command": "node",
-                 "args": ["<path to cli.js>", "serve", "--port", "41999", "--no-open"],
+                 "args": ["<path to cli.js>", "serve", "--port", "17451", "--no-open"],
                  "env": { "QWEN_HOME": "<folder>" },
                  "tokenEnv": "QWEN_SERVER_TOKEN" } } ] }
   ```
@@ -77,7 +77,7 @@ By default nobody outside this PC can reach StykkerHUD or StykkerSYS. Access fro
 |---|---|
 | `src/StykkerHud.Core/` | The model (`Samples.cs`), the sampler (`MetricsSampler`) and the service (`HudService`, a viewer loop from `shared/`). Knows no operating system. |
 | `src/StykkerHud.Platform.Windows/` | The Windows side: CPU and memory (`kernel32`, `ntdll`), GPU (`nvml.dll`), disk throughput (`pdh.dll`), network counters. Every part is optional: when one is missing its value shows `–`. |
-| `src/StykkerHud.Server/` | Blazor Server on `http://127.0.0.1:8079`, with a tray icon. Serves the monitor, the hub at `/hub` and `/api/snapshot`. Only this PC, unless the network switch is on at start (see [Access from the network](#access-from-the-network)). Forwards and starts the foreign services of `stykker.json` (`ServiceForwarding.cs`, `ServiceProcesses.cs`; the rules are in `shared/…/Web/ServiceProxyRules.cs`). |
+| `src/StykkerHud.Server/` | Blazor Server on `http://127.0.0.1:17400`, with a tray icon. Serves the monitor, the hub at `/hub` and `/api/snapshot`. Only this PC, unless the network switch is on at start (see [Access from the network](#access-from-the-network)). Forwards and starts the foreign services of `stykker.json` (`ServiceForwarding.cs`, `ServiceProcesses.cs`; the rules are in `shared/…/Web/ServiceProxyRules.cs`). |
 | `src/StykkerHud.UI/` | `StykkerHUD.exe`, the Photino window (WebView2) around those pages. |
 | `../shared/` | `Stykker.Shared`: GPU counter queries, the PDH wrapper, tray icon, design-system hosting, the viewer loop. See [its README](../shared/README.md). |
 | `tools/shot.mjs` | Measures the rendered page (values, colours, geometry, both themes) and writes the screenshots. |
@@ -97,12 +97,12 @@ dotnet build StykkerHud.slnx -c Debug
 src\StykkerHud.UI\bin\Debug\net10.0\StykkerHUD.exe
 
 # server alone, in the browser
-src\StykkerHud.Server\bin\Debug\net10.0\StykkerHUD-Server.exe --port 8079
+src\StykkerHud.Server\bin\Debug\net10.0\StykkerHUD-Server.exe --port 17400
 ```
 
 | Switch | Effect |
 |---|---|
-| `--port <number>` | web port (default 8079) |
+| `--port <number>` | web port (default 17400) |
 | `--no-tray` / `--no-browser` | no tray icon / do not open a browser |
 | `--basic` | no system access: every value shows `–` |
 | `--design-system <folder>` | where the design system is read from (see below) |
@@ -130,12 +130,12 @@ Two layout rules to know: `.mgrid` fits its columns to the card (`repeat(auto-fi
 Needs Node.js and Google Chrome. Run `npm install` once in `tools/`.
 
 ```powershell
-# screenshots and measurements of the running application (port 8079 must answer);
+# screenshots and measurements of the running application (port 17400 must answer);
 # --wait keeps the page open that many seconds, so the processor curve has a shape
-node tools\shot.mjs --port 8079 --out docs\screenshots --name hud --wait 25
+node tools\shot.mjs --port 17400 --out docs\screenshots --name hud --wait 25
 
 # behaviour of the running page
-node tools\check-ui.mjs --port 8079
+node tools\check-ui.mjs --port 17400
 
 # pairing: the QR code and the other way round, with a second browser as the phone. Needs a hub that was
 # started with the network switch on, --pairing-file and --hub-config (see the head of the script)

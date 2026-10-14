@@ -11,7 +11,7 @@ that only run models). **The server is the core.** Every user interface is a cli
 
 | Program | Project | What it is |
 |---|---|---|
-| `StykkerLLM-Server.exe` | `src/StykkerLlm.Server` | ASP.NET Core + Blazor Server. Measures, starts/stops, runs tests, serves the web UI on **:8078** |
+| `StykkerLLM-Server.exe` | `src/StykkerLlm.Server` | ASP.NET Core + Blazor Server. Measures, starts/stops, runs tests, serves the web UI on **:17401** |
 | `StykkerUI.exe` | `src/StykkerLlm.UI` | A window around the web UI (Photino: WebView2 / WKWebView / WebKitGTK), draws without GPU by default |
 | `StykkerHost.exe` | `src/StykkerLlm.Host` | Model host without UI (tray only): measures this PC, later runs models for a server (`docs/plan-hosts-gateway.md`) |
 | `stykker.exe` | `src/StykkerLlm.Cli` | Terminal **display** (read-only, keys only) and `status`, `web`, `stop`, `bugreport` |
@@ -35,7 +35,7 @@ dotnet build StykkerLlm.slnx -c Release        # must end with 0 warnings, 0 err
 dotnet test tests/StykkerLlm.Tests -c Release  # all green (2 tray tests skip without a desktop)
 ```
 
-- Run the server: `src/StykkerLlm.Server/bin/Release/net10.0/StykkerLLM-Server.exe --no-browser` → http://127.0.0.1:8078
+- Run the server: `src/StykkerLlm.Server/bin/Release/net10.0/StykkerLLM-Server.exe --no-browser` → http://127.0.0.1:17401
 - Run the window: `src/StykkerLlm.UI/bin/Release/net10.0/StykkerUI.exe` (starts the server if none runs)
 - Run the terminal display: `src/StykkerLlm.Cli/bin/Debug/net10.0/stykker.exe` (starts the server if none runs)
 - Look at the UI without real model servers: `StykkerLLM-Server.exe --sim --no-browser --port 8090 --data-dir <temp folder>`
@@ -93,8 +93,8 @@ Architecture notes: `docs/architecture.md`. UI rules: `docs/ui.md`. Model hosts:
 
 ## Ports and files
 
-- 8078 web/API, 17500 proxy, 17501 UDP server discovery (used by StykkerHost's pairing page).
-- `--hub-port` (default 8079; `0` = off) opens no port. It names the hub port that may show this page in a frame
+- 17401 web/API, 17500 proxy, 17501 UDP server discovery (used by StykkerHost's pairing page). Until a later version the default port also answers on 8078, for model hosts only (CHANGELOG).
+- `--hub-port` (default 17400; `0` = off) opens no port. It names the hub port that may show this page in a frame
   (`frame-ancestors`, same host name).
 - Pairing (devices, access code, roles, hosts) is one file for HUD, SYS and LLM, DPAPI on Windows: `pairing.dat`. With the
   default data folder it is `%APPDATA%\Stykker\pairing.dat`; with another `--data-dir` it is `pairing.dat` inside that

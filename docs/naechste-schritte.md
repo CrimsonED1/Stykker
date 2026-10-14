@@ -64,7 +64,7 @@ Die Reihenfolge folgt einem Ziel: **die Zentrale als App auf dem Handy, mit eine
 
 - **Was:** das Programm aus Phase 4 des Plans. Es startet die Module, ist die eine Tür nach außen und gibt den Modulen einen Schlüssel mit, damit sie der weitergereichten Herkunft trauen dürfen.
 - **Warum erst jetzt:** Mit Frames auf die Modul-Ports läuft die Zentrale auch ohne Knoten. Der Knoten bringt eine Adresse statt mehrerer Ports und den Neustart abgestürzter Module.
-- **Entscheidung:** der Port des Knotens (vorgeschlagen 8075).
+- **Entscheidung (2026-10-14):** Der Knoten bekommt keinen eigenen Port. Die Zentrale (17400) wird seine Adresse. Nur die Doku; der Knoten selbst ist noch nicht gebaut.
 
 ### 7. StykkerCMD im Web
 

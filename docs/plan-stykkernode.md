@@ -35,9 +35,9 @@ Aus dem Code geprüft am 2026-10-10.
 
 | Werkzeug | Web-UI | Server-Version | Kopplung heute | Erreichbar heute |
 |---|---|---|---|---|
-| StykkerLLM | ja (Razor) | ja, `StykkerLLM-Server`, Port 8078 | gemeinsam: `pairing.dat` (Geräte, Code, Rollen, Hosts; seit L2) | Netz nur mit Schalter Home/VPN |
-| StykkerSYS | ja | ja, Port 8077 | keine | nur 127.0.0.1 |
-| StykkerHUD | ja | ja, Port 8079 | keine | nur 127.0.0.1 |
+| StykkerLLM | ja (Razor) | ja, `StykkerLLM-Server`, Port 17401 | gemeinsam: `pairing.dat` (Geräte, Code, Rollen, Hosts; seit L2) | Netz nur mit Schalter Home/VPN |
+| StykkerSYS | ja | ja, Port 17402 | keine | nur 127.0.0.1 |
+| StykkerHUD | ja | ja, Port 17400 | keine | nur 127.0.0.1 |
 | StykkerCMD | nein (Avalonia) | nein | keine | nur das Fenster |
 
 Was der Code zeigt:
@@ -117,7 +117,7 @@ Eine Weiterleitung verändert, was die Module über den Absender wissen. Das mus
 |---|---|---|
 | `loopback` und `IsLocal` (`AccessGate`, `/api/metrics`) werten die Verbindungsadresse aus. Der Knoten leitet von 127.0.0.1 aus weiter. | Jede weitergeleitete Anfrage gilt als lokal. Der Zugangscode erscheint auf der Anmeldeseite für fremde Geräte. `/api/metrics` ist ohne Anmeldung erreichbar. Die Prüfung „von außen nur mit Schalter“ greift nicht. | Der Knoten prüft Schalter, Kopplung und Rolle zuerst. Das Modul wertet die weitergereichte Herkunft (`X-Forwarded-For`) nur mit gültigem Knotenschlüssel aus. Sonst zählt die Verbindungsadresse. |
 | `LocalRequests.SameOrigin` vergleicht `Origin` mit dem `Host` der Anfrage. | Bei jeder Aktion in SYS und HUD 403, wenn der Knoten den `Host` umschreibt. | Der Knoten reicht `Host` unverändert weiter. Test im Spike. |
-| Module hören heute auf allen Adressen (LLM: `0.0.0.0:8078`). | Ein Modul ließe sich am Knoten vorbei erreichen. | Im Knotenbetrieb nur 127.0.0.1. Der Knoten ist die einzige Tür. |
+| Module hören heute auf allen Adressen (LLM: `0.0.0.0:17401`). | Ein Modul ließe sich am Knoten vorbei erreichen. | Im Knotenbetrieb nur 127.0.0.1. Der Knoten ist die einzige Tür. |
 
 Weitere Regeln:
 
@@ -166,7 +166,7 @@ Bitte kurz antworten. Die Empfehlung steht jeweils in der ersten Option.
 | **D** | StykkerNode als eigener Dauerbetrieb-Prozess, die Fenster nur als Gäste? | Ja | Der LLM-Proxy (17500) darf nicht vom HUD-Fenster abhängen. |
 | **E** | CMD auf Web-UI umstellen und Avalonia aufgeben? | Ja | Eine Oberfläche für alle Module. Die Frage Blazor oder Avalonia ist damit beantwortet. |
 | **F** | Weiterleitung: YARP (NuGet, braucht Freigabe) oder eigene Weiterleitung? | YARP, wenn du zustimmst | Repo-Regel: keine neue Abhängigkeit ohne Freigabe. |
-| **G** | Knoten-Port | 8075, vorläufig, noch nicht auf Freiheit geprüft | Vor Phase 4 prüfen. |
+| **G** | Knoten-Port | Entfällt seit 2026-10-14: die Zentrale (17400) wird seine Adresse, kein eigener Port | Erledigt. |
 
 Zusätzlich zu bestätigen, ohne Frage: Name `StykkerNode`, Konfiguration `stykker.json`, Ablage `%APPDATA%\Stykker\`.
 
@@ -174,7 +174,7 @@ Zusätzlich zu bestätigen, ohne Frage: Name `StykkerNode`, Konfiguration `stykk
 
 - Host-Protokoll (`/hosts/connect`, Kopf `X-Stykker-Host`, Nachrichtenformat). Installierte StykkerHost-Versionen müssen weiter funktionieren.
 - Cookie-Name, Hash-Verfahren, Rollennamen.
-- Ports im eigenständigen Betrieb: LLM 8078 und 17500, SYS 8077, HUD 8079.
+- Ports im eigenständigen Betrieb: LLM 17401 und 17500, SYS 17402, HUD 17400.
 - Jede App startet allein und ohne Knoten.
 - Keine neue NuGet-Abhängigkeit ohne Freigabe. Die Regeln in `llm/AGENTS.md` gelten im Modul weiter.
 - Keine Commits und Pushes ohne Auftrag.
@@ -236,7 +236,7 @@ Vorgezogen aus Phase 5, zusammen mit dem Teil von Phase 2, den sie braucht.
 
 | Wo | Was |
 |---|---|
-| `shared/src/Stykker.Shared/Config/HubModules.cs` | Liest die Module aus `%APPDATA%\Stykker\stykker.json`. Ohne Datei: Monitor, SYS (8077), LLM (8078). Eigene Module hängen am Rechnernamen der Anfrage, ein fremder Dienst an seiner Adresse. |
+| `shared/src/Stykker.Shared/Config/HubModules.cs` | Liest die Module aus `%APPDATA%\Stykker\stykker.json`. Ohne Datei: Monitor, SYS (17402), LLM (17401). Eigene Module hängen am Rechnernamen der Anfrage, ein fremder Dienst an seiner Adresse. |
 | `hud/…/wwwroot/hub.html`, `hub.js`, `hub.css` | Die Hülle unter `/hub`: Leiste, Übersicht mit einer Kachel je Modul, das gewählte Modul im Frame. Die Leiste klappt ein; am Handy und als installierte App ist sie zu und öffnet sich über ein Symbol als Menü. |
 | `hud/…/Program.cs` | `/hub`, `/api/hub` (Module und ob ihr Port antwortet), `/manifest.webmanifest`. |
 | `hud`, `sys`: `App.razor`, `app.css` | Eingebettete Darstellung: `?embed=1` nimmt Marke und Themenwahl weg, `?theme=` folgt dem Thema der Zentrale. |
@@ -255,7 +255,7 @@ Die gemeinsame Prüfung aus Abschnitt 4.3 (`gate: pairing-v1`), für HUD und SYS
 | `shared/…/Web/FrameAncestors.cs` | Einbetten nur durch die Seite selbst und die Zentrale unter demselben Rechnernamen. |
 | `hud/…/Program.cs` | Prüfung vor allem anderen. `/api/hub/access`, `/remote`, `/code`, `/devices/…`: Netzschalter, Code und Geräte, nur an der Maschine und nur von der eigenen Seite. |
 | `hud/…/hub.*` | Bereich „Devices“ in der Übersicht: Netzschalter mit den Adressen, Code mit Restzeit, Geräteliste mit Rolle je Modul und Entfernen. Ein Gerät im Netz bekommt diesen Bereich nicht. |
-| `sys/…/Program.cs` | Prüfung vor allem anderen. Beenden und Priorität nur mit Rolle `admin`; „Dateiort öffnen“ nur an der Maschine. `--hub-port` (Vorgabe 8079). |
+| `sys/…/Program.cs` | Prüfung vor allem anderen. Beenden und Priorität nur mit Rolle `admin`; „Dateiort öffnen“ nur an der Maschine. `--hub-port` (Vorgabe 17400). |
 
 Der Port wird nur im Netz geöffnet, wenn der Netzschalter beim Start an ist. Umschalten wirkt nach dem nächsten Start von HUD und SYS; so fragt die Windows-Firewall niemanden, der die Werkzeuge nur lokal benutzt.
 
@@ -278,7 +278,7 @@ Noch nicht da:
 - **LLM im Frame** hat seit L2 die eingebettete Darstellung (unten).
 - **Geräte, Rollen, Knoten** aus dem Mockup fehlen. Jedes Modul meldet sich noch selbst an.
 - **Kein Service Worker:** das Manifest reicht zum Installieren; ohne Netz zeigt die App nichts.
-- **Der Verweis „Processes“ im Monitor** zeigt fest auf `127.0.0.1:8077` und öffnet SYS im Frame ohne eingebettete Darstellung.
+- **Der Verweis „Processes“ im Monitor** zeigt fest auf `127.0.0.1:17402` und öffnet SYS im Frame ohne eingebettete Darstellung.
 - **`stykker.json`** kennt bisher nur `modules`; Knoten und Netzschalter (Abschnitt 4.2) fehlen.
 
 Offen aus Phase 1:
@@ -298,7 +298,7 @@ Eine Anmeldung gilt für HUD, SYS und LLM. `AccessControl` und `HostRegistry` si
 | `llm/src/StykkerLlm.Core/Server/AccessControl.cs` | Geräte je Modul. Ein Gerät aus der Zentrale ist hier `viewer`, ein Gerät, das sich hier anmeldet, `admin`. Der Code ist nur für Admins lesbar. |
 | `llm/src/StykkerLlm.Core/Host/HostRegistry.cs` | Die Hosts in der Ablage, nur mit dem Hash ihres Tokens. |
 | `llm/src/StykkerLlm.Core/Settings.cs` | `AppPaths.PairingFile()`: für die Vorgabe die gemeinsame Ablage, sonst `pairing.dat` im Datenordner; `--pairing-file` hat Vorrang. `AppPaths.FromDataDir()`: der Vorgabe-Ordner über `--data-dir` ist die Vorgabe. |
-| `llm/src/StykkerLlm.Server/EngineHost.cs`, `Program.cs`, `AccessGate.cs` | Ein Dienst für Geräte und Hosts. `--pairing-file`; `--hub-port` mit Vorgabe 8079 (`0` schaltet das Einbetten ab). `/api/ping` mit `module`, `version`, `gate: "pairing-v1"`; `app` bleibt. |
+| `llm/src/StykkerLlm.Server/EngineHost.cs`, `Program.cs`, `AccessGate.cs` | Ein Dienst für Geräte und Hosts. `--pairing-file`; `--hub-port` mit Vorgabe 17400 (`0` schaltet das Einbetten ab). `/api/ping` mit `module`, `version`, `gate: "pairing-v1"`; `app` bleibt. |
 | `llm/src/StykkerLlm.Server/wwwroot/ui.js`, `app.css` | Eingebettet (`?embed=1&theme=…`): ohne Marke, im Thema der Zentrale. Die Wahl merkt sich die Sitzung, nur im Frame. |
 | `llm/src/StykkerLlm.UI/Program.cs` | Reicht `--pairing-file` nur weiter, wenn das Fenster es selbst bekommen hat (Entwickler-Schalter). |
 | `hud/src/StykkerHud.Server/Program.cs`, `wwwroot/hub.js`, `hub.css` | Die Zentrale zeigt die Rolle `llm` je Gerät und ändert sie. |
@@ -307,7 +307,7 @@ Eine Anmeldung gilt für HUD, SYS und LLM. `AccessControl` und `HostRegistry` si
 Dabei entschieden, weil die Umsetzung es verlangte:
 
 - **Vorgabe-Ordner über `--data-dir`:** Fenster und Terminal starten den Server immer mit `--data-dir`. Ohne diese Regel hätte der Server eine zweite `pairing.dat` neben `access.dat` angelegt, und die Anmeldung wäre nur beim Start aus dem Browser gemeinsam gewesen.
-- **`--hub-port` mit Vorgabe 8079:** LLM lässt sich jetzt auch aus dem Fenster heraus in die Zentrale einbetten. Bisher ging das nur, wenn jemand den Server von Hand mit dem Schalter startete.
+- **`--hub-port` mit Vorgabe 17400:** LLM lässt sich jetzt auch aus dem Fenster heraus in die Zentrale einbetten. Bisher ging das nur, wenn jemand den Server von Hand mit dem Schalter startete.
 - **Gesperrte Ablage:** Dann schlägt nur die eine Anmeldung fehl. `HostRegistry.Add` gibt die Ausnahme weiter, weil `HostPairing` unverändert bleibt (siehe unten, nicht geprüft).
 
 Geprüft (2026-10-13, wie angegeben):
@@ -433,3 +433,20 @@ Noch nicht geprüft:
 
 - **Ein echtes Handy** und die Windows-Firewall: der Probelauf nutzte eine Netzadresse dieses PCs.
 - **Der Inhalt des QR-Codes** ist nicht mit einem Leser dekodiert worden. Das Skript baut die Adresse für das Handy selbst aus der gewählten Adresse, dem Port und dem angezeigten Code (Fall 2) und liest das Bild nicht.
+
+### Ports der Suite (2026-10-14)
+
+Der Besitzer hat die Ports neu geordnet: alle Werkzeuge unter dem LLM-Proxy (17500), in einem Block 17400–17499.
+
+| Was | bisher | neu |
+|---|---|---|
+| Zentrale (StykkerHUD) | 8079 | **17400** |
+| StykkerLLM, Web und API | 8078 | **17401** |
+| StykkerSYS | 8077 | **17402** |
+| StykkerCMD (noch nicht gebaut) | – | 17403, nur reserviert |
+| Fremde Dienste (Weiterleitung, Beispiele) | 8076 | ab **17450** (Beispiel Qwen: Weiterleitung 17450, Ziel 17451) |
+| StykkerNode (geplant) | 8075 | kein eigener Port mehr: die Zentrale 17400 wird seine Adresse |
+| LLM-Proxy | 17500 | bleibt |
+| Suche (UDP) | 17501 | bleibt |
+
+Übergang: StykkerLLM hört auf dem Vorgabeport zusätzlich auf 8078, nur für `/hosts/connect` und `POST /hosts/pair` (installierte StykkerHost-Agenten). Alles andere auf 8078 antwortet mit 410. Der Übergang entfällt in einer späteren Version (CHANGELOG von LLM).
