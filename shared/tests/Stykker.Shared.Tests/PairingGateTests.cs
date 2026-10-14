@@ -6,6 +6,8 @@ namespace Stykker.Shared.Tests;
 public class PairingGateTests
 {
     private const string Admin = "admin", Viewer = "viewer";
+    // Der Name dieses PCs in den Tests (ein Platzhalter) und seine DNS-Endung
+    private const string Machine = "testhost", Domain = "example.lan";
 
     [Theory]
     [InlineData("/")]
@@ -92,5 +94,59 @@ public class PairingGateTests
         Assert.Equal("'self'", FrameAncestors.Policy("http", "pc:8077", 0));
         Assert.Equal("'self'", FrameAncestors.Policy("http", "pc; script-src *", 8079));
         Assert.Equal("'self'", FrameAncestors.Policy("javascript", "pc", 8079));
+    }
+
+    [Theory]
+    [InlineData("testhost.evil.example:8090")]                 // der Name eines Angreifers, auf 127.0.0.1 gelegt
+    [InlineData("evil.example:8090")]
+    [InlineData("testhost.example.lan.evil.example:8090")]
+    public void A_dns_rebinding_name_is_refused_from_this_machine_too(string host)
+    {
+        Assert.Equal(GateAction.WrongHost, PairingGate.Decide(host, Machine, Domain, loopback: true, remoteEnabled: false, "/hub", wantsPage: true, role: Admin));
+        Assert.Equal(GateAction.WrongHost, PairingGate.Decide(host, Machine, Domain, loopback: true, remoteEnabled: false, "/api/process/end", wantsPage: false, role: Admin));
+    }
+
+    [Theory]
+    [InlineData("/api/ping")]
+    [InlineData("/pair")]
+    [InlineData("/manifest.webmanifest")]
+    public void The_host_is_checked_before_the_paths_that_are_open_to_everyone(string path)
+    {
+        Assert.Equal(GateAction.WrongHost, PairingGate.Decide("testhost.evil.example:8090", Machine, Domain, loopback: false, remoteEnabled: true, path, wantsPage: false, role: null));
+        Assert.Equal(GateAction.WrongHost, PairingGate.Decide("testhost.evil.example:8090", Machine, Domain, loopback: true, remoteEnabled: false, path, wantsPage: false, role: Admin));
+    }
+
+    [Theory]
+    [InlineData("127.0.0.1:8090")]
+    [InlineData("localhost:8090")]
+    [InlineData("[::1]:8090")]
+    [InlineData("testhost:8090")]
+    [InlineData("TESTHOST.example.lan:8090")]
+    [InlineData("testhost.example.lan")]
+    public void Addresses_localhost_and_this_machines_name_get_in_from_this_machine(string host) =>
+        Assert.Equal(GateAction.Allow, PairingGate.Decide(host, Machine, Domain, loopback: true, remoteEnabled: false, "/hub", wantsPage: true, role: Admin));
+
+    [Theory]
+    [InlineData("192.0.2.10:8090")]
+    [InlineData("testhost.example.lan:8090")]
+    public void A_paired_device_gets_in_under_an_address_or_this_machines_name(string host) =>
+        Assert.Equal(GateAction.Allow, PairingGate.Decide(host, Machine, Domain, loopback: false, remoteEnabled: true, "/api/snapshot", wantsPage: false, role: Admin));
+
+    [Theory]
+    [InlineData("testhost.other.example:8090")]              // andere DNS-Endung
+    [InlineData("testhost.example.lan.evil.example:8090")]   // Name und Endung, aber mit fremdem Rest
+    [InlineData("mytesthost:8090")]                          // der Rechnername steckt nur darin
+    [InlineData("testhost-old:8090")]
+    [InlineData("example.lan:8090")]
+    [InlineData("")]
+    [InlineData(null)]
+    public void Other_names_and_an_empty_host_are_refused(string? host) =>
+        Assert.Equal(GateAction.WrongHost, PairingGate.Decide(host, Machine, Domain, loopback: true, remoteEnabled: false, "/hub", wantsPage: true, role: Admin));
+
+    [Fact]
+    public void Without_a_dns_suffix_only_the_bare_machine_name_counts()
+    {
+        Assert.Equal(GateAction.Allow, PairingGate.Decide("testhost:8090", Machine, null, loopback: true, remoteEnabled: false, "/hub", wantsPage: true, role: Admin));
+        Assert.Equal(GateAction.WrongHost, PairingGate.Decide("testhost.example.lan:8090", Machine, null, loopback: true, remoteEnabled: false, "/hub", wantsPage: true, role: Admin));
     }
 }
