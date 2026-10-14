@@ -1,4 +1,4 @@
-namespace StykkerLlm.Core;
+namespace Stykker.Pairing;
 
 // QR-Code im Byte-Modus ohne fremde Bibliothek: das Fenster zeichnet die Module selbst, das Web bekommt SVG, die TUI
 // Blockzeichen. Reicht für Adressen wie http://192.168.1.23:8078/pair?code=ABCD2345 (Version 1-10, Stufe M).

@@ -1,3 +1,4 @@
+using Stykker.Pairing;
 using StykkerLlm.Core;
 
 namespace StykkerLlm.Tests;

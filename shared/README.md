@@ -34,6 +34,7 @@ HUD, SYS and StykkerLLM use it. StykkerLLM moved over last (`docs/plan-llm-modul
 | `PairingCodes.cs` | Codes, tokens and their hash. The hash is the one StykkerLLM stored devices with, so they stay signed in. |
 | `LegacyLlmImport.cs` | Takes over `access.dat` and `hosts.dat` from StykkerLLM's data folder, once. StykkerLLM then renames them to `*.bak`; the file records what it imported. |
 | `ServiceTokens.cs` | One token per module id for a forwarded service, in `services.dat` next to `pairing.dat`. The same DPAPI protection with its own entropy (`Stykker.services.v1`); without protection nothing is written in plain text. Used by StykkerHUD. |
+| `QrCode.cs` | QR code without a package (byte mode, versions 1 to 10): `QrCode.Encode(text).ToSvg(...)` for the web, `ToAscii` for a terminal. Taken over from StykkerLLM (`llm/src/StykkerLlm.Core/Server/QrCode.cs` before 2026-10-14, then BUSL-1.1); the code is unchanged, the namespace is `Stykker.Pairing`, and the license here is Apache-2.0. Used by StykkerLLM. |
 
 It has no ASP.NET reference and no package dependency.
 
