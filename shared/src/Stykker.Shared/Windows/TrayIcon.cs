@@ -15,7 +15,7 @@ public sealed class TrayIcon : IDisposable
     private const int WmLButtonUp = 0x0202, WmLButtonDblClk = 0x0203, WmRButtonUp = 0x0205;
     private const int WmApp = 0x8000 + 1;            // eigene Nachricht: die Maus auf dem Symbol
     private const int NimAdd = 0, NimModify = 1, NimDelete = 2;
-    private const int NifMessage = 1, NifIcon = 2, NifTip = 4;
+    private const int NifMessage = 1, NifIcon = 2, NifTip = 4, NifInfo = 0x10, NiifInfo = 0x1;
     private const uint MfSeparator = 0x00000800, MfGrayed = 0x00000001;
     private const uint TpmRightButton = 0x0002, TpmReturnCmd = 0x0100, TpmNonotify = 0x0080;
 
@@ -229,6 +229,23 @@ public sealed class TrayIcon : IDisposable
             Shell_NotifyIcon(NimModify, ref data);
         }
     }
+
+    // Sprechblase am Symbol (Hinweis, z. B. „Update verfügbar“). Ohne Symbol oder bei Fehler: false, nichts passiert.
+    public bool ShowBalloon(string title, string text)
+    {
+        lock (_gate)
+        {
+            if (!_added) return false;
+            var data = new NOTIFYICONDATA
+            {
+                cbSize = Marshal.SizeOf<NOTIFYICONDATA>(), hWnd = _window, uID = 1,
+                uFlags = NifInfo, szInfoTitle = Clip(title, 63), szInfo = Clip(text, 255), dwInfoFlags = NiifInfo,
+            };
+            return Shell_NotifyIcon(NimModify, ref data);
+        }
+    }
+
+    private static string Clip(string text, int max) => text.Length <= max ? text : text[..max];
 
     public void Dispose()
     {

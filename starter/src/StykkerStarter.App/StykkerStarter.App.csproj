@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- StykkerStarter.exe: Tray, Photino-Fenster, Nachrichten zwischen Seite und Core. Die Seite und das Design-System
+       werden eingebettet; es gibt keinen Server und keinen Port. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <OutputType>WinExe</OutputType>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>StykkerStarter</AssemblyName>
+    <RootNamespace>StykkerStarter.App</RootNamespace>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Photino.NET" Version="4.0.16" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\StykkerStarter.Core\StykkerStarter.Core.csproj" />
+    <ProjectReference Include="..\StykkerStarter.Platform.Windows\StykkerStarter.Platform.Windows.csproj" />
+    <ProjectReference Include="..\..\..\shared\src\Stykker.Shared\Stykker.Shared.csproj" />
+  </ItemGroup>
+
+  <!-- Design-System aus shared/design-system, eingebettet: Tokens, Komponenten, Symbole. -->
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\..\shared\design-system\tokens.css" LogicalName="web/ds/tokens.css" />
+    <EmbeddedResource Include="..\..\..\shared\design-system\components\bundle.css" LogicalName="web/ds/bundle.css" />
+    <EmbeddedResource Include="..\..\..\shared\design-system\components\bundle.js" LogicalName="web/ds/bundle.js" />
+  </ItemGroup>
+
+  <!-- Die eigene Seite (Web\...): ein Name je Datei, relativ zu Web\ -->
+  <ItemGroup>
+    <EmbeddedResource Include="Web\**\*" LogicalName="web/%(RecursiveDir)%(Filename)%(Extension)" />
+  </ItemGroup>
+
+</Project>

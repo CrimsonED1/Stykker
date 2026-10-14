@@ -19,7 +19,7 @@ Inside the repository:
 | what the tools are and how to build them | [`README.md`](README.md) |
 | where the suite is heading (StykkerNode, the hub, shared pairing) and what is built | [`docs/plan-stykkernode.md`](docs/plan-stykkernode.md) |
 | what comes next, in order, and which decisions are open | [`docs/naechste-schritte.md`](docs/naechste-schritte.md) |
-| how one tool works and its own rules | that tool's folder: `llm/AGENTS.md`, `cmd/PLAN.md`, the `README.md` of `hud/`, `sys/`, `shared/` |
+| how one tool works and its own rules | that tool's folder: `llm/AGENTS.md`, `cmd/PLAN.md`, the `README.md` of `hud/`, `sys/`, `starter/`, `shared/` |
 | what the hub should look like | [`docs/design/mockup-zentrale.html`](docs/design/mockup-zentrale.html) |
 
 ## Branches

@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- StykkerStarter.Core: Konfiguration, Versionserkennung, Kopieren mit Prüfung, Ablauf von Start, Update und
+       Rücksprung. Kennt kein Windows: Prozesse und Starten liegen hinter Schnittstellen. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>StykkerStarter.Core</AssemblyName>
+    <RootNamespace>StykkerStarter.Core</RootNamespace>
+  </PropertyGroup>
+
+</Project>
