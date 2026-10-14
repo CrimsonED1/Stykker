@@ -164,7 +164,7 @@ public sealed class PairingStore
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { /* dann eben ohne Kopie */ }
     }
 
-    private static string ReadShared(string path)
+    internal static string ReadShared(string path)
     {
         // Ein Schreiber ersetzt die Datei gerade: kurz warten statt zu scheitern
         for (int attempt = 1; ; attempt++)
@@ -180,7 +180,7 @@ public sealed class PairingStore
     }
 
     // Erst in eine Temp-Datei mit eindeutigem Namen, auf den Datenträger schreiben (Flush(true)), dann ersetzen.
-    private static void WriteAtomic(string path, string text)
+    internal static void WriteAtomic(string path, string text)
     {
         var tmp = path + "." + Guid.NewGuid().ToString("N")[..8] + ".tmp";
         try
