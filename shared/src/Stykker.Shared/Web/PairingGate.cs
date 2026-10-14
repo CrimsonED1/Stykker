@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.NetworkInformation;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Stykker.Pairing;
@@ -13,6 +14,7 @@ public enum GateAction
     Unauthorized,     // von außen ohne gültiges Gerät, kein Seitenaufruf (API): 401
     RedirectToPair,   // von außen ohne gültiges Gerät, Seitenaufruf: zur Anmeldeseite
     Pair,             // die Anmeldung selbst
+    WrongHost,        // der Host-Kopf ist kein Name dieser Maschine (DNS-Rebinding): vor allem anderen abgewiesen
 }
 
 public sealed record PairingGateOptions(string Module, string Product, string Home = "/");
@@ -23,6 +25,8 @@ public sealed record PairingGateOptions(string Module, string Product, string Ho
 //     gemeinsamen Ablage (Stykker.Pairing): ein Gerät, das sich an einem Modul angemeldet hat, kennt auch dieses.
 //   - Ohne alles von außen erreichbar: /api/ping, die Anmeldung unter /pair und das, was der Browser zum Installieren
 //     als App ohne Cookie holt (Manifest, Symbole).
+//   - Vor allem anderen: der Host-Kopf muss ein Name dieser Maschine sein (ServiceProxyRules.HostAllowed). Sonst
+//     DNS-Rebinding: eine fremde Seite zeigt ihren Namen auf 127.0.0.1, und die Anfrage sähe wie Loopback aus.
 // Hinter einer Weiterleitung auf derselben Maschine sähe jede Anfrage wie Loopback aus. Das Modul darf dann nur mit
 // einem Schlüssel des Knotens der weitergereichten Herkunft trauen (Plan, Abschnitt 4.6) – das gibt es noch nicht.
 public static class PairingGate
@@ -44,6 +48,14 @@ public static class PairingGate
         return wantsPage ? GateAction.RedirectToPair : GateAction.Unauthorized;
     }
 
+    // Mit dem Host-Kopf: der wird vor allem anderen geprüft, auch von dieser Maschine und auch für /api/ping, /pair und das
+    // Manifest. machineName und domainName wie bei ServiceProxyRules.HostAllowed (domainName null, wenn keine DNS-Endung).
+    public static GateAction Decide(string? hostHeader, string machineName, string? domainName, bool loopback, bool remoteEnabled,
+        string path, bool wantsPage, string? role) =>
+        ServiceProxyRules.HostAllowed(hostHeader, machineName, domainName)
+            ? Decide(loopback, remoteEnabled, path, wantsPage, role)
+            : GateAction.WrongHost;
+
     // Ohne Anmeldung erreichbar: nichts davon verrät etwas über die Maschine.
     public static bool IsOpen(string path) =>
         path.Equals("/api/ping", StringComparison.OrdinalIgnoreCase)
@@ -53,6 +65,9 @@ public static class PairingGate
     // Als erstes in die Kette: auch statische Dateien liegen dahinter.
     public static void Use(WebApplication app, PairingService pairing, PairingGateOptions options)
     {
+        // Der Name, unter dem dieser PC erreichbar ist (für die Host-Prüfung)
+        string machineName = Environment.MachineName;
+        string? domainName = IPGlobalProperties.GetIPGlobalProperties().DomainName;
         app.Use(async (context, next) =>
         {
             var request = context.Request;
@@ -64,9 +79,14 @@ public static class PairingGate
                 ? PairingRoles.Admin
                 : remoteEnabled ? pairing.RoleOf(request.Cookies[CookieName], options.Module, AddressText(remote)) : null;
             bool wantsPage = HttpMethods.IsGet(request.Method) && !path.StartsWith("/api/", StringComparison.OrdinalIgnoreCase);
+            string? hostHeader = request.Headers.Host.ToString();
 
-            switch (Decide(loopback, remoteEnabled, path, wantsPage, role))
+            switch (Decide(hostHeader, machineName, domainName, loopback, remoteEnabled, path, wantsPage, role))
             {
+                case GateAction.WrongHost:
+                    context.Response.StatusCode = StatusCodes.Status403Forbidden;
+                    await context.Response.WriteAsync("Wrong host name. Open this page by the PC's address.");
+                    return;
                 case GateAction.Allow:
                     if (path.Equals("/api/ping", StringComparison.OrdinalIgnoreCase))
                     {
