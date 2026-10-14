@@ -31,6 +31,7 @@ Die Reihenfolge folgt einem Ziel: **die Zentrale als App auf dem Handy, mit eine
   - *Empfehlung: Tailscale.* `tailscale cert` stellt ein echtes Zertifikat für den Namen der Maschine im Tailnet aus. Kein Aufwand am Handy, aber nur über Tailscale erreichbar.
   - *Eigene Zertifizierungsstelle fürs Heimnetz:* geht ohne Tailscale, dafür muss jedes Handy der Stelle einmal vertrauen.
 - **Nicht** `tailscale serve` davorsetzen: dann käme jede Anfrage von dieser Maschine, und die Prüfung hielte sie für lokal (Abschnitt 4.6 im Plan).
+- **Dazu (Host-Regel):** Der Tailscale-Name des PCs gehört in `"hostNames"` von `stykker.json`. Sonst weist die Prüfung ihn ab (Abschnitt 10 im Plan). Der Eintrag gilt für HUD, SYS und LLM.
 
 ### 3. StykkerLLM an die gemeinsame Kopplung (umgesetzt am 2026-10-13)
 

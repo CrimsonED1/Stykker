@@ -99,6 +99,9 @@ Architecture notes: `docs/architecture.md`. UI rules: `docs/ui.md`. Model hosts:
 - Pairing (devices, access code, roles, hosts) is one file for HUD, SYS and LLM, DPAPI on Windows: `pairing.dat`. With the
   default data folder it is `%APPDATA%\Stykker\pairing.dat`; with another `--data-dir` it is `pairing.dat` inside that
   folder. `--pairing-file <file>` picks any file. A `--data-dir` that is the default folder counts as the default.
+- `--hub-config <file>` names the `stykker.json` whose `"hostNames"` count for the host name check. Without it the hub's
+  file is used only with the default data folder. The host name rule itself: `Core/HostNameRule.cs` and `HostNames` in
+  `shared/src/Stykker.Pairing`; the two model-host ways are exempt there.
 - The old `access.dat` and `hosts.dat` are imported once and then kept as `access.dat.bak` and `hosts.dat.bak`.
 - Data folder: `settings.json`, `server.key`, `eval-*.json`, `eval-results/`, recordings, logs, and the two `.bak` files.
 

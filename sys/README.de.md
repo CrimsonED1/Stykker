@@ -27,7 +27,7 @@ Die Liste zeigt die Prozesse dieser Maschine. Was eine Anfrage darf, hängt davo
 - **Dieser PC.** Sieht die Liste, beendet Prozesse, ändert Prioritäten und öffnet Dateiorte. Anfragen von hier gelten als `admin`.
 - **Geräte im Netz.** Nur mit eingeschaltetem Netzschalter beim Start und nur mit einem gekoppelten Gerät. Ein `viewer` sieht die Liste und sonst nichts. Ein `admin` darf zusätzlich Prozesse beenden und Prioritäten ändern. Ein Gerät ohne Rolle für SYS gilt als `viewer`.
 - **„Open file location“** funktioniert nur an diesem PC, für jede Rolle. Ein Gerät im Netz bekommt `403` mit der Meldung „The Explorer opens on the PC. Use this from the PC itself.“
-- **Host-Name.** Eine Anfrage muss eine IP-Adresse, `localhost` oder den Namen dieses PCs nennen (mit oder ohne seine eigene DNS-Endung). Jeder andere Host-Name bekommt `403`, auch von diesem PC. So scheitert DNS-Rebinding.
+- **Host-Name.** Eine Anfrage muss eine IP-Adresse, `localhost` oder den Namen dieses PCs nennen (mit oder ohne seine eigene DNS-Endung). Jeder andere Host-Name bekommt `403`, auch von diesem PC. So scheitert DNS-Rebinding. Namen aus `"hostNames"` auf oberster Ebene der `stykker.json` der Zentrale sind ebenfalls erlaubt, etwa `"hostNames": ["pc.example.ts.net"]`.
 - **Herkunft.** Eine Anfrage mit einem `Origin`-Kopf muss die eigene Herkunft der Seite tragen. Ohne `Origin` muss `Sec-Fetch-Site` `same-origin` sein oder fehlen. Alles andere wird mit `403` abgewiesen.
 - **Nur JSON.** Ohne `Content-Type: application/json` antworten die Aktionen mit `415`, damit ein Formular auf einer anderen Website sie nicht erreicht.
 - **Nie angefasst:** PID 4 und darunter (System und Ähnliches) sowie StykkerSYS selbst. Der Server lehnt mit `409` ab und sagt, warum.

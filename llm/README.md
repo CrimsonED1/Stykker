@@ -123,6 +123,10 @@ stykker help | version
 ## Phone and other PCs
 
 - **Home/VPN switch** (☰ → Phone access): off = only this PC, on = reachable in your network, over a VPN or Tailscale.
+- **Host names**: every request must name this PC (`127.0.0.1`, `localhost`, its name or its DNS suffix). With Home/VPN on, an
+  address and the names under `"hostNames"` in `stykker.json` count too, for example a Tailscale name:
+  `"hostNames": ["pc.example.ts.net"]`. Model hosts are the one exception: they connect and pair under any name, because
+  their own token and code are checked (see [docs/hosts.md](docs/hosts.md)).
 - **Sign in**: the phone scans the QR code or types the **six-digit code** (valid 10 minutes, once). The code is in
   ☰ → Phone access and in the terminal display (`c`). Or the new device shows a code and you approve it on a device that is
   already signed in.

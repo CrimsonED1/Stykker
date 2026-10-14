@@ -27,7 +27,7 @@ The list shows the processes of this machine. What a request may do depends on w
 - **This PC.** Sees the list, ends processes, changes priorities and opens file locations. Requests from here count as `admin`.
 - **Devices on the network.** Only with the network switch on when the program starts, and only with a paired device. A `viewer` sees the list and nothing more. An `admin` may also end processes and change priorities. A device with no role for SYS counts as `viewer`.
 - **Open file location** works on this PC only, for every role. A device on the network gets `403` with the message "The Explorer opens on the PC. Use this from the PC itself."
-- **Host name.** A request must name an IP address, `localhost`, or this PC's name (with or without its own DNS suffix). Any other host name gets `403`, even from this PC, which blocks DNS rebinding.
+- **Host name.** A request must name an IP address, `localhost`, or this PC's name (with or without its own DNS suffix). Any other host name gets `403`, even from this PC, which blocks DNS rebinding. Names listed under `"hostNames"` at the top level of the hub's `stykker.json` are allowed as well, for example `"hostNames": ["pc.example.ts.net"]`.
 - **Origin.** A request that carries an `Origin` header must carry this page's own origin. Without an `Origin` header, `Sec-Fetch-Site` must be `same-origin` or absent. Anything else is refused with `403`.
 - **JSON only.** Without `Content-Type: application/json` the actions answer `415`, so a form on another website cannot reach them.
 - **Never touched:** PIDs 4 and below (System and the like) and StykkerSYS itself. The server refuses with `409` and says why.
@@ -79,6 +79,7 @@ src\StykkerSys.Server\bin\Debug\net10.0\StykkerSYS-Server.exe --port 8077
 | `--gpu` (window) | draw through the graphics card. Without it the window draws in software |
 | `--pairing-file <file>` | the pairing file: devices, code and network switch. Default `%APPDATA%\Stykker\pairing.dat` |
 | `--hub-port <number>` | port of the hub that may show this page in a frame (default 8079) |
+| `--hub-config <file>` | the hub's `stykker.json`, only its `"hostNames"` are read (default `%APPDATA%\Stykker\stykker.json`) |
 
 Environment variable for the design system: `STYKKERSYS_DESIGN_SYSTEM`.
 

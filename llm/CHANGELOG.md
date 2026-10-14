@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## Unreleased
 
 ### Changed
+- **Host name check on every path.** The server refuses a request whose Host header does not name this PC, before anything
+  else: `/pair`, `/api/ping`, `/api/state` and all other paths, also with Home/VPN off. The two model-host ways
+  (`/hosts/connect`, `POST /hosts/pair`) are the exception; they keep their own token and code checks. Behaviour change:
+  with Home/VPN off, `/api/ping` now answers `403` to a name other than a loopback name (it answered `200` before).
 - **One sign-in for HUD, SYS and LLM.** Devices, the access code, the roles and the model hosts are in the shared file
   `pairing.dat`. Roles are per module: a device that signed in at the hub is a *Viewer* here until it is changed there.
   The old `access.dat` and `hosts.dat` are imported once and kept as `access.dat.bak` and `hosts.dat.bak`.
@@ -16,6 +20,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `/api/ping` adds `module`, `version` and `gate`. Nothing was renamed.
 
 ### Added
+- `--hub-config <file>` for the server, and `"hostNames"` in `stykker.json`: further names this PC answers to, such as a
+  Tailscale name (plain DNS names only).
 - `--pairing-file <file>` for the server, to use another pairing file (tests, test runs).
 - The hub shows the LLM role of each device and changes it.
 

@@ -124,6 +124,10 @@ stykker help | version
 ## Handy und andere PCs
 
 - **Schalter Home/VPN** (☰ → Phone access): aus = nur dieser PC, an = erreichbar im Netz, über VPN oder Tailscale.
+- **Host-Namen**: Jede Anfrage muss diesen PC nennen (`127.0.0.1`, `localhost`, seinen Namen oder seine DNS-Endung). Mit
+  eingeschaltetem Schalter zählen außerdem eine IP-Adresse und die Namen unter `"hostNames"` in `stykker.json`, etwa ein
+  Tailscale-Name: `"hostNames": ["pc.example.ts.net"]`. Eine Ausnahme sind die Model-Hosts: sie verbinden und koppeln sich
+  unter jedem Namen, weil ihr eigenes Token und ihr Code geprüft werden (siehe [docs/hosts.md](docs/hosts.md)).
 - **Anmelden**: Das Handy scannt den QR-Code oder tippt den **sechsstelligen Code** ein (10 Minuten gültig, einmal). Den Code
   zeigen ☰ → Phone access und die Terminal-Anzeige (`c`). Oder das neue Gerät zeigt einen Code, und du gibst ihn auf einem
   schon angemeldeten Gerät frei.

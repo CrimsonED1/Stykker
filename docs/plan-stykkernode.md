@@ -387,3 +387,29 @@ Noch nicht geprüft:
 - **LLM.** Dort prüft `AccessGate` den Host nur bei ausgeschaltetem Netz. Bei eingeschaltetem Netz braucht es dieselbe Regel. LLM hängt nicht an `Stykker.Shared`; offen ist, ob die Regel dorthin wandert oder kopiert wird.
 - **Tailscale-Namen (MagicDNS).** Sie werden abgewiesen, außer die DNS-Endung des PCs ist das Tailnet. Offen ist, ob das Tailnet in `stykker.json` eingetragen werden soll.
 - **Geräte im Netz.** Der Probelauf kam von 127.0.0.1. Ein Handy über die Netzadresse ist nicht geprüft.
+
+### Host-Regel für HUD, SYS, Weiterleitung und LLM (Auftrag Host-Regel, 2026-10-14)
+
+Eine Regel für alle drei Module und die Weiterleitung, in `Stykker.Pairing` (`HostNames`): der Rechnername, seine DNS-Endung,
+eine IP-Adresse, `localhost` und die Zusatznamen aus `stykker.json` (Feld `"hostNames"`, nur einfache DNS-Namen). Bei HUD und
+SYS gelten die Zusatznamen auch bei ausgeschaltetem Netz (dort nur über Loopback erreichbar); bei LLM nur bei eingeschaltetem
+Netz, ausgeschaltet bleibt es bei den Loopback-Namen. `--hub-config` nennt die Datei; LLM liest sie ohne `--hub-config` nur,
+wenn der Datenordner die Vorgabe ist.
+
+LLM prüft den Host-Kopf jetzt vor allem anderen und für jeden Pfad (`AccessGate`, Schritt 0; Regel in `HostNameRule`). Die
+Ausnahme sind die zwei Wege der Model-Hosts, `/hosts/connect` und `POST /hosts/pair`. Beide verleihen über ein Browser-Cookie
+keine Rechte: `/hosts/connect` verlangt das Host-Token im Kopf `X-Stykker-Host`, `/hosts/pair` den Host-Code, der nur auf der
+angemeldeten Seite steht und nach fünf Fehlversuchen wechselt. Ein mit einem Namen gekoppelter StykkerHost bleibt darum
+verbunden.
+
+Geprüft (2026-10-14):
+
+- **Build:** Shared, HUD, SYS und LLM ohne Warnungen (LLM in Release und Debug).
+- **Tests:** `Stykker.Pairing.Tests` 114 von 114 (vorher 51), `Stykker.Shared.Tests` 178 von 178 (vorher 167), SYS 21 von 21, LLM 623 bestanden und 1 übersprungen (vorher 612 und 1).
+- **Probelauf:** HUD auf Port 8090, SYS auf Port 8092, LLM auf Port 8093 (Debug, `--sim`), jeweils mit Ablagen im Temp-Ordner, Anfragen mit `curl` von 127.0.0.1. Fremder Host bei LLM: 403 auf `/api/ping`, `/api/state`, `/pair` und `POST /pair/request`, bei eingeschaltetem und bei ausgeschaltetem Netz. In der Antwort auf `/pair` steht kein Zugangscode. Die zwei Model-Host-Wege lassen den fremden Host durch; dort antwortet der Endpunkt selbst (401 bei falschem Code, 400 ohne WebSocket). Der Zusatzname wirkt bei LLM nur mit eingeschaltetem Netz.
+
+Folgen, aus dem Code und nicht im Probelauf geprüft:
+
+- LLM bei ausgeschaltetem Netz antwortet `/api/ping` einem fremden Namen mit 403 (vorher 200). Die Zentrale kann LLM dadurch als nicht erreichbar zeigen, wenn sie unter dem Rechnernamen geöffnet ist und das Netz aus ist.
+
+Noch nicht geprüft: ein echter StykkerHost über den Namen (nur der Endpunkt mit falschem Code); ein Handy oder ein zweiter PC über die Netzadresse; die Weiterleitung von Qwen Code mit einem Zusatznamen.
