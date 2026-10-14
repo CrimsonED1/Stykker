@@ -1,5 +1,10 @@
 # StykkerCMD: Mini-Plan (MVP)
 
+> **Hinweis (2026-10-14): Stand überholt.** CMD bekommt eine Web-Oberfläche (Blazor im Fenster, wie HUD und SYS) und
+> eine Server-Version; Avalonia entfällt (Entscheidung E, [docs/plan-stykkernode.md](../docs/plan-stykkernode.md),
+> Abschnitte 4.8 und 10). Vorher ist zu klären, welche Ordner aus dem Netz erreichbar sein dürfen
+> ([docs/naechste-schritte.md](../docs/naechste-schritte.md), Schritt 7). Der Plan unten ist nicht umgeschrieben.
+
 Stand: 9. Oktober 2026. Nur Planung, es wurde nichts gebaut oder installiert.
 Repo: https://github.com/CrimsonED1/Stykker-CMD (Branch `main`, Lizenz Apache-2.0)
 Status: Entwurf, noch nicht freigegeben.
