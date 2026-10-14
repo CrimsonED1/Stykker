@@ -35,9 +35,10 @@ if (args.Contains("--help") || args.Contains("-h"))
         /api/snapshot (the current reading and the history as JSON), /api/hub (the modules and whether they run).
 
         The hub lists the modules from %APPDATA%\Stykker\stykker.json; without that file SYS (17402) and LLM (17401).
-        A foreign service with "external", "port" and "target" (http://127.0.0.1:<port>) is forwarded on its port,
-        and "start" (command, args, env, tokenEnv) starts it when nothing answers on the target. Only this PC
-        and paired devices with the admin role for that module get through; services.dat keeps its token.
+        A foreign service with "external", "port" and "target" (http://127.0.0.1:<port>) is forwarded on its port.
+        Its token comes from "tokenFile" ({ "path", "protection": "none" or "dpapi-user:<name>" }), if given. The hub
+        starts no service: "start" is ignored. Only this PC and paired devices with the admin role for that module
+        get through.
         stykker.json may also list "hostNames" (top level): further names this PC answers to, such as its Tailscale name.
 
         The server binds the port immediately and reads nothing until a viewer appears: the measuring loop
@@ -73,7 +74,7 @@ if (!first)
 
 var builder = WebApplication.CreateBuilder(new WebApplicationOptions { Args = args, ContentRootPath = AppContext.BaseDirectory });
 // Die Weiterleitungen fremder Dienste (docs/plan-stykkernode.md, Abschnitt 4.5): je Dienst ein eigener Port, neben dem der Zentrale.
-var routes = ServiceForwarding.Plan(hubModules, ServiceTokens.NextTo(pairingFile), port, Console.WriteLine);
+var routes = ServiceForwarding.Plan(hubModules, port, Console.WriteLine);
 // Ohne Netzschalter nur die eigene Maschine. Mit ihm auch das Netz – dort prüft PairingGate jede Anfrage.
 builder.WebHost.UseUrls(ServiceForwarding.Urls(port, network, routes));
 // Aus dem Build-Ordner (nicht veröffentlicht): CSS und die Seiten aus den Quellen statt aus wwwroot
@@ -128,11 +129,15 @@ app.MapGet("/api/hub", async (HttpContext context) =>
     var answers = await Task.WhenAll(visible.Select(async module =>
     {
         var address = module.AddressFor(context.Request.Scheme, host);
-        // Eine Weiterleitung zeigt, ob der Dienst läuft: die Frage geht an sein Ziel, nicht an den Weiterleitungsport.
+        // Eine Weiterleitung zeigt, ob der Dienst läuft: ihr Ziel antwortet und das Token ist lesbar (sonst 503).
         // Ohne eigene Adresse ist der Eintrag die Zentrale selbst: sie antwortet gerade, also läuft sie.
-        bool up = module.Target != null
-            ? await HubProbe.AnswersAsync(module, module.Target, context.RequestAborted)
-            : address == null || await HubProbe.AnswersAsync(module, address, context.RequestAborted);
+        bool up;
+        if (module.External && module.Target != null)
+        {
+            var route = routes.FirstOrDefault(r => r.Id == module.Id);
+            up = route != null && (await route.ResolveAsync(context.RequestAborted)).Target != null;
+        }
+        else up = address == null || await HubProbe.AnswersAsync(module, address, context.RequestAborted);
         return new { id = module.Id, name = module.Name, url = address ?? "/", external = module.External, up };
     }));
     return Results.Json(new { modules = answers });
@@ -233,12 +238,6 @@ catch (IOException ex)
     Environment.ExitCode = 1;
     return;
 }
-// Eigene Dienste starten (nur wenn auf ihrem Ziel niemand antwortet). Beim Ende der Zentrale beendet sie nur diese Prozesse.
-var services = new ServiceProcesses(Console.WriteLine);
-foreach (var route in routes) await services.StartAsync(route);
-// Beim Beginn des Herunterfahrens, nicht erst danach: offene Verbindungen über die Weiterleitung halten Kestrel sonst
-// bis zu seiner Frist auf, und der Dienst liefe in dieser Zeit weiter.
-app.Lifetime.ApplicationStopping.Register(services.StopOwned);
 if (!noBrowser) ToolHost.OpenBrowser(url);
 
 // Tray-Symbol: ohne Fenster wäre der Server sonst nur über seine Adresse zu finden. Fehler sind kein Grund für

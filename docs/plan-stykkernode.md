@@ -335,39 +335,37 @@ Noch nicht geprüft:
 
 ### Fremde Dienste in der Zentrale: Qwen Code (Schritt 4, 2026-10-14)
 
-Die Zentrale leitet einen fremden Dienst auf einem eigenen Port weiter und startet ihn, wenn auf seinem Ziel nichts antwortet. Qwen Code ist der erste Fall. Am Handy braucht es dafür kein Qwen-Token mehr.
+Die Zentrale leitet einen fremden Dienst auf einem eigenen Port an sein festes Ziel weiter. Das Token kommt aus einer Datei, die die Desktop-App des Dienstes ablegt. Die Zentrale startet keinen Dienst mehr. Qwen Code ist der erste Fall: seine Desktop-App betreibt den Daemon auf einem festen Port (Einstellung „Daemon port“, 17451). Am Handy braucht es dafür kein Qwen-Token.
 
 | Wo | Was |
 |---|---|
-| `shared/src/Stykker.Shared/Config/HubModules.cs` | Ein fremder Eintrag mit `port` bekommt `target` (nur `http://127.0.0.1:<Port>` oder `localhost`) und optional `start` (`command`, `args`, `env`, `tokenEnv`). Ein unvollständiges `start` gilt als keins. |
-| `shared/src/Stykker.Pairing/ServiceTokens.cs` | Ein Token je Modul-Kennung in `services.dat`, neben `pairing.dat`, mit DPAPI geschützt (Zusatzwert `Stykker.services.v1`). Ohne Schutz wird nichts im Klartext geschrieben. |
-| `shared/src/Stykker.Shared/Web/ServiceProxyRules.cs` | Die Entscheidung je Anfrage, in dieser Reihenfolge: Host-Name, Herkunft, dann diese Maschine, Netzschalter, Gerät, Rolle `admin` für das Modul. Dazu Cookie-Filter, Herkunftsregel und `frame-ancestors`. |
-| `hud/src/StykkerHud.Server/ServiceForwarding.cs` | Die Weiterleitung mit `Yarp.ReverseProxy` 2.3.0, dem einzigen neuen Paket, nur in diesem Projekt. Setzt Host, Herkunft und das Token, entfernt das Cookie des Geräts und `X-Frame-Options`. Ein Port, der dem der Zentrale gleicht, wird nicht weitergeleitet. |
-| `hud/src/StykkerHud.Server/ServiceProcesses.cs` | Startet den Dienst nur, wenn `target` nicht antwortet. Das Token geht über die Umgebung; die Ausgabe ins Log mit `***` statt des Tokens. Beendet wird nur der eigene Prozess mit seinen Kindern, über die PID. Ein Job-Objekt beendet ihn mit der Zentrale, auch bei hartem Schließen. |
+| `shared/src/Stykker.Shared/Config/HubModules.cs` | Ein fremder Eintrag mit `port` und `target` (nur `http://127.0.0.1:<Port>` oder `localhost`) leitet weiter. Optional `tokenFile` mit `path` (Umgebungsvariablen aufgelöst) und `protection` (`none` oder `dpapi-user:<Zusatzwert>`); unbekannte Werte lassen nur die Token-Datei weg. `start` wird gelesen, aber nicht mehr ausgeführt. |
+| `shared/src/Stykker.Pairing/ServiceTokenFile.cs` | Das Token aus der Datei: als Text (`none`, Leerraum am Ende fällt weg) oder als roher DPAPI-Blob des Benutzers mit dem Zusatzwert. Liest neu, wenn Änderungszeit oder Länge sich ändern. Gründe enthalten nie das Token. |
+| `shared/src/Stykker.Shared/Web/ServiceProxyRules.cs` | Die Entscheidung je Anfrage, in dieser Reihenfolge: Host-Name, Herkunft, dann diese Maschine, Netzschalter, Gerät, Rolle `admin` für das Modul. Dazu Cookie-Filter, Herkunftsregel, `frame-ancestors` und die Texte der 503-Antwort. |
+| `hud/src/StykkerHud.Server/ServiceForwarding.cs` | Die Weiterleitung mit `Yarp.ReverseProxy` 2.3.0, dem einzigen neuen Paket, nur in diesem Projekt. Antwortet `target` nicht oder ist die Token-Datei nicht lesbar, kommt 503 mit dem Text dazu. Setzt Host, Herkunft und das Token, entfernt das Cookie des Geräts und `X-Frame-Options`. Ein Port, der dem der Zentrale gleicht, wird nicht weitergeleitet. |
 | `hud/src/StykkerHud.Server/Program.cs` | `--hub-config`, `--pairing-file`. Fremde Module sieht nur diese Maschine und ein Gerät mit Rolle `admin` für das Modul. Eine Spalte je Modul in der Geräteliste. WebSockets. |
-| `hud/tools/check-proxy.mjs` | Prüft zwölf Fälle gegen die `cli.js` von Qwen Code, mit Temp-Ordnern und den Ports 8090, 8091, 8092, 41998 und 41999. |
+| `hud/tools/check-proxy.mjs` | Startet den Test-Daemon aus dem Qwen-Fork selbst, wie die Desktop-App ihn betreibt, mit einer Token-Datei im Temp-Ordner. Prüft 59 Fälle. Ports: 8090, 8091, 8092, 41998, Daemon 17451 (sonst 41999). |
 
 Geprüft (2026-10-14):
 
 - **Build:** Shared, HUD, SYS und LLM (Release) ohne Warnungen.
-- **Tests:** `Stykker.Shared.Tests` 145 von 145 (vorher 63), `Stykker.Pairing.Tests` 51 von 51 (vorher 42), `StykkerLlm.Tests` 612 bestanden und 1 übersprungen (wie vorher), SYS 21 von 21. Das HUD hat kein Testprojekt; geprüft wird es mit `check-proxy`.
-- **`check-proxy`:** 48 von 48. Gezeigt wird: fremder Name im Host-Kopf gibt 403, auch mit passender Origin und als WebSocket (DNS-Rebinding); fremde Herkunft gibt 403, auch als WebSocket, am PC wie am Handy; das Cookie des Geräts geht nicht weiter, das Token kommt dazu; 20 Teile eines Stroms kommen während des Laufs an; 50 Nachrichten über WebSocket kommen zurück. Der Dienst hört nur auf `127.0.0.1` mit `--require-auth`, und das Token steht weder in der Kommandozeile noch im Log. Das Handy ohne Gerät bekommt 401, ein Zuschauer 403 und den Dienst nicht in der Liste; ein Admin bekommt 200 und Qwen im Frame. Die Zentrale endet mit `taskkill` ohne `/F`, und ein Dienst, den sie nicht gestartet hat, bleibt unberührt. Eine Konfiguration ohne die neuen Felder bleibt unverändert.
+- **Tests:** `Stykker.Shared.Tests` 194 von 194 (vorher 189), `Stykker.Pairing.Tests` 128 von 128 (vorher 118: die 9 Tests der Dienst-Tokens fallen weg, 19 für die Token-Datei kommen dazu), `StykkerLlm.Tests` 639 bestanden und 1 übersprungen (wie vorher). SYS nur gebaut, kein Testlauf in diesem Schritt. Das HUD hat kein Testprojekt; geprüft wird es mit `check-proxy`.
+- **`check-proxy`:** 59 von 59. Gezeigt wird: fremder Name im Host-Kopf gibt 403, auch mit passender Origin und als WebSocket (DNS-Rebinding); fremde Herkunft gibt 403, auch als WebSocket, am PC wie am Handy; das Cookie des Geräts geht nicht weiter, das Token aus der Datei kommt dazu, und ohne `tokenFile` wird kein Authorization gesendet; 20 Teile eines Stroms kommen während des Laufs an; 50 Nachrichten über WebSocket kommen zurück. Der Test-Daemon hört nur auf `127.0.0.1` mit `--require-auth`, und das Token steht weder in der Kommandozeile noch im Log. Stirbt der Daemon (über die eigene PID beendet), antwortet die Zentrale 503 mit dem Text und meldet `up: false`. Fehlt die Token-Datei, kommt 503 mit dem Token-Text, und nach dem Wiederanlegen geht die nächste Anfrage durch. Ein neues Token in der Datei und ein neu gestarteter Daemon: die nächste Anfrage geht durch. Ein Ziel auf einem fremden Rechner (`192.0.2.10`) wird abgelehnt, und kein Port ist offen. Das Handy ohne Gerät bekommt 401, ein Zuschauer 403 und den Dienst nicht in der Liste; ein Admin bekommt 200 und Qwen im Frame. Die Zentrale endet mit `taskkill` ohne `/F`, und ein Daemon, den sie nicht besitzt, läuft weiter. Eine Konfiguration ohne die neuen Felder bleibt unverändert.
+- **DPAPI:** `Stykker.Pairing.Tests` liest einen Blob, den `WindowsDpapi` mit dem Zusatzwert der Desktop-App selbst erzeugt hat, und lehnt einen anderen Zusatzwert ab.
 - **Handy:** ein Browser auf dieser Maschine über deren LAN-Adresse. Keine Bilder gemacht.
 
 Dabei entschieden, weil die Umsetzung es verlangte:
 
-- **Eigener Dienst statt Local Control.** Begründung in [naechste-schritte.md](naechste-schritte.md), Schritt 4.
-- **Job-Objekt und Beenden des ganzen Baums.** Der Start von Qwen gibt den eigentlichen Server an einen Kindprozess weiter. Ein Beenden nur des Startprozesses ließ den Server laufen.
-- **`ApplicationStopping` statt `ApplicationStopped`.** Bei `taskkill` ohne `/F` lief `ApplicationStopped` nicht mehr, und der Dienst blieb. Das Aufräumen hängt nun am früheren Ereignis.
-- **Kein Klartext für Token.** Schlägt DPAPI fehl, bricht die Ablage ab, statt `services.dat` im Klartext zu schreiben.
-- **`tokenEnv` ist Pflicht.** Ohne den Namen der Umgebungsvariable ginge das Token nur über die Kommandozeile.
+- **Kein eigener Daemon mehr (Kurswechsel, 2026-10-14).** Die Desktop-App betreibt den Daemon auf festem Port. Die Zentrale liest nur das Token aus einer Datei und startet nichts. Begründung in [naechste-schritte.md](naechste-schritte.md), Schritt 4.
+- **Token nur lesen.** Die Zentrale schreibt kein Token mehr und hat keine eigene Ablage dafür. Eine Token-Datei mit anderem Schutz oder eine, die sich nicht lesen lässt, gibt 503; ein Klartext-Ersatz gibt es nicht.
 - **Host-Kopf nur mit dem eigenen Namen.** Die Weiterleitung antwortet nur unter einer IP-Adresse, `localhost`, dem Rechnernamen oder dem Rechnernamen mit der DNS-Endung dieses PCs. Jeder andere Name bekommt 403, auch von dieser Maschine. Sonst könnte eine fremde Seite, deren Name auf 127.0.0.1 zeigt, den Dienst mit dem Token erreichen (DNS-Rebinding). Ein Name wie `<Rechnername>.<fremde Domain>` ist deshalb abgewiesen, weil der Angreifer die Domain besitzen kann.
 
 Noch nicht geprüft:
 
 - **Echtes Handy, Windows-Firewall, Tailscale.** Wie bei den Modulen oben.
 - **Beenden mit Strg+C.** Die Prüfung nutzt `taskkill` ohne `/F`. Der Weg über Strg+C ist nicht geprüft.
-- **Andere fremde Dienste.** Geprüft ist nur Qwen Code. `start` setzt voraus, dass ein Dienst `--hostname` und `--require-auth` kennt; für andere Dienste ist das nicht geprüft.
+- **Andere fremde Dienste.** Geprüft ist nur Qwen Code. Ein anderer Dienst braucht einen festen Port und eine Token-Datei in seiner Desktop-App; für keinen anderen Dienst ist das geprüft.
+- **Die echte Token-Datei der Desktop-App.** Geprüft ist das Lesen eines DPAPI-Blobs mit dem Zusatzwert, den `daemon_connection.rs` nimmt, mit `WindowsDpapi` nachgebildet. Die Datei der laufenden App wurde nicht gelesen.
 - **Arbeitsordner des Dienstes.** Er erbt den der Zentrale und lässt sich noch nicht einstellen.
 - **Tailscale-Namen (MagicDNS).** Ein Name wie `<PC>.<Tailnet>.ts.net` wird nur angenommen, wenn die DNS-Endung des PCs genau dieses Tailnet ist. Sonst ist er abgewiesen. Offen ist, ob das Tailnet als Angabe in `stykker.json` eingetragen werden soll.
 - **Die Module selbst.** Der Host-Kopf wird an der Weiterleitung geprüft und seit „Host-Prüfung für HUD und SYS“ auch auf den Ports von HUD und SYS. LLM prüft ihn nur, solange der Netzschalter aus ist (`AccessGate`, Prüfung 5 dort). Bei eingeschaltetem Netz besteht dort DNS-Rebinding weiter. Das ist nicht geschlossen.

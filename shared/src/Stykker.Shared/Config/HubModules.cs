@@ -4,14 +4,20 @@ using Stykker.Pairing;
 
 namespace Stykker.Shared.Config;
 
-// Wie die Zentrale einen eigenen Dienst startet (docs/plan-stykkernode.md, Abschnitt 4.1 bis 4.3): das Programm, seine
-// Argumente, die Umgebung und der Name der Variable, in die das Token kommt. Das Token steht nie in der Kommandozeile.
+// Ein "start" aus stykker.json: das Programm, seine Argumente, die Umgebung und der Name der Variable. Die Zentrale
+// startet keine Dienste mehr; das Feld wird nur gelesen, damit sie das Ignorieren einmal ins Log schreiben kann.
 public sealed record HubStart(string Command, IReadOnlyList<string> Args, IReadOnlyDictionary<string, string> Env, string TokenEnv);
 
+// Woher ein fremder Dienst sein Token nimmt: die Datei (Pfad mit Umgebungsvariablen aufgelöst) und ihr Schutz
+// ("none" oder "dpapi-user:<Zusatzwert>"; Stykker.Pairing, ServiceTokenFile).
+public sealed record HubTokenFile(string Path, string Protection);
+
 // Ein Eintrag der Zentrale: ein eigenes Modul (über seinen Port, unter dem Rechnernamen der Zentrale) oder ein
-// fremder Web-Dienst (über seine volle Adresse). Ein fremder Dienst mit Port und Target leitet die Zentrale auf
-// diesem Port weiter; Start ist optional und gilt nur zusammen mit Target.
-public sealed record HubModule(string Id, string Name, int? Port, string? Url, bool External, string? Target = null, HubStart? Start = null)
+// fremder Web-Dienst (über seine volle Adresse). Ein fremder Dienst mit Target und Port leitet die Zentrale auf diesem
+// Port weiter; das Target ist fest (nur 127.0.0.1 oder localhost). TokenFile ist optional: ohne sie wird ohne Token
+// weitergeleitet. Start wird nicht mehr ausgeführt: die Zentrale startet keinen Dienst. Das Feld wird nur gelesen, damit
+// sie einmal ins Log schreiben kann, dass es ignoriert wird.
+public sealed record HubModule(string Id, string Name, int? Port, string? Url, bool External, string? Target = null, HubStart? Start = null, HubTokenFile? TokenFile = null)
 {
     // Die Adresse für den Frame. Eigene Module hängen am Rechnernamen der Anfrage: nur unter demselben Namen gibt der
     // Browser die Anmeldung in den Frame mit (docs/spike-frame-proxy.md). null = der Eintrag ist die Zentrale selbst.
@@ -27,10 +33,11 @@ public sealed record HubModule(string Id, string Name, int? Port, string? Url, b
 //
 //   { "modules": [ { "id": "llm", "name": "LLM", "port": 17401 },
 //                  { "id": "qwen", "name": "Qwen Code", "url": "http://pc:17450/", "external": true },
-//                  { "id": "qwen", "name": "Qwen Code", "external": true, "port": 17450,
-//                    "target": "http://127.0.0.1:17451",
-//                    "start": { "command": "node", "args": ["<Pfad>\\cli.js", "serve", "--port", "17451", "--no-open"],
-//                               "env": { "QWEN_HOME": "<Ordner>" }, "tokenEnv": "QWEN_SERVER_TOKEN" } } ] }
+//                  { "id": "qwen", "name": "Qwen Code", "external": true, "port": 17450, "target": "http://127.0.0.1:16000",
+//                    "tokenFile": { "path": "%APPDATA%\\com.alibaba.qwen-code\\daemon-token.bin",
+//                                   "protection": "dpapi-user:qwen-desktop.daemon-token.v1" } } ] }
+//
+// Ein "start" in der Datei wird nicht mehr ausgeführt: die Zentrale startet keinen Dienst.
 public static class HubModules
 {
     public const string FileName = "stykker.json";
@@ -89,9 +96,11 @@ public static class HubModules
             // Weiterleitung nur für einen fremden Dienst mit eigenem Port. Ein anderes Ziel verwirft nur die Weiterleitung.
             var target = external && port != null ? LocalTarget(Text(entry, "target")) : null;
             var start = target != null ? StartOf(entry) : null;
+            // Das Token kommt aus einer Datei, nur bei einer Weiterleitung; ein unbrauchbarer Eintrag fällt nur weg
+            var tokenFile = target != null ? TokenFileOf(entry) : null;
 
             var name = Text(entry, "name")?.Trim();
-            result.Add(new HubModule(id, string.IsNullOrEmpty(name) ? id.ToUpperInvariant() : name[..Math.Min(40, name.Length)], port, url, external, target, start));
+            result.Add(new HubModule(id, string.IsNullOrEmpty(name) ? id.ToUpperInvariant() : name[..Math.Min(40, name.Length)], port, url, external, target, start, tokenFile));
         }
         return result;
     }
@@ -111,6 +120,17 @@ public static class HubModules
         var match = LocalTargetPattern.Match(target.Trim());
         if (!match.Success || !int.TryParse(match.Groups[2].Value, out var port) || port is < 1 or > 65535) return null;
         return $"http://{match.Groups[1].Value}:{port}";
+    }
+
+    // "tokenFile": { "path": "...", "protection": "none" | "dpapi-user:<Zusatzwert>" }. Fehlt ein Teil oder ist er
+    // ungültig, gibt es keine Token-Datei (der Eintrag bleibt, die Weiterleitung läuft ohne Token).
+    private static HubTokenFile? TokenFileOf(JsonElement entry)
+    {
+        if (!entry.TryGetProperty("tokenFile", out var tokenFile) || tokenFile.ValueKind != JsonValueKind.Object) return null;
+        var path = Text(tokenFile, "path")?.Trim();
+        var protection = Text(tokenFile, "protection")?.Trim();
+        if (string.IsNullOrEmpty(path) || !ServiceTokenFile.ProtectionKnown(protection)) return null;
+        return new HubTokenFile(Environment.ExpandEnvironmentVariables(path), protection!);
     }
 
     // Ein kaputtes start macht nur den Start ungültig, nicht den Eintrag. tokenEnv ist Pflicht: ohne den Namen gäbe es

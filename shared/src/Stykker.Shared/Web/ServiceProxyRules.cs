@@ -58,6 +58,14 @@ public static class ServiceProxyRules
         _ => null,
     };
 
+    // Ein fremder Dienst, der nicht läuft (sein Ziel antwortet nicht): 503 mit dem Namen des Eintrags. Ist seine
+    // Token-Datei nicht lesbar, gilt dasselbe mit einem eigenen Text. Der Grund steht im Log, nie das Token.
+    public const int NotRunningStatus = 503;
+
+    public static string NotRunningMessage(string name) => $"{name} is not running. Start the {name} desktop app on the PC.";
+
+    public static string TokenFileMessage(string name) => $"{name}: the token file cannot be read.";
+
     // Ein fremder Dienst steht in /api/hub nur für diese Maschine und für ein Gerät mit Rolle admin dafür.
     public static bool ListsForeignService(bool loopback, string? role) => loopback || PairingRoles.CanWrite(role);
 

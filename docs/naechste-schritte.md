@@ -12,7 +12,7 @@ Die Reihenfolge folgt einem Ziel: **die Zentrale als App auf dem Handy, mit eine
 | Zentrale im HUD unter `/hub`: Leiste, Übersicht, Module im Frame, einklappbar | Qwen Code in der eigenen `stykker.json` eintragen (Beispiel in `hud/README.md`) |
 | Zugangsprüfung für HUD und SYS, Geräte mit Rolle je Modul | kein HTTPS, nicht am echten Handy geprüft |
 | QR-Code und Kopplung andersherum: Anmeldeseite, Freigabe in der Zentrale (Schritt 5) | nicht am echten Handy und nicht über die Windows-Firewall geprüft |
-| Fremde Dienste in der Zentrale: Qwen Code über eigene Weiterleitung, mit Prüfung davor und Start durch die Zentrale (Schritt 4) | nur Qwen Code geprüft, nicht am echten Handy; Ctrl+C-Weg nicht geprüft |
+| Fremde Dienste in der Zentrale: Qwen Code über eigene Weiterleitung, mit Prüfung davor, Token aus der Datei der Desktop-App (Schritt 4) | nur Qwen Code geprüft, nicht am echten Handy; echte Token-Datei nicht gelesen; Ctrl+C-Weg nicht geprüft |
 
 ## Die Schritte
 
@@ -46,11 +46,12 @@ Die Reihenfolge folgt einem Ziel: **die Zentrale als App auf dem Handy, mit eine
 
 ### 4. Fremde Dienste in der Zentrale, Qwen Code zuerst (umgesetzt am 2026-10-14)
 
-- **Stand:** umgesetzt im HUD-Server. Was gebaut und geprüft ist, steht in [plan-stykkernode.md](plan-stykkernode.md), Abschnitt 10. Geprüft mit `hud/tools/check-proxy.mjs` (48 von 48), nur Qwen Code, nur von dieser Maschine aus; am echten Handy und über die Windows-Firewall nicht geprüft.
-- **Was:** Ein Eintrag in `stykker.json` mit `"external": true`, `port` und `target` bekommt eine eigene Weiterleitung auf einem eigenen Port (YARP 2.3.0). Sie prüft die Stykker-Kopplung und die Rolle `admin` für dieses Modul, setzt das Token des Dienstes ein und nimmt das Einbett-Verbot aus der Antwort. Antwortet auf `target` nichts, startet die Zentrale den Dienst mit `start` selbst. Der Code dafür stand als Versuch in `spikes/frame-proxy`.
+- **Stand:** umgesetzt im HUD-Server (am 2026-10-14 nach dem Kurswechsel unten). Was gebaut und geprüft ist, steht in [plan-stykkernode.md](plan-stykkernode.md), Abschnitt 10. Geprüft mit `hud/tools/check-proxy.mjs` (59 von 59), nur Qwen Code, nur von dieser Maschine aus; am echten Handy und über die Windows-Firewall nicht geprüft.
+- **Was:** Ein Eintrag in `stykker.json` mit `"external": true`, `port` und `target` bekommt eine eigene Weiterleitung auf einem eigenen Port (YARP 2.3.0). Sie prüft die Stykker-Kopplung und die Rolle `admin` für dieses Modul und nimmt das Einbett-Verbot aus der Antwort. Das Token liest sie aus der Datei `tokenFile` (`none` oder `dpapi-user:<Zusatzwert>`) und setzt es ein. Antwortet das Ziel nicht, oder ist die Token-Datei nicht lesbar, kommt 503 mit einem Text. Der Code dafür stand als Versuch in `spikes/frame-proxy`.
+- **Kurswechsel (2026-10-14, später am Tag):** Die Zentrale startet keinen Dienst mehr; `start` wird ignoriert, und `services.dat` mit den Dienst-Tokens entfällt. Die Desktop-App von Qwen Code betreibt den Daemon auf festem Port (17451) und legt ihr Token in `daemon-token.bin` ab (DPAPI, Zusatzwert `qwen-desktop.daemon-token.v1`). Die Zentrale liest dieses Token nur. Ein früherer Entwurf mit einer Verbindungsdatei `daemon.json` ist verworfen; er wäre eine Änderung am Fork nötig gewesen.
 - **Warum:** Qwen Code erscheint unter der Leiste der Zentrale, und das Handy braucht keinen zweiten Code.
 - **Fertig, wenn:** Qwen Code am Handy im Frame läuft, ein nicht gekoppeltes Gerät und ein Zuschauer abgewiesen werden, und ein langer Antwortstrom durchläuft.
-- **Entscheidung (2026-10-14):** Die Zentrale startet ihr eigenes `qwen serve` auf `127.0.0.1` mit einem Token nur für die Zentrale (`--require-auth`, das Token in der Umgebung, nie in der Kommandozeile). Die frühere Empfehlung, über Local Control zu koppeln, ist verworfen. Geprüft im Fork von Qwen Code, `docs/design/2026-08-28-trusted-loopback-full-api.md`, Abschnitt „Listener-scoped Local Control credentials“: Local Control hat einen eigenen LAN-Listener mit eigenen, widerrufbaren Kopplungs-Token und liegt nicht hinter der Stykker-Prüfung. Laut demselben Fork (`docs/design/local-control-cli.md`, Abschnitt Security) bekommt jedes Einschalten ein neues Pairing-Token (`crypto.randomBytes(32)`). Die Alternative, eine Datei der Desktop-App, braucht eine Änderung im Fork und war damit nicht nötig.
+- **Entscheidung (2026-10-14, durch den Kurswechsel überholt):** Die Zentrale startet ihr eigenes `qwen serve` auf `127.0.0.1` mit einem Token nur für die Zentrale (`--require-auth`, das Token in der Umgebung, nie in der Kommandozeile). Die frühere Empfehlung, über Local Control zu koppeln, ist verworfen. Geprüft im Fork von Qwen Code, `docs/design/2026-08-28-trusted-loopback-full-api.md`, Abschnitt „Listener-scoped Local Control credentials“: Local Control hat einen eigenen LAN-Listener mit eigenen, widerrufbaren Kopplungs-Token und liegt nicht hinter der Stykker-Prüfung. Laut demselben Fork (`docs/design/local-control-cli.md`, Abschnitt Security) bekommt jedes Einschalten ein neues Pairing-Token (`crypto.randomBytes(32)`). Die Alternative, eine Datei der Desktop-App, braucht eine Änderung im Fork und war damit nicht nötig.
 - **Wo es läuft:** zunächst im HUD-Server. Später zieht es in den Knoten (Schritt 6).
 
 ### 5. Geräte bequemer koppeln (umgesetzt am 2026-10-14)
@@ -75,13 +76,13 @@ Die Reihenfolge folgt einem Ziel: **die Zentrale als App auf dem Handy, mit eine
 
 - HUD hat keine Tests. Die Endpunkte der Zentrale (`/api/hub…`) wären der erste Kandidat.
 - Ein Service Worker, damit die installierte App ohne Netz wenigstens sagt, dass der PC nicht erreichbar ist.
-- `stykker.json` kennt jetzt `modules` mit `external`, `port`, `target` und `start`. Knoten und Netzschalter aus Abschnitt 4.2 des Plans fehlen.
+- `stykker.json` kennt jetzt `modules` mit `external`, `port`, `target` und `tokenFile`. Knoten und Netzschalter aus Abschnitt 4.2 des Plans fehlen.
 - Workflows im Wurzelordner mit Pfadfiltern und Tag-Releases je Werkzeug. Die Workflows unter `llm/.github` laufen in der Monorepo nicht.
 - Die Einzel-Repos (`Stykker-CMD`, `-HUD`, `-LLM`) brauchen einen Verweis auf die Monorepo.
 
 ## Offen bei dir
 
 - **Zertifikat** (Schritt 2): Tailscale oder eigene Zertifizierungsstelle.
-- **Eintrag für Qwen Code** in deiner `stykker.json` (Schritt 4): Pfad zur `cli.js` und Datenordner setzt du. Das Token kommt von der Zentrale, du brauchst keins von Qwen.
+- **Eintrag für Qwen Code** in deiner `stykker.json` (Schritt 4): Port und Ziel setzt du so, wie die Desktop-App ihren Daemon betreibt (Einstellung „Daemon port“, 17451). Das Token liest die Zentrale aus der Datei `daemon-token.bin` der App (`tokenFile`); du gibst es nirgends ein.
 - **Alte Commits bei GitHub:** Am 13.10. waren Bildschirmfotos der Prozessliste kurz auf `origin/dev`. Der Branch ist bereinigt und inzwischen gelöscht; per Hash können die Commits bei GitHub noch abrufbar sein. Endgültig entfernt sie nur der GitHub-Support.
 - **NanoCut-Historie:** steckt weiter in der Historie der Monorepo. Entfernen geht nur mit Umschreiben und erzwungenem Push.

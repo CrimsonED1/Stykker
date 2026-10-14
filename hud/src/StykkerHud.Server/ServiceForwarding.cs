@@ -10,33 +10,93 @@ using Yarp.ReverseProxy.Forwarder;
 
 namespace StykkerHud.Server;
 
-// Ein fremder Dienst, den die Zentrale weiterleitet: sein Port hier, sein Ziel und das Token, das die Zentrale ihm
-// gibt. Start ist der Start-Eintrag aus stykker.json (oder null, wenn ein anderer ihn schon betreibt).
-internal sealed record ServiceRoute(string Id, string Name, int Port, string Target, string Token, HubStart? Start);
+// Wohin eine Anfrage geht: das feste Ziel des Dienstes und das Token, das die Zentrale ihm gibt (null = keins).
+internal sealed record ServiceTarget(string Url, string? Token);
+
+// Ein fremder Dienst, den die Zentrale weiterleitet: sein Port hier, sein festes Ziel (target) und optional die Datei,
+// aus der die Zentrale sein Token liest. Jede Anfrage prüft neu, ob das Ziel antwortet und das Token lesbar ist.
+internal sealed class ServiceRoute
+{
+    private readonly object _gate = new();
+    private readonly Action<string> _log;
+    private readonly ServiceTokenFile? _tokenFile;
+    private string? _lastProblem;
+
+    public ServiceRoute(string id, string name, int port, string target, ServiceTokenFile? tokenFile, Action<string> log)
+    {
+        Id = id;
+        Name = name;
+        Port = port;
+        Target = target;
+        _tokenFile = tokenFile;
+        _log = log;
+    }
+
+    public string Id { get; }
+    public string Name { get; }
+    public int Port { get; }
+    public string Target { get; }
+
+    // Das Ziel für eine Anfrage. Antwortet das Ziel nicht, oder ist die Token-Datei nicht lesbar, kommt null und die
+    // 503-Antwort mit dem Text dazu. Der Grund geht ins Log, aber nur bei einem Wechsel; das Token nie.
+    public async Task<(ServiceTarget? Target, string? Refusal)> ResolveAsync(CancellationToken cancel)
+    {
+        if (!await HubProbe.AnswersAsync(new HubModule(Id, Name, Port, null, true), Target, cancel))
+        {
+            Report("the target does not answer");
+            return (null, ServiceProxyRules.NotRunningMessage(Name));
+        }
+
+        string? token = null;
+        if (_tokenFile != null)
+        {
+            var read = _tokenFile.Current();
+            if (read.Token == null)
+            {
+                Report(read.Problem);
+                return (null, ServiceProxyRules.TokenFileMessage(Name));
+            }
+            token = read.Token;
+        }
+
+        Report(null);
+        return (new ServiceTarget(Target, token), null);
+    }
+
+    private void Report(string? problem)
+    {
+        lock (_gate)
+        {
+            if (problem == _lastProblem) return;
+            _lastProblem = problem;
+            _log(problem == null
+                ? $"{Name}: the service answers again."
+                : $"{Name}: not reachable: {problem}. Requests get 503 until it is.");
+        }
+    }
+}
 
 // Die Weiterleitung fremder Dienste (docs/plan-stykkernode.md, Abschnitt 4.5 bis 4.7): je Dienst ein eigener Port, auf dem
-// die Zentrale jede Anfrage mit YARP an das Ziel weitergibt. Sie steht vor der Zugangsprüfung der Zentrale: die prüft
+// die Zentrale jede Anfrage mit YARP an das feste Ziel weitergibt. Sie steht vor der Zugangsprüfung der Zentrale: die prüft
 // hier selbst (ServiceProxyRules), und ohne das sähe jede Anfrage von diesem Rechner wie Loopback aus. Die Regeln stehen
-// in Stykker.Shared; hier nur der Weg der Anfrage durch YARP und Kestrel.
+// in Stykker.Shared; hier nur der Weg der Anfrage durch YARP und Kestrel. Die Zentrale startet keinen Dienst.
 internal static class ServiceForwarding
 {
-    // Die Routen aus den Modulen. Die Tokens entstehen nur, wenn es Weiterleitungen gibt: sonst bleibt services.dat unberührt.
-    public static IReadOnlyList<ServiceRoute> Plan(IReadOnlyList<HubModule> modules, string tokenFile, int hubPort, Action<string> log)
+    // Die Routen aus den Modulen: ein fremder Dienst mit Port und Ziel (target), sonst keiner.
+    public static IReadOnlyList<ServiceRoute> Plan(IReadOnlyList<HubModule> modules, int hubPort, Action<string> log)
     {
-        var forwarded = modules.Where(m => m.External && m.Port is > 0 && m.Target != null).ToList();
-        if (forwarded.Count == 0) return [];
-
-        var tokens = new ServiceTokens(tokenFile);
         var routes = new List<ServiceRoute>();
-        foreach (var module in forwarded)
+        foreach (var module in modules.Where(m => m.External && m.Port is > 0 && m.Target != null))
         {
+            if (module.Start != null) log($"{module.Name}: \"start\" is ignored; the hub no longer starts services.");
             if (module.Port == hubPort || routes.Any(r => r.Port == module.Port))
             {
                 log($"{module.Name}: port {module.Port} is already in use by the hub or another service; not forwarded.");
                 continue;
             }
-            routes.Add(new ServiceRoute(module.Id, module.Name, module.Port!.Value, module.Target!, tokens.GetOrCreate(module.Id), module.Start));
-            log($"{module.Name}: port {module.Port} forwards to {module.Target}.");
+            var tokenFile = module.TokenFile == null ? null : new ServiceTokenFile(module.TokenFile.Path, module.TokenFile.Protection);
+            routes.Add(new ServiceRoute(module.Id, module.Name, module.Port!.Value, module.Target!, tokenFile, log));
+            log($"{module.Name}: port {module.Port} forwards to {module.Target}{(tokenFile == null ? ", without a token." : ", with the token from its token file.")}");
         }
         return routes;
     }
@@ -96,22 +156,32 @@ internal static class ServiceForwarding
                 return;
             }
 
-            await forwarder.SendAsync(context, route.Target, client, ForwarderRequestConfig.Empty, new Transformer(route, hubPort));
+            // Läuft der Dienst nicht, oder ist seine Token-Datei nicht lesbar: 503 mit dem Text dazu
+            var (target, refusal) = await route.ResolveAsync(context.RequestAborted);
+            if (target == null)
+            {
+                context.Response.StatusCode = ServiceProxyRules.NotRunningStatus;
+                context.Response.ContentType = "text/plain; charset=utf-8";
+                await context.Response.WriteAsync(refusal ?? "");
+                return;
+            }
+
+            await forwarder.SendAsync(context, target.Url, client, ForwarderRequestConfig.Empty, new Transformer(target, hubPort));
         });
     }
 
     // Was die Weiterleitung an Anfrage und Antwort ändert (ServiceProxyRules, Abschnitt 4.7). Der Körper wird nicht gelesen:
     // Antworten strömen unverändert durch.
-    private sealed class Transformer(ServiceRoute route, int hubPort) : HttpTransformer
+    private sealed class Transformer(ServiceTarget target, int hubPort) : HttpTransformer
     {
         public override async ValueTask TransformRequestAsync(HttpContext context, HttpRequestMessage request, string destinationPrefix, CancellationToken cancel)
         {
             await base.TransformRequestAsync(context, request, destinationPrefix, cancel);
 
             // Der Dienst lässt nur seinen eigenen Host-Namen zu
-            request.Headers.Host = ServiceProxyRules.TargetHost(route.Target);
+            request.Headers.Host = ServiceProxyRules.TargetHost(target.Url);
 
-            var origin = ServiceProxyRules.OriginFor(context.Request.Headers.Origin.ToString(), route.Target);
+            var origin = ServiceProxyRules.OriginFor(context.Request.Headers.Origin.ToString(), target.Url);
             if (origin != null)
             {
                 request.Headers.Remove("Origin");
@@ -125,7 +195,7 @@ internal static class ServiceForwarding
 
             // Das Token des Dienstes, wenn der Browser keins mitbringt (auch für die Upgrade-Anfrage des WebSockets)
             var bearer = ServiceProxyRules.BearerFor(context.Request.Headers.Authorization.ToString(),
-                context.Request.Headers["Sec-WebSocket-Protocol"].ToString(), route.Token);
+                context.Request.Headers["Sec-WebSocket-Protocol"].ToString(), target.Token);
             if (bearer != null) request.Headers.TryAddWithoutValidation("Authorization", bearer);
         }
 

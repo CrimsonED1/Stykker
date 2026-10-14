@@ -178,4 +178,59 @@ public class HubModulesTests
         Assert.Equal("http://127.0.0.1:41999", module.Target);
         Assert.Null(module.Start);
     }
+
+    [Fact]
+    public void A_forwarded_entry_with_a_token_file_keeps_its_target_and_the_expanded_path()
+    {
+        var module = Assert.Single(HubModules.Parse("""
+            { "modules": [ { "id": "qwen", "name": "Qwen Code", "external": true, "port": 17450, "target": "http://127.0.0.1:16000",
+                "tokenFile": { "path": "%APPDATA%\\com.alibaba.qwen-code\\daemon-token.bin", "protection": "dpapi-user:qwen-desktop.daemon-token.v1" } } ] }
+            """));
+
+        Assert.Equal(17450, module.Port);
+        Assert.Equal("http://127.0.0.1:16000", module.Target);
+        Assert.Equal(Environment.ExpandEnvironmentVariables(@"%APPDATA%\com.alibaba.qwen-code\daemon-token.bin"), module.TokenFile!.Path);
+        Assert.Equal("dpapi-user:qwen-desktop.daemon-token.v1", module.TokenFile.Protection);
+    }
+
+    [Fact]
+    public void A_token_file_with_an_unknown_protection_is_left_out_and_the_entry_stays()
+    {
+        var module = Assert.Single(HubModules.Parse("""
+            { "modules": [ { "id": "qwen", "external": true, "port": 17450, "target": "http://127.0.0.1:16000",
+                "tokenFile": { "path": "C:\\x\\token.bin", "protection": "plain" } } ] }
+            """));
+
+        Assert.Equal("http://127.0.0.1:16000", module.Target);
+        Assert.Null(module.TokenFile);
+    }
+
+    [Fact]
+    public void A_token_file_without_a_path_or_on_an_internal_entry_is_left_out()
+    {
+        var modules = HubModules.Parse("""
+            { "modules": [
+                { "id": "qwen", "external": true, "port": 17450, "target": "http://127.0.0.1:16000", "tokenFile": { "path": "  ", "protection": "none" } },
+                { "id": "qwen2", "external": true, "port": 17452, "target": "http://127.0.0.1:16001", "tokenFile": "token.bin" },
+                { "id": "llm", "port": 17401, "tokenFile": { "path": "C:\\x\\token.bin", "protection": "none" } }
+            ] }
+            """);
+
+        Assert.Equal(["qwen", "qwen2", "llm"], modules.Select(m => m.Id));
+        Assert.All(modules, m => Assert.Null(m.TokenFile));
+    }
+
+    [Fact]
+    public void A_token_file_without_a_forwarding_target_is_not_taken()
+    {
+        var modules = HubModules.Parse("""
+            { "modules": [
+                { "id": "qwen", "external": true, "port": 17450, "tokenFile": { "path": "C:\\x\\token.bin", "protection": "none" } },
+                { "id": "other", "external": true, "port": 17452, "target": "http://192.0.2.10:16000", "tokenFile": { "path": "C:\\x\\token.bin", "protection": "none" } }
+            ] }
+            """);
+
+        Assert.All(modules, m => Assert.Null(m.TokenFile));
+        Assert.All(modules, m => Assert.Null(m.Target));
+    }
 }

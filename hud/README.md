@@ -31,20 +31,16 @@ The hub is the single address for the Stykker tools of this machine: `/hub` on t
   ```
 
   An entry with a `port` is a module of this machine. The hub opens it under the same host name the hub was opened with, so the sign-in goes into the frame too. An entry with a `url` is an outside web service and is shown as it is. Without the file, or when it names no valid module, the defaults apply: the monitor itself, SYS on 17402 and LLM on 17401.
-- **Forwarded services.** An external entry with a `port` and a `target` runs elsewhere on this PC and the hub forwards it: the hub listens on `port`, and the forwarding goes to `target` only. Only `http://127.0.0.1:<port>` and `http://localhost:<port>` are accepted as a target. Example for Qwen Code, with placeholders for the paths:
+- **Forwarded services.** An external entry with a `port` and a `target` runs elsewhere on this PC and the hub forwards it: the hub listens on `port`, and the forwarding goes to `target` only. Only `http://127.0.0.1:<port>` and `http://localhost:<port>` are accepted as a target. The port in `target` is the one the service's desktop app runs its daemon on (for Qwen Code the "Daemon port" setting, default 17451); the 16000 in the example is a placeholder. Example for Qwen Code, with placeholders for the paths:
 
   ```json
-  { "modules": [
-    { "id": "qwen", "name": "Qwen Code", "external": true, "port": 17450,
-      "target": "http://127.0.0.1:17451",
-      "start": { "command": "node",
-                 "args": ["<path to cli.js>", "serve", "--port", "17451", "--no-open"],
-                 "env": { "QWEN_HOME": "<folder>" },
-                 "tokenEnv": "QWEN_SERVER_TOKEN" } } ] }
+  { "id": "qwen", "name": "Qwen Code", "external": true, "port": 17450, "target": "http://127.0.0.1:16000",
+    "tokenFile": { "path": "%APPDATA%\\com.alibaba.qwen-code\\daemon-token.bin", "protection": "dpapi-user:qwen-desktop.daemon-token.v1" } }
   ```
 
-- **Starting a service.** `start` is optional. The hub starts the service only when nothing answers on `target`. A service that already runs is left alone: the hub neither starts nor stops it. `command` and `tokenEnv` are required; `args` and `env` hold strings only. The hub adds `--hostname 127.0.0.1 --require-auth` to the arguments (its own switches already in `args` are removed first) and passes its token in the environment variable named by `tokenEnv`, never on the command line. The output goes to the hub's log with the token replaced by `***`. When the hub ends, also when it is closed hard, the service it started ends with it, including the processes that service started itself.
-- **Service tokens.** The hub keeps one token per module id in `services.dat`, next to `pairing.dat`, and Windows protects it the same way. Without that protection the hub refuses to write the file in plain text. A device never receives the token; the hub adds it to every request it forwards.
+- **Token from a file.** `tokenFile` is optional. Without it the hub forwards without a token. `path` is the file (environment variables such as `%APPDATA%` are expanded). `protection` is `"none"` (the file holds the token as text; trailing space is dropped) or `"dpapi-user:<entropy>"` (the file holds the raw DPAPI blob of the user with that entropy). Any other value is refused, and the entry then stays without a token file. The hub reads the file again when its time or length changes. It adds the token to every forwarded request, and never sends it in a response, in `/api/hub`, or to the log.
+- **Is the service reachable?** On every request the hub checks two things. If `target` does not answer, the answer is `503` with the text "Qwen Code is not running. Start the Qwen Code desktop app on the PC." (for another name, the name of the entry). If the token file is missing or unreadable, the answer is `503` with "Qwen Code: the token file cannot be read.". `/api/hub` then reports `up: false`. The reason goes to the log, once per change.
+- **No start by the hub.** A `start` field in `stykker.json` is no longer run; the hub writes once to the log that it is ignored. The desktop app of the service starts it.
 - **Who sees and opens a forwarded service.** Like every external entry, it is listed only on this PC and for devices with the role `admin` for that module. Others do not see it in the bar. A request to it from another site gets `403`, even from an admin device.
 - **Host name.** The forwarding answers only under an IP address, `localhost`, the PC's name, or the PC's name with its own DNS suffix. Any other host name gets `403`, even from this PC with a matching `Origin`. That blocks DNS rebinding: a web page whose name points at `127.0.0.1` cannot reach the service through that name. A name like `<PC name>.<other domain>` is refused too, because that domain can belong to anyone. Tailscale names (`<PC>.<tailnet>.ts.net`) are refused unless the PC's DNS suffix is that tailnet. Names listed under `"hostNames"` at the top level of `stykker.json` are allowed as well, for example a Tailscale name: `"hostNames": ["pc.example.ts.net"]`. Plain DNS names only, no wildcards.
 - **Small screens.** On a phone, and in the app installed on it, the bar starts folded and opens as a menu from one symbol at the bottom right, within thumb reach. Choosing a module folds the menu again.
@@ -77,7 +73,7 @@ By default nobody outside this PC can reach StykkerHUD or StykkerSYS. Access fro
 |---|---|
 | `src/StykkerHud.Core/` | The model (`Samples.cs`), the sampler (`MetricsSampler`) and the service (`HudService`, a viewer loop from `shared/`). Knows no operating system. |
 | `src/StykkerHud.Platform.Windows/` | The Windows side: CPU and memory (`kernel32`, `ntdll`), GPU (`nvml.dll`), disk throughput (`pdh.dll`), network counters. Every part is optional: when one is missing its value shows `–`. |
-| `src/StykkerHud.Server/` | Blazor Server on `http://127.0.0.1:17400`, with a tray icon. Serves the monitor, the hub at `/hub` and `/api/snapshot`. Only this PC, unless the network switch is on at start (see [Access from the network](#access-from-the-network)). Forwards and starts the foreign services of `stykker.json` (`ServiceForwarding.cs`, `ServiceProcesses.cs`; the rules are in `shared/…/Web/ServiceProxyRules.cs`). |
+| `src/StykkerHud.Server/` | Blazor Server on `http://127.0.0.1:17400`, with a tray icon. Serves the monitor, the hub at `/hub` and `/api/snapshot`. Only this PC, unless the network switch is on at start (see [Access from the network](#access-from-the-network)). Forwards the foreign services of `stykker.json` (`ServiceForwarding.cs`; the rules are in `shared/…/Web/ServiceProxyRules.cs`). |
 | `src/StykkerHud.UI/` | `StykkerHUD.exe`, the Photino window (WebView2) around those pages. |
 | `../shared/` | `Stykker.Shared`: GPU counter queries, the PDH wrapper, tray icon, design-system hosting, the viewer loop. See [its README](../shared/README.md). |
 | `tools/shot.mjs` | Measures the rendered page (values, colours, geometry, both themes) and writes the screenshots. |
