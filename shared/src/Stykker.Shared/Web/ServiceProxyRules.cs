@@ -30,9 +30,9 @@ public static class ServiceProxyRules
     // auch von dieser Maschine und mit passender Origin. Dann die Origin-Prüfung: eine fremde Seite darf den Dienst auch
     // dann nicht erreichen, wenn sie ein gekoppeltes Gerät benutzt.
     public static ServiceAccess Decide(bool loopback, bool remoteEnabled, string? role, string? origin, string scheme, string host,
-        string machineName, string? domainName)
+        string machineName, string? domainName, IReadOnlyCollection<string>? extraNames = null)
     {
-        if (!HostAllowed(host, machineName, domainName)) return ServiceAccess.WrongHost;
+        if (!HostAllowed(host, machineName, domainName, extraNames)) return ServiceAccess.WrongHost;
         if (!OriginAllowed(origin, scheme, host)) return ServiceAccess.ForeignOrigin;
         if (loopback) return ServiceAccess.Allow;
         if (!remoteEnabled) return ServiceAccess.Forbidden;
@@ -66,9 +66,9 @@ public static class ServiceProxyRules
         string.IsNullOrEmpty(origin) || origin.Equals($"{scheme}://{host}", StringComparison.OrdinalIgnoreCase);
 
     // Der Host-Kopf der Anfrage muss ein Name dieser Maschine sein. Die Regel steht in HostNames (Stykker.Pairing), damit
-    // auch StykkerLLM sie hat. Der Grund ist DNS-Rebinding.
-    public static bool HostAllowed(string? hostHeader, string machineName, string? domainName) =>
-        HostNames.Allowed(hostHeader, machineName, domainName, Array.Empty<string>());
+    // auch StykkerLLM sie hat. Der Grund ist DNS-Rebinding. extraNames sind die Zusatznamen aus stykker.json (null = keine).
+    public static bool HostAllowed(string? hostHeader, string machineName, string? domainName, IReadOnlyCollection<string>? extraNames = null) =>
+        HostNames.Allowed(hostHeader, machineName, domainName, extraNames ?? Array.Empty<string>());
 
     // Host-Kopf für das Ziel: "127.0.0.1:41999"
     public static string TargetHost(string target) => new Uri(target).Authority;

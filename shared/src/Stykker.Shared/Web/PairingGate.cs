@@ -17,7 +17,8 @@ public enum GateAction
     WrongHost,        // der Host-Kopf ist kein Name dieser Maschine (DNS-Rebinding): vor allem anderen abgewiesen
 }
 
-public sealed record PairingGateOptions(string Module, string Product, string Home = "/");
+// ExtraHostNames: die Zusatznamen aus stykker.json ("hostNames"), die der Host-Kopf außer den Namen dieser Maschine haben darf.
+public sealed record PairingGateOptions(string Module, string Product, string Home = "/", IReadOnlyCollection<string>? ExtraHostNames = null);
 
 // Der Zugang zu einem Modul, für alle Module gleich (docs/plan-stykkernode.md, "gate: pairing-v1"):
 //   - Diese Maschine (Loopback) kommt ohne Anmeldung herein und ist Admin – so war es bei HUD und SYS immer.
@@ -50,9 +51,10 @@ public static class PairingGate
 
     // Mit dem Host-Kopf: der wird vor allem anderen geprüft, auch von dieser Maschine und auch für /api/ping, /pair und das
     // Manifest. machineName und domainName wie bei ServiceProxyRules.HostAllowed (domainName null, wenn keine DNS-Endung).
+    // extraNames: die Zusatznamen aus stykker.json (null = keine).
     public static GateAction Decide(string? hostHeader, string machineName, string? domainName, bool loopback, bool remoteEnabled,
-        string path, bool wantsPage, string? role) =>
-        ServiceProxyRules.HostAllowed(hostHeader, machineName, domainName)
+        string path, bool wantsPage, string? role, IReadOnlyCollection<string>? extraNames = null) =>
+        ServiceProxyRules.HostAllowed(hostHeader, machineName, domainName, extraNames)
             ? Decide(loopback, remoteEnabled, path, wantsPage, role)
             : GateAction.WrongHost;
 
@@ -81,7 +83,7 @@ public static class PairingGate
             bool wantsPage = HttpMethods.IsGet(request.Method) && !path.StartsWith("/api/", StringComparison.OrdinalIgnoreCase);
             string? hostHeader = request.Headers.Host.ToString();
 
-            switch (Decide(hostHeader, machineName, domainName, loopback, remoteEnabled, path, wantsPage, role))
+            switch (Decide(hostHeader, machineName, domainName, loopback, remoteEnabled, path, wantsPage, role, options.ExtraHostNames))
             {
                 case GateAction.WrongHost:
                     context.Response.StatusCode = StatusCodes.Status403Forbidden;

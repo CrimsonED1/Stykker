@@ -37,6 +37,7 @@ if (args.Contains("--help") || args.Contains("-h"))
         A foreign service with "external", "port" and "target" (http://127.0.0.1:<port>) is forwarded on its port,
         and "start" (command, args, env, tokenEnv) starts it when nothing answers on the target. Only this PC
         and paired devices with the admin role for that module get through; services.dat keeps its token.
+        stykker.json may also list "hostNames" (top level): further names this PC answers to, such as its Tailscale name.
 
         The server binds the port immediately and reads nothing until a viewer appears: the measuring loop
         starts with the first request and stops again 15 seconds after the last one. A closed window therefore
@@ -53,7 +54,10 @@ string url = $"http://127.0.0.1:{port}/";
 string pairingFile = args.SkipWhile(a => a != "--pairing-file").Skip(1).FirstOrDefault() ?? PairingStore.DefaultFile();
 var pairing = new PairingService(new PairingStore(pairingFile));
 // Die Module aus stykker.json. --hub-config nimmt eine andere Datei (Probeläufe). Ohne Datei gilt die Vorgabe.
-var hubModules = HubModules.Load(args.SkipWhile(a => a != "--hub-config").Skip(1).FirstOrDefault());
+string? hubConfig = args.SkipWhile(a => a != "--hub-config").Skip(1).FirstOrDefault();
+var hubModules = HubModules.Load(hubConfig);
+// Zusatznamen für den Host-Kopf aus derselben Datei ("hostNames"), etwa der Name des PCs im Tailscale-Netz
+var extraHostNames = HostNames.LoadExtra(hubConfig ?? HubModules.DefaultFile());
 // Der Port wird nur dann im Netz geöffnet, wenn der Netzschalter beim Start an ist. Ein Umschalten wirkt nach dem
 // nächsten Start: so fragt die Windows-Firewall nicht bei jedem, der den Monitor nur lokal benutzt.
 bool network = pairing.RemoteEnabled;
@@ -90,9 +94,9 @@ var app = builder.Build();
 // WebSockets gehen über die Weiterleitung (Qwen nutzt /acp).
 app.UseWebSockets();
 // Die Weiterleitungen stehen vor der Zugangsprüfung der Zentrale; sie prüfen jede Anfrage auf ihrem Port selbst.
-ServiceForwarding.Use(app, pairing, routes, port);
+ServiceForwarding.Use(app, pairing, routes, port, extraHostNames);
 // Zugang: diese Maschine ohne Anmeldung, das Netz nur mit Netzschalter und gekoppeltem Gerät. Steht vor allem anderen.
-PairingGate.Use(app, pairing, new PairingGateOptions("hud", "StykkerHUD", Home: "/hub"));
+PairingGate.Use(app, pairing, new PairingGateOptions("hud", "StykkerHUD", Home: "/hub", ExtraHostNames: extraHostNames));
 FrameAncestors.Use(app, hubPort: 0);   // die Zentrale zeigt sich nur selbst in einem Frame (den Monitor)
 app.UseStaticFiles();
 DesignSystemHost.Map(app, DesignSystemHost.Resolve(args, "STYKKERHUD_DESIGN_SYSTEM"));

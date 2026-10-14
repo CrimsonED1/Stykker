@@ -1,5 +1,6 @@
 using Stykker.Pairing;
 using Stykker.Shared;
+using Stykker.Shared.Config;
 using Stykker.Shared.Web;
 using Stykker.Shared.Windows;
 using StykkerSys.Core;
@@ -21,6 +22,9 @@ if (args.Contains("--help") || args.Contains("-h"))
           --design-system <folder>
                             the shared design system served under /ds
                             (default C:\_AI\Stykker\MonoRepo\shared\design-system)
+          --hub-config <file>
+                            the hub's stykker.json instead of %APPDATA%\Stykker\stykker.json (trial runs);
+                            only its "hostNames" are read here
           --help            this text
 
         Endpoints: / (web interface), /api/snapshot (the process list as JSON), and the local-only
@@ -70,8 +74,10 @@ var app = builder.Build();
 // Die Liste wird hier absichtlich NICHT angefasst: sie entsteht beim ersten Abruf und liest nur, solange jemand
 // zusieht (siehe SysService). So ist der Server nach dem Start sofort da, auch wenn noch kein Fenster offen ist.
 
+// Zusatznamen für den Host-Kopf aus stykker.json ("hostNames"). --hub-config nimmt eine andere Datei, wie bei der Zentrale.
+var extraHostNames = HostNames.LoadExtra(args.SkipWhile(a => a != "--hub-config").Skip(1).FirstOrDefault() ?? HubModules.DefaultFile());
 // Zugang: diese Maschine ohne Anmeldung, das Netz nur mit Netzschalter und gekoppeltem Gerät. Steht vor allem anderen.
-PairingGate.Use(app, pairing, new PairingGateOptions("sys", "StykkerSYS"));
+PairingGate.Use(app, pairing, new PairingGateOptions("sys", "StykkerSYS", ExtraHostNames: extraHostNames));
 FrameAncestors.Use(app, hubPort);
 app.UseStaticFiles();
 DesignSystemHost.Map(app, DesignSystemHost.Resolve(args, "STYKKERSYS_DESIGN_SYSTEM"));

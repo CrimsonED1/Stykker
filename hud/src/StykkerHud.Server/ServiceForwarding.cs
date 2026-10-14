@@ -49,7 +49,8 @@ internal static class ServiceForwarding
 
     // Die Middleware vor der Zugangsprüfung der Zentrale: beantwortet alles auf dem Port einer Weiterleitung selbst.
     // Auf anderen Ports geht sie einfach weiter.
-    public static void Use(WebApplication app, PairingService pairing, IReadOnlyList<ServiceRoute> routes, int hubPort)
+    public static void Use(WebApplication app, PairingService pairing, IReadOnlyList<ServiceRoute> routes, int hubPort,
+        IReadOnlyCollection<string> extraHostNames)
     {
         if (routes.Count == 0) return;
         var byPort = routes.ToDictionary(r => r.Port);
@@ -64,7 +65,8 @@ internal static class ServiceForwarding
             ConnectTimeout = TimeSpan.FromSeconds(5),
         });
 
-        // Der Name, unter dem dieser PC erreichbar ist: nur an ihm gilt ein Host-Kopf (ServiceProxyRules.HostAllowed)
+        // Der Name, unter dem dieser PC erreichbar ist: nur an ihm gilt ein Host-Kopf (ServiceProxyRules.HostAllowed),
+        // dazu die Zusatznamen aus stykker.json
         var machineName = Environment.MachineName;
         var machineDomain = IPGlobalProperties.GetIPGlobalProperties().DomainName;
 
@@ -85,7 +87,7 @@ internal static class ServiceForwarding
                 : null;
             var access = ServiceProxyRules.Decide(loopback, remoteEnabled, role,
                 context.Request.Headers.Origin.ToString(), context.Request.Scheme, context.Request.Host.Value ?? "",
-                machineName, machineDomain);
+                machineName, machineDomain, extraHostNames);
             if (access != ServiceAccess.Allow)
             {
                 context.Response.StatusCode = ServiceProxyRules.StatusOf(access);
