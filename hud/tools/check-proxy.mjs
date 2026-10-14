@@ -344,6 +344,13 @@ try {
     check("7 foreign Origin on 8091 -> 403", foreignHttp.status === 403, `status ${foreignHttp.status}`);
     check("7 foreign Origin on 8091 as WebSocket -> 403", foreignWs.status === 403, `status ${foreignWs.status}`);
 
+    // 7 (DNS-Rebinding): fremder Name im Host-Kopf, von dieser Maschine, auch mit passender Origin -> 403, auch als WebSocket
+    const rebindHeaders = { Host: "evil.example:8091", Origin: "http://evil.example:8091" };
+    const rebindHttp = await tryHttp({ port: QWEN_FWD, path: "/capabilities", headers: rebindHeaders });
+    const rebindWs = await wsOpen({ port: QWEN_FWD, path: "/acp", headers: rebindHeaders });
+    check("7 foreign Host name on 8091 (DNS rebinding) -> 403", rebindHttp.status === 403, `status ${rebindHttp.status}: ${rebindHttp.body?.slice(0, 60) ?? ""}`);
+    check("7 foreign Host name on 8091 as WebSocket -> 403", rebindWs.status === 403, `status ${rebindWs.status}`);
+
     // 8: was beim Daemon ankommt: kein stykker_device, Authorization gesetzt, Host des Ziels
     await local(STREAM_FWD, "/probe", { Cookie: "a=1; stykker_device=device-secret-value; b=2", Origin: `http://127.0.0.1:${STREAM_FWD}` });
     const last = JSON.parse((await local(STREAM, "/last")).body);
