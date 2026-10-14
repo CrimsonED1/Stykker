@@ -21,10 +21,14 @@ if (args.Contains("--help") || args.Contains("-h"))
           --basic           no system access: GPU values and file paths stay empty
           --design-system <folder>
                             the shared design system served under /ds
-                            (default C:\_AI\Stykker\MonoRepo\shared\design-system)
+                            (default: shared/design-system of the repository this program is in)
           --hub-config <file>
                             the hub's stykker.json instead of %APPDATA%\Stykker\stykker.json (trial runs);
                             only its "hostNames" are read here
+          --pairing-file <file>
+                            the pairing store instead of %APPDATA%\Stykker\pairing.dat (trial runs)
+          --hub-port <number>
+                            the hub's port (default 8079): only the hub may show this page in a frame
           --help            this text
 
         Endpoints: / (web interface), /api/snapshot (the process list as JSON), and the local-only
