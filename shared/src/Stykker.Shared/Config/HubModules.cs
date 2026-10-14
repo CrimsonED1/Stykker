@@ -8,16 +8,13 @@ namespace Stykker.Shared.Config;
 // startet keine Dienste mehr; das Feld wird nur gelesen, damit sie das Ignorieren einmal ins Log schreiben kann.
 public sealed record HubStart(string Command, IReadOnlyList<string> Args, IReadOnlyDictionary<string, string> Env, string TokenEnv);
 
-// Woher ein fremder Dienst sein Token nimmt: die Datei (Pfad mit Umgebungsvariablen aufgelöst) und ihr Schutz
-// ("none" oder "dpapi-user:<Zusatzwert>"; Stykker.Pairing, ServiceTokenFile).
-public sealed record HubTokenFile(string Path, string Protection);
-
 // Ein Eintrag der Zentrale: ein eigenes Modul (über seinen Port, unter dem Rechnernamen der Zentrale) oder ein
 // fremder Web-Dienst (über seine volle Adresse). Ein fremder Dienst mit Target und Port leitet die Zentrale auf diesem
-// Port weiter; das Target ist fest (nur 127.0.0.1 oder localhost). TokenFile ist optional: ohne sie wird ohne Token
-// weitergeleitet. Start wird nicht mehr ausgeführt: die Zentrale startet keinen Dienst. Das Feld wird nur gelesen, damit
-// sie einmal ins Log schreiben kann, dass es ignoriert wird.
-public sealed record HubModule(string Id, string Name, int? Port, string? Url, bool External, string? Target = null, HubStart? Start = null, HubTokenFile? TokenFile = null)
+// Port weiter; das Target muss ServiceTargetRule erfüllen (nur dieser PC). Token ist das Geräte-Token des Dienstes, im
+// Klartext in stykker.json; es setzt die Weiterleitung ein und taucht nie in einer Ausgabe auf (ToString lässt es weg).
+// Start wird nicht mehr ausgeführt: die Zentrale startet keinen Dienst. Das Feld wird nur gelesen, damit sie einmal ins
+// Log schreiben kann, dass es ignoriert wird.
+public sealed record HubModule(string Id, string Name, int? Port, string? Url, bool External, string? Target = null, HubStart? Start = null, string? Token = null)
 {
     // Die Adresse für den Frame. Eigene Module hängen am Rechnernamen der Anfrage: nur unter demselben Namen gibt der
     // Browser die Anmeldung in den Frame mit (docs/spike-frame-proxy.md). null = der Eintrag ist die Zentrale selbst.
@@ -26,16 +23,20 @@ public sealed record HubModule(string Id, string Name, int? Port, string? Url, b
         if (!string.IsNullOrEmpty(Url)) return Url;
         return Port is > 0 ? $"{scheme}://{host}:{Port}/" : null;
     }
+
+    // Ohne das Token: ein Protokoll, ein Log oder ein Fehlertext druckt den Eintrag, nie das Geheimnis.
+    public override string ToString() =>
+        $"HubModule {{ Id = {Id}, Name = {Name}, Port = {Port}, External = {External}, Target = {Target}, TokenSet = {!string.IsNullOrEmpty(Token)} }}";
 }
 
 // Die Module der Zentrale aus stykker.json (docs/plan-stykkernode.md, Abschnitt 4.2). Ohne Datei gilt die Vorgabe:
-// die Suite auf ihren festen Ports. Die Datei ist lesbar und enthält keine Geheimnisse.
+// die Suite auf ihren festen Ports. Die Datei enthält das Token fremder Dienste im Klartext (eine bewusste Entscheidung).
 //
-//   { "modules": [ { "id": "llm", "name": "LLM", "port": 17401 },
+//   { "hostNames": ["pc.example.ts.net"],
+//     "modules": [ { "id": "llm", "name": "LLM", "port": 17401 },
 //                  { "id": "qwen", "name": "Qwen Code", "url": "http://pc:17450/", "external": true },
-//                  { "id": "qwen", "name": "Qwen Code", "external": true, "port": 17450, "target": "http://127.0.0.1:16000",
-//                    "tokenFile": { "path": "%APPDATA%\\com.alibaba.qwen-code\\daemon-token.bin",
-//                                   "protection": "dpapi-user:qwen-desktop.daemon-token.v1" } } ] }
+//                  { "id": "qwen", "name": "Qwen Code", "external": true, "port": 17450,
+//                    "target": "http://192.0.2.10:16001", "token": "…" } ] }
 //
 // Ein "start" in der Datei wird nicht mehr ausgeführt: die Zentrale startet keinen Dienst.
 public static class HubModules
@@ -43,8 +44,6 @@ public static class HubModules
     public const string FileName = "stykker.json";
     public const string MonitorId = "monitor";
 
-    // Nur diese Form: das Token geht nur an den eigenen Rechner.
-    private static readonly Regex LocalTargetPattern = new(@"^http://(127\.0\.0\.1|localhost):(\d{1,5})/?$", RegexOptions.CultureInvariant);
     private static readonly Regex EnvNamePattern = new(@"^[A-Za-z_][A-Za-z0-9_]{0,63}$", RegexOptions.CultureInvariant);
 
     // Der Monitor ist die Zentrale selbst (kein Port); SYS und LLM auf ihren festen Ports.
@@ -61,25 +60,29 @@ public static class HubModules
 
     // Fehlt die Datei, ist sie unlesbar oder nennt sie kein gültiges Modul, gilt die Vorgabe: ein Tippfehler in der
     // Konfiguration darf die Zentrale nicht leeren.
-    public static IReadOnlyList<HubModule> Load(string? file = null)
+    // ownAddresses sind die IPv4-Adressen dieses PCs (ServiceTargetRule.ReadThisPcAddresses); sie gehen in die Regel für
+    // das Ziel einer Weiterleitung ein. Die Namen aus "hostNames" liest Parse selbst aus derselben Datei.
+    public static IReadOnlyList<HubModule> Load(string? file = null, IReadOnlyCollection<string>? ownAddresses = null)
     {
         file ??= DefaultFile();
         try
         {
             if (!File.Exists(file)) return Defaults;
-            var parsed = Parse(File.ReadAllText(file));
+            var parsed = Parse(File.ReadAllText(file), ownAddresses);
             return parsed.Count > 0 ? parsed : Defaults;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException) { return Defaults; }
     }
 
-    public static IReadOnlyList<HubModule> Parse(string json)
+    public static IReadOnlyList<HubModule> Parse(string json, IReadOnlyCollection<string>? ownAddresses = null)
     {
         using var document = JsonDocument.Parse(json, new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true });
         if (document.RootElement.ValueKind != JsonValueKind.Object
             || !document.RootElement.TryGetProperty("modules", out var modules)
             || modules.ValueKind != JsonValueKind.Array) return [];
 
+        var own = ownAddresses ?? [];
+        var hostNames = HostNames.ExtraFrom(document.RootElement);
         var result = new List<HubModule>();
         foreach (var entry in modules.EnumerateArray())
         {
@@ -94,13 +97,13 @@ public static class HubModules
             if (port == null && url == null && id != MonitorId) continue;
 
             // Weiterleitung nur für einen fremden Dienst mit eigenem Port. Ein anderes Ziel verwirft nur die Weiterleitung.
-            var target = external && port != null ? LocalTarget(Text(entry, "target")) : null;
+            var target = external && port != null ? ServiceTargetRule.Allowed(Text(entry, "target"), own, hostNames) : null;
             var start = target != null ? StartOf(entry) : null;
-            // Das Token kommt aus einer Datei, nur bei einer Weiterleitung; ein unbrauchbarer Eintrag fällt nur weg
-            var tokenFile = target != null ? TokenFileOf(entry) : null;
+            // Das Token gehört nur zu einer Weiterleitung; ein unbrauchbares Token fällt nur weg (die Weiterleitung bleibt)
+            var token = target != null ? TokenOf(entry) : null;
 
             var name = Text(entry, "name")?.Trim();
-            result.Add(new HubModule(id, string.IsNullOrEmpty(name) ? id.ToUpperInvariant() : name[..Math.Min(40, name.Length)], port, url, external, target, start, tokenFile));
+            result.Add(new HubModule(id, string.IsNullOrEmpty(name) ? id.ToUpperInvariant() : name[..Math.Min(40, name.Length)], port, url, external, target, start, token));
         }
         return result;
     }
@@ -112,25 +115,12 @@ public static class HubModules
     private static string? HttpUrl(string? url) =>
         Uri.TryCreate(url, UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https" ? uri.ToString() : null;
 
-    // "http://127.0.0.1:17451" oder "http://localhost:17451" mit Port; alles andere (auch ein fremder Rechner) ist null.
-    // Das Ergebnis hat keinen Schrägstrich am Ende.
-    public static string? LocalTarget(string? target)
+    // "token": Text ohne Leerraum, sichtbare ASCII-Zeichen (es geht in einen HTTP-Kopf), in vernünftiger Länge. Sonst null.
+    // Der Wert wird nie ausgegeben: keine Meldung enthält ihn.
+    public static string? TokenOf(JsonElement entry)
     {
-        if (target == null) return null;
-        var match = LocalTargetPattern.Match(target.Trim());
-        if (!match.Success || !int.TryParse(match.Groups[2].Value, out var port) || port is < 1 or > 65535) return null;
-        return $"http://{match.Groups[1].Value}:{port}";
-    }
-
-    // "tokenFile": { "path": "...", "protection": "none" | "dpapi-user:<Zusatzwert>" }. Fehlt ein Teil oder ist er
-    // ungültig, gibt es keine Token-Datei (der Eintrag bleibt, die Weiterleitung läuft ohne Token).
-    private static HubTokenFile? TokenFileOf(JsonElement entry)
-    {
-        if (!entry.TryGetProperty("tokenFile", out var tokenFile) || tokenFile.ValueKind != JsonValueKind.Object) return null;
-        var path = Text(tokenFile, "path")?.Trim();
-        var protection = Text(tokenFile, "protection")?.Trim();
-        if (string.IsNullOrEmpty(path) || !ServiceTokenFile.ProtectionKnown(protection)) return null;
-        return new HubTokenFile(Environment.ExpandEnvironmentVariables(path), protection!);
+        var token = Text(entry, "token")?.Trim();
+        return token is { Length: > 0 and <= 512 } && token.All(c => c is >= '!' and <= '~') ? token : null;
     }
 
     // Ein kaputtes start macht nur den Start ungültig, nicht den Eintrag. tokenEnv ist Pflicht: ohne den Namen gäbe es

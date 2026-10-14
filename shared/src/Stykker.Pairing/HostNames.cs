@@ -35,7 +35,7 @@ public static class HostNames
     }
 
     // Die Zusatznamen aus der Datei (Feld "hostNames" in der obersten Ebene). Ohne Datei, ohne Feld oder mit einem
-    // kaputten JSON: leere Liste. Ungültige Einträge fallen still weg; doppelte auch.
+    // kaputten JSON: leere Liste.
     public static IReadOnlyList<string> LoadExtra(string? file)
     {
         if (string.IsNullOrEmpty(file)) return [];
@@ -44,20 +44,26 @@ public static class HostNames
             if (!File.Exists(file)) return [];
             using var document = JsonDocument.Parse(File.ReadAllText(file),
                 new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true });
-            if (document.RootElement.ValueKind != JsonValueKind.Object
-                || !document.RootElement.TryGetProperty(ExtraField, out var list)
-                || list.ValueKind != JsonValueKind.Array) return [];
-
-            var names = new List<string>();
-            foreach (var item in list.EnumerateArray())
-            {
-                if (item.ValueKind != JsonValueKind.String) continue;
-                var name = item.GetString()?.Trim() ?? "";
-                if (IsValidName(name) && !names.Contains(name, StringComparer.OrdinalIgnoreCase)) names.Add(name);
-            }
-            return names;
+            return ExtraFrom(document.RootElement);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException) { return []; }
+    }
+
+    // Dasselbe aus der schon gelesenen Wurzel des JSON. Ungültige Einträge fallen still weg; doppelte auch.
+    public static IReadOnlyList<string> ExtraFrom(JsonElement root)
+    {
+        if (root.ValueKind != JsonValueKind.Object
+            || !root.TryGetProperty(ExtraField, out var list)
+            || list.ValueKind != JsonValueKind.Array) return [];
+
+        var names = new List<string>();
+        foreach (var item in list.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.String) continue;
+            var name = item.GetString()?.Trim() ?? "";
+            if (IsValidName(name) && !names.Contains(name, StringComparer.OrdinalIgnoreCase)) names.Add(name);
+        }
+        return names;
     }
 
     // Ein Name aus Buchstaben, Ziffern, "-" und "." (ohne leere Teile), höchstens 253 Zeichen. Kein IP-Literal, kein localhost:

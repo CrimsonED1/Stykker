@@ -13,22 +13,22 @@ namespace StykkerHud.Server;
 // Wohin eine Anfrage geht: das feste Ziel des Dienstes und das Token, das die Zentrale ihm gibt (null = keins).
 internal sealed record ServiceTarget(string Url, string? Token);
 
-// Ein fremder Dienst, den die Zentrale weiterleitet: sein Port hier, sein festes Ziel (target) und optional die Datei,
-// aus der die Zentrale sein Token liest. Jede Anfrage prüft neu, ob das Ziel antwortet und das Token lesbar ist.
+// Ein fremder Dienst, den die Zentrale weiterleitet: sein Port hier, sein festes Ziel (target) und sein Token aus
+// stykker.json. Jede Anfrage prüft neu, ob das Ziel antwortet.
 internal sealed class ServiceRoute
 {
     private readonly object _gate = new();
     private readonly Action<string> _log;
-    private readonly ServiceTokenFile? _tokenFile;
+    private readonly string? _token;
     private string? _lastProblem;
 
-    public ServiceRoute(string id, string name, int port, string target, ServiceTokenFile? tokenFile, Action<string> log)
+    public ServiceRoute(string id, string name, int port, string target, string? token, Action<string> log)
     {
         Id = id;
         Name = name;
         Port = port;
         Target = target;
-        _tokenFile = tokenFile;
+        _token = token;
         _log = log;
     }
 
@@ -47,20 +47,8 @@ internal sealed class ServiceRoute
             return (null, ServiceProxyRules.NotRunningMessage(Name));
         }
 
-        string? token = null;
-        if (_tokenFile != null)
-        {
-            var read = _tokenFile.Current();
-            if (read.Token == null)
-            {
-                Report(read.Problem);
-                return (null, ServiceProxyRules.TokenFileMessage(Name));
-            }
-            token = read.Token;
-        }
-
         Report(null);
-        return (new ServiceTarget(Target, token), null);
+        return (new ServiceTarget(Target, _token), null);
     }
 
     private void Report(string? problem)
@@ -94,9 +82,8 @@ internal static class ServiceForwarding
                 log($"{module.Name}: port {module.Port} is already in use by the hub or another service; not forwarded.");
                 continue;
             }
-            var tokenFile = module.TokenFile == null ? null : new ServiceTokenFile(module.TokenFile.Path, module.TokenFile.Protection);
-            routes.Add(new ServiceRoute(module.Id, module.Name, module.Port!.Value, module.Target!, tokenFile, log));
-            log($"{module.Name}: port {module.Port} forwards to {module.Target}{(tokenFile == null ? ", without a token." : ", with the token from its token file.")}");
+            routes.Add(new ServiceRoute(module.Id, module.Name, module.Port!.Value, module.Target!, module.Token, log));
+            log($"{module.Name}: port {module.Port} forwards to {module.Target}{(module.Token == null ? ", without a token." : ", with its token.")}");
         }
         return routes;
     }

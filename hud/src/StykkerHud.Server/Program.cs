@@ -35,10 +35,10 @@ if (args.Contains("--help") || args.Contains("-h"))
         /api/snapshot (the current reading and the history as JSON), /api/hub (the modules and whether they run).
 
         The hub lists the modules from %APPDATA%\Stykker\stykker.json; without that file SYS (17402) and LLM (17401).
-        A foreign service with "external", "port" and "target" (http://127.0.0.1:<port>) is forwarded on its port.
-        Its token comes from "tokenFile" ({ "path", "protection": "none" or "dpapi-user:<name>" }), if given. The hub
-        starts no service: "start" is ignored. Only this PC and paired devices with the admin role for that module
-        get through.
+        A foreign service with "external", "port" and "target" (this PC only: 127.0.0.1, localhost, one of its IP
+        addresses, or a name from "hostNames") is forwarded on its port. Its token is the "token" field of the entry.
+        The hub starts no service: "start" is ignored. Only this PC and paired devices with the admin role for that
+        module get through.
         stykker.json may also list "hostNames" (top level): further names this PC answers to, such as its Tailscale name.
 
         The server binds the port immediately and reads nothing until a viewer appears: the measuring loop
@@ -57,7 +57,8 @@ string pairingFile = args.SkipWhile(a => a != "--pairing-file").Skip(1).FirstOrD
 var pairing = new PairingService(new PairingStore(pairingFile));
 // Die Module aus stykker.json. --hub-config nimmt eine andere Datei (Probeläufe). Ohne Datei gilt die Vorgabe.
 string? hubConfig = args.SkipWhile(a => a != "--hub-config").Skip(1).FirstOrDefault();
-var hubModules = HubModules.Load(hubConfig);
+// Ein Ziel darf nur dieser PC sein: seine IPv4-Adressen werden hier gelesen (ServiceTargetRule)
+var hubModules = HubModules.Load(hubConfig, ServiceTargetRule.ReadThisPcAddresses());
 // Zusatznamen für den Host-Kopf aus derselben Datei ("hostNames"), etwa der Name des PCs im Tailscale-Netz
 var extraHostNames = HostNames.LoadExtra(hubConfig ?? HubModules.DefaultFile());
 // Der Port wird nur dann im Netz geöffnet, wenn der Netzschalter beim Start an ist. Ein Umschalten wirkt nach dem
