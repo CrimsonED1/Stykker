@@ -413,3 +413,23 @@ Folgen, aus dem Code und nicht im Probelauf geprüft:
 - LLM bei ausgeschaltetem Netz antwortet `/api/ping` einem fremden Namen mit 403 (vorher 200). Die Zentrale kann LLM dadurch als nicht erreichbar zeigen, wenn sie unter dem Rechnernamen geöffnet ist und das Netz aus ist.
 
 Noch nicht geprüft: ein echter StykkerHost über den Namen (nur der Endpunkt mit falschem Code); ein Handy oder ein zweiter PC über die Netzadresse; die Weiterleitung von Qwen Code mit einem Zusatznamen.
+
+### QR-Code und Kopplung andersherum (Schritt 5, 2026-10-14)
+
+Gebaut:
+
+- **QR-Encoder nach `Stykker.Pairing`** (`QrCode.cs`). Aus StykkerLLM übernommen, der Inhalt ist unverändert. Lizenz Apache-2.0 statt BUSL-1.1, so vom Besitzer am 2026-10-14 entschieden. LLM nutzt ihn von dort; in LLM ändern sich nur `using`-Zeilen.
+- **Kopplung andersherum auf `/pair`** (`PairingGate`): „Show a code on this device instead“ holt über `POST /pair/request` Id, Secret und sechs Ziffern; `POST /pair/poll?cookie=1` fragt alle zwei Sekunden nach. Das Token geht nur als `Set-Cookie`, nie in den Körper einer Antwort. Id und Secret stehen im JSON-Körper, nicht in der Adresse. Ein Poll ohne `cookie=1` bekommt 400 und berührt die Anfrage nicht. LLM gibt das Token bei einem Poll ohne Cookie in den Körper; das ist hier bewusst nicht übernommen.
+- **Freigabe in der Zentrale** (HUD, Bereich „Devices“): „Waiting devices“ mit Name, Modul, Ziffern und Restzeit, dazu „Approve“ (admin in dem Modul, an dem das Gerät angefragt hat), „Approve as viewer“ und „Deny“. Nur an der Maschine: `POST /api/hub/requests/approve` (Ziffern und Rolle im Körper), `POST /api/hub/requests/{id}/deny`.
+- **QR vorwärts:** `GET /api/hub/qr?address=…` liefert ein SVG für `http://<Adresse>:<Port>/pair?code=<Code>`. Die Adresse muss eine der Adressen aus `/api/hub/access` oder ein Name aus `hostNames` sein (sonst 400). Ohne Netzschalter oder mit geschlossenem Port: 409. Von einem Gerät im Netz: 403.
+
+Geprüft (2026-10-14):
+
+- **Build:** Shared, HUD, SYS und LLM ohne Warnungen.
+- **Tests:** `Stykker.Pairing.Tests` 118 von 118 (vorher 114), `Stykker.Shared.Tests` 187 von 187 (vorher 178), SYS 21 von 21 (vorher 21), LLM 624 bestanden und 1 übersprungen (vorher 624 und 1).
+- **Browser:** `hud/tools/check-pairing.mjs` gegen eine HUD auf Port 8090 mit eingeschaltetem Netzschalter. Der PC ist ein Browser auf `127.0.0.1`, das Handy ein zweiter Browser-Kontext über eine Netzadresse dieses PCs. 13 von 13 Prüfungen bestanden: die Fälle 1 bis 11 aus dem Auftrag, Fall 9 in zwei Teilen (Antworten ohne Token; Freigabe mit Cookie nur als `Set-Cookie`).
+
+Noch nicht geprüft:
+
+- **Ein echtes Handy** und die Windows-Firewall: der Probelauf nutzte eine Netzadresse dieses PCs.
+- **Der Inhalt des QR-Codes** ist nicht mit einem Leser dekodiert worden. Das Skript baut die Adresse für das Handy selbst aus der gewählten Adresse, dem Port und dem angezeigten Code (Fall 2) und liest das Bild nicht.

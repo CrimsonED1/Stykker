@@ -11,6 +11,7 @@ Die Reihenfolge folgt einem Ziel: **die Zentrale als App auf dem Handy, mit eine
 | Gemeinsame Kopplung (`Stykker.Pairing`), eine Ablage für HUD, SYS und LLM | Prüfung am echten Handy und an einem zweiten PC (Schritt 1, Abnahme 3 in [plan-llm-modul.md](plan-llm-modul.md)) |
 | Zentrale im HUD unter `/hub`: Leiste, Übersicht, Module im Frame, einklappbar | Qwen Code in der eigenen `stykker.json` eintragen (Beispiel in `hud/README.md`) |
 | Zugangsprüfung für HUD und SYS, Geräte mit Rolle je Modul | kein HTTPS, nicht am echten Handy geprüft |
+| QR-Code und Kopplung andersherum: Anmeldeseite, Freigabe in der Zentrale (Schritt 5) | nicht am echten Handy und nicht über die Windows-Firewall geprüft |
 | Fremde Dienste in der Zentrale: Qwen Code über eigene Weiterleitung, mit Prüfung davor und Start durch die Zentrale (Schritt 4) | nur Qwen Code geprüft, nicht am echten Handy; Ctrl+C-Weg nicht geprüft |
 
 ## Die Schritte
@@ -52,11 +53,12 @@ Die Reihenfolge folgt einem Ziel: **die Zentrale als App auf dem Handy, mit eine
 - **Entscheidung (2026-10-14):** Die Zentrale startet ihr eigenes `qwen serve` auf `127.0.0.1` mit einem Token nur für die Zentrale (`--require-auth`, das Token in der Umgebung, nie in der Kommandozeile). Die frühere Empfehlung, über Local Control zu koppeln, ist verworfen. Geprüft im Fork von Qwen Code, `docs/design/2026-08-28-trusted-loopback-full-api.md`, Abschnitt „Listener-scoped Local Control credentials“: Local Control hat einen eigenen LAN-Listener mit eigenen, widerrufbaren Kopplungs-Token und liegt nicht hinter der Stykker-Prüfung. Laut demselben Fork (`docs/design/local-control-cli.md`, Abschnitt Security) bekommt jedes Einschalten ein neues Pairing-Token (`crypto.randomBytes(32)`). Die Alternative, eine Datei der Desktop-App, braucht eine Änderung im Fork und war damit nicht nötig.
 - **Wo es läuft:** zunächst im HUD-Server. Später zieht es in den Knoten (Schritt 6).
 
-### 5. Geräte bequemer koppeln
+### 5. Geräte bequemer koppeln (umgesetzt am 2026-10-14)
 
-- **Was:** ein QR-Code neben dem Code, und die Kopplung andersherum (das neue Gerät zeigt sechs Ziffern, die Zentrale gibt frei). Die Bibliothek kann das schon; es fehlen die Seiten.
+- **Stand:** umgesetzt. Was gebaut und geprüft ist, steht in [plan-stykkernode.md](plan-stykkernode.md), Abschnitt 10. Geprüft mit `hud/tools/check-pairing.mjs` (13 von 13), mit einem zweiten Browser als Handy über eine Netzadresse dieses PCs; am echten Handy und über die Windows-Firewall nicht geprüft.
+- **Was:** ein QR-Code neben dem Code, und die Kopplung andersherum (das neue Gerät zeigt sechs Ziffern, die Zentrale gibt frei).
 - **Warum:** Am Handy eine Adresse abzutippen ist der mühsamste Teil.
-- **Entscheidung:** der QR-Code braucht entweder ein Paket (Rückfrage nötig) oder rund 300 Zeilen eigenen Code.
+- **Entscheidung (2026-10-14):** Der QR-Encoder ohne Paket zieht aus StykkerLLM nach `shared/` (`Stykker.Pairing`, Apache-2.0 statt BUSL-1.1, so vom Besitzer entschieden); LLM nutzt ihn von dort. Kein neues Paket.
 
 ### 6. StykkerNode
 
