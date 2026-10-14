@@ -350,8 +350,8 @@ Die Zentrale leitet einen fremden Dienst auf einem eigenen Port weiter und start
 Geprüft (2026-10-14):
 
 - **Build:** Shared, HUD, SYS und LLM (Release) ohne Warnungen.
-- **Tests:** `Stykker.Shared.Tests` 116 von 116 (vorher 63), `Stykker.Pairing.Tests` 51 von 51 (vorher 42), `StykkerLlm.Tests` 612 bestanden und 1 übersprungen (wie vorher), SYS 21 von 21. Das HUD hat kein Testprojekt; geprüft wird es mit `check-proxy`.
-- **`check-proxy`:** 46 von 46. Gezeigt wird: fremde Herkunft gibt 403, auch als WebSocket, am PC wie am Handy; das Cookie des Geräts geht nicht weiter, das Token kommt dazu; 20 Teile eines Stroms kommen während des Laufs an; 50 Nachrichten über WebSocket kommen zurück. Der Dienst hört nur auf `127.0.0.1` mit `--require-auth`, und das Token steht weder in der Kommandozeile noch im Log. Das Handy ohne Gerät bekommt 401, ein Zuschauer 403 und den Dienst nicht in der Liste; ein Admin bekommt 200 und Qwen im Frame. Die Zentrale endet mit `taskkill` ohne `/F`, und ein Dienst, den sie nicht gestartet hat, bleibt unberührt. Eine Konfiguration ohne die neuen Felder bleibt unverändert.
+- **Tests:** `Stykker.Shared.Tests` 145 von 145 (vorher 63), `Stykker.Pairing.Tests` 51 von 51 (vorher 42), `StykkerLlm.Tests` 612 bestanden und 1 übersprungen (wie vorher), SYS 21 von 21. Das HUD hat kein Testprojekt; geprüft wird es mit `check-proxy`.
+- **`check-proxy`:** 48 von 48. Gezeigt wird: fremder Name im Host-Kopf gibt 403, auch mit passender Origin und als WebSocket (DNS-Rebinding); fremde Herkunft gibt 403, auch als WebSocket, am PC wie am Handy; das Cookie des Geräts geht nicht weiter, das Token kommt dazu; 20 Teile eines Stroms kommen während des Laufs an; 50 Nachrichten über WebSocket kommen zurück. Der Dienst hört nur auf `127.0.0.1` mit `--require-auth`, und das Token steht weder in der Kommandozeile noch im Log. Das Handy ohne Gerät bekommt 401, ein Zuschauer 403 und den Dienst nicht in der Liste; ein Admin bekommt 200 und Qwen im Frame. Die Zentrale endet mit `taskkill` ohne `/F`, und ein Dienst, den sie nicht gestartet hat, bleibt unberührt. Eine Konfiguration ohne die neuen Felder bleibt unverändert.
 - **Handy:** ein Browser auf dieser Maschine über deren LAN-Adresse. Keine Bilder gemacht.
 
 Dabei entschieden, weil die Umsetzung es verlangte:
@@ -361,6 +361,7 @@ Dabei entschieden, weil die Umsetzung es verlangte:
 - **`ApplicationStopping` statt `ApplicationStopped`.** Bei `taskkill` ohne `/F` lief `ApplicationStopped` nicht mehr, und der Dienst blieb. Das Aufräumen hängt nun am früheren Ereignis.
 - **Kein Klartext für Token.** Schlägt DPAPI fehl, bricht die Ablage ab, statt `services.dat` im Klartext zu schreiben.
 - **`tokenEnv` ist Pflicht.** Ohne den Namen der Umgebungsvariable ginge das Token nur über die Kommandozeile.
+- **Host-Kopf nur mit dem eigenen Namen.** Die Weiterleitung antwortet nur unter einer IP-Adresse, `localhost`, dem Rechnernamen oder dem Rechnernamen mit der DNS-Endung dieses PCs. Jeder andere Name bekommt 403, auch von dieser Maschine. Sonst könnte eine fremde Seite, deren Name auf 127.0.0.1 zeigt, den Dienst mit dem Token erreichen (DNS-Rebinding). Ein Name wie `<Rechnername>.<fremde Domain>` ist deshalb abgewiesen, weil der Angreifer die Domain besitzen kann.
 
 Noch nicht geprüft:
 
@@ -368,3 +369,5 @@ Noch nicht geprüft:
 - **Beenden mit Strg+C.** Die Prüfung nutzt `taskkill` ohne `/F`. Der Weg über Strg+C ist nicht geprüft.
 - **Andere fremde Dienste.** Geprüft ist nur Qwen Code. `start` setzt voraus, dass ein Dienst `--hostname` und `--require-auth` kennt; für andere Dienste ist das nicht geprüft.
 - **Arbeitsordner des Dienstes.** Er erbt den der Zentrale und lässt sich noch nicht einstellen.
+- **Tailscale-Namen (MagicDNS).** Ein Name wie `<PC>.<Tailnet>.ts.net` wird nur angenommen, wenn die DNS-Endung des PCs genau dieses Tailnet ist. Sonst ist er abgewiesen. Offen ist, ob das Tailnet als Angabe in `stykker.json` eingetragen werden soll.
+- **Die Module selbst.** Der Host-Kopf wird nur an der Weiterleitung geprüft. LLM prüft ihn nur, solange der Netzschalter aus ist (`AccessGate`, Prüfung 5 dort). HUD und SYS prüfen ihn nirgends. Auf den eigenen Ports dieser Module gilt Loopback als Admin, also besteht dort DNS-Rebinding weiter. Das ist nicht geschlossen.

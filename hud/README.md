@@ -46,6 +46,7 @@ The hub is the single address for the Stykker tools of this machine: `/hub` on t
 - **Starting a service.** `start` is optional. The hub starts the service only when nothing answers on `target`. A service that already runs is left alone: the hub neither starts nor stops it. `command` and `tokenEnv` are required; `args` and `env` hold strings only. The hub adds `--hostname 127.0.0.1 --require-auth` to the arguments (its own switches already in `args` are removed first) and passes its token in the environment variable named by `tokenEnv`, never on the command line. The output goes to the hub's log with the token replaced by `***`. When the hub ends, also when it is closed hard, the service it started ends with it, including the processes that service started itself.
 - **Service tokens.** The hub keeps one token per module id in `services.dat`, next to `pairing.dat`, and Windows protects it the same way. Without that protection the hub refuses to write the file in plain text. A device never receives the token; the hub adds it to every request it forwards.
 - **Who sees and opens a forwarded service.** Like every external entry, it is listed only on this PC and for devices with the role `admin` for that module. Others do not see it in the bar. A request to it from another site gets `403`, even from an admin device.
+- **Host name.** The forwarding answers only under an IP address, `localhost`, the PC's name, or the PC's name with its own DNS suffix. Any other host name gets `403`, even from this PC with a matching `Origin`. That blocks DNS rebinding: a web page whose name points at `127.0.0.1` cannot reach the service through that name. A name like `<PC name>.<other domain>` is refused too, because that domain can belong to anyone. Tailscale names (`<PC>.<tailnet>.ts.net`) are refused unless the PC's DNS suffix is that tailnet.
 - **Small screens.** On a phone, and in the app installed on it, the bar starts folded and opens as a menu from one symbol at the bottom right, within thumb reach. Choosing a module folds the menu again.
 - **Theme.** The button in the bar switches between *Dark* and *Spacepunk Titan*, as the monitor does. The frame follows at once.
 - **Install as an app.** The hub has a web app manifest (`/manifest.webmanifest`, shown standalone, starting at `/hub`), so the browser can install it.
@@ -143,7 +144,7 @@ node tools\check-proxy.mjs --qwen-cli <path to cli.js>
 
 Each shot run writes `hud-measure.json` (DOM measurements, console problems, failed requests), the two theme pictures, a full-page PNG and a small review picture. A run that reports `problems: none` has no 404 and no console error. The DOM measurements are the check; the picture only confirms them.
 
-Last run on 2026-10-09: `check-ui` 18/18 checks passed, no problems. Last run on 2026-10-14: `check-proxy` 46/46 checks passed.
+Last run on 2026-10-09: `check-ui` 18/18 checks passed, no problems. Last run on 2026-10-14: `check-proxy` 48/48 checks passed.
 
 ## Design mockups
 

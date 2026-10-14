@@ -44,7 +44,7 @@ Die Reihenfolge folgt einem Ziel: **die Zentrale als App auf dem Handy, mit eine
 
 ### 4. Fremde Dienste in der Zentrale, Qwen Code zuerst (umgesetzt am 2026-10-14)
 
-- **Stand:** umgesetzt im HUD-Server. Was gebaut und geprüft ist, steht in [plan-stykkernode.md](plan-stykkernode.md), Abschnitt 10. Geprüft mit `hud/tools/check-proxy.mjs` (46 von 46), nur Qwen Code, nur von dieser Maschine aus; am echten Handy und über die Windows-Firewall nicht geprüft.
+- **Stand:** umgesetzt im HUD-Server. Was gebaut und geprüft ist, steht in [plan-stykkernode.md](plan-stykkernode.md), Abschnitt 10. Geprüft mit `hud/tools/check-proxy.mjs` (48 von 48), nur Qwen Code, nur von dieser Maschine aus; am echten Handy und über die Windows-Firewall nicht geprüft.
 - **Was:** Ein Eintrag in `stykker.json` mit `"external": true`, `port` und `target` bekommt eine eigene Weiterleitung auf einem eigenen Port (YARP 2.3.0). Sie prüft die Stykker-Kopplung und die Rolle `admin` für dieses Modul, setzt das Token des Dienstes ein und nimmt das Einbett-Verbot aus der Antwort. Antwortet auf `target` nichts, startet die Zentrale den Dienst mit `start` selbst. Der Code dafür stand als Versuch in `spikes/frame-proxy`.
 - **Warum:** Qwen Code erscheint unter der Leiste der Zentrale, und das Handy braucht keinen zweiten Code.
 - **Fertig, wenn:** Qwen Code am Handy im Frame läuft, ein nicht gekoppeltes Gerät und ein Zuschauer abgewiesen werden, und ein langer Antwortstrom durchläuft.
