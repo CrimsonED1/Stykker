@@ -1,4 +1,3 @@
-using System.Net;
 using Stykker.Pairing;
 
 namespace Stykker.Shared.Web;
@@ -66,51 +65,10 @@ public static class ServiceProxyRules
     public static bool OriginAllowed(string? origin, string scheme, string host) =>
         string.IsNullOrEmpty(origin) || origin.Equals($"{scheme}://{host}", StringComparison.OrdinalIgnoreCase);
 
-    // Der Host-Kopf der Anfrage muss der Name sein, unter dem dieser PC erreichbar ist: eine IP-Adresse, localhost, der
-    // Rechnername oder der Rechnername mit der DNS-Endung dieses PCs (domainName, leer wenn keine). Jeder andere Name wird
-    // abgewiesen. Der Grund ist DNS-Rebinding: eine fremde Seite lässt ihren Namen auf 127.0.0.1 zeigen, dann schickt der
-    // Browser diesen Namen als Host und als Origin, und beides stimmt überein. Ein Name wie <Rechnername>.<fremd> ist darum
-    // nicht erlaubt: die Domain dieses Namens kann der Angreifer selbst besitzen.
-    public static bool HostAllowed(string? hostHeader, string machineName, string? domainName)
-    {
-        var name = NameOf((hostHeader ?? "").Trim());
-        if (string.IsNullOrEmpty(name)) return false;
-        if (name.Equals("localhost", StringComparison.OrdinalIgnoreCase) || IsIpLiteral(name)) return true;
-        if (machineName.Length == 0) return false;
-        if (name.Equals(machineName, StringComparison.OrdinalIgnoreCase)) return true;
-        return !string.IsNullOrEmpty(domainName) && name.Equals($"{machineName}.{domainName}", StringComparison.OrdinalIgnoreCase);
-    }
-
-    // Der Name ohne Port: "pc:8091" wird "pc", "[::1]:8091" wird "::1". null, wenn der Kopf nicht so aufgebaut ist.
-    private static string? NameOf(string value)
-    {
-        if (value.Length == 0) return null;
-        if (value[0] == '[')
-        {
-            int close = value.IndexOf(']');
-            if (close < 0 || !PortSuffix(value[(close + 1)..])) return null;
-            return value[1..close];
-        }
-        // Ein IPv6-Name ohne Klammern ist in einem Host-Kopf nicht gültig
-        if (value.Count(c => c == ':') > 1) return null;
-        int colon = value.IndexOf(':');
-        if (colon < 0) return value;
-        return PortSuffix(value[colon..]) ? value[..colon] : null;
-    }
-
-    // "" oder ":" gefolgt von einer Portnummer 1 bis 65535
-    private static bool PortSuffix(string rest)
-    {
-        if (rest.Length == 0) return true;
-        if (rest[0] != ':') return false;
-        var digits = rest[1..];
-        return digits.Length is >= 1 and <= 5 && digits.All(char.IsAsciiDigit)
-            && int.TryParse(digits, out var port) && port is > 0 and <= 65535;
-    }
-
-    // Eine IPv4-Adresse (nur Ziffern und Punkte) oder eine IPv6-Adresse (mit Doppelpunkt)
-    private static bool IsIpLiteral(string name) =>
-        (name.Contains(':') || name.All(c => char.IsAsciiDigit(c) || c == '.')) && IPAddress.TryParse(name, out _);
+    // Der Host-Kopf der Anfrage muss ein Name dieser Maschine sein. Die Regel steht in HostNames (Stykker.Pairing), damit
+    // auch StykkerLLM sie hat. Der Grund ist DNS-Rebinding.
+    public static bool HostAllowed(string? hostHeader, string machineName, string? domainName) =>
+        HostNames.Allowed(hostHeader, machineName, domainName, Array.Empty<string>());
 
     // Host-Kopf für das Ziel: "127.0.0.1:41999"
     public static string TargetHost(string target) => new Uri(target).Authority;
