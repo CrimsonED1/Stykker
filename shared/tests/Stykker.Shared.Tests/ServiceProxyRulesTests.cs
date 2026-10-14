@@ -6,6 +6,9 @@ public class ServiceProxyRulesTests
 {
     private const string Admin = "admin", Viewer = "viewer";
     private const string Target = "http://127.0.0.1:41999";
+    // Der Name dieses PCs in den Tests (ein Platzhalter) und seine DNS-Endung
+    private const string Machine = "testhost", Domain = "example.lan";
+    private const string Host = "testhost:8091";
 
     // Die Zeilen der Tabelle in 4.6, je mit einer Anfrage ohne Origin (dazu weiter unten die Origin-Fälle)
     [Theory]
@@ -16,7 +19,7 @@ public class ServiceProxyRulesTests
     [InlineData(false, true, Viewer, ServiceAccess.NotAdmin)]     // Rolle viewer für diese id
     [InlineData(false, true, Admin, ServiceAccess.Allow)]         // Rolle admin für diese id
     public void Each_row_of_the_table_gives_its_answer(bool loopback, bool remote, string? role, ServiceAccess expected) =>
-        Assert.Equal(expected, ServiceProxyRules.Decide(loopback, remote, role, null, "http", "pc:8091"));
+        Assert.Equal(expected, ServiceProxyRules.Decide(loopback, remote, role, null, "http", Host, Machine, Domain));
 
     [Fact]
     public void The_answers_carry_the_status_and_the_text_from_the_table()
@@ -27,22 +30,24 @@ public class ServiceProxyRulesTests
         Assert.Equal("Only an admin of this module may open it. The PC can change the role in the Stykker hub.", ServiceProxyRules.MessageOf(ServiceAccess.NotAdmin));
         Assert.Equal(403, ServiceProxyRules.StatusOf(ServiceAccess.Forbidden));
         Assert.Equal(403, ServiceProxyRules.StatusOf(ServiceAccess.ForeignOrigin));
+        Assert.Equal(403, ServiceProxyRules.StatusOf(ServiceAccess.WrongHost));
+        Assert.Equal("Wrong host name. Open this service by the PC's address.", ServiceProxyRules.MessageOf(ServiceAccess.WrongHost));
         Assert.Equal(200, ServiceProxyRules.StatusOf(ServiceAccess.Allow));
         Assert.Null(ServiceProxyRules.MessageOf(ServiceAccess.Allow));
     }
 
     [Theory]
-    [InlineData("http://pc:8091", "http", "pc:8091", true)]         // die Seite der Weiterleitung selbst
-    [InlineData("http://PC:8091", "http", "pc:8091", true)]         // Groß- und Kleinschreibung gleich
-    [InlineData("http://evil.example", "http", "pc:8091", false)]
-    [InlineData("http://pc:8092", "http", "pc:8091", false)]        // anderer Port ist eine andere Seite
-    [InlineData("https://pc:8091", "http", "pc:8091", false)]
-    [InlineData("null", "http", "pc:8091", false)]
-    [InlineData("", "http", "pc:8091", true)]
-    public void A_foreign_origin_is_refused_even_from_this_machine_or_a_paired_device(string origin, string scheme, string host, bool allowed)
+    [InlineData("http://testhost:8091", "http", true)]              // die Seite der Weiterleitung selbst
+    [InlineData("http://TESTHOST:8091", "http", true)]              // Groß- und Kleinschreibung gleich
+    [InlineData("http://evil.example", "http", false)]
+    [InlineData("http://testhost:8092", "http", false)]             // anderer Port ist eine andere Seite
+    [InlineData("https://testhost:8091", "http", false)]
+    [InlineData("null", "http", false)]
+    [InlineData("", "http", true)]
+    public void A_foreign_origin_is_refused_even_from_this_machine_or_a_paired_device(string origin, string scheme, bool allowed)
     {
-        var fromPc = ServiceProxyRules.Decide(true, false, null, origin, scheme, host);
-        var fromPhone = ServiceProxyRules.Decide(false, true, Admin, origin, scheme, host);
+        var fromPc = ServiceProxyRules.Decide(true, false, null, origin, scheme, Host, Machine, Domain);
+        var fromPhone = ServiceProxyRules.Decide(false, true, Admin, origin, scheme, Host, Machine, Domain);
 
         Assert.Equal(allowed, fromPc == ServiceAccess.Allow);
         Assert.Equal(allowed, fromPhone == ServiceAccess.Allow);
@@ -52,8 +57,71 @@ public class ServiceProxyRulesTests
     [Fact]
     public void A_request_with_a_foreign_origin_gets_403_whatever_the_role()
     {
-        Assert.Equal(ServiceAccess.ForeignOrigin, ServiceProxyRules.Decide(false, true, null, "http://evil", "http", "pc:8091"));
-        Assert.Equal(ServiceAccess.ForeignOrigin, ServiceProxyRules.Decide(false, false, Admin, "http://evil", "http", "pc:8091"));
+        Assert.Equal(ServiceAccess.ForeignOrigin, ServiceProxyRules.Decide(false, true, null, "http://evil", "http", Host, Machine, Domain));
+        Assert.Equal(ServiceAccess.ForeignOrigin, ServiceProxyRules.Decide(false, false, Admin, "http://evil", "http", Host, Machine, Domain));
+    }
+
+    // Der Host-Kopf: eine IP-Adresse, localhost oder der Name dieses PCs, mit oder ohne Port
+    [Theory]
+    [InlineData("127.0.0.1:8076", true)]
+    [InlineData("[::1]:8076", true)]
+    [InlineData("192.0.2.10:8076", true)]
+    [InlineData("localhost:8076", true)]
+    [InlineData("LOCALHOST", true)]
+    [InlineData("testhost:8076", true)]
+    [InlineData("TestHost:8076", true)]
+    [InlineData("testhost", true)]
+    [InlineData("testhost.example.lan:8076", true)]                  // Name mit der DNS-Endung dieses PCs
+    [InlineData("testhost.evil.example:8076", false)]                // dieselbe Form, fremde Domain: DNS-Rebinding
+    [InlineData("testhost.example.lan.evil.example:8076", false)]
+    [InlineData("evil.example:8076", false)]
+    [InlineData("evil.example", false)]
+    [InlineData("testhostevil.example:8076", false)]                 // enthält den Namen nur
+    [InlineData("evil-testhost:8076", false)]
+    [InlineData("testhost.:8076", false)]                            // leere Endung
+    [InlineData("", false)]
+    [InlineData(null, false)]
+    [InlineData("   ", false)]
+    [InlineData("testhost:", false)]                                 // Port leer
+    [InlineData("testhost:0", false)]
+    [InlineData("testhost:99999999", false)]
+    [InlineData("testhost:80x", false)]
+    [InlineData("[::1", false)]
+    [InlineData("::1:8076", false)]                                  // IPv6 ohne Klammern
+    public void Only_this_pc_by_address_localhost_or_its_name_is_a_host(string? host, bool allowed) =>
+        Assert.Equal(allowed, ServiceProxyRules.HostAllowed(host, Machine, Domain));
+
+    [Fact]
+    public void The_pcs_own_name_counts_only_when_it_has_no_dns_ending()
+    {
+        Assert.True(ServiceProxyRules.HostAllowed("testhost:8076", Machine, null));
+        Assert.False(ServiceProxyRules.HostAllowed("testhost.example.lan:8076", Machine, null));
+        Assert.False(ServiceProxyRules.HostAllowed("testhost.example.lan:8076", Machine, ""));
+    }
+
+    [Fact]
+    public void Without_a_machine_name_only_addresses_and_localhost_are_hosts()
+    {
+        Assert.True(ServiceProxyRules.HostAllowed("127.0.0.1:8076", "", null));
+        Assert.True(ServiceProxyRules.HostAllowed("localhost", "", null));
+        Assert.False(ServiceProxyRules.HostAllowed("testhost:8076", "", null));
+    }
+
+    [Fact]
+    public void A_dns_rebinding_request_is_refused_from_this_machine_and_from_a_paired_device()
+    {
+        // Der Name des Angreifers zeigt auf 127.0.0.1; Host und Origin stimmen überein, die Anfrage kommt von Loopback
+        const string evil = "testhost.evil.example:8091";
+        const string origin = "http://testhost.evil.example:8091";
+        Assert.Equal(ServiceAccess.WrongHost, ServiceProxyRules.Decide(true, false, null, origin, "http", evil, Machine, Domain));
+        Assert.Equal(ServiceAccess.WrongHost, ServiceProxyRules.Decide(false, true, Admin, origin, "http", evil, Machine, Domain));
+        Assert.Equal(ServiceAccess.WrongHost, ServiceProxyRules.Decide(true, false, null, "http://evil.example:8091", "http", "evil.example:8091", Machine, Domain));
+    }
+
+    [Fact]
+    public void The_host_is_checked_before_the_origin()
+    {
+        Assert.Equal(ServiceAccess.WrongHost, ServiceProxyRules.Decide(false, true, Admin, "http://evil.example", "http", "evil.example:8091", Machine, Domain));
     }
 
     [Fact]
@@ -75,7 +143,7 @@ public class ServiceProxyRulesTests
     [Fact]
     public void An_origin_is_rewritten_to_the_target_only_when_there_is_one()
     {
-        Assert.Equal(Target, ServiceProxyRules.OriginFor("http://pc:8091", Target));
+        Assert.Equal(Target, ServiceProxyRules.OriginFor("http://testhost:8091", Target));
         Assert.Null(ServiceProxyRules.OriginFor(null, Target));
         Assert.Null(ServiceProxyRules.OriginFor("", Target));
     }

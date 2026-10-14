@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http;
+using System.Net.NetworkInformation;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Stykker.Pairing;
@@ -63,6 +64,10 @@ internal static class ServiceForwarding
             ConnectTimeout = TimeSpan.FromSeconds(5),
         });
 
+        // Der Name, unter dem dieser PC erreichbar ist: nur an ihm gilt ein Host-Kopf (ServiceProxyRules.HostAllowed)
+        var machineName = Environment.MachineName;
+        var machineDomain = IPGlobalProperties.GetIPGlobalProperties().DomainName;
+
         app.Use(async (context, next) =>
         {
             if (!byPort.TryGetValue(context.Connection.LocalPort, out var route))
@@ -79,7 +84,8 @@ internal static class ServiceForwarding
                 ? pairing.RoleOf(ServiceProxyRules.DeviceToken(context.Request.Headers.Cookie.ToString()), route.Id, PairingGate.AddressText(remote))
                 : null;
             var access = ServiceProxyRules.Decide(loopback, remoteEnabled, role,
-                context.Request.Headers.Origin.ToString(), context.Request.Scheme, context.Request.Host.Value ?? "");
+                context.Request.Headers.Origin.ToString(), context.Request.Scheme, context.Request.Host.Value ?? "",
+                machineName, machineDomain);
             if (access != ServiceAccess.Allow)
             {
                 context.Response.StatusCode = ServiceProxyRules.StatusOf(access);

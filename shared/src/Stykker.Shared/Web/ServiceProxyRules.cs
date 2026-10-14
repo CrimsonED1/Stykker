@@ -1,3 +1,4 @@
+using System.Net;
 using Stykker.Pairing;
 
 namespace Stykker.Shared.Web;
@@ -7,6 +8,7 @@ namespace Stykker.Shared.Web;
 public enum ServiceAccess
 {
     Allow,           // weiter zum Dienst
+    WrongHost,       // Host-Kopf ist kein Name dieser Maschine (DNS-Rebinding): vor allem anderen abgewiesen
     Forbidden,       // Netzschalter aus: nur diese Maschine
     Unauthorized,    // von außen ohne gekoppeltes Gerät
     NotAdmin,        // gekoppeltes Gerät mit Rolle viewer für diesen Dienst
@@ -25,10 +27,13 @@ public static class ServiceProxyRules
     public static readonly IReadOnlyList<string> ResponseHeadersToDrop = ["X-Frame-Options"];
 
     // Die Entscheidung für eine Anfrage an der Weiterleitung. origin/scheme/host kommen aus der Anfrage; role ist die Rolle
-    // des Geräts in diesem Dienst (null ohne gültiges Gerät). Die Origin-Prüfung kommt zuerst: eine fremde Seite darf
-    // den Dienst auch dann nicht erreichen, wenn sie ein gekoppeltes Gerät benutzt.
-    public static ServiceAccess Decide(bool loopback, bool remoteEnabled, string? role, string? origin, string scheme, string host)
+    // des Geräts in diesem Dienst (null ohne gültiges Gerät). Zuerst kommt der Host-Kopf: ein fremder Name ist abgewiesen,
+    // auch von dieser Maschine und mit passender Origin. Dann die Origin-Prüfung: eine fremde Seite darf den Dienst auch
+    // dann nicht erreichen, wenn sie ein gekoppeltes Gerät benutzt.
+    public static ServiceAccess Decide(bool loopback, bool remoteEnabled, string? role, string? origin, string scheme, string host,
+        string machineName, string? domainName)
     {
+        if (!HostAllowed(host, machineName, domainName)) return ServiceAccess.WrongHost;
         if (!OriginAllowed(origin, scheme, host)) return ServiceAccess.ForeignOrigin;
         if (loopback) return ServiceAccess.Allow;
         if (!remoteEnabled) return ServiceAccess.Forbidden;
@@ -50,6 +55,7 @@ public static class ServiceProxyRules
         ServiceAccess.Unauthorized => "This device is not paired. Pair it in the Stykker hub.",
         ServiceAccess.NotAdmin => "Only an admin of this module may open it. The PC can change the role in the Stykker hub.",
         ServiceAccess.ForeignOrigin => "Refused: that request did not come from this page.",
+        ServiceAccess.WrongHost => "Wrong host name. Open this service by the PC's address.",
         _ => null,
     };
 
@@ -59,6 +65,52 @@ public static class ServiceProxyRules
     // Gleich wie scheme://Host der Anfrage; ohne Origin (kein Browser, eine Seite der Weiterleitung selbst) gilt die Anfrage als eigene.
     public static bool OriginAllowed(string? origin, string scheme, string host) =>
         string.IsNullOrEmpty(origin) || origin.Equals($"{scheme}://{host}", StringComparison.OrdinalIgnoreCase);
+
+    // Der Host-Kopf der Anfrage muss der Name sein, unter dem dieser PC erreichbar ist: eine IP-Adresse, localhost, der
+    // Rechnername oder der Rechnername mit der DNS-Endung dieses PCs (domainName, leer wenn keine). Jeder andere Name wird
+    // abgewiesen. Der Grund ist DNS-Rebinding: eine fremde Seite lässt ihren Namen auf 127.0.0.1 zeigen, dann schickt der
+    // Browser diesen Namen als Host und als Origin, und beides stimmt überein. Ein Name wie <Rechnername>.<fremd> ist darum
+    // nicht erlaubt: die Domain dieses Namens kann der Angreifer selbst besitzen.
+    public static bool HostAllowed(string? hostHeader, string machineName, string? domainName)
+    {
+        var name = NameOf((hostHeader ?? "").Trim());
+        if (string.IsNullOrEmpty(name)) return false;
+        if (name.Equals("localhost", StringComparison.OrdinalIgnoreCase) || IsIpLiteral(name)) return true;
+        if (machineName.Length == 0) return false;
+        if (name.Equals(machineName, StringComparison.OrdinalIgnoreCase)) return true;
+        return !string.IsNullOrEmpty(domainName) && name.Equals($"{machineName}.{domainName}", StringComparison.OrdinalIgnoreCase);
+    }
+
+    // Der Name ohne Port: "pc:8091" wird "pc", "[::1]:8091" wird "::1". null, wenn der Kopf nicht so aufgebaut ist.
+    private static string? NameOf(string value)
+    {
+        if (value.Length == 0) return null;
+        if (value[0] == '[')
+        {
+            int close = value.IndexOf(']');
+            if (close < 0 || !PortSuffix(value[(close + 1)..])) return null;
+            return value[1..close];
+        }
+        // Ein IPv6-Name ohne Klammern ist in einem Host-Kopf nicht gültig
+        if (value.Count(c => c == ':') > 1) return null;
+        int colon = value.IndexOf(':');
+        if (colon < 0) return value;
+        return PortSuffix(value[colon..]) ? value[..colon] : null;
+    }
+
+    // "" oder ":" gefolgt von einer Portnummer 1 bis 65535
+    private static bool PortSuffix(string rest)
+    {
+        if (rest.Length == 0) return true;
+        if (rest[0] != ':') return false;
+        var digits = rest[1..];
+        return digits.Length is >= 1 and <= 5 && digits.All(char.IsAsciiDigit)
+            && int.TryParse(digits, out var port) && port is > 0 and <= 65535;
+    }
+
+    // Eine IPv4-Adresse (nur Ziffern und Punkte) oder eine IPv6-Adresse (mit Doppelpunkt)
+    private static bool IsIpLiteral(string name) =>
+        (name.Contains(':') || name.All(c => char.IsAsciiDigit(c) || c == '.')) && IPAddress.TryParse(name, out _);
 
     // Host-Kopf für das Ziel: "127.0.0.1:41999"
     public static string TargetHost(string target) => new Uri(target).Authority;
