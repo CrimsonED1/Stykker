@@ -20,6 +20,8 @@ if (args.Contains("--help") || args.Contains("-h"))
           --no-tray             no tray icon (the window starts the server this way: it has an icon itself)
           --stay                keep running when no window, terminal or web page is open (also a setting)
           --pairing-file <file> the pairing file to use (default: the shared one, the same as StykkerHud and StykkerSys)
+          --hub-config <file>   the stykker.json whose "hostNames" this server also answers to (default: the hub's file,
+                                only with the default data folder)
           --hub-port <number>   port of the hub that may show this page in a frame (default 8079; 0 = off)
           --platform basic      no system access (like Linux): no auto-detection, no GPU/system values.
                                 Useful to try that mode on Windows.
@@ -40,6 +42,13 @@ int port = int.TryParse(args.SkipWhile(a => a != "--port").Skip(1).FirstOrDefaul
 bool noBrowser = args.Contains("--no-browser");
 // Kopplungsablage: ohne Angabe die gemeinsame (Vorgabe) bzw. eine pairing.dat im Datenordner (AppPaths.PairingFile)
 var pairingFile = args.SkipWhile(a => a != "--pairing-file").Skip(1).FirstOrDefault();
+// Zusatznamen für den Host-Kopf aus stykker.json ("hostNames"), etwa der Name des PCs im Tailscale-Netz. --hub-config
+// nimmt eine andere Datei (Probeläufe). Ohne die Angabe gilt die Vorgabe nur, wenn der Datenordner die Vorgabe ist.
+var hubConfig = args.SkipWhile(a => a != "--hub-config").Skip(1).FirstOrDefault();
+var extraHostNames = hubConfig != null || paths.IsDefault
+    ? Stykker.Pairing.HostNames.LoadExtra(hubConfig ?? Stykker.Pairing.HostNames.DefaultFile())
+    : Array.Empty<string>();
+var hostRule = HostNameRule.ForThisPc(extraHostNames);
 // Port der Zentrale, die diese Oberfläche in einem Frame zeigt (docs/plan-stykkernode.md); 0 = Einbetten aus
 int hubPort = int.TryParse(args.SkipWhile(a => a != "--hub-port").Skip(1).FirstOrDefault(), out var hp) ? hp : 8079;
 AppLog.Init("StykkerLLM-Server", paths);
@@ -108,7 +117,7 @@ engineHost.Queue = app.Services.GetRequiredService<EvalQueue>();   // die Wartes
 var launcher = app.Services.GetRequiredService<ActionContext>().Launcher;
 engineHost.StartProfile = launcher.StartProfileAsync;
 engineHost.UnloadServer = launcher.UnloadIfIdleAsync;   // Leerlauf-Entladen
-var gate = new AccessGate(engineHost.Access, engineHost.Key, port, () => ThemeCatalog.Find(engineHost.Engine.Settings.Theme));
+var gate = new AccessGate(engineHost.Access, engineHost.Key, port, () => ThemeCatalog.Find(engineHost.Engine.Settings.Theme), hostRule);
 
 // ── Einbetten: mit --hub-port darf die Zentrale (derselbe Rechnername, dieser Port) die Oberfläche in einem Frame zeigen ──
 if (hubPort > 0)

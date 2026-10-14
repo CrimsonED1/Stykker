@@ -10,16 +10,20 @@ namespace StykkerLlm.Server;
 //     Eine Webseite im Browser kann ihn nicht lesen; ein Schreibzugriff aus dem Browser kommt so nicht durch.
 //  2. Das Gerätetoken – als Cookie (Browser, Handy) oder als Kopf X-Stykker-Device (StykkerUI).
 //  3. Ohne alles: nur /api/ping (für die Erkennung) und /pair… (die Anmeldung selbst).
-// Zusätzlich: von außerhalb nur, wenn der Schalter Home/VPN an ist; und der Host-Kopf muss zur eigenen Adresse passen
-// (sonst könnte eine fremde Webseite über ihren Domainnamen auf 127.0.0.1 zugreifen).
+// Zusätzlich: von außerhalb nur, wenn der Schalter Home/VPN an ist; und der Host-Kopf muss ein Name dieses PCs sein,
+// für jeden Pfad, vor allem anderen (sonst könnte eine fremde Webseite über ihren Domainnamen auf 127.0.0.1 zugreifen).
+// Die Regel steht in HostNameRule; die zwei Wege der Model-Hosts sind dort ausgenommen.
 //
 // Anmelden geht in beide Richtungen, jeweils mit sechs Ziffern (AccessControl):
 //  /pair?code=…           der PC zeigt den Code, das neue Gerät bringt ihn mit (QR-Code oder abgetippt)
 //  /pair/request          das neue Gerät holt sich einen eigenen Code und zeigt ihn; ein angemeldetes Gerät gibt frei
 //  /pair/poll             … und das neue Gerät fragt nach, bis das Token bereitliegt
 //  /pair/token            wie /pair?code=…, aber mit JSON-Antwort (Programme, die den Code kennen)
-public sealed class AccessGate(AccessControl access, string key, int port, Func<ThemeInfo>? theme = null)
+public sealed class AccessGate(AccessControl access, string key, int port, Func<ThemeInfo>? theme = null, HostNameRule? hostRule = null)
 {
+    // Die Host-Prüfung: ohne eigene Regel gilt die für diesen PC ohne Zusatznamen
+    private readonly HostNameRule _hosts = hostRule ?? HostNameRule.ForThisPc(Array.Empty<string>());
+
     // Rolle des angemeldeten Aufrufers. Der Schlüssel aus dem Datenordner ist immer Admin (Fenster, TUI, Skripte),
     // ein Gerätetoken bringt die Rolle aus access.dat mit.
     public const string RoleItem = "StykkerLlm.Role";
@@ -39,6 +43,14 @@ public sealed class AccessGate(AccessControl access, string key, int port, Func<
         var path = ctx.Request.Path.Value ?? "/";
         var remote = ctx.Connection.RemoteIpAddress ?? IPAddress.None;
         var loopback = NetAddr.IsLoopback(remote.ToString());
+
+        // 0) Der Host-Kopf zuerst, für jeden Pfad (DNS-Rebinding): ein fremder Name wird vor allem anderen abgewiesen,
+        //    auch /api/ping, die Anmeldung und die Messwerte. Ausnahme: die zwei Wege der Model-Hosts (HostNameRule).
+        if (!_hosts.Allowed(path, ctx.Request.Method, ctx.Request.Host.Value, access.RemoteEnabled))
+        {
+            await Text(ctx, StatusCodes.Status403Forbidden, Strings.WrongHostName);
+            return true;
+        }
 
         // 1) Erkennung: läuft der Server, und ist er fürs Heimnetz freigegeben? (der Name hilft beim Koppeln eines Hosts)
         if (path.StartsWith("/api/ping", StringComparison.OrdinalIgnoreCase))
@@ -98,13 +110,6 @@ public sealed class AccessGate(AccessControl access, string key, int port, Func<
             return true;
         }
 
-        // 5) Host-Kopf prüfen (nur wenn nur dieser PC erreichbar ist): verhindert Zugriff über einen fremden Domainnamen
-        if (!access.RemoteEnabled && !HostMatchesSelf(ctx.Request.Host))
-        {
-            await Text(ctx, StatusCodes.Status403Forbidden, "Wrong host name. Open http://" + NetAddr.Url("127.0.0.1", port));
-            return true;
-        }
-
         var who = Auth(access, ctx, key);
         if (who != null)
         {
@@ -134,14 +139,6 @@ public sealed class AccessGate(AccessControl access, string key, int port, Func<
         var token = ctx.Request.Cookies[StateJson.CookieName];
         var role = string.IsNullOrEmpty(token) ? null : access.RoleOf(token, address);
         return role == null ? null : (role, "cookie");
-    }
-
-    private static bool HostMatchesSelf(HostString host)
-    {
-        var value = host.Value ?? "";
-        if (value.Length == 0) return true;                       // HTTP/1.0 ohne Host
-        var name = value.Contains(':') && !value.StartsWith('[') ? value[..value.IndexOf(':')] : value;
-        return name is "127.0.0.1" or "localhost" or "::1" or "[::1]" or "0.0.0.0";
     }
 
     private static string DeviceName(HttpContext ctx, string? given)

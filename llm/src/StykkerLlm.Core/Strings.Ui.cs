@@ -300,6 +300,7 @@ public static partial class Strings
     public const string RemoteOff = "Home/VPN off: only this PC can open the web interface";
     public const string RemoteThisPcOnly = "Only this PC";
     public const string RemoteHint = "Switch on Home/VPN to reach the web interface from your phone or another computer in the network. Windows asks once for the firewall.";
+    public const string WrongHostName = "Wrong host name. Open Stykker LLM by the PC's address.";
     public const string RemoteCodeLabel = "Access code";
     public const string RemoteScan = "Scan this with the phone camera to sign in";
     public const string RemoteThisBrowser = "Continue in this browser", RemoteEnterCode = "Enter the six digits shown on the PC (☰ → Phone access, or the key c in “stykker”).";
