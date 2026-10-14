@@ -22,6 +22,10 @@
     <ProjectReference Include="..\..\..\shared\src\Stykker.Shared\Stykker.Shared.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <PackageReference Include="Yarp.ReverseProxy" Version="2.3.0" />
+  </ItemGroup>
+
   <!-- Das Design-System wird nicht kopiert und nicht eingebunden: der Server liefert es zur Laufzeit unter /ds aus
        seiner Quelle (Vorgabe C:\_AI\Stykker\MonoRepo\shared\design-system, umstellbar über den Schalter design-system). So gibt
        es genau eine Fassung für die ganze Stykker-Familie. -->

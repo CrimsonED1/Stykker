@@ -109,7 +109,7 @@
       var button = el("button", { type: "button", "data-role": role }, role);
       if (device.roles[module] === role) button.className = "on";
       button.addEventListener("click", function () {
-        post("/api/hub/devices/" + encodeURIComponent(device.id) + "/role?module=" + module + "&role=" + role);
+        post("/api/hub/devices/" + encodeURIComponent(device.id) + "/role?module=" + encodeURIComponent(module) + "&role=" + role);
       });
       seg.append(button);
     });
@@ -142,7 +142,9 @@
     }
     var table = el("table");
     var head = el("tr");
-    ["Device", "Monitor", "SYS", "LLM", "Last seen", ""].forEach(function (h) { head.append(el("th", null, h)); });
+    // Die Spalten kommen aus der Konfiguration (Monitor, SYS, LLM und die übrigen Module aus stykker.json)
+    var columns = access.modules || [];
+    ["Device"].concat(columns.map(function (c) { return c.name; }), ["Last seen", ""]).forEach(function (h) { head.append(el("th", null, h)); });
     var thead = el("thead");
     thead.append(head);
     table.append(thead);
@@ -151,13 +153,16 @@
       var row = el("tr");
       var name = el("td");
       name.append(el("b", null, device.name), el("small", { class: "mono" }, device.address || ""));
-      var monitor = el("td", { "data-k": "Monitor" }); monitor.append(roleSwitch(device, "hud"));
-      var sys = el("td", { "data-k": "SYS" }); sys.append(roleSwitch(device, "sys"));
-      var llm = el("td", { "data-k": "LLM" }); llm.append(roleSwitch(device, "llm"));
+      row.append(name);
+      columns.forEach(function (c) {
+        var cell = el("td", { "data-k": c.name });
+        cell.append(roleSwitch(device, c.id));
+        row.append(cell);
+      });
       var remove = el("button", { type: "button", class: "btn" }, "Remove");
       remove.addEventListener("click", function () { post("/api/hub/devices/" + encodeURIComponent(device.id), "DELETE"); });
       var last = el("td"); last.append(remove);
-      row.append(name, monitor, sys, llm, el("td", { "data-k": "Last seen" }, when(device.lastSeen)), last);
+      row.append(el("td", { "data-k": "Last seen" }, when(device.lastSeen)), last);
       body.append(row);
     });
     table.append(body);
