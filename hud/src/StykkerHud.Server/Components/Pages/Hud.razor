@@ -7,7 +7,9 @@
     <div class="brand"><span class="logo">◆</span> STYKKER <span class="acc">HUD</span></div>
     <nav>
         <a class="active" href="/">Overview</a>
-        <a href="http://127.0.0.1:8077/" title="StykkerSYS: the process list (it has to be running)">Processes</a>
+        @* Versteckt, bis hud.js SYS in /api/hub findet. Dann zeigt er im Frame der Zentrale auf /hub#sys (ganze Seite),
+           allein im Browser auf die Adresse von SYS aus /api/hub. Siehe linkToSys in hud.js. *@
+        <a id="sys-link" href="/hub#sys" target="_top" hidden title="StykkerSYS: the process list (it has to be running)">Processes</a>
     </nav>
     <div class="strip">
         <span class="stat" title="Processor load">CPU <span class="mini"><i id="t-cpu"></i></span><b id="v-cpu">–</b>%</span>

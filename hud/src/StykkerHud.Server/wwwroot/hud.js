@@ -228,6 +228,30 @@
         button.classList.toggle("on", document.documentElement.dataset.theme === button.dataset.themeChoice);
     }
 
+    // Der Verweis „Processes": im Frame der Zentrale wählt er dort SYS (/hub#sys, ganze Seite); allein im Browser geht
+    // er zur Adresse von SYS aus /api/hub. Fehlt SYS dort oder antwortet /api/hub nicht, bleibt er versteckt.
+    async function linkToSys() {
+        const link = $("sys-link");
+        if (!link) return;
+        try {
+            const response = await fetch("/api/hub", { cache: "no-store" });
+            if (!response.ok) return;
+            const sys = ((await response.json()).modules || []).find((m) => m.id === "sys");
+            if (!sys) return;
+            if (document.documentElement.classList.contains("embed")) {
+                link.href = "/hub#sys";
+                link.target = "_top";
+            } else {
+                link.href = sys.url;
+                link.removeAttribute("target");
+            }
+            link.hidden = false;
+        } catch {
+            /* ohne Antwort bleibt der Verweis versteckt */
+        }
+    }
+    linkToSys();
+
     tick();
     setInterval(tick, 1000);
 })();
