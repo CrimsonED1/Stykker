@@ -125,7 +125,7 @@ app.MapGet("/api/hub/access", (HttpContext context) =>
         devices = pairing.Devices.Select(d => new
         {
             id = d.Id, name = d.Name, address = d.Address, lastSeen = d.LastSeen,
-            roles = new { hud = d.RoleIn("hud"), sys = d.RoleIn("sys") },
+            roles = new { hud = d.RoleIn("hud"), sys = d.RoleIn("sys"), llm = d.RoleIn("llm") },
         }),
     });
 });

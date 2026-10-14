@@ -1,7 +1,9 @@
+using Stykker.Pairing;
+
 namespace StykkerLlm.Core;
 
-// Ein gekoppelter Model-Host am Server. Vom Token steht nur der Hash in hosts.dat (wie bei den Geräten): wer die Datei
-// liest, kann sich damit nicht als Host ausgeben.
+// Ein gekoppelter Model-Host am Server. Vom Token steht nur der Hash in der gemeinsamen Ablage (wie bei den Geräten):
+// wer die Datei liest, kann sich damit nicht als Host ausgeben.
 public sealed class HostEntry
 {
     public string Id { get; set; } = "";
@@ -10,65 +12,46 @@ public sealed class HostEntry
     public DateTime Added { get; set; }
 }
 
-public sealed class HostFile
-{
-    public List<HostEntry> Hosts { get; set; } = new();
-}
-
-// Die gekoppelten Hosts dieses Servers (docs/plan-hosts-gateway.md). Add gibt das Token genau einmal heraus.
+// Die gekoppelten Hosts dieses Servers (docs/plan-hosts-gateway.md). Die Hosts liegen in der gemeinsamen Ablage
+// (Stykker.Pairing); diese Klasse übersetzt nur. Add gibt das Token genau einmal heraus.
 public sealed class HostRegistry
 {
-    private readonly string _file;
-    private readonly IPlatform _platform;
-    private readonly object _gate = new();
-    private readonly List<HostEntry> _hosts;
+    public const string FileName = LegacyLlmImport.HostsFile;
 
-    public const string FileName = "hosts.dat";
+    private readonly PairingService _pairing;
 
-    public HostRegistry(AppPaths paths, IPlatform platform)
-    {
-        _file = Path.Combine(paths.Root, FileName);
-        _platform = platform;
-        _hosts = ProtectedJson.Load<HostFile>(_file, platform).Hosts.Where(h => h.Id.Length > 0 && h.TokenHash.Length > 0).ToList();
-    }
+    public HostRegistry(AppPaths paths, IPlatform platform) : this(SharedPairing.Open(paths, platform)) { }
 
-    public IReadOnlyList<HostEntry> List() { lock (_gate) return _hosts.ToList(); }
+    // Ein fertiger Dienst: der Server gibt Hosts und Geräte denselben Dienst
+    public HostRegistry(PairingService pairing) => _pairing = pairing;
 
-    // Neuer Host: Eintrag anlegen, das Token einmal zurückgeben (der Host speichert es, der Server nur den Hash)
+    public IReadOnlyList<HostEntry> List() => _pairing.Hosts.Select(ToEntry).ToList();
+
+    // Neuer Host: Eintrag anlegen, das Token einmal zurückgeben (der Host speichert es, die Ablage nur den Hash).
+    // Die Zeit kommt aus der Uhr der Ablage; now bleibt für die Aufrufer, die sie schon übergeben.
     public (HostEntry Entry, string Token) Add(string name, DateTime now)
     {
-        var token = AccessControl.NewToken();
-        var entry = new HostEntry
-        {
-            Id = Guid.NewGuid().ToString("N")[..12],
-            Name = string.IsNullOrWhiteSpace(name) ? "host" : name.Trim()[..Math.Min(64, name.Trim().Length)],
-            TokenHash = AccessControl.Hash(token),
-            Added = now,
-        };
-        lock (_gate) _hosts.Add(entry);
-        Save();
-        return (entry, token);
+        var (host, token) = _pairing.AddHost(name);
+        return (ToEntry(host), token);
     }
 
-    public HostEntry? Find(string? token)
-    {
-        if (string.IsNullOrEmpty(token)) return null;
-        var hash = AccessControl.Hash(token);
-        lock (_gate) return _hosts.FirstOrDefault(h => h.TokenHash == hash);
-    }
+    public HostEntry? Find(string? token) => _pairing.FindHost(token) is { } host ? ToEntry(host) : null;
 
     public bool Remove(string id)
     {
-        bool removed;
-        lock (_gate) removed = _hosts.RemoveAll(h => h.Id == id) > 0;
-        if (removed) Save();
-        return removed;
+        try { return _pairing.RemoveHost(id); }
+        catch (Exception ex) when (ex is TimeoutException or IOException or UnauthorizedAccessException)
+        {
+            AppLog.Write("pairing store busy or unavailable: " + ex.GetType().Name);
+            return false;
+        }
     }
 
-    private void Save()
+    private static HostEntry ToEntry(PairedDevice host) => new()
     {
-        HostFile file;
-        lock (_gate) file = new HostFile { Hosts = _hosts.ToList() };
-        ProtectedJson.Save(_file, file, _platform);
-    }
+        Id = host.Id,
+        Name = host.Name,
+        TokenHash = host.Hash,
+        Added = SharedPairing.ToLocal(host.Created),
+    };
 }

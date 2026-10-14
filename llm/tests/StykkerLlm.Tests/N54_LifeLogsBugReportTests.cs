@@ -150,7 +150,8 @@ public class N54_LifeLogsBugReportTests
         Directory.CreateDirectory(paths.LogsDir);
         File.WriteAllText(Path.Combine(paths.LogsDir, "stykker.log"), "pair http://pc:8078/pair?code=123456 ok\nAuthorization: Bearer abc.def-ghi\n");
         File.WriteAllText(paths.SettingsFile, "{\"Theme\":\"Deep Sea\",\"ProviderKey\":\"sk-provider\"}");
-        foreach (var secret in new[] { "access.dat", "server.key", "nodes.dat", "confirm.key", "web-shell.dat" })
+        foreach (var secret in new[] { "access.dat", "server.key", "nodes.dat", "confirm.key", "web-shell.dat",
+                     "pairing.dat", "access.dat.bak", "hosts.dat.bak", "pairing.dat.unreadable-20261006-100000" })
             File.WriteAllText(Path.Combine(paths.Root, secret), "SECRET-" + secret);
 
         var r = BugReport.Create(paths, "Crash when I click Stop\nsteps …", "{\"accessCode\":\"654321\",\"servers\":[]}", T0, appDir, gpu: "RTX test");
@@ -163,6 +164,9 @@ public class N54_LifeLogsBugReportTests
         CollectionAssert.Contains(names, "logs/data/stykker.log");
         CollectionAssert.Contains(names, "settings.json");
         CollectionAssert.Contains(names, "state.json");
+        // Kopplung und alte Kopplungsdateien: nie im Zip, auch nicht als Name
+        foreach (var kept in new[] { "pairing.dat", "access.dat.bak", "hosts.dat.bak", "access.dat", "hosts.dat" })
+            CollectionAssert.DoesNotContain(names, kept);
         var all = string.Concat(zip.Entries.Select(e => new StreamReader(e.Open()).ReadToEnd()));
         foreach (var bad in new[] { "SECRET-", "sk-geheim123", "123456", "abc.def-ghi", "sk-provider", "654321" })
             Assert.IsFalse(all.Contains(bad, StringComparison.Ordinal), bad);

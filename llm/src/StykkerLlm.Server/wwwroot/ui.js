@@ -6,6 +6,20 @@
     const root = document.documentElement;
     const read = () => { try { return localStorage.getItem(KEY) || 'auto'; } catch (e) { return 'auto'; } };
 
+    // Im Frame der Zentrale (?embed=1&theme=dark|titan): ohne eigene Marke, im Thema der Zentrale. Blazor ändert bei
+    // jedem Seitenwechsel die Adresse, dann fehlt ?embed – darum merkt die Sitzung die Wahl. Nur im Frame: ein eigener
+    // Tab auf dem Port zeigt weiter die volle Oberfläche.
+    const EMBED_KEY = 'stykker.embed';
+    const framed = window.self !== window.top;
+    let embedTheme = null;   // 'dark' oder 'titan' im Frame, sonst null
+    try {
+        if (framed && new URLSearchParams(location.search).has('embed')) {
+            sessionStorage.setItem(EMBED_KEY, new URLSearchParams(location.search).get('theme') === 'titan' ? 'titan' : 'dark');
+        }
+        if (framed) embedTheme = sessionStorage.getItem(EMBED_KEY);
+    } catch (e) { /* ohne Sitzungsspeicher: im Frame bleibt es beim Thema des Servers */ }
+    if (embedTheme) root.classList.add('embed');
+
     // auto = nach Fensterbreite, sonst die feste Wahl. Der Umschalter im ☰ überstimmt sie.
     function apply() {
         const d = read();
@@ -21,6 +35,7 @@
     // des Systems und wechselt mit, wenn es sich ändert.
     const light = window.matchMedia ? window.matchMedia('(prefers-color-scheme: light)') : null;
     function choice() {
+        if (embedTheme) return embedTheme;   // eingebettet: das Thema der Zentrale, nicht die Wahl des Servers
         const m = document.querySelector('meta[name="stykker-theme"]');
         return (m && m.content) || root.dataset.themeChoice || 'system';
     }

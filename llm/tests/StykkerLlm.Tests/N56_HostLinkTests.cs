@@ -47,7 +47,7 @@ public class N56_HostLinkTests
         Assert.AreEqual(entry.Id, reg.Find(token)?.Id);
         Assert.IsNull(reg.Find("wrong"));
         Assert.IsNull(reg.Find(""));
-        var file = File.ReadAllText(Path.Combine(paths.Root, HostRegistry.FileName));
+        var file = File.ReadAllText(paths.PairingFile());   // die gemeinsame Ablage: dort liegen die Hosts jetzt
         Assert.IsFalse(file.Contains(token, StringComparison.Ordinal), "the token itself is never stored");
 
         var again = new HostRegistry(paths, new FakePlatform());

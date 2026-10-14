@@ -142,7 +142,7 @@
     }
     var table = el("table");
     var head = el("tr");
-    ["Device", "Monitor", "SYS", "Last seen", ""].forEach(function (h) { head.append(el("th", null, h)); });
+    ["Device", "Monitor", "SYS", "LLM", "Last seen", ""].forEach(function (h) { head.append(el("th", null, h)); });
     var thead = el("thead");
     thead.append(head);
     table.append(thead);
@@ -153,10 +153,11 @@
       name.append(el("b", null, device.name), el("small", { class: "mono" }, device.address || ""));
       var monitor = el("td", { "data-k": "Monitor" }); monitor.append(roleSwitch(device, "hud"));
       var sys = el("td", { "data-k": "SYS" }); sys.append(roleSwitch(device, "sys"));
+      var llm = el("td", { "data-k": "LLM" }); llm.append(roleSwitch(device, "llm"));
       var remove = el("button", { type: "button", class: "btn" }, "Remove");
       remove.addEventListener("click", function () { post("/api/hub/devices/" + encodeURIComponent(device.id), "DELETE"); });
       var last = el("td"); last.append(remove);
-      row.append(name, monitor, sys, el("td", { "data-k": "Last seen" }, when(device.lastSeen)), last);
+      row.append(name, monitor, sys, llm, el("td", { "data-k": "Last seen" }, when(device.lastSeen)), last);
       body.append(row);
     });
     table.append(body);

@@ -167,7 +167,7 @@ internal static class Program
         {
             status(Strings.ShellStarting);
             AppLog.Write("server: not answering, starting it");
-            using var proc = StartServer(paths, opt.Port);
+            using var proc = StartServer(paths, opt.Port, opt.PairingFile);
             var end = DateTime.Now.AddSeconds(30);
             while (!await ServerClient.IsRunningAsync(opt.Port).ConfigureAwait(false))
             {
@@ -185,7 +185,7 @@ internal static class Program
         return new StartPageResult(Html.Adopt(baseUrl, token, opt.Page), token);
     }
 
-    private static Process? StartServer(AppPaths paths, int port)
+    private static Process? StartServer(AppPaths paths, int port, string? pairingFile)
     {
         var exe = ServerLocator.Find() ?? throw new InvalidOperationException(Strings.ShellNoServer);
         var psi = new ProcessStartInfo(exe)
@@ -194,6 +194,8 @@ internal static class Program
             WorkingDirectory = Path.GetDirectoryName(exe) ?? AppContext.BaseDirectory,
         };
         foreach (var a in new[] { "--data-dir", paths.Root, "--port", port.ToString(Strings.Inv), "--no-browser", "--no-tray" }) psi.ArgumentList.Add(a);
+        // Nur weiterreichen, was das Fenster selbst bekommen hat (Entwickler-Schalter)
+        if (pairingFile != null) { psi.ArgumentList.Add("--pairing-file"); psi.ArgumentList.Add(pairingFile); }
         return Process.Start(psi);
     }
 
@@ -245,7 +247,7 @@ internal static class Program
     }
 }
 
-internal sealed record ShellArgs(int Port, string? DataDir, bool Gpu, string Page, bool Child = false)
+internal sealed record ShellArgs(int Port, string? DataDir, bool Gpu, string Page, bool Child = false, string? PairingFile = null)
 {
     // intern: der Wächter startet so das eigentliche Fenster
     public const string ChildFlag = "--window-process";
@@ -253,7 +255,7 @@ internal sealed record ShellArgs(int Port, string? DataDir, bool Gpu, string Pag
     // StykkerUI [--port 8078] [--data-dir <ordner>] [--gpu] [--page runs]
     public static ShellArgs Parse(string[] args)
     {
-        int port = 8078; string? data = null; bool gpu = false; string page = ""; bool child = false;
+        int port = 8078; string? data = null; bool gpu = false; string page = ""; bool child = false; string? pairing = null;
         for (int i = 0; i < args.Length; i++)
         {
             switch (args[i])
@@ -263,12 +265,13 @@ internal sealed record ShellArgs(int Port, string? DataDir, bool Gpu, string Pag
                 case "--port" when i + 1 < args.Length && int.TryParse(args[i + 1], out var p): port = p; i++; break;
                 case "--data-dir" when i + 1 < args.Length: data = args[++i]; break;
                 case "--page" when i + 1 < args.Length: page = args[++i]; break;
+                case "--pairing-file" when i + 1 < args.Length: pairing = args[++i]; break;
 #endif
                 case "--gpu": gpu = true; break;
                 case ChildFlag: child = true; break;
             }
         }
-        return new ShellArgs(port, data, gpu, page, child);
+        return new ShellArgs(port, data, gpu, page, child, pairing);
     }
 }
 

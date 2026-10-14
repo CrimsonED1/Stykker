@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## Unreleased
+
+### Changed
+- **One sign-in for HUD, SYS and LLM.** Devices, the access code, the roles and the model hosts are in the shared file
+  `pairing.dat`. Roles are per module: a device that signed in at the hub is a *Viewer* here until it is changed there.
+  The old `access.dat` and `hosts.dat` are imported once and kept as `access.dat.bak` and `hosts.dat.bak`.
+- **In the hub's frame** LLM shows no brand of its own and takes the hub's theme. Behaviour change: the server now allows
+  the hub on port 8079 (same host name) to show the page in a frame, also when the window starts it. The server opens no
+  extra port; `--hub-port 0` turns the permission off.
+- `/api/ping` adds `module`, `version` and `gate`. Nothing was renamed.
+
+### Added
+- `--pairing-file <file>` for the server, to use another pairing file (tests, test runs).
+- The hub shows the LLM role of each device and changes it.
+
 ## 0.4.0
 
 ### Changed

@@ -49,13 +49,15 @@ or with its console closed, counts as signed off at once), web pages count while
 One log per program (`AppLog`): `StykkerLLM-Server.log`, `StykkerUI.log`, `stykker.log` in `logs/` next to the exe if
 writable, else in the data folder. The server also writes ASP.NET Core warnings, engine notices and unhandled exceptions.
 `BugReport` zips the description, environment, the tails of all logs, `settings.json` and the state (no access code) into
-`bug-reports/`, with secrets blacked out; it never reads `access.dat`, `server.key`, `hosts.dat`, `host.json`, providers or tokens.
+`bug-reports/`, with secrets blacked out; it never reads `pairing.dat`, `access.dat`, `server.key`, `hosts.dat`, `host.json`, providers or tokens.
 
 ## Data and files
 
 All user data is in `%APPDATA%\StykkerLLM` (or `--data-dir`): settings, library (profiles, history, benchmarks),
-`access.dat`, `server.key`, `hosts.dat`, eval models/settings/results, recordings, logs. Files with secrets are bound to the
-Windows user (DPAPI) where possible.
+`server.key`, eval models/settings/results, recordings, logs. The pairing (devices, access code, roles, model hosts) is
+in the file `pairing.dat` that HUD, SYS and LLM share: `%APPDATA%\Stykker\pairing.dat` for the default folder, see
+[`../AGENTS.md`](../AGENTS.md). The old `access.dat` and `hosts.dat` are imported once and kept as `*.bak`. Files with
+secrets are bound to the Windows user (DPAPI) where possible.
 
 ## Testing without hardware
 

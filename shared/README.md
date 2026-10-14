@@ -23,14 +23,14 @@ The rule for what belongs here: code that two tools use, or that would otherwise
 
 A second library in `src/Stykker.Pairing`: pairing for all tools. One file, `%APPDATA%\Stykker\pairing.dat`, holds the access code, the paired devices with a role per tool, and the model hosts. A tool that starts later reads the same file and knows the devices that paired elsewhere; there they are viewers until someone gives them more.
 
-No tool uses it yet. StykkerLLM is the first to move over (`docs/plan-llm-modul.md`).
+HUD, SYS and StykkerLLM use it. StykkerLLM moved over last (`docs/plan-llm-modul.md`, step L2).
 
 | File | Contents |
 |---|---|
 | `PairingStore.cs` | The file. Several processes read and write it: a named mutex per file, a fresh read before every write, atomic replace. Bound to the Windows user with DPAPI; plain JSON elsewhere. |
 | `PairingService.cs` | The rules: a six-digit code that lasts ten minutes and one sign-in, pairing in both directions, devices, roles per tool, hosts. |
 | `PairingCodes.cs` | Codes, tokens and their hash. The hash is the one StykkerLLM stored devices with, so they stay signed in. |
-| `LegacyLlmImport.cs` | Takes over `access.dat` and `hosts.dat` from StykkerLLM's data folder, once. |
+| `LegacyLlmImport.cs` | Takes over `access.dat` and `hosts.dat` from StykkerLLM's data folder, once. StykkerLLM then renames them to `*.bak`; the file records what it imported. |
 
 It has no ASP.NET reference and no package dependency.
 
@@ -45,7 +45,7 @@ The PDH and tray parts only work on Windows. `Stykker.Shared` targets `net10.0` 
 
 `tests/Stykker.Pairing.LockProbe` is a helper program, not a test project: the pairing tests start it several times at once to write the same file.
 
-Last run on 2026-10-13: 32 of 32 tests passed in `Stykker.Shared.Tests` and 42 of 42 in `Stykker.Pairing.Tests`, the build shows no warnings.
+Last run on 2026-10-13: 63 of 63 tests passed in `Stykker.Shared.Tests` and 42 of 42 in `Stykker.Pairing.Tests`, the build shows no warnings.
 
 ## Using it from a tool
 

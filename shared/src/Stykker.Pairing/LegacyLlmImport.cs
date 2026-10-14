@@ -13,8 +13,9 @@ public static class LegacyLlmImport
     public const string Module = "llm";
     public const string AccessFile = "access.dat";
     public const string HostsFile = "hosts.dat";
-    private const string AccessSource = "llm:access";
-    private const string HostsSource = "llm:hosts";
+    // Merker in der Ablage (PairingState.Imported): welche alte Datei übernommen ist
+    public const string AccessSource = "llm:access";
+    public const string HostsSource = "llm:hosts";
 
     private static readonly JsonSerializerOptions Json = new() { PropertyNameCaseInsensitive = true };
 

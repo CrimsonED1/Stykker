@@ -127,7 +127,9 @@ stykker help | version
 - **Anmelden**: Das Handy scannt den QR-Code oder tippt den **sechsstelligen Code** ein (10 Minuten gültig, einmal). Den Code
   zeigen ☰ → Phone access und die Terminal-Anzeige (`c`). Oder das neue Gerät zeigt einen Code, und du gibst ihn auf einem
   schon angemeldeten Gerät frei.
-- **Rollen**: *Admin* darf alles, *Viewer* nur zusehen (keine Aktionen, kein Zugangscode).
+- **Rollen**: *Admin* darf alles, *Viewer* nur zusehen (keine Aktionen, kein Zugangscode). Rollen gelten je Modul. Eine
+  Anmeldung gilt für HUD, SYS und LLM: ein Gerät, das sich an der Zentrale angemeldet hat, ist hier *Viewer*, bis du es dort
+  änderst (die Spalten Monitor, SYS und LLM der Zentrale).
 - **Model-Hosts** (☰ → Hosts): einen PC mit `StykkerHost.exe` per sechsstelligem Code koppeln, dann seine GPU sehen,
   seine Modelle starten und stoppen; der Proxy nutzt sie wie lokale. Siehe [docs/hosts.md](docs/hosts.md) (englisch).
 - **Messwerte** für Statusleisten und Dashboards: `http://127.0.0.1:8078/api/metrics` (Prometheus-Text, nur dieser Rechner).

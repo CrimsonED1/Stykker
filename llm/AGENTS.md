@@ -51,7 +51,9 @@ dotnet test tests/StykkerLlm.Tests -c Release  # all green (2 tray tests skip wi
 - Bug report: `Core/BugReport.cs` (zip in `bug-reports/`, secrets never included, redaction), action `bugreport.create`,
   web `/bugreport`, `stykker bugreport <text>`.
 - A running server **locks its build output**. Stop it (tray icon, ⏻ in the web UI, `stykker stop`) before building.
-- Use a separate data folder for experiments: `--data-dir <folder>` (server, UI and CLI all accept it).
+- Use a separate data folder for experiments: `--data-dir <folder>` (server, UI and CLI all accept it). Pairing follows
+  the folder, so a test never touches the shared file; to share one with HUD or SYS in a test, pass the same
+  `--pairing-file <temp file>` to each of them.
 - Release zip: `powershell -ExecutionPolicy Bypass -File build/make-release.ps1 -Version x.y.z` (publishes nothing).
 
 ## Where things are
@@ -64,7 +66,7 @@ dotnet test tests/StykkerLlm.Tests -c Release  # all green (2 tray tests skip wi
 | add or change UI text | `Core/Strings*.cs` only (English). No literal text in pages or commands |
 | change a web page | `Server/Components/Pages/*.razor`, layout in `Components/Layout/MainLayout.razor`, styles in `wwwroot/app.css` (theme colors come from `Core/ThemeCatalog.cs`) |
 | change the terminal display | `Cli/Tui/TuiApp.cs` (frame, keys, panels), `Cli/Tui/StateSource.cs` (server / simulator), commands in `Cli/Program.cs` |
-| access, pairing, roles | `Core/Server/AccessControl.cs` (6-digit codes, devices, roles), `Server/AccessGate.cs` (HTTP entry) |
+| access, pairing, roles | `Core/Server/AccessControl.cs` (devices and roles for `llm`, an adapter on the shared pairing file), `Core/Server/SharedPairing.cs` (opens `pairing.dat`, imports the old files once), `Server/AccessGate.cs` (HTTP entry). The rules and the file format are in `shared/src/Stykker.Pairing`, not here. |
 | model hosts (several PCs) | `Core/Host/*.cs`, `src/StykkerLlm.Host`, page `Hosts.razor`, `docs/hosts.md` |
 | model tests (eval) | `Core/Eval/` – suites are JSON (`suite-*.json`, embedded), graders in `EvalGrader.cs`, queue in `EvalQueue.cs` |
 | prompt tester with tools | `Core/PromptHarness.cs`, `Core/PromptTools.cs`, page `PromptPage.razor` |
@@ -92,8 +94,13 @@ Architecture notes: `docs/architecture.md`. UI rules: `docs/ui.md`. Model hosts:
 ## Ports and files
 
 - 8078 web/API, 17500 proxy, 17501 UDP server discovery (used by StykkerHost's pairing page).
-- Data folder: `settings.json`, `access.dat` (devices, code; DPAPI on Windows), `server.key`, `hosts.dat`, `eval-*.json`,
-  `eval-results/`, recordings, logs.
+- `--hub-port` (default 8079; `0` = off) opens no port. It names the hub port that may show this page in a frame
+  (`frame-ancestors`, same host name).
+- Pairing (devices, access code, roles, hosts) is one file for HUD, SYS and LLM, DPAPI on Windows: `pairing.dat`. With the
+  default data folder it is `%APPDATA%\Stykker\pairing.dat`; with another `--data-dir` it is `pairing.dat` inside that
+  folder. `--pairing-file <file>` picks any file. A `--data-dir` that is the default folder counts as the default.
+- The old `access.dat` and `hosts.dat` are imported once and then kept as `access.dat.bak` and `hosts.dat.bak`.
+- Data folder: `settings.json`, `server.key`, `eval-*.json`, `eval-results/`, recordings, logs, and the two `.bak` files.
 
 ## Open work
 

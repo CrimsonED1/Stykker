@@ -32,8 +32,9 @@ public sealed class EngineHost : IDisposable
     public HostHub Hosts { get; }
     public HostScheduler HostScheduler { get; }
 
-    // sim != null: simulierte Server statt der echten (--sim, für Vorführung und Bilder der Dokumentation)
-    public EngineHost(AppPaths paths, IPlatform? platform = null, SimHost? sim = null)
+    // sim != null: simulierte Server statt der echten (--sim, für Vorführung und Bilder der Dokumentation).
+    // pairingFile: --pairing-file, eine andere Kopplungsablage (Probeläufe); sonst die Ablage nach AppPaths.PairingFile
+    public EngineHost(AppPaths paths, IPlatform? platform = null, SimHost? sim = null, string? pairingFile = null)
     {
         _paths = paths;
         _platform = sim?.Platform ?? platform ?? CreatePlatform();
@@ -52,8 +53,10 @@ public sealed class EngineHost : IDisposable
             StateJson.Notice(Strings.LostBalloon(lost.Name));
             TryRestartAfterCrash(lost);
         };
-        Access = new AccessControl(paths, _platform);
-        Hosts = new HostHub(new HostRegistry(paths, _platform));
+        // Eine Ablage für Geräte und Hosts: beide Adapter teilen sich den Dienst
+        var pairing = SharedPairing.Open(paths, _platform, pairingFile);
+        Access = new AccessControl(pairing);
+        Hosts = new HostHub(new HostRegistry(pairing));
         Hosts.Log += AppLog.Write;
         HostScheduler = new HostScheduler(Hosts);
         HostScheduler.Log += AppLog.Write;
@@ -143,7 +146,6 @@ public sealed class EngineHost : IDisposable
             {
                 try { await Engine.TickAsync(); Ticked?.Invoke(); } catch { }
                 Access.Maintain();          // abgelaufenen Code ersetzen, alte Kopplungsanfragen aufräumen
-                Access.WriteThrottled();
                 try { await Task.Delay(Math.Max(500, Engine.Settings.IntervalMs), ct); } catch { break; }
             }
         });
@@ -152,7 +154,6 @@ public sealed class EngineHost : IDisposable
     public void Dispose()
     {
         _cts?.Cancel();
-        Access.Write();
         try { Engine.Dispose(); } catch { }
         _platform.Dispose();
     }

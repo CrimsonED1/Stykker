@@ -1,0 +1,67 @@
+using Stykker.Pairing;
+
+namespace StykkerLlm.Core;
+
+// Die Kopplung von StykkerLLM an die gemeinsame Ablage (shared/Stykker.Pairing): eine pairing.dat für HUD, SYS und LLM.
+// Hier entsteht der Dienst für einen Datenordner: die Ablage öffnen und die alten Dateien aus dem Datenordner (access.dat,
+// hosts.dat) einmal übernehmen. Die Ablage merkt sich, was übernommen ist, so kommt nichts doppelt oder zurück.
+public static class SharedPairing
+{
+    // Der Dienst für diesen Datenordner. file = Pfad aus --pairing-file (sonst AppPaths.PairingFile). now ist eine Uhr in
+    // Ortszeit (Tests geben eine eigene hinein); der Dienst selbst rechnet in UTC.
+    public static PairingService Open(AppPaths paths, IPlatform platform, string? file = null, Func<DateTime>? now = null)
+    {
+        var store = new PairingStore(paths.PairingFile(file));
+        LegacyLlmImport.ImportFromFolder(store, paths.Root, new LegacyProtector(platform));
+        RetireLegacy(store, paths.Root);
+        Func<DateTime>? utc = now == null ? null : () => ToUtc(now());
+        return new PairingService(store, utc);
+    }
+
+    // Eine übernommene alte Datei heißt danach *.bak. Gelöscht wird nichts. Ließ sie sich nicht lesen, bleibt sie liegen
+    // (das Protokoll vermerkt es, ohne den Inhalt zu nennen).
+    private static void RetireLegacy(PairingStore store, string root)
+    {
+        var imported = store.Read().Imported;
+        Retire(root, LegacyLlmImport.AccessFile, imported.Contains(LegacyLlmImport.AccessSource));
+        Retire(root, LegacyLlmImport.HostsFile, imported.Contains(LegacyLlmImport.HostsSource));
+    }
+
+    private static void Retire(string root, string file, bool imported)
+    {
+        var path = Path.Combine(root, file);
+        if (!File.Exists(path)) return;
+        if (!imported)
+        {
+            AppLog.Write($"{file} could not be imported (unreadable); it stays in the data folder");
+            return;
+        }
+        // Liegt schon eine .bak (eine ältere Datei, die jemand zurückgelegt hat), bekommt die neue einen Zeitstempel
+        var bak = path + ".bak";
+        if (File.Exists(bak)) bak = path + ".bak-" + DateTime.Now.ToString("yyyyMMdd-HHmmss");
+        try { File.Move(path, bak); }
+        catch (FileNotFoundException) { }   // ein anderer Prozess hat sie schon umbenannt
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            AppLog.Write($"{file} was imported but could not be renamed: {ex.GetType().Name}");
+        }
+    }
+
+    // Zeiten: die Oberflächen rechnen in Ortszeit, die Ablage speichert UTC. Eine Zeit ohne Angabe der Zone gilt als
+    // Ortszeit und kommt beim Zurückrechnen unverändert heraus.
+    public static DateTime ToUtc(DateTime local) =>
+        local.Kind == DateTimeKind.Utc ? local : DateTime.SpecifyKind(local, DateTimeKind.Local).ToUniversalTime();
+
+    public static DateTime ToLocal(DateTime utc)
+    {
+        if (utc.Kind == DateTimeKind.Local || utc == DateTime.MinValue) return utc;
+        return DateTime.SpecifyKind(utc, DateTimeKind.Utc).ToLocalTime();
+    }
+
+    // Die alten Dateien hat StykkerLLM über die Plattform geschützt (DPAPI mit "StykkerLLM.confirm.v1")
+    private sealed class LegacyProtector(IPlatform platform) : IDataProtector
+    {
+        public byte[]? Protect(byte[] data) => platform.ProtectForCurrentUser(data);
+        public byte[]? Unprotect(byte[] data) => platform.UnprotectForCurrentUser(data);
+    }
+}

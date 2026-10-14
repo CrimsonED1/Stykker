@@ -19,6 +19,8 @@ if (args.Contains("--help") || args.Contains("-h"))
           --no-browser          do not open a browser on start
           --no-tray             no tray icon (the window starts the server this way: it has an icon itself)
           --stay                keep running when no window, terminal or web page is open (also a setting)
+          --pairing-file <file> the pairing file to use (default: the shared one, the same as StykkerHud and StykkerSys)
+          --hub-port <number>   port of the hub that may show this page in a frame (default 8079; 0 = off)
           --platform basic      no system access (like Linux): no auto-detection, no GPU/system values.
                                 Useful to try that mode on Windows.
           --help                this text
@@ -32,12 +34,14 @@ if (args.Contains("--help") || args.Contains("-h"))
 }
 
 var dataDir = args.SkipWhile(a => a != "--data-dir").Skip(1).FirstOrDefault();
-var paths = dataDir != null ? new AppPaths(Path.GetFullPath(dataDir)) : AppPaths.Default();
+var paths = AppPaths.FromDataDir(dataDir);
 Directory.CreateDirectory(paths.Root);
 int port = int.TryParse(args.SkipWhile(a => a != "--port").Skip(1).FirstOrDefault(), out var pp) ? pp : 8078;
 bool noBrowser = args.Contains("--no-browser");
-// Port der Zentrale, die diese Oberfläche in einem Frame zeigt (docs/plan-stykkernode.md); 0 = keine
-int hubPort = int.TryParse(args.SkipWhile(a => a != "--hub-port").Skip(1).FirstOrDefault(), out var hp) ? hp : 0;
+// Kopplungsablage: ohne Angabe die gemeinsame (Vorgabe) bzw. eine pairing.dat im Datenordner (AppPaths.PairingFile)
+var pairingFile = args.SkipWhile(a => a != "--pairing-file").Skip(1).FirstOrDefault();
+// Port der Zentrale, die diese Oberfläche in einem Frame zeigt (docs/plan-stykkernode.md); 0 = Einbetten aus
+int hubPort = int.TryParse(args.SkipWhile(a => a != "--hub-port").Skip(1).FirstOrDefault(), out var hp) ? hp : 8079;
 AppLog.Init("StykkerLLM-Server", paths);
 AppLog.CatchUnhandled();
 AppLog.Write($"start: port {port}, args {string.Join(' ', args.Where(a => a.StartsWith("--", StringComparison.Ordinal)))}");
@@ -53,7 +57,7 @@ using var serverLock = new System.Threading.Mutex(true, "Local\\" + SingleInstan
 if (!first)
 {
     AppLog.Write("start: a server for this data folder already runs");
-    if (!noBrowser) ServerUi.OpenBrowser(PairUrl(paths, port, platform));
+    if (!noBrowser) ServerUi.OpenBrowser(PairUrl(paths, port, platform, pairingFile));
     return;
 }
 
@@ -73,7 +77,7 @@ var sim = args.Contains("--sim") ? new SimHost(SimServerSpec.Defaults(), dataDir
 SimHost? sim = null;
 #endif
 sim?.World.Start();
-builder.Services.AddSingleton<EngineHost>(sp => new EngineHost(paths, platform, sim));
+builder.Services.AddSingleton<EngineHost>(sp => new EngineHost(paths, platform, sim, pairingFile));
 builder.Services.AddSingleton(sp => new EvalQueue(paths));
 builder.Services.AddSingleton(sp => new ActionContext
 {
@@ -305,10 +309,10 @@ catch (IOException ex)
     Environment.ExitCode = 1;
     return;
 }
-// Antwort auf die Suche anderer Stykker (Nodes koppeln, docs/nodes.md) – nur solange Home/VPN an ist
+// Antwort auf die Suche anderer Stykker (Hosts koppeln) – nur solange Home/VPN an ist
 using var discovery = new DiscoveryResponder(() => engineHost.Access.RemoteEnabled, () => NodeDiscovery.Reply(port, engineHost.Access.RemoteEnabled));
 discovery.Start();
-if (!noBrowser) ServerUi.OpenBrowser(PairUrl(paths, port, platform));
+if (!noBrowser) ServerUi.OpenBrowser(PairUrl(paths, port, platform, pairingFile));
 
 // Tray-Symbol (seit 2026-10-02): ohne Fenster bleibt der Server sonst nur über die Prozessliste
 // erreichbar. Das Fenster startet den Server mit --no-tray, weil es selbst ein Symbol hat. Fehler sind kein Grund
@@ -360,11 +364,12 @@ engineHost.Dispose();
 sim?.Dispose();
 
 // Der Browser startet mit dem Zugangscode, damit er ohne Umweg angemeldet ist (der Schlüssel bleibt für Fenster und TUI)
-static string PairUrl(AppPaths paths, int port, IPlatform platform)
+static string PairUrl(AppPaths paths, int port, IPlatform platform, string? pairingFile)
 {
     try
     {
-        var access = new AccessControl(paths, platform);
+        // Dieselbe Ablage und dieselbe Übernahme wie der Server (die Übernahme läuft nur einmal, die Ablage merkt sich das)
+        var access = new AccessControl(SharedPairing.Open(paths, platform, pairingFile));
         return $"{NetAddr.Url("127.0.0.1", port)}/pair?code={Uri.EscapeDataString(access.Code)}";
     }
     catch { return $"http://127.0.0.1:{port}/"; }
