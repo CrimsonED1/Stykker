@@ -190,7 +190,9 @@ catch (IOException ex)
 // Eigene Dienste starten (nur wenn auf ihrem Ziel niemand antwortet). Beim Ende der Zentrale beendet sie nur diese Prozesse.
 var services = new ServiceProcesses(Console.WriteLine);
 foreach (var route in routes) await services.StartAsync(route);
-app.Lifetime.ApplicationStopped.Register(services.StopOwned);
+// Beim Beginn des Herunterfahrens, nicht erst danach: offene Verbindungen über die Weiterleitung halten Kestrel sonst
+// bis zu seiner Frist auf, und der Dienst liefe in dieser Zeit weiter.
+app.Lifetime.ApplicationStopping.Register(services.StopOwned);
 if (!noBrowser) ToolHost.OpenBrowser(url);
 
 // Tray-Symbol: ohne Fenster wäre der Server sonst nur über seine Adresse zu finden. Fehler sind kein Grund für
