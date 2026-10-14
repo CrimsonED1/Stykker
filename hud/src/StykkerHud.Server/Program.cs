@@ -231,6 +231,86 @@ app.MapPost("/api/hub/requests/{id}/deny", (HttpContext context, string id) =>
     !Local(context) ? Results.StatusCode(StatusCodes.Status403Forbidden)
     : pairing.Deny(id) ? Results.Json(new { ok = true }) : Results.NotFound());
 
+// ── Fremde Dienste („Services“ in den Geräten): eintragen, URL ersetzen, entfernen. Nur an dieser Maschine und von der
+// eigenen Seite. Das Token geht nie in eine Antwort, nie in /api/hub und nie ins Log (ServiceTargetRule, LocalControlExchange).
+// Der Tausch ist eine Anfrage an den Dienst; sein Ziel muss dieser PC sein (ServiceTargetRule). ──
+var exchangeClient = new HttpClient(new SocketsHttpHandler
+{
+    UseProxy = false, AllowAutoRedirect = false, UseCookies = false, ConnectTimeout = TimeSpan.FromSeconds(5),
+}) { Timeout = TimeSpan.FromSeconds(10) };
+app.MapGet("/api/hub/services", (HttpContext context) =>
+{
+    if (!Local(context)) return Results.StatusCode(StatusCodes.Status403Forbidden);
+    var services = HubConfigWriter.List(hubFile.FilePath);
+    return Results.Json(new
+    {
+        hubPort = port,
+        // Ein Eintrag wirkt erst nach dem Neustart, wenn seine Weiterleitung noch nicht läuft (neuer Port)
+        services = services.Select(s => new
+        {
+            id = s.Id, name = s.Name, port = s.Port, target = s.Target, tokenSet = s.TokenSet,
+            running = routes.Any(r => r.Id == s.Id && r.Port == s.Port),
+        }),
+        suggestedPort = Enumerable.Range(17450, 200).First(p => !services.Any(s => s.Port == p) && !hubModules.Any(m => m.Port == p)
+            && p != port && p != StykkerPorts.Llm && p != StykkerPorts.Sys),
+    });
+});
+app.MapPost("/api/hub/services", async (HttpContext context, JsonElement body) =>
+{
+    if (!Local(context)) return Results.StatusCode(StatusCodes.Status403Forbidden);
+    var name = (JsonText(body, "name") ?? "").Trim();
+    var id = (JsonText(body, "id") ?? "").Trim().ToLowerInvariant();
+    var servicePort = JsonInt(body, "port") ?? 0;
+    // Name, Id und Port zuerst prüfen: ein Gerät soll nur gekoppelt werden, wenn der Eintrag danach auch geschrieben werden kann
+    var check = HubConfigWriter.Check(hubFile.FilePath, id, name, servicePort, port);
+    if (!check.Ok) return ServiceAnswer(false, check.Message, StatusCodes.Status400BadRequest);
+    var target = TargetFromUrl(JsonText(body, "url"));
+    if (target.Error != null) return ServiceAnswer(false, target.Error, StatusCodes.Status400BadRequest);
+    var exchange = await LocalControlExchange.ExchangeAsync(exchangeClient, target.Address!, target.Secret!, null, context.RequestAborted);
+    if (!exchange.Ok) return ServiceAnswer(false, exchange.Message, StatusCodes.Status400BadRequest);
+    var written = HubConfigWriter.Add(hubFile.FilePath, new ServiceEntry(id, name, servicePort, target.Address!, exchange.Token!), port);
+    if (!written.Ok)
+        return ServiceAnswer(false, "The device was paired in Qwen, but stykker.json could not be written. Remove the device \"Stykker hub\" in Qwen. " + written.Message, StatusCodes.Status409Conflict);
+    Console.WriteLine($"{name}: added on port {servicePort}; it forwards after a restart of the hub.");
+    return ServiceAnswer(true, $"{name} is added. Restart the hub to open port {servicePort}.", StatusCodes.Status200OK, restart: true);
+});
+app.MapPost("/api/hub/services/{id}/url", async (HttpContext context, string id, JsonElement body) =>
+{
+    if (!Local(context)) return Results.StatusCode(StatusCodes.Status403Forbidden);
+    var target = TargetFromUrl(JsonText(body, "url"));
+    if (target.Error != null) return ServiceAnswer(false, target.Error, StatusCodes.Status400BadRequest);
+    // Das Geräte-Token des Dienstes, falls es noch gilt, wird wiederverwendet (Qwen legt dann kein zweites Gerät an)
+    var previous = HubConfigWriter.StoredToken(hubFile.FilePath, id);
+    var exchange = await LocalControlExchange.ExchangeAsync(exchangeClient, target.Address!, target.Secret!, previous, context.RequestAborted);
+    if (!exchange.Ok) return ServiceAnswer(false, exchange.Message, StatusCodes.Status400BadRequest);
+    var written = HubConfigWriter.Replace(hubFile.FilePath, id, target.Address!, exchange.Token);
+    if (!written.Ok) return ServiceAnswer(false, written.Message, StatusCodes.Status404NotFound);
+    Console.WriteLine($"{id}: address replaced; it works at once.");
+    return ServiceAnswer(true, "The address is replaced. It works at once.", StatusCodes.Status200OK);
+});
+app.MapDelete("/api/hub/services/{id}", (HttpContext context, string id) =>
+{
+    if (!Local(context)) return Results.StatusCode(StatusCodes.Status403Forbidden);
+    var removed = HubConfigWriter.Remove(hubFile.FilePath, id);
+    if (!removed.Ok) return ServiceAnswer(false, removed.Message, StatusCodes.Status404NotFound);
+    return ServiceAnswer(true, "Removed. Its port closes at the next start of the hub. Remove the device \"Stykker hub\" in Qwen too.", StatusCodes.Status200OK);
+});
+
+// Die Adresse aus der Local-Control-URL: ergibt das Ziel (nur dieser PC, ServiceTargetRule) und das Geheimnis. Die Meldung
+// nennt nie die URL oder das Geheimnis.
+(string? Address, string? Secret, string? Error) TargetFromUrl(string? url)
+{
+    if (!LocalControlExchange.TryParseUrl(url, out var address, out var secret))
+        return (null, null, "That is not a Local Control URL. Copy the URL Qwen shows under Local Control: it looks like http://<address>:<port>/#token=…");
+    var allowed = ServiceTargetRule.Allowed(address, ServiceTargetRule.ReadThisPcAddresses(), HostNames.LoadExtra(hubFile.FilePath));
+    if (allowed == null)
+        return (null, null, "The address is not one of this PC's addresses, or a name listed under hostNames in stykker.json.");
+    return (allowed, secret, null);
+}
+
+static IResult ServiceAnswer(bool ok, string message, int status, bool restart = false) =>
+    Results.Json(new { ok, message, restart }, statusCode: status);
+
 app.MapRazorComponents<App>();
 
 try { await app.StartAsync(); }
@@ -285,6 +365,12 @@ static List<string> ReachableNames(IReadOnlyList<string> extraNames) =>
 static string? JsonText(JsonElement body, string name) =>
     body.ValueKind == JsonValueKind.Object && body.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
         ? value.GetString()
+        : null;
+
+// Eine ganze Zahl aus dem JSON-Körper (null, wenn es fehlt oder keine ganze Zahl ist)
+static int? JsonInt(JsonElement body, string name) =>
+    body.ValueKind == JsonValueKind.Object && body.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out var number)
+        ? number
         : null;
 
 // Die IPv4-Adressen dieser Maschine im Netz, unter denen ein Handy die Zentrale öffnen kann.

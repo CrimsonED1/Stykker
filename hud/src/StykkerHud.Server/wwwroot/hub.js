@@ -255,9 +255,98 @@
   function loadAccess() {
     return fetch("/api/hub/access", { cache: "no-store" })
       .then(function (r) { return r.json(); })
-      .then(drawAccess)
+      .then(function (access) { drawAccess(access); if (access.local) loadServices(); })
       .catch(function () { });
   }
+
+  // ── Fremde Dienste: eintragen, URL ersetzen, entfernen. Nur an der Maschine; die Antwort trägt nie ein Token. ──
+  var servicesKey = "";
+  function loadServices() {
+    return fetch("/api/hub/services", { cache: "no-store" })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (data) { if (data) drawServices(data); })
+      .catch(function () { });
+  }
+  function drawServices(data) {
+    var portInput = document.getElementById("svc-port");
+    if (!portInput.value && data.suggestedPort) portInput.value = data.suggestedPort;
+    var key = JSON.stringify(data.services);
+    if (key === servicesKey) return;   // dieselbe Liste: nichts neu aufbauen, eine offene Eingabe bleibt
+    servicesKey = key;
+    var list = document.getElementById("services-list");
+    list.replaceChildren();
+    if (!data.services.length) {
+      list.append(el("span", { class: "muted" }, "No service yet. Turn on Local Control in the program, copy its URL and add it below."));
+      return;
+    }
+    var table = el("table");
+    var head = el("tr");
+    ["Service", "Address", "State", ""].forEach(function (h) { head.append(el("th", null, h)); });
+    var thead = el("thead");
+    thead.append(head);
+    var body = el("tbody");
+    table.append(thead, body);
+    data.services.forEach(function (s) {
+      var row = el("tr");
+      var name = el("td");
+      name.append(el("b", null, s.name), el("small", { class: "mono" }, s.id + " · port " + s.port));
+      var address = el("td", { "data-k": "Address" }, s.target || "no address");
+      address.className = "mono";
+      var state = el("td", { "data-k": "State" }, (s.tokenSet ? "token set" : "no token") + " · " + (s.running ? "forwarding" : "starts after a restart"));
+      var actions = el("td");
+      var replace = el("button", { type: "button", class: "btn" }, "Replace URL");
+      var remove = el("button", { type: "button", class: "btn" }, "Remove");
+      actions.append(replace, document.createTextNode(" "), remove);
+      row.append(name, address, state, actions);
+      body.append(row);
+
+      var edit = el("tr", { class: "svc-edit", hidden: "" });
+      var editCell = el("td", { colspan: "4" });
+      var input = el("input", { class: "mono", "aria-label": "New Local Control URL", placeholder: "http://<address>:<port>/#token=…", autocomplete: "off" });
+      var save = el("button", { type: "button", class: "btn" }, "Save");
+      var cancel = el("button", { type: "button", class: "btn" }, "Cancel");
+      editCell.append(input, document.createTextNode(" "), save, document.createTextNode(" "), cancel);
+      edit.append(editCell);
+      body.append(edit);
+      replace.addEventListener("click", function () { edit.hidden = !edit.hidden; if (!edit.hidden) input.focus(); });
+      cancel.addEventListener("click", function () { input.value = ""; edit.hidden = true; });
+      save.addEventListener("click", function () {
+        serviceCall("/api/hub/services/" + encodeURIComponent(s.id) + "/url", "POST", { url: input.value }, function () {
+          input.value = ""; edit.hidden = true;
+        });
+      });
+      remove.addEventListener("click", function () {
+        if (!confirm("Remove " + s.name + " from the hub? Its port closes at the next start of the hub.")) return;
+        serviceCall("/api/hub/services/" + encodeURIComponent(s.id), "DELETE", null, null);
+      });
+    });
+    list.append(table);
+  }
+  // Ein Aufruf an die Dienste: die Meldung der Zentrale steht unter der Liste. ok = was nach Erfolg geschieht.
+  function serviceCall(url, method, body, ok) {
+    var note = document.getElementById("svc-note");
+    note.textContent = "";
+    var init = { method: method, headers: {} };
+    if (body) { init.headers["Content-Type"] = "application/json"; init.body = JSON.stringify(body); }
+    return fetch(url, init)
+      .then(function (r) { return r.json().then(function (answer) { return { ok: r.ok, answer: answer }; }); })
+      .then(function (res) {
+        note.textContent = res.answer.message || (res.ok ? "Done." : "Could not do that.");
+        if (res.ok && ok) ok();
+        servicesKey = "";   // die Liste neu holen, auch wenn sich ihre Anzeige nicht geändert hat
+        return loadServices();
+      })
+      .catch(function () { note.textContent = "The hub did not answer. Try again."; });
+  }
+  document.getElementById("svc-add").addEventListener("click", function () {
+    var name = document.getElementById("svc-name");
+    var id = document.getElementById("svc-id");
+    var port = document.getElementById("svc-port");
+    var url = document.getElementById("svc-url");
+    serviceCall("/api/hub/services", "POST", { name: name.value, id: id.value, port: Number(port.value), url: url.value }, function () {
+      name.value = ""; id.value = ""; port.value = ""; url.value = "";
+    });
+  });
 
   // ── Leiste ──
   function setFolded(folded, remember) {

@@ -77,6 +77,20 @@
       <p class="muted" id="approve-note" aria-live="polite"></p>
     </div>
     <div class="panel" id="devices"></div>
+    <!-- Fremde Dienste: Programme auf diesem PC, die die Zentrale auf ihrem eigenen Port weiterleitet. Nur an der Maschine. -->
+    <div class="panel" id="services">
+      <span class="label">Services</span>
+      <p class="muted">Programs on this PC that the hub forwards, each on its own port. Paste the Local Control URL the program shows: the hub pairs once and keeps a device token of its own, never the URL's secret. A new address works at once; a new port needs a restart of the hub.</p>
+      <div id="services-list"></div>
+      <div class="svc-form">
+        <input id="svc-name" aria-label="Name" placeholder="Name, e.g. Qwen Code" autocomplete="off">
+        <input id="svc-id" class="mono" aria-label="Id" placeholder="id, e.g. qwen" autocomplete="off">
+        <input id="svc-port" class="mono" inputmode="numeric" aria-label="Port the hub opens" placeholder="port" autocomplete="off">
+        <input id="svc-url" class="mono" aria-label="Local Control URL" placeholder="http://<address>:<port>/#token=…" autocomplete="off">
+        <button type="button" class="btn" id="svc-add">Add a service</button>
+      </div>
+      <p class="muted" id="svc-note" aria-live="polite"></p>
+    </div>
   </section>
   <p class="muted note">StykkerLLM keeps its own sign-in for now. The node from the plan is not built yet.</p>
 </main>
