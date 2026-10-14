@@ -36,7 +36,7 @@ public static class NetInfo
 
     public static string LanAddressOrLoopback() => LanAddress() ?? "127.0.0.1";
 
-    // http://192.168.1.23:17401/pair?code=ABCD2345
+    // http://192.0.2.10:17401/pair?code=ABCD2345
     public static string PairUrl(int port, string code, string? address = null)
     {
         string host = address is { Length: > 0 } ? address : LanAddressOrLoopback();

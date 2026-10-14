@@ -1,7 +1,7 @@
 namespace Stykker.Pairing;
 
 // QR-Code im Byte-Modus ohne fremde Bibliothek: das Fenster zeichnet die Module selbst, das Web bekommt SVG, die TUI
-// Blockzeichen. Reicht für Adressen wie http://192.168.1.23:17401/pair?code=ABCD2345 (Version 1-10, Stufe M).
+// Blockzeichen. Reicht für Adressen wie http://192.0.2.10:17401/pair?code=ABCD2345 (Version 1-10, Stufe M).
 // Aufbau nach ISO/IEC 18004: Reed-Solomon über GF(256), Verschränkung der Blöcke, Zickzack-Platzierung, acht Masken.
 public sealed class QrCode
 {
