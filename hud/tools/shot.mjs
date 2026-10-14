@@ -3,7 +3,7 @@
 // Lädt auch lokale Entwürfe: ohne --url wird die laufende Anwendung auf dem Port genommen, mit --url jede Adresse
 // (auch file:///…), damit Entwurf und gebaute Fassung dieselbe Messung bekommen.
 //
-//   node tools/shot.mjs [--port 8079] [--url <adresse>] [--out docs] [--name hud] [--format jpeg|png]
+//   node tools/shot.mjs [--port 17400] [--url <adresse>] [--out docs] [--name hud] [--format jpeg|png]
 //                       [--width 1400] [--height 950] [--wait 2.5]
 // --wait: Sekunden, die die Seite vor der Messung offen bleibt. Die Kurve braucht ein paar Dutzend Sekunden, sonst
 // zeigt sie nur den ersten Punkt.
@@ -16,7 +16,7 @@ const value = (name, fallback) => {
     const i = args.indexOf(name);
     return i >= 0 && i + 1 < args.length ? args[i + 1] : fallback;
 };
-const port = Number(value("--port", "8079"));
+const port = Number(value("--port", "17400"));
 const out = value("--out", "docs");
 const name = value("--name", "hud");
 const format = value("--format", "jpeg");

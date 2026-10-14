@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
 
-  <!-- StykkerSYS-Server: die Prozessliste dieser Maschine als Web-Oberfläche (Blazor Server, Port 8077) mit
+  <!-- StykkerSYS-Server: die Prozessliste dieser Maschine als Web-Oberfläche (Blazor Server, Port 17402) mit
        Tray-Symbol. Nur auf 127.0.0.1 erreichbar. Das Fenster (StykkerSYS.exe) zeigt dieselben Seiten. -->
   <PropertyGroup>
     <!-- net10.0 statt net10.0-windows: nur so bindet das SDK blazor.web.js ein (Tray-Symbol folgt ohne WinForms) -->

@@ -10,7 +10,8 @@ public class HubModulesTests
         var modules = HubModules.Load(Path.Combine(Path.GetTempPath(), "stykker-missing-" + Guid.NewGuid().ToString("N"), "stykker.json"));
 
         Assert.Equal(["monitor", "sys", "llm"], modules.Select(m => m.Id));
-        Assert.Equal(8078, modules.Single(m => m.Id == "llm").Port);
+        Assert.Equal(17401, modules.Single(m => m.Id == "llm").Port);
+        Assert.Equal(17402, modules.Single(m => m.Id == "sys").Port);
     }
 
     [Fact]

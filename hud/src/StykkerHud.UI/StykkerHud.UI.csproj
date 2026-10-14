@@ -14,6 +14,7 @@
 
   <ItemGroup>
     <PackageReference Include="Photino.NET" Version="4.0.16" />
+    <ProjectReference Include="..\..\..\shared\src\Stykker.Pairing\Stykker.Pairing.csproj" />
   </ItemGroup>
 
 </Project>

@@ -1,4 +1,5 @@
 @page "/"
+@using Stykker.Pairing
 @* Die Prozessliste: statisch gerendert, die Zeilen holt sys.js im Sekundentakt aus /api/snapshot. Beenden, Priorität
    und Ordner öffnen gehen über /api/process/… – nur für diese Seite (siehe LocalRequests). Kein Wert steht als Zahl
    im Markup: fehlt eine Messung, zeigt die Seite „–" (nie eine erfundene Zahl). *@
@@ -7,7 +8,7 @@
     <div class="brand"><span class="logo">◆</span> STYKKER <span class="acc">SYS</span></div>
     <nav>
         <a class="active" href="/">Processes</a>
-        <a href="http://127.0.0.1:8079/" title="StykkerHUD: CPU, memory, GPU, storage and network">Overview</a>
+        <a href="http://127.0.0.1:@(StykkerPorts.Hub)/" title="StykkerHUD: CPU, memory, GPU, storage and network">Overview</a>
     </nav>
     <div class="strip">
         <span class="stat" title="Processes running">Processes <b id="v-procs">–</b></span>

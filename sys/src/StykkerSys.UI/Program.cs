@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Net;
 using System.Net.Http;
 using Photino.NET;
+using Stykker.Pairing;
 
 namespace StykkerSys.UI;
 
@@ -128,10 +129,10 @@ internal static class Program
 
 internal sealed record Options(int Port, string? Server, bool Gpu)
 {
-    // StykkerSYS [--port 8077] [--server <Pfad>] [--gpu]
+    // StykkerSYS [--port 17402] [--server <Pfad>] [--gpu]
     public static Options Parse(string[] args)
     {
-        int port = 8077;
+        int port = StykkerPorts.Sys;
         string? server = null;
         bool gpu = false;
         for (int i = 0; i < args.Length; i++)

@@ -6,7 +6,7 @@
 //   4. Über die Oberfläche: Zeilenmenü, "End task", Rückfrage muss erscheinen, "Cancel" darf nichts tun,
 //      erst die Bestätigung beendet – und der Toast muss das Ergebnis nennen.
 //
-//   node tools/check-actions.mjs [--port 8077]
+//   node tools/check-actions.mjs [--port 17402]
 // Voraussetzungen: npm install im Ordner tools/ und Google Chrome. Der Server muss laufen.
 import { chromium } from "playwright-core";
 import { spawn } from "node:child_process";
@@ -16,7 +16,7 @@ const value = (name, fallback) => {
     const i = args.indexOf(name);
     return i >= 0 && i + 1 < args.length ? args[i + 1] : fallback;
 };
-const port = Number(value("--port", "8077"));
+const port = Number(value("--port", "17402"));
 const base = `http://127.0.0.1:${port}`;
 
 const checks = [];

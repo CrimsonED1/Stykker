@@ -35,7 +35,7 @@ const configWithSys = join(dir, "with-sys.json");
 const configWithoutSys = join(dir, "without-sys.json");
 // Der Monitor steht als Eintrag in der Zentrale, damit er im Frame der Zentrale erscheint.
 writeFileSync(configWithSys, JSON.stringify({ modules: [{ id: "monitor", name: "Monitor" }, { id: "sys", name: "SYS", port: sysPort }] }));
-writeFileSync(configWithoutSys, JSON.stringify({ modules: [{ id: "monitor", name: "Monitor" }, { id: "llm", name: "LLM", port: 8078 }] }));
+writeFileSync(configWithoutSys, JSON.stringify({ modules: [{ id: "monitor", name: "Monitor" }, { id: "llm", name: "LLM", port: 17401 }] }));
 
 const checks = [];
 const check = (name, ok, detail) => { checks.push({ name, ok, detail }); };

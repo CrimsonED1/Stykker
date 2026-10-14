@@ -25,7 +25,7 @@ public static class FrameAncestors
         await next();
     });
 
-    // "pc:8077" -> "pc", "[::1]:8077" -> "[::1]"; null bei allem, was kein Name und keine Adresse ist
+    // "pc:17402" -> "pc", "[::1]:17402" -> "[::1]"; null bei allem, was kein Name und keine Adresse ist
     private static string? HostName(string? host)
     {
         if (string.IsNullOrEmpty(host) || host.Length > 255) return null;

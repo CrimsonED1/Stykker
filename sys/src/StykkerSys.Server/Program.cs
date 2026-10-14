@@ -7,7 +7,7 @@ using StykkerSys.Core;
 using StykkerSys.Platform.Windows;
 using StykkerSys.Server.Components;
 
-// StykkerSYS-Server: die Prozessliste dieser Maschine als Web-Oberfläche auf http://127.0.0.1:8077.
+// StykkerSYS-Server: die Prozessliste dieser Maschine als Web-Oberfläche auf http://127.0.0.1:17402.
 // Nur auf der eigenen Maschine erreichbar – eine Liste mit „Beenden" hat im Netz nichts zu suchen. Das Fenster
 // (StykkerSYS.exe) zeigt dieselben Seiten.
 if (args.Contains("--help") || args.Contains("-h"))
@@ -15,7 +15,7 @@ if (args.Contains("--help") || args.Contains("-h"))
     Console.WriteLine("""
         StykkerSYS-Server - the processes of this machine: CPU, memory and GPU per process
 
-          --port <number>   web port (default 8077)
+          --port <number>   web port (default 17402)
           --no-tray         no tray icon (the window starts the server this way: it has an icon itself)
           --no-browser      do not open a browser on start
           --basic           no system access: GPU values and file paths stay empty
@@ -28,7 +28,7 @@ if (args.Contains("--help") || args.Contains("-h"))
           --pairing-file <file>
                             the pairing store instead of %APPDATA%\Stykker\pairing.dat (trial runs)
           --hub-port <number>
-                            the hub's port (default 8079): only the hub may show this page in a frame
+                            the hub's port (default 17400): only the hub may show this page in a frame
           --help            this text
 
         Endpoints: / (web interface), /api/snapshot (the process list as JSON), and the local-only
@@ -41,7 +41,7 @@ if (args.Contains("--help") || args.Contains("-h"))
     return;
 }
 
-int port = int.TryParse(args.SkipWhile(a => a != "--port").Skip(1).FirstOrDefault(), out var parsedPort) ? parsedPort : 8077;
+int port = int.TryParse(args.SkipWhile(a => a != "--port").Skip(1).FirstOrDefault(), out var parsedPort) ? parsedPort : StykkerPorts.Sys;
 bool noBrowser = args.Contains("--no-browser");
 bool basic = args.Contains("--basic");
 string url = $"http://127.0.0.1:{port}/";
@@ -50,7 +50,7 @@ var pairing = new PairingService(new PairingStore(args.SkipWhile(a => a != "--pa
 // Im Netz nur, wenn der Netzschalter beim Start an ist (er wird in der Zentrale umgelegt und wirkt nach dem nächsten Start).
 bool network = pairing.RemoteEnabled;
 // Port der Zentrale, die diese Seite in einem Frame zeigen darf
-int hubPort = int.TryParse(args.SkipWhile(a => a != "--hub-port").Skip(1).FirstOrDefault(), out var parsedHub) ? parsedHub : 8079;
+int hubPort = int.TryParse(args.SkipWhile(a => a != "--hub-port").Skip(1).FirstOrDefault(), out var parsedHub) ? parsedHub : StykkerPorts.Hub;
 
 // Ein Server je Port: läuft schon einer, öffnet ein zweiter Start nur die Oberfläche.
 using var single = ToolHost.ClaimPort("StykkerSYS", port, out bool first);

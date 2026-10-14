@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
 
-  <!-- StykkerHUD-Server: die Messwerte dieser Maschine als Web-Oberfläche (Blazor Server, Port 8079) mit
+  <!-- StykkerHUD-Server: die Messwerte dieser Maschine als Web-Oberfläche (Blazor Server, Port 17400) mit
        Tray-Symbol. Nur auf 127.0.0.1 erreichbar. Das Fenster (StykkerHUD.exe) zeigt dieselben Seiten. -->
   <PropertyGroup>
     <!-- net10.0 statt net10.0-windows: nur so bindet das SDK blazor.web.js ein (Tray-Symbol folgt ohne WinForms) -->

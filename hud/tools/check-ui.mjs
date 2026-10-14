@@ -1,7 +1,7 @@
 // Prüft die Verhaltensweisen der Oberfläche, die man mit einem Blick nicht sicher beurteilt: sind die Kerne
 // zugeklappt (und das Raster leer), öffnen sie sich auf Klick, und tragen Datenträger und Netzwerk Balken?
 //
-//   node tools/check-ui.mjs [--port 8079]
+//   node tools/check-ui.mjs [--port 17400]
 import { chromium } from "playwright-core";
 import { cpus } from "node:os";
 
@@ -10,7 +10,7 @@ const value = (name, fallback) => {
     const i = args.indexOf(name);
     return i >= 0 && i + 1 < args.length ? args[i + 1] : fallback;
 };
-const port = Number(value("--port", "8079"));
+const port = Number(value("--port", "17400"));
 
 const browser = await chromium.launch({
     channel: "chrome",

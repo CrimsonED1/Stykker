@@ -10,7 +10,7 @@ using StykkerHud.Platform.Windows;
 using StykkerHud.Server;
 using StykkerHud.Server.Components;
 
-// StykkerHUD-Server: die Messwerte dieser Maschine als Web-Oberfläche auf http://127.0.0.1:8079.
+// StykkerHUD-Server: die Messwerte dieser Maschine als Web-Oberfläche auf http://127.0.0.1:17400.
 // Nur auf der eigenen Maschine erreichbar – ein Ressourcenmonitor hat im Netz nichts zu suchen. Das Fenster
 // (StykkerHUD.exe) zeigt dieselben Seiten.
 if (args.Contains("--help") || args.Contains("-h"))
@@ -18,7 +18,7 @@ if (args.Contains("--help") || args.Contains("-h"))
     Console.WriteLine("""
         StykkerHUD-Server - CPU, memory, GPU, storage and network of this machine
 
-          --port <number>   web port (default 8079)
+          --port <number>   web port (default 17400)
           --no-tray         no tray icon (the window starts the server this way: it has an icon itself)
           --no-browser      do not open a browser on start
           --basic           no system access: every value shows "-" (for trying that mode on Windows)
@@ -34,7 +34,7 @@ if (args.Contains("--help") || args.Contains("-h"))
         Endpoints: / (the monitor), /hub (the hub: every Stykker module under one bar, each in a frame),
         /api/snapshot (the current reading and the history as JSON), /api/hub (the modules and whether they run).
 
-        The hub lists the modules from %APPDATA%\Stykker\stykker.json; without that file SYS (8077) and LLM (8078).
+        The hub lists the modules from %APPDATA%\Stykker\stykker.json; without that file SYS (17402) and LLM (17401).
         A foreign service with "external", "port" and "target" (http://127.0.0.1:<port>) is forwarded on its port,
         and "start" (command, args, env, tokenEnv) starts it when nothing answers on the target. Only this PC
         and paired devices with the admin role for that module get through; services.dat keeps its token.
@@ -47,7 +47,7 @@ if (args.Contains("--help") || args.Contains("-h"))
     return;
 }
 
-int port = int.TryParse(args.SkipWhile(a => a != "--port").Skip(1).FirstOrDefault(), out var parsedPort) ? parsedPort : 8079;
+int port = int.TryParse(args.SkipWhile(a => a != "--port").Skip(1).FirstOrDefault(), out var parsedPort) ? parsedPort : StykkerPorts.Hub;
 bool noBrowser = args.Contains("--no-browser");
 bool basic = args.Contains("--basic");
 string url = $"http://127.0.0.1:{port}/";

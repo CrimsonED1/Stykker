@@ -1,7 +1,7 @@
 // Nimmt die Prozessliste auf: DOM-Messwerte als Text und je ein Bild der beiden Themen. Chrome startet headless
 // über Playwright; die Oberfläche prüft man mit Zahlen, nicht mit dem Auge.
 //
-//   node tools/shot.mjs [--port 8077] [--out docs/screenshots] [--name sys] [--width 1400] [--height 950]
+//   node tools/shot.mjs [--port 17402] [--out docs/screenshots] [--name sys] [--width 1400] [--height 950]
 // Voraussetzungen: npm install im Ordner tools/ und Google Chrome. Der Server muss laufen.
 import { chromium } from "playwright-core";
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -12,7 +12,7 @@ const value = (name, fallback) => {
     const i = args.indexOf(name);
     return i >= 0 && i + 1 < args.length ? args[i + 1] : fallback;
 };
-const port = Number(value("--port", "8077"));
+const port = Number(value("--port", "17402"));
 const out = value("--out", "docs/screenshots");
 const name = value("--name", "sys");
 const width = Number(value("--width", "1400"));

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Stykker.Pairing;
 
 namespace Stykker.Shared.Config;
 
@@ -24,11 +25,11 @@ public sealed record HubModule(string Id, string Name, int? Port, string? Url, b
 // Die Module der Zentrale aus stykker.json (docs/plan-stykkernode.md, Abschnitt 4.2). Ohne Datei gilt die Vorgabe:
 // die Suite auf ihren festen Ports. Die Datei ist lesbar und enthält keine Geheimnisse.
 //
-//   { "modules": [ { "id": "llm", "name": "LLM", "port": 8078 },
-//                  { "id": "qwen", "name": "Qwen Code", "url": "http://pc:8076/", "external": true },
-//                  { "id": "qwen", "name": "Qwen Code", "external": true, "port": 8076,
-//                    "target": "http://127.0.0.1:41999",
-//                    "start": { "command": "node", "args": ["<Pfad>\\cli.js", "serve", "--port", "41999", "--no-open"],
+//   { "modules": [ { "id": "llm", "name": "LLM", "port": 17401 },
+//                  { "id": "qwen", "name": "Qwen Code", "url": "http://pc:17450/", "external": true },
+//                  { "id": "qwen", "name": "Qwen Code", "external": true, "port": 17450,
+//                    "target": "http://127.0.0.1:17451",
+//                    "start": { "command": "node", "args": ["<Pfad>\\cli.js", "serve", "--port", "17451", "--no-open"],
 //                               "env": { "QWEN_HOME": "<Ordner>" }, "tokenEnv": "QWEN_SERVER_TOKEN" } } ] }
 public static class HubModules
 {
@@ -43,8 +44,8 @@ public static class HubModules
     public static readonly IReadOnlyList<HubModule> Defaults =
     [
         new(MonitorId, "Monitor", null, null, false),
-        new("sys", "SYS", 8077, null, false),
-        new("llm", "LLM", 8078, null, false),
+        new("sys", "SYS", StykkerPorts.Sys, null, false),
+        new("llm", "LLM", StykkerPorts.Llm, null, false),
     ];
 
     // %APPDATA%\Stykker\stykker.json (unter Linux ~/.config/Stykker/stykker.json)
@@ -102,7 +103,7 @@ public static class HubModules
     private static string? HttpUrl(string? url) =>
         Uri.TryCreate(url, UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https" ? uri.ToString() : null;
 
-    // "http://127.0.0.1:41999" oder "http://localhost:41999" mit Port; alles andere (auch ein fremder Rechner) ist null.
+    // "http://127.0.0.1:17451" oder "http://localhost:17451" mit Port; alles andere (auch ein fremder Rechner) ist null.
     // Das Ergebnis hat keinen Schrägstrich am Ende.
     public static string? LocalTarget(string? target)
     {
