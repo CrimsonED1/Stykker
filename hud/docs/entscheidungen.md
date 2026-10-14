@@ -1,8 +1,16 @@
 # Offene Entscheidungen
 
-## UI-Technik: Blazor/Photino oder Avalonia
+## Entschieden: die Oberfläche bleibt Web (2026-10-13)
 
-**Stand: 2026-10-09 – offen, noch kein Umbau.**
+Die Oberfläche bleibt Web: Blazor im Fenster, gezeigt von Photino (WebView2). Avalonia entfällt auch für StykkerCMD.
+Von dir entschieden am 2026-10-13 als Entscheidung E: siehe [plan-stykkernode.md](../../docs/plan-stykkernode.md),
+Abschnitt 10 („Von dir entschieden am 2026-10-13“) und Abschnitt 4.8.
+
+Der Text unten ist die Vorgeschichte, bis zur Entscheidung so stehen gelassen.
+
+## Vorgeschichte: UI-Technik, Blazor/Photino oder Avalonia
+
+**Stand: 2026-10-09 – war offen, bis 2026-10-13 entschieden (siehe oben).**
 
 Heute läuft die Oberfläche als Blazor Server, im Fenster gezeigt von Photino (WebView2). Das Schwesterprojekt
 `StykkerCMD` nutzt Avalonia.
