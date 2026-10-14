@@ -36,7 +36,9 @@ public sealed record HostNameRule(string MachineName, string? DomainName, IReadO
     {
         var value = hostHeader ?? "";
         if (value.Length == 0) return true;
-        var name = value.Contains(':') && !value.StartsWith('[') ? value[..value.IndexOf(':')] : value;
+        // "[::1]:8078" -> "[::1]", "127.0.0.1:8078" -> "127.0.0.1"
+        var name = value.StartsWith('[') ? (value.IndexOf(']') is var end and > 0 ? value[..(end + 1)] : value)
+            : value.Contains(':') ? value[..value.IndexOf(':')] : value;
         return name is "127.0.0.1" or "localhost" or "::1" or "[::1]" or "0.0.0.0";
     }
 }

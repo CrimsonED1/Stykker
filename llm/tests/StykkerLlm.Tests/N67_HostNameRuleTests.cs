@@ -28,6 +28,16 @@ public class N67_HostNameRuleTests
     }
 
     [TestMethod]
+    public void Ipv6_loopback_with_a_port_counts_as_loopback()
+    {
+        Assert.IsTrue(HostNameRule.LoopbackOnly("[::1]:8093"));
+        Assert.IsTrue(HostNameRule.LoopbackOnly("[::1]"));
+        Assert.IsTrue(HostNameRule.LoopbackOnly("127.0.0.1:8093"));
+        Assert.IsFalse(HostNameRule.LoopbackOnly("[::2]:8093"));
+        Assert.IsFalse(HostNameRule.LoopbackOnly("[::1"));
+    }
+
+    [TestMethod]
     public void Foreign_host_is_refused_on_hosts_paths_other_than_the_two_model_host_ways()
     {
         Assert.IsFalse(WithExtra.Allowed("/hosts/pair", "GET", Evil, true));
