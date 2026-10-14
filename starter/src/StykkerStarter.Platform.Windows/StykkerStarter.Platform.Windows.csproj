@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Windows-Umsetzung: Prozesse finden und beenden nach Ordner, Autostart in der Registry. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>StykkerStarter.Platform.Windows</AssemblyName>
+    <RootNamespace>StykkerStarter.Platform.Windows</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\StykkerStarter.Core\StykkerStarter.Core.csproj" />
+  </ItemGroup>
+
+</Project>

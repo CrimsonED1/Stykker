@@ -1,0 +1,377 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stykker Starter – mockup</title>
+<!--
+  Mockup des Starters: ein reines Desktop-Programm (kein Server, kein Port). Man trägt den Pfad einer .exe ein,
+  meist auf einer Freigabe oder in einem Build-Ordner. Der Starter kopiert den ganzen Ordner dieser .exe in einen
+  eigenen Ordner unter %LOCALAPPDATA%, startet die Kopie, läuft im Tray weiter und prüft ab und zu, ob die Quelle
+  neuer ist. Dann fragt er; bei „Update“ kopiert er zuerst die neue Version daneben, beendet die alte (nur den
+  Prozess, den er selbst gestartet hat) und startet die neue.
+
+  Statische Seite: alle Namen, Pfade, Versionen und Zahlen sind erfunden. Ansichten über die Leiste oder #apps,
+  #add, #copy, #update, #tray; Thema über den Knopf rechts oder ";titan" hinter der Ansicht (#copy;titan).
+  Farben sind die Token aus shared/design-system/tokens.css, hier eingebettet, damit die Datei allein öffnet.
+-->
+<style>
+:root,[data-theme="dark"]{--bg:#060916;--bg-top:#0e1430;--card:#111a33;--card-2:#0e0f26;--border:#4fe3ff40;--line:#24325a;--track:#ffffff1c;--ink:#e8eeff;--muted:#8292b8;--na:#7a87ab;--acc:#4fe3ff;--acc-t:var(--acc);--on-acc:#060916;--good:#6cffb0;--warn:#ffc857;--bad:#ff5c7a;--shadow-menu:0 8px 20px rgba(0,0,0,.45);--shadow-toast:0 6px 16px rgba(0,0,0,.4)}
+[data-theme="titan"]{--bg:#d9dcdb;--bg-top:#d9dcdb;--card:#cbd0cf;--card-2:#bfc5c4;--border:#7e8789;--line:#a9b0b1;--track:#7e878940;--ink:#1a1e20;--muted:#484f52;--na:#4f5659;--acc:#bd5017;--acc-t:#8f3a0c;--on-acc:#f4f1ec;--good:#256030;--warn:#734f08;--bad:#962817;--shadow-menu:none;--shadow-toast:none}
+:root{--gap:12px;--radius:12px;--radius-md:8px;--radius-sm:6px;--radius-xs:4px;--font-sans:"Segoe UI Variable Text","Segoe UI",system-ui,sans-serif;--font-mono:"Cascadia Mono","Cascadia Code",Consolas,ui-monospace,monospace}
+[data-theme="titan"]{--radius:2px;--radius-md:2px;--radius-sm:2px;--radius-xs:1px}
+
+*{box-sizing:border-box}
+html{background:var(--bg)}
+body{margin:0;font:13px/1.45 var(--font-sans);color:var(--ink);background:linear-gradient(var(--bg-top),var(--bg) 900px) no-repeat var(--bg);min-height:100vh}
+button,input,select{font:inherit;color:inherit}
+.mono{font-family:var(--font-mono);font-variant-numeric:tabular-nums}
+.muted{color:var(--muted)}
+.small{font-size:12px}
+h1,h2,h3{margin:0;font-weight:600}
+h2{font-size:15px}
+.label{font-size:11px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}
+
+/* Leiste des Mockups (nicht Teil des Programms) */
+.mockbar{display:flex;align-items:center;gap:16px;max-width:1180px;margin:0 auto;padding:10px 16px;flex-wrap:wrap}
+.mockbar .brand{font-family:var(--font-mono);font-weight:700;letter-spacing:.14em}
+.mockbar .brand b{color:var(--acc)}
+.mockbar nav{display:flex;gap:2px;flex:1;overflow-x:auto}
+.mockbar nav button{background:none;border:0;border-bottom:2px solid transparent;padding:8px 10px;color:var(--muted);cursor:pointer;white-space:nowrap}
+.mockbar nav button[aria-current="page"]{color:var(--ink);border-bottom-color:var(--acc)}
+
+.stage{max-width:1180px;margin:0 auto;padding:8px 16px 32px;display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:var(--gap);align-items:start}
+@media (max-width:900px){.stage{grid-template-columns:1fr}}
+.view{display:none}.view.show{display:block}
+
+/* Das Fenster des Starters */
+.win{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow-menu)}
+.title{display:flex;align-items:center;gap:10px;padding:8px 10px 8px 14px;background:var(--bg-top);border-bottom:1px solid var(--line)}
+.title .name{font-family:var(--font-mono);font-weight:700;letter-spacing:.12em;font-size:12px}
+.title .name b{color:var(--acc)}
+.title .sp{flex:1}
+.title .wbtn{width:28px;height:22px;display:grid;place-items:center;border-radius:var(--radius-xs);color:var(--muted)}
+.body{padding:14px}
+.row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:6px 11px;background:var(--card-2);border:1px solid var(--line);border-radius:var(--radius-sm);cursor:pointer;white-space:nowrap}
+.btn:hover{border-color:var(--border)}
+.btn.primary{background:var(--acc);border-color:var(--acc);color:var(--on-acc);font-weight:600}
+.btn.quiet{background:none}
+.btn.danger:hover{border-color:var(--bad);color:var(--bad)}
+.btn.sm{padding:3px 8px;font-size:12px}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:2px 8px;border:1px solid var(--line);border-radius:var(--radius-xs);font-size:12px;color:var(--muted);white-space:nowrap}
+.chip::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+.chip.run{color:var(--good);border-color:color-mix(in srgb,var(--good) 45%,transparent)}
+.chip.upd{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 45%,transparent)}
+.chip.err{color:var(--bad);border-color:color-mix(in srgb,var(--bad) 45%,transparent)}
+.chip.off::before{background:none;border:1px solid currentColor}
+
+/* Liste der Programme */
+.apps{display:grid;gap:10px}
+.app{display:grid;grid-template-columns:40px minmax(0,1fr) auto;gap:12px;align-items:center;padding:12px;background:var(--card-2);border:1px solid var(--line);border-radius:var(--radius-md)}
+.app.sel{border-color:var(--border)}
+.icon{width:40px;height:40px;border-radius:var(--radius-sm);display:grid;place-items:center;font-family:var(--font-mono);font-weight:700;background:color-mix(in srgb,var(--acc) 14%,transparent);color:var(--acc-t)}
+.app h3{font-size:14px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.path{font-family:var(--font-mono);font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.meta{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-top:3px}
+.meta b{color:var(--ink);font-weight:600}
+.actions{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.foot{display:flex;align-items:center;gap:10px;padding:10px 14px;border-top:1px solid var(--line);color:var(--muted);font-size:12px;flex-wrap:wrap}
+.foot .sp{flex:1}
+
+/* Formular */
+.form{display:grid;gap:12px;max-width:640px}
+.field{display:grid;gap:5px}
+.field input,.field select{background:var(--card-2);border:1px solid var(--line);border-radius:var(--radius-sm);padding:7px 9px}
+.field input.mono{font-size:12px}
+.inline{display:flex;gap:6px}
+.inline input{flex:1;min-width:0}
+.check{display:flex;gap:8px;align-items:flex-start}
+.check input{margin-top:3px}
+.found{padding:10px 12px;border:1px dashed var(--line);border-radius:var(--radius-sm);display:grid;gap:4px;font-size:12px}
+.found b{color:var(--ink)}
+
+/* Fortschritt */
+.progress{height:10px;background:var(--track);border-radius:999px;overflow:hidden}
+.progress i{display:block;height:100%;background:var(--acc);border-radius:999px}
+.progress.thin{height:4px}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;font-size:12px}
+.kv dt{color:var(--muted)}
+.kv dd{margin:0;font-family:var(--font-mono)}
+.files{font-family:var(--font-mono);font-size:12px;border:1px solid var(--line);border-radius:var(--radius-sm);max-height:150px;overflow:auto}
+.files div{display:flex;gap:10px;padding:4px 10px;border-bottom:1px solid var(--line)}
+.files div:last-child{border-bottom:0}
+.files span:first-child{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ok{color:var(--good)}
+
+/* Ablauf beim Update */
+.steps{list-style:none;margin:0;padding:0;display:grid;gap:0}
+.steps li{display:grid;grid-template-columns:22px 1fr auto;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);align-items:start}
+.steps li:last-child{border-bottom:0}
+.dot{width:16px;height:16px;border-radius:50%;border:1.5px solid var(--na);margin-top:2px}
+.steps .done .dot{background:var(--good);border-color:var(--good)}
+.steps .now .dot{border-color:var(--acc);box-shadow:0 0 0 3px color-mix(in srgb,var(--acc) 25%,transparent)}
+.steps .now{color:var(--ink)}
+.steps li:not(.done):not(.now){color:var(--muted)}
+
+/* Hinweis unten rechts (Windows-Toast des Starters) */
+.toast{width:360px;max-width:100%;background:var(--card);border:1px solid var(--border);border-radius:var(--radius-md);box-shadow:var(--shadow-toast);padding:12px 14px;display:grid;gap:8px}
+.toast .t{display:flex;gap:8px;align-items:center;font-weight:600}
+.toast .t .icon{width:26px;height:26px;font-size:12px}
+.desk{position:relative;min-height:340px;border:1px dashed var(--line);border-radius:var(--radius);padding:16px;display:flex;flex-direction:column;justify-content:flex-end;align-items:flex-end;gap:12px;background:repeating-linear-gradient(135deg,transparent 0 14px,color-mix(in srgb,var(--line) 30%,transparent) 14px 15px)}
+.taskbar{align-self:stretch;display:flex;justify-content:flex-end;gap:10px;align-items:center;padding:6px 10px;background:var(--bg-top);border:1px solid var(--line);border-radius:var(--radius-sm);font-size:12px;color:var(--muted)}
+.tray{width:22px;height:22px;border-radius:5px;display:grid;place-items:center;background:color-mix(in srgb,var(--acc) 18%,transparent);color:var(--acc-t);font-weight:700;font-family:var(--font-mono);position:relative}
+.tray.badge::after{content:"";position:absolute;right:-2px;top:-2px;width:8px;height:8px;border-radius:50%;background:var(--warn)}
+
+/* Tray-Menü */
+.menu{width:300px;background:var(--card);border:1px solid var(--border);border-radius:var(--radius-md);box-shadow:var(--shadow-menu);padding:6px;font-size:13px}
+.menu .mi{display:flex;gap:10px;align-items:center;padding:7px 10px;border-radius:var(--radius-xs)}
+.menu .mi:hover{background:var(--card-2)}
+.menu .mi .sp{flex:1}
+.menu hr{border:0;border-top:1px solid var(--line);margin:5px 4px}
+.menu .head{padding:6px 10px;font-size:11px;color:var(--muted);letter-spacing:.08em;text-transform:uppercase}
+
+/* Notizen neben dem Fenster */
+.notes{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:12px 14px;display:grid;gap:10px;font-size:12px}
+.notes h2{font-size:13px}
+.notes ul{margin:0;padding-left:18px;display:grid;gap:5px}
+.notes .q{border-left:2px solid var(--warn);padding-left:8px}
+</style>
+</head>
+<body>
+<div class="mockbar">
+  <div class="brand"><b>◆</b> STYKKER <b>STARTER</b> <span class="muted small" style="letter-spacing:0;font-weight:400">· mockup</span></div>
+  <nav>
+    <button data-v="apps">Programs</button>
+    <button data-v="add">Add a program</button>
+    <button data-v="copy">Copying</button>
+    <button data-v="update">Update</button>
+    <button data-v="tray">Tray &amp; settings</button>
+  </nav>
+  <button class="btn sm" id="theme">Titan</button>
+</div>
+
+<div class="stage">
+<div>
+
+<!-- ───────────── Programme ───────────── -->
+<section class="view" id="v-apps">
+  <div class="win">
+    <div class="title"><span class="name"><b>◆</b> STYKKER STARTER</span><span class="sp"></span><span class="wbtn">–</span><span class="wbtn">□</span><span class="wbtn">✕</span></div>
+    <div class="body">
+      <div class="row" style="margin-bottom:12px">
+        <h2>Programs</h2><span class="muted small">3 programs · checked 2 min ago</span>
+        <span style="flex:1"></span>
+        <button class="btn sm">Check now</button>
+        <button class="btn sm primary">+ Add a program</button>
+      </div>
+      <div class="apps">
+        <div class="app sel">
+          <div class="icon">LL</div>
+          <div style="min-width:0">
+            <h3>Stykker LLM <span class="chip run">Running</span><span class="chip upd">Update 0.5.2</span></h3>
+            <div class="path">\\server\share\StykkerLLM\StykkerUI.exe</div>
+            <div class="meta"><span>Local <b>0.5.1</b></span><span>Source <b>0.5.2</b> · 14 min ago</span><span>PID <b class="mono">18240</b> · up 3 h 12 min</span><span>212 files · 148 MB</span></div>
+          </div>
+          <div class="actions"><button class="btn sm primary">Update and restart</button><button class="btn sm danger">Stop</button><button class="btn sm quiet">⋯</button></div>
+        </div>
+        <div class="app">
+          <div class="icon">HD</div>
+          <div style="min-width:0">
+            <h3>Stykker HUD <span class="chip run">Running</span></h3>
+            <div class="path">D:\builds\hud\publish\StykkerHUD.exe</div>
+            <div class="meta"><span>Local <b>0.3.0</b></span><span>Source <b>0.3.0</b> · up to date</span><span>PID <b class="mono">9120</b> · up 3 h 12 min</span><span>64 files · 41 MB</span></div>
+          </div>
+          <div class="actions"><button class="btn sm">Restart</button><button class="btn sm danger">Stop</button><button class="btn sm quiet">⋯</button></div>
+        </div>
+        <div class="app">
+          <div class="icon">NC</div>
+          <div style="min-width:0">
+            <h3>NanoCut <span class="chip off">Stopped</span><span class="chip err">Source not reachable</span></h3>
+            <div class="path">\\server\share\NanoCut\NanoCut.exe</div>
+            <div class="meta"><span>Local <b>1.8.4</b></span><span>Source <b>–</b> · last seen yesterday 18:02</span><span>runs from the local copy</span></div>
+          </div>
+          <div class="actions"><button class="btn sm primary">Start</button><button class="btn sm quiet">⋯</button></div>
+        </div>
+      </div>
+    </div>
+    <div class="foot"><span>Local copies in <span class="mono">%LOCALAPPDATA%\Stykker\Starter</span> · 1.1 GB</span><span class="sp"></span><span>Checks every 10 min</span><span>Starts with Windows</span></div>
+  </div>
+</section>
+
+<!-- ───────────── Programm hinzufügen ───────────── -->
+<section class="view" id="v-add">
+  <div class="win">
+    <div class="title"><span class="name"><b>◆</b> ADD A PROGRAM</span><span class="sp"></span><span class="wbtn">✕</span></div>
+    <div class="body">
+      <div class="form">
+        <div class="field">
+          <span class="label">Program file</span>
+          <div class="inline"><input class="mono" value="\\server\share\StykkerLLM\StykkerUI.exe"><button class="btn">Browse…</button></div>
+          <span class="muted small">The whole folder of this file is copied. The program then runs from the copy, so the source can be replaced while it runs.</span>
+        </div>
+        <div class="found">
+          <div><b>Found:</b> Stykker LLM · version <b>0.5.2</b> (file version of StykkerUI.exe)</div>
+          <div class="muted">Folder: 212 files, 148 MB · largest: StykkerLLM-Server.exe (61 MB)</div>
+          <div class="muted">Copy goes to <span class="mono">%LOCALAPPDATA%\Stykker\Starter\stykker-llm\0.5.2\</span></div>
+        </div>
+        <div class="field"><span class="label">Name</span><input value="Stykker LLM"></div>
+        <div class="field"><span class="label">Arguments</span><input class="mono" placeholder="none" value=""></div>
+        <div class="field">
+          <span class="label">New version is detected by</span>
+          <select><option>File version of the program, then the folder's content</option><option>Folder content only (any changed file)</option></select>
+        </div>
+        <label class="check"><input type="checkbox" checked><span>Start this program when the Starter starts</span></label>
+        <label class="check"><input type="checkbox"><span>Update without asking (still waits until the program is idle, if it says so)</span></label>
+        <label class="check"><input type="checkbox" checked><span>Keep the previous version, so I can go back</span></label>
+        <div class="row"><button class="btn primary">Copy and start</button><button class="btn quiet">Cancel</button></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ───────────── Kopieren ───────────── -->
+<section class="view" id="v-copy">
+  <div class="win">
+    <div class="title"><span class="name"><b>◆</b> COPYING STYKKER LLM 0.5.2</span><span class="sp"></span><span class="wbtn">–</span></div>
+    <div class="body" style="display:grid;gap:14px">
+      <div>
+        <div class="row" style="margin-bottom:6px"><b>Copying 0.5.2</b><span class="muted small">next to the running 0.5.1, which keeps running</span><span style="flex:1"></span><span class="mono">62 %</span></div>
+        <div class="progress"><i style="width:62%"></i></div>
+      </div>
+      <dl class="kv">
+        <dt>Files</dt><dd>131 of 212</dd>
+        <dt>Data</dt><dd>91.8 of 148.0 MB</dd>
+        <dt>Speed</dt><dd>38.4 MB/s</dd>
+        <dt>Left</dt><dd>about 2 s</dd>
+        <dt>Now</dt><dd>StykkerLLM-Server.exe (61 MB)</dd>
+      </dl>
+      <div>
+        <div class="progress thin" style="margin-bottom:6px"><i style="width:44%"></i></div>
+        <div class="files">
+          <div><span>StykkerLLM-Server.exe</span><span class="muted">27 / 61 MB</span></div>
+          <div><span>wwwroot\app.css</span><span class="ok">✓</span></div>
+          <div><span>StykkerLlm.Core.dll</span><span class="ok">✓</span></div>
+          <div><span>Photino.Native.dll</span><span class="ok">✓</span></div>
+          <div><span>runtimes\win-x64\native\WebView2Loader.dll</span><span class="ok">✓</span></div>
+        </div>
+      </div>
+      <div class="row"><span class="muted small">Copied into a new folder; nothing is replaced until every file is there and checked.</span><span style="flex:1"></span><button class="btn">Cancel</button></div>
+    </div>
+  </div>
+</section>
+
+<!-- ───────────── Update ───────────── -->
+<section class="view" id="v-update">
+  <div style="display:grid;gap:var(--gap)">
+    <div class="desk">
+      <div class="toast">
+        <div class="t"><span class="icon">LL</span>Stykker LLM 0.5.2 is ready</div>
+        <div class="muted small">0.5.1 runs since 3 h 12 min. The new version is copied in the background first; the program is only stopped for the switch, a few seconds.</div>
+        <div class="row"><button class="btn sm primary">Update now</button><button class="btn sm">Tonight</button><button class="btn sm quiet">Skip 0.5.2</button></div>
+      </div>
+      <div class="taskbar"><span>14:36</span><span class="tray badge">S</span></div>
+    </div>
+
+    <div class="win">
+      <div class="title"><span class="name"><b>◆</b> UPDATING STYKKER LLM</span><span class="sp"></span><span class="wbtn">–</span></div>
+      <div class="body">
+        <ol class="steps">
+          <li class="done"><span class="dot"></span><div><b>New version found</b><div class="small muted">Source 0.5.2, local 0.5.1 · file version and 14 changed files</div></div><span class="mono small muted">14:22</span></li>
+          <li class="done"><span class="dot"></span><div><b>Copied 0.5.2</b> next to 0.5.1<div class="small muted">212 files, 148 MB, checked · 0.5.1 kept running</div></div><span class="mono small muted">14:23</span></li>
+          <li class="now"><span class="dot"></span><div><b>Stopping 0.5.1</b><div class="small muted">Everything that runs from the 0.5.1 folder: StykkerUI (PID 18240) and StykkerLLM-Server (PID 18266). Asked to close first, ended after 10 s if not.</div><div class="progress thin" style="margin-top:6px"><i style="width:40%"></i></div></div><span class="mono small">4 s</span></li>
+          <li><span class="dot"></span><div><b>Start 0.5.2</b><div class="small">From the new folder, with the same arguments</div></div><span></span></li>
+          <li><span class="dot"></span><div><b>Keep 0.5.1</b> for going back<div class="small">Older versions are removed, two are kept</div></div><span></span></li>
+        </ol>
+      </div>
+      <div class="foot"><span>If 0.5.2 does not start, the Starter starts 0.5.1 again and says so.</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ───────────── Tray und Einstellungen ───────────── -->
+<section class="view" id="v-tray">
+  <div style="display:grid;grid-template-columns:auto minmax(0,1fr);gap:var(--gap);align-items:start">
+    <div class="menu">
+      <div class="head">Stykker Starter</div>
+      <div class="mi"><span class="chip run" style="padding:0 6px">&nbsp;</span>Stykker LLM 0.5.1<span class="sp"></span><span class="small" style="color:var(--warn)">update</span></div>
+      <div class="mi"><span class="chip run" style="padding:0 6px">&nbsp;</span>Stykker HUD 0.3.0</div>
+      <div class="mi"><span class="chip off" style="padding:0 6px">&nbsp;</span>NanoCut 1.8.4</div>
+      <hr>
+      <div class="mi">Update Stykker LLM to 0.5.2</div>
+      <div class="mi">Check for updates now</div>
+      <hr>
+      <div class="mi">Open the Starter</div>
+      <div class="mi">Quit the Starter <span class="sp"></span><span class="small muted">programs keep running</span></div>
+    </div>
+    <div class="win">
+      <div class="title"><span class="name"><b>◆</b> SETTINGS</span><span class="sp"></span><span class="wbtn">✕</span></div>
+      <div class="body">
+        <div class="form">
+          <div class="field"><span class="label">Check the sources every</span><select><option>5 min</option><option selected>10 min</option><option>30 min</option><option>hour</option></select></div>
+          <label class="check"><input type="checkbox" checked><span>Start the Starter with Windows (in the tray)</span></label>
+          <label class="check"><input type="checkbox" checked><span>Ask before updating a running program</span></label>
+          <label class="check"><input type="checkbox"><span>Update stopped programs without asking</span></label>
+          <div class="field"><span class="label">Versions kept per program</span><select><option>1</option><option selected>2</option><option>3</option></select></div>
+          <div class="field"><span class="label">Local copies</span><div class="inline"><input class="mono" value="%LOCALAPPDATA%\Stykker\Starter"><button class="btn">Open</button></div></div>
+          <div class="row"><button class="btn quiet danger">Remove unused copies (310 MB)</button></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+</div>
+
+<!-- ───────────── Notizen ───────────── -->
+<aside class="notes">
+  <h2>How it works</h2>
+  <ul>
+    <li>Each program gets a folder per version: <span class="mono">…\Starter\&lt;name&gt;\&lt;version&gt;\</span>. A copy goes into a new folder and is checked (size and hash) before it is used, so a broken copy never replaces a working one.</li>
+    <li>The program runs from the copy. The source on a share or in a build folder stays free and can be rebuilt while it runs.</li>
+    <li>A new version is the file version of the .exe; if that did not change, a changed file in the folder (size, time, then hash).</li>
+    <li>Stopping: every process whose program file lies in that version's folder is stopped – the program itself and whatever it started from there (StykkerUI and its server). First a polite close (window close, then Ctrl+C for console programs), after 10 s the end. Never by name: the folder is the Starter's own copy, so nothing else runs from it.</li>
+    <li>Before deleting an old version the same check runs: as long as something runs from its folder, it stays.</li>
+    <li>If the source is not reachable (share offline), the program still starts from the last copy.</li>
+  </ul>
+  <h2>Decided</h2>
+  <ul>
+    <li><b>Interface:</b> Photino, like the windows of HUD, SYS and LLM: the page is local HTML inside the program (no server, no port), drawn without the graphics card. The design system as in the other tools.</li>
+    <li><b>Stopping:</b> by folder, see above.</li>
+    <li><b>Name:</b> Stykker Starter.</li>
+    <li><b>Copies:</b> in %LOCALAPPDATA%\Stykker\Starter, not in %APPDATA%: Roaming is synced with the profile and is no place for 150 MB of binaries.</li>
+  </ul>
+  <h2>Open</h2>
+  <div class="q"><b>Started from elsewhere.</b> A program from the folder also runs if someone started the copy by hand. The Starter would stop it too on an update; it says so in the update dialog.</div>
+</aside>
+</div>
+
+<script>
+(function () {
+  var root = document.documentElement;
+  var views = ["apps", "add", "copy", "update", "tray"];
+  function show() {
+    var parts = location.hash.replace("#", "").split(";");
+    var v = views.indexOf(parts[0]) >= 0 ? parts[0] : "apps";
+    if (parts[1] === "titan" || parts[1] === "dark") root.dataset.theme = parts[1];
+    views.forEach(function (id) { document.getElementById("v-" + id).classList.toggle("show", id === v); });
+    document.querySelectorAll(".mockbar nav button").forEach(function (b) {
+      if (b.dataset.v === v) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current");
+    });
+    document.getElementById("theme").textContent = root.dataset.theme === "titan" ? "Dark" : "Titan";
+  }
+  document.querySelectorAll(".mockbar nav button").forEach(function (b) {
+    b.addEventListener("click", function () {
+      location.hash = b.dataset.v + (root.dataset.theme === "titan" ? ";titan" : "");
+    });
+  });
+  document.getElementById("theme").addEventListener("click", function () {
+    root.dataset.theme = root.dataset.theme === "titan" ? "dark" : "titan";
+    show();
+  });
+  window.addEventListener("hashchange", show);
+  show();
+})();
+</script>
+</body>
+</html>

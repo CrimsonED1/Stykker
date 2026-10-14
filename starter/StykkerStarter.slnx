@@ -1,0 +1,14 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/StykkerStarter.Core/StykkerStarter.Core.csproj" />
+    <Project Path="src/StykkerStarter.Platform.Windows/StykkerStarter.Platform.Windows.csproj" />
+    <Project Path="src/StykkerStarter.App/StykkerStarter.App.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/StykkerStarter.Tests/StykkerStarter.Tests.csproj" />
+    <Project Path="tests/StykkerStarter.TestTarget/StykkerStarter.TestTarget.csproj" />
+  </Folder>
+  <Folder Name="/shared/">
+    <Project Path="../shared/src/Stykker.Shared/Stykker.Shared.csproj" />
+  </Folder>
+</Solution>

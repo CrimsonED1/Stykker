@@ -1,0 +1,18 @@
+<Project>
+
+  <!-- Gemeinsame Metadaten aller Projekte. Nur Metadaten: kein Verhalten. -->
+  <PropertyGroup>
+    <Version Condition="'$(Version)' == ''">0.1.0</Version>
+    <Authors>CrimsonED1</Authors>
+    <Company>CrimsonED1</Company>
+    <Product>Stykker Starter</Product>
+    <Copyright>Copyright (c) CrimsonED1</Copyright>
+    <Description>Runs programs from a source folder as local copies and keeps them up to date.</Description>
+    <Deterministic>true</Deterministic>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+  </PropertyGroup>
+
+  <!-- Das Design-System liegt in shared/design-system der Monorepo. Es wird beim Bauen ins Programm eingebettet
+       (siehe StykkerStarter.App.csproj), nicht kopiert. -->
+
+</Project>

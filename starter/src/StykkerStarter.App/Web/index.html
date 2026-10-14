@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stykker Starter</title>
+<link rel="stylesheet" href="ds/tokens.css">
+<link rel="stylesheet" href="ds/bundle.css">
+</head>
+<body>
+<main style="padding:24px;font-family:var(--font-sans,system-ui)">
+  <h1 style="font-size:15px;margin:0">Stykker Starter</h1>
+  <p class="muted">Programs appear here.</p>
+</main>
+<script src="ds/bundle.js"></script>
+<script>
+  // Die Seite meldet sich, sobald ihr Skript läuft. Vorher schickt C# nichts an sie.
+  try { window.external.sendMessage('shell.ready'); } catch (e) { }
+</script>
+</body>
+</html>
