@@ -31,6 +31,21 @@ The hub is the single address for the Stykker tools of this machine: `/hub` on t
   ```
 
   An entry with a `port` is a module of this machine. The hub opens it under the same host name the hub was opened with, so the sign-in goes into the frame too. An entry with a `url` is an outside web service and is shown as it is. Without the file, or when it names no valid module, the defaults apply: the monitor itself, SYS on 8077 and LLM on 8078.
+- **Forwarded services.** An external entry with a `port` and a `target` runs elsewhere on this PC and the hub forwards it: the hub listens on `port`, and the forwarding goes to `target` only. Only `http://127.0.0.1:<port>` and `http://localhost:<port>` are accepted as a target. Example for Qwen Code, with placeholders for the paths:
+
+  ```json
+  { "modules": [
+    { "id": "qwen", "name": "Qwen Code", "external": true, "port": 8076,
+      "target": "http://127.0.0.1:41999",
+      "start": { "command": "node",
+                 "args": ["<path to cli.js>", "serve", "--port", "41999", "--no-open"],
+                 "env": { "QWEN_HOME": "<folder>" },
+                 "tokenEnv": "QWEN_SERVER_TOKEN" } } ] }
+  ```
+
+- **Starting a service.** `start` is optional. The hub starts the service only when nothing answers on `target`. A service that already runs is left alone: the hub neither starts nor stops it. `command` and `tokenEnv` are required; `args` and `env` hold strings only. The hub adds `--hostname 127.0.0.1 --require-auth` to the arguments (its own switches already in `args` are removed first) and passes its token in the environment variable named by `tokenEnv`, never on the command line. The output goes to the hub's log with the token replaced by `***`. When the hub ends, also when it is closed hard, the service it started ends with it, including the processes that service started itself.
+- **Service tokens.** The hub keeps one token per module id in `services.dat`, next to `pairing.dat`, and Windows protects it the same way. Without that protection the hub refuses to write the file in plain text. A device never receives the token; the hub adds it to every request it forwards.
+- **Who sees and opens a forwarded service.** Like every external entry, it is listed only on this PC and for devices with the role `admin` for that module. Others do not see it in the bar. A request to it from another site gets `403`, even from an admin device.
 - **Small screens.** On a phone, and in the app installed on it, the bar starts folded and opens as a menu from one symbol at the bottom right, within thumb reach. Choosing a module folds the menu again.
 - **Theme.** The button in the bar switches between *Dark* and *Spacepunk Titan*, as the monitor does. The frame follows at once.
 - **Install as an app.** The hub has a web app manifest (`/manifest.webmanifest`, shown standalone, starting at `/hub`), so the browser can install it.
@@ -44,11 +59,12 @@ By default nobody outside this PC can reach StykkerHUD or StykkerSYS. Access fro
 - **Network switch.** The network is off by default. The switch is in the hub, under "Network access", with the buttons "Turn on" and "Turn off". The server opens its port to the network only if the switch is on when the program starts; otherwise it listens on `127.0.0.1` alone. So a change takes effect after a restart of StykkerHUD and StykkerSYS, as the hub also says. Turning the switch off blocks outside requests at once, but the port stays open until the next restart.
 - **Code.** With the switch on, the hub shows the code under "Add a device", together with this PC's addresses, port and `/hub`. The code has six digits, shown as `482 913`. It is valid for ten minutes and works once. After five wrong entries the PC shows a new one. "New code" replaces it at once.
 - **Sign-in.** A device enters the code on the sign-in page `/pair`. It then holds the cookie `stykker_device`: HttpOnly, SameSite=Lax, valid for 730 days. The `Secure` flag is set only for HTTPS. Devices and codes are kept in `%APPDATA%\Stykker\pairing.dat`, which Windows protects for the signed-in user. Only a hash of each device's token is stored.
-- **Roles.** Each device has a role per module: `admin` or `viewer`. A device that signs in at a module is `admin` there and `viewer` at every other module. The hub's device list changes the role per module (the columns "Monitor" and "SYS") and removes devices.
-- **What roles change.** In StykkerSYS, `admin` may end processes and change priorities, `viewer` only watches (see [StykkerSYS](../sys/README.md#who-may-do-what)). The monitor has no actions, so its roles change nothing yet.
+- **Roles.** Each device has a role per module: `admin` or `viewer`. A device that signs in at a module is `admin` there and `viewer` at every other module. The hub's device list changes the role per module (one column each, such as "Monitor", "SYS", "LLM" and "Qwen Code") and removes devices. A forwarded service has no sign-in page of its own, so a device is `admin` there only when the PC sets it.
+- **What roles change.** In StykkerSYS, `admin` may end processes and change priorities, `viewer` only watches (see [StykkerSYS](../sys/README.md#who-may-do-what)). The monitor has no actions, so its roles change nothing yet. For a forwarded service the role decides whether its frame opens: `admin` gets through, `viewer` gets `403`. Set it in the device list under that service's column.
 - **Who manages.** The network switch, the code and the device list can only be operated on this PC, and only from the hub page itself. A device on the network does not see the code or the device list; its request for them answers only `local: false`.
 - **Without sign-in from the network.** With the switch on, these paths need no device: `/api/ping`, `/manifest.webmanifest`, the icons `/hub-icon…` and the sign-in page `/pair`. Everything else needs a valid device. An API call, or any request other than GET, gets `401`; any other GET request is redirected to `/pair`. With the switch off, outside requests get `403`, even for these paths.
 - **Other sites cannot embed the monitor.** Its pages allow framing only from themselves (`frame-ancestors 'self'`), so no other website can show them in a frame.
+- **Frames for forwarded services.** The hub removes the `X-Frame-Options` header of a forwarded service's answer and sets `frame-ancestors` to the hub's own address. The service can then be shown in the hub's frame, and in no other site's.
 - **No HTTPS.** The cookie travels in clear text over the network. Use network access only in your own network or over a VPN.
 
 ## Layout
@@ -57,11 +73,12 @@ By default nobody outside this PC can reach StykkerHUD or StykkerSYS. Access fro
 |---|---|
 | `src/StykkerHud.Core/` | The model (`Samples.cs`), the sampler (`MetricsSampler`) and the service (`HudService`, a viewer loop from `shared/`). Knows no operating system. |
 | `src/StykkerHud.Platform.Windows/` | The Windows side: CPU and memory (`kernel32`, `ntdll`), GPU (`nvml.dll`), disk throughput (`pdh.dll`), network counters. Every part is optional: when one is missing its value shows `–`. |
-| `src/StykkerHud.Server/` | Blazor Server on `http://127.0.0.1:8079`, with a tray icon. Serves the monitor, the hub at `/hub` and `/api/snapshot`. Only this PC, unless the network switch is on at start (see [Access from the network](#access-from-the-network)). |
+| `src/StykkerHud.Server/` | Blazor Server on `http://127.0.0.1:8079`, with a tray icon. Serves the monitor, the hub at `/hub` and `/api/snapshot`. Only this PC, unless the network switch is on at start (see [Access from the network](#access-from-the-network)). Forwards and starts the foreign services of `stykker.json` (`ServiceForwarding.cs`, `ServiceProcesses.cs`; the rules are in `shared/…/Web/ServiceProxyRules.cs`). |
 | `src/StykkerHud.UI/` | `StykkerHUD.exe`, the Photino window (WebView2) around those pages. |
 | `../shared/` | `Stykker.Shared`: GPU counter queries, the PDH wrapper, tray icon, design-system hosting, the viewer loop. See [its README](../shared/README.md). |
 | `tools/shot.mjs` | Measures the rendered page (values, colours, geometry, both themes) and writes the screenshots. |
 | `tools/check-ui.mjs` | Behaviour checks on the running page: cores folded at first, opening them shows one row per core, the throughput bars carry widths and value/peak text, no metric cell overflows its column, the graphics card reports its engine split. |
+| `tools/check-proxy.mjs` | Checks a forwarded service (Qwen Code) end to end: access rules, token, frame, stream, WebSocket, its own daemon and the stop with the hub. See [Verifying](#verifying). |
 | `tools/onepager.mjs` | Builds a standalone page from a draft by embedding the design system (for artifacts). |
 | `docs/` | Screenshots, the design mockups and the decision record (`entscheidungen.md`). |
 
@@ -88,6 +105,7 @@ src\StykkerHud.Server\bin\Debug\net10.0\StykkerHUD-Server.exe --port 8079
 | `--server <path>` (window) | the server to start when none runs; by default it is found next to the window or in the build tree |
 | `--gpu` (window) | draw through the graphics card. Without it the window draws in software, so the monitor does not use the GPU it measures |
 | `--pairing-file <file>` | the pairing file: devices, code and network switch. Default `%APPDATA%\Stykker\pairing.dat` |
+| `--hub-config <file>` | the hub's modules instead of `%APPDATA%\Stykker\stykker.json` (trial runs) |
 
 ## The design system is one source, not a copy
 
@@ -114,11 +132,18 @@ node tools\shot.mjs --port 8079 --out docs\screenshots --name hud --wait 25
 
 # behaviour of the running page
 node tools\check-ui.mjs --port 8079
+
+# a forwarded service (Qwen Code): needs the built server and the cli.js of Qwen Code.
+# It starts its own hub and its own qwen serve on 127.0.0.1, with temp folders and the
+# ports 8090, 8091, 8092, 41998 and 41999; it stops only the processes it started.
+node tools\check-proxy.mjs --qwen-cli <path to cli.js>
 ```
+
+`check-proxy` also needs Google Chrome, which it starts through Playwright. Its temp folder is deleted after a passing run and kept after a failing one.
 
 Each shot run writes `hud-measure.json` (DOM measurements, console problems, failed requests), the two theme pictures, a full-page PNG and a small review picture. A run that reports `problems: none` has no 404 and no console error. The DOM measurements are the check; the picture only confirms them.
 
-Last run on 2026-10-09: `check-ui` 18/18 checks passed, no problems.
+Last run on 2026-10-09: `check-ui` 18/18 checks passed, no problems. Last run on 2026-10-14: `check-proxy` 46/46 checks passed.
 
 ## Design mockups
 
@@ -132,6 +157,7 @@ Last run on 2026-10-09: `check-ui` 18/18 checks passed, no problems.
 - **Decided on 2026-10-13:** the interface is web: Blazor, shown in a Photino window. See [`docs/entscheidungen.md`](docs/entscheidungen.md).
 - **Still missing for the hub and the access:**
   - **HTTPS.** Without it the cookie travels in clear text. Installing the hub as an app outside `localhost` normally requires HTTPS as well.
-  - **Test on a real phone.** The access from the network has not been tested on a real phone yet, nor across the Windows firewall.
+  - **Test on a real phone.** The access from the network has not been tested on a real phone yet, nor across the Windows firewall. The forwarded service was checked from this PC over `127.0.0.1` and its LAN address, with a browser that stands in for the phone.
+  - **Graceful shutdown of a forwarded service.** Ctrl+C in the hub's console is not tested; `check-proxy` ends the hub with `taskkill`.
   - **Pairing the other way round and a QR code.** The new device shows the code and a paired device confirms it. The pages cannot do that yet, and there is no QR code.
   - **Service worker.** There is none. The manifest is enough to install the app, but without a connection the app shows nothing.

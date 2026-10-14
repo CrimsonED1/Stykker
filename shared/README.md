@@ -18,6 +18,8 @@ The rule for what belongs here: code that two tools use, or that would otherwise
 | `Web/OneDecimalJson.cs` | JSON converter that rounds every number to one decimal place. | StykkerHUD, StykkerSYS |
 | `Sampling/ViewerLoop.cs` | Measures only while someone looks: the first read starts a one-second loop, and 15 seconds without a read stop it. | StykkerHUD, StykkerSYS |
 | `ActionResult.cs` | `ActionResult(bool Ok, string Message)`: the answer of an action. | StykkerSYS |
+| `Config/HubModules.cs` | The hub's modules from `stykker.json`: own modules by port, outside services by `url`, and forwarded services with `port`, `target` (only `127.0.0.1` or `localhost`) and an optional `start`. Without the file, the defaults. | StykkerHUD |
+| `Web/ServiceProxyRules.cs` | The rules for a forwarded service, without HTTP: who may open it (origin, this PC, network switch, device, role `admin` for that module), the status and text of a refusal, the cookie filter, the origin rewrite, and `frame-ancestors`. | StykkerHUD |
 
 ## Stykker.Pairing
 
@@ -31,6 +33,7 @@ HUD, SYS and StykkerLLM use it. StykkerLLM moved over last (`docs/plan-llm-modul
 | `PairingService.cs` | The rules: a six-digit code that lasts ten minutes and one sign-in, pairing in both directions, devices, roles per tool, hosts. |
 | `PairingCodes.cs` | Codes, tokens and their hash. The hash is the one StykkerLLM stored devices with, so they stay signed in. |
 | `LegacyLlmImport.cs` | Takes over `access.dat` and `hosts.dat` from StykkerLLM's data folder, once. StykkerLLM then renames them to `*.bak`; the file records what it imported. |
+| `ServiceTokens.cs` | One token per module id for a forwarded service, in `services.dat` next to `pairing.dat`. The same DPAPI protection with its own entropy (`Stykker.services.v1`); without protection nothing is written in plain text. Used by StykkerHUD. |
 
 It has no ASP.NET reference and no package dependency.
 
@@ -45,7 +48,7 @@ The PDH and tray parts only work on Windows. `Stykker.Shared` targets `net10.0` 
 
 `tests/Stykker.Pairing.LockProbe` is a helper program, not a test project: the pairing tests start it several times at once to write the same file.
 
-Last run on 2026-10-13: 63 of 63 tests passed in `Stykker.Shared.Tests` and 42 of 42 in `Stykker.Pairing.Tests`, the build shows no warnings.
+Last run on 2026-10-14: 116 of 116 tests passed in `Stykker.Shared.Tests` and 51 of 51 in `Stykker.Pairing.Tests`, the build shows no warnings.
 
 ## Using it from a tool
 

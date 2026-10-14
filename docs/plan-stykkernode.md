@@ -332,3 +332,39 @@ Noch nicht geprüft:
 - **Netzschalter über alle drei Module:** im Probelauf liefen LLM und HUD zusammen, SYS nicht.
 - **Die Sperre über zehn Sekunden** (ein anderer Prozess hält die Ablage): nicht ausgelöst.
 - **Bilder** für `hud/docs/screenshots/`: nicht gemacht. Dafür braucht es eine Auswahl ohne SYS.
+
+### Fremde Dienste in der Zentrale: Qwen Code (Schritt 4, 2026-10-14)
+
+Die Zentrale leitet einen fremden Dienst auf einem eigenen Port weiter und startet ihn, wenn auf seinem Ziel nichts antwortet. Qwen Code ist der erste Fall. Am Handy braucht es dafür kein Qwen-Token mehr.
+
+| Wo | Was |
+|---|---|
+| `shared/src/Stykker.Shared/Config/HubModules.cs` | Ein fremder Eintrag mit `port` bekommt `target` (nur `http://127.0.0.1:<Port>` oder `localhost`) und optional `start` (`command`, `args`, `env`, `tokenEnv`). Ein unvollständiges `start` gilt als keins. |
+| `shared/src/Stykker.Pairing/ServiceTokens.cs` | Ein Token je Modul-Kennung in `services.dat`, neben `pairing.dat`, mit DPAPI geschützt (Zusatzwert `Stykker.services.v1`). Ohne Schutz wird nichts im Klartext geschrieben. |
+| `shared/src/Stykker.Shared/Web/ServiceProxyRules.cs` | Die Entscheidung je Anfrage, in dieser Reihenfolge: Herkunft, dann diese Maschine, Netzschalter, Gerät, Rolle `admin` für das Modul. Dazu Cookie-Filter, Herkunftsregel und `frame-ancestors`. |
+| `hud/src/StykkerHud.Server/ServiceForwarding.cs` | Die Weiterleitung mit `Yarp.ReverseProxy` 2.3.0, dem einzigen neuen Paket, nur in diesem Projekt. Setzt Host, Herkunft und das Token, entfernt das Cookie des Geräts und `X-Frame-Options`. Ein Port, der dem der Zentrale gleicht, wird nicht weitergeleitet. |
+| `hud/src/StykkerHud.Server/ServiceProcesses.cs` | Startet den Dienst nur, wenn `target` nicht antwortet. Das Token geht über die Umgebung; die Ausgabe ins Log mit `***` statt des Tokens. Beendet wird nur der eigene Prozess mit seinen Kindern, über die PID. Ein Job-Objekt beendet ihn mit der Zentrale, auch bei hartem Schließen. |
+| `hud/src/StykkerHud.Server/Program.cs` | `--hub-config`, `--pairing-file`. Fremde Module sieht nur diese Maschine und ein Gerät mit Rolle `admin` für das Modul. Eine Spalte je Modul in der Geräteliste. WebSockets. |
+| `hud/tools/check-proxy.mjs` | Prüft zwölf Fälle gegen die `cli.js` von Qwen Code, mit Temp-Ordnern und den Ports 8090, 8091, 8092, 41998 und 41999. |
+
+Geprüft (2026-10-14):
+
+- **Build:** Shared, HUD, SYS und LLM (Release) ohne Warnungen.
+- **Tests:** `Stykker.Shared.Tests` 116 von 116 (vorher 63), `Stykker.Pairing.Tests` 51 von 51 (vorher 42), `StykkerLlm.Tests` 612 bestanden und 1 übersprungen (wie vorher), SYS 21 von 21. Das HUD hat kein Testprojekt; geprüft wird es mit `check-proxy`.
+- **`check-proxy`:** 46 von 46. Gezeigt wird: fremde Herkunft gibt 403, auch als WebSocket, am PC wie am Handy; das Cookie des Geräts geht nicht weiter, das Token kommt dazu; 20 Teile eines Stroms kommen während des Laufs an; 50 Nachrichten über WebSocket kommen zurück. Der Dienst hört nur auf `127.0.0.1` mit `--require-auth`, und das Token steht weder in der Kommandozeile noch im Log. Das Handy ohne Gerät bekommt 401, ein Zuschauer 403 und den Dienst nicht in der Liste; ein Admin bekommt 200 und Qwen im Frame. Die Zentrale endet mit `taskkill` ohne `/F`, und ein Dienst, den sie nicht gestartet hat, bleibt unberührt. Eine Konfiguration ohne die neuen Felder bleibt unverändert.
+- **Handy:** ein Browser auf dieser Maschine über deren LAN-Adresse. Keine Bilder gemacht.
+
+Dabei entschieden, weil die Umsetzung es verlangte:
+
+- **Eigener Dienst statt Local Control.** Begründung in [naechste-schritte.md](naechste-schritte.md), Schritt 4.
+- **Job-Objekt und Beenden des ganzen Baums.** Der Start von Qwen gibt den eigentlichen Server an einen Kindprozess weiter. Ein Beenden nur des Startprozesses ließ den Server laufen.
+- **`ApplicationStopping` statt `ApplicationStopped`.** Bei `taskkill` ohne `/F` lief `ApplicationStopped` nicht mehr, und der Dienst blieb. Das Aufräumen hängt nun am früheren Ereignis.
+- **Kein Klartext für Token.** Schlägt DPAPI fehl, bricht die Ablage ab, statt `services.dat` im Klartext zu schreiben.
+- **`tokenEnv` ist Pflicht.** Ohne den Namen der Umgebungsvariable ginge das Token nur über die Kommandozeile.
+
+Noch nicht geprüft:
+
+- **Echtes Handy, Windows-Firewall, Tailscale.** Wie bei den Modulen oben.
+- **Beenden mit Strg+C.** Die Prüfung nutzt `taskkill` ohne `/F`. Der Weg über Strg+C ist nicht geprüft.
+- **Andere fremde Dienste.** Geprüft ist nur Qwen Code. `start` setzt voraus, dass ein Dienst `--hostname` und `--require-auth` kennt; für andere Dienste ist das nicht geprüft.
+- **Arbeitsordner des Dienstes.** Er erbt den der Zentrale und lässt sich noch nicht einstellen.

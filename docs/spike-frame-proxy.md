@@ -63,7 +63,7 @@ HUD und SYS prüfen noch keine Kopplung und hören nur auf `127.0.0.1`. Im Netz 
 
 ## Was der Versuch nicht zeigt
 
-- **Keine Kopplung davor.** Der Versuch hört nur auf `127.0.0.1` und prüft niemanden. Mit Token-Einsatz wäre er im Netz eine offene Tür zu einem Coding-Agenten. Im Knoten gehört die Prüfung von Kopplung und Rolle `admin` vor die Weiterleitung.
+- **Keine Kopplung davor.** Der Versuch hört nur auf `127.0.0.1` und prüft niemanden. Mit Token-Einsatz wäre er im Netz eine offene Tür zu einem Coding-Agenten. Im Knoten gehört die Prüfung von Kopplung und Rolle `admin` vor die Weiterleitung. Die Prüfung davor steht seit 2026-10-14 im HUD-Server (`hud/src/StykkerHud.Server/ServiceForwarding.cs`), dieser Versuch prüft aber weiterhin niemanden.
 - **Kein echter Auftrag an ein Modell.** Der Test-Daemon hat kein Modell eingerichtet. Geprüft sind Laden der Oberfläche, die Anfragen beim Start und ein WebSocket mit einer Antwort; ein langer Antwortstrom, Datei-Upload und das Terminal sind es nicht.
 - **Nicht gegen die Desktop-App.** Deren Daemon hat einen zufälligen Port und ein Token, das nur die App kennt. Der Weg dorthin (Token übergeben, oder über den Local-Control-Port mit einem eigenen Geräte-Token) ist offen.
 - **Nicht am Handy** und nur mit Edge.
