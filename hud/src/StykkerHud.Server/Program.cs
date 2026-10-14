@@ -75,7 +75,9 @@ if (!first)
 
 var builder = WebApplication.CreateBuilder(new WebApplicationOptions { Args = args, ContentRootPath = AppContext.BaseDirectory });
 // Die Weiterleitungen fremder Dienste (docs/plan-stykkernode.md, Abschnitt 4.5): je Dienst ein eigener Port, neben dem der Zentrale.
-var routes = ServiceForwarding.Plan(hubModules, port, Console.WriteLine);
+// Ziel und Token der Weiterleitungen aus derselben Datei, jede Anfrage liest sie neu, wenn sie sich geändert hat
+var hubFile = new HubConfigFile(hubConfig ?? HubModules.DefaultFile(), () => ServiceTargetRule.ReadThisPcAddresses());
+var routes = ServiceForwarding.Plan(hubModules, port, hubFile, Console.WriteLine);
 // Ohne Netzschalter nur die eigene Maschine. Mit ihm auch das Netz – dort prüft PairingGate jede Anfrage.
 builder.WebHost.UseUrls(ServiceForwarding.Urls(port, network, routes));
 // Aus dem Build-Ordner (nicht veröffentlicht): CSS und die Seiten aus den Quellen statt aus wwwroot

@@ -13,42 +13,49 @@ namespace StykkerHud.Server;
 // Wohin eine Anfrage geht: das feste Ziel des Dienstes und das Token, das die Zentrale ihm gibt (null = keins).
 internal sealed record ServiceTarget(string Url, string? Token);
 
-// Ein fremder Dienst, den die Zentrale weiterleitet: sein Port hier, sein festes Ziel (target) und sein Token aus
-// stykker.json. Jede Anfrage prüft neu, ob das Ziel antwortet.
+// Ein fremder Dienst, den die Zentrale weiterleitet: sein Port hier (beim Start festgelegt). Ziel und Token holt jede
+// Anfrage aus stykker.json, wie die Datei gerade steht: ein neues Ziel oder Token wirkt ohne Neustart. Ein Ziel, das
+// nicht antwortet, oder ein Eintrag, der nicht mehr gilt, gibt 503.
 internal sealed class ServiceRoute
 {
     private readonly object _gate = new();
     private readonly Action<string> _log;
-    private readonly string? _token;
+    private readonly HubConfigFile _config;
     private string? _lastProblem;
 
-    public ServiceRoute(string id, string name, int port, string target, string? token, Action<string> log)
+    public ServiceRoute(string id, string name, int port, HubConfigFile config, Action<string> log)
     {
         Id = id;
         Name = name;
         Port = port;
-        Target = target;
-        _token = token;
+        _config = config;
         _log = log;
     }
 
     public string Id { get; }
     public string Name { get; }
     public int Port { get; }
-    public string Target { get; }
 
-    // Das Ziel für eine Anfrage. Antwortet das Ziel nicht, oder ist die Token-Datei nicht lesbar, kommt null und die
-    // 503-Antwort mit dem Text dazu. Der Grund geht ins Log, aber nur bei einem Wechsel; das Token nie.
+    // Das Ziel für eine Anfrage. Gilt der Eintrag nicht mehr oder antwortet das Ziel nicht, kommt null und die 503-Antwort
+    // mit dem Text dazu. Der Grund geht ins Log, aber nur bei einem Wechsel; das Token nie.
     public async Task<(ServiceTarget? Target, string? Refusal)> ResolveAsync(CancellationToken cancel)
     {
-        if (!await HubProbe.AnswersAsync(new HubModule(Id, Name, Port, null, true), Target, cancel))
+        var module = _config.Current().FirstOrDefault(m => m.Id == Id && m.External && m.Target != null);
+        if (module == null)
+        {
+            Report("its entry in stykker.json is gone or has no valid target");
+            return (null, ServiceProxyRules.NotRunningMessage(Name));
+        }
+
+        // Das Ziel selbst wird geprüft (Host und Port aus dem Ziel), nicht der Port der Weiterleitung
+        if (!await HubProbe.AnswersAsync(new HubModule(Id, Name, null, null, true), module.Target!, cancel))
         {
             Report("the target does not answer");
             return (null, ServiceProxyRules.NotRunningMessage(Name));
         }
 
         Report(null);
-        return (new ServiceTarget(Target, _token), null);
+        return (new ServiceTarget(module.Target!, module.Token), null);
     }
 
     private void Report(string? problem)
@@ -70,8 +77,8 @@ internal sealed class ServiceRoute
 // in Stykker.Shared; hier nur der Weg der Anfrage durch YARP und Kestrel. Die Zentrale startet keinen Dienst.
 internal static class ServiceForwarding
 {
-    // Die Routen aus den Modulen: ein fremder Dienst mit Port und Ziel (target), sonst keiner.
-    public static IReadOnlyList<ServiceRoute> Plan(IReadOnlyList<HubModule> modules, int hubPort, Action<string> log)
+    // Die Routen aus den Modulen beim Start: ein fremder Dienst mit Port und Ziel (target), sonst keiner.
+    public static IReadOnlyList<ServiceRoute> Plan(IReadOnlyList<HubModule> modules, int hubPort, HubConfigFile config, Action<string> log)
     {
         var routes = new List<ServiceRoute>();
         foreach (var module in modules.Where(m => m.External && m.Port is > 0 && m.Target != null))
@@ -82,7 +89,7 @@ internal static class ServiceForwarding
                 log($"{module.Name}: port {module.Port} is already in use by the hub or another service; not forwarded.");
                 continue;
             }
-            routes.Add(new ServiceRoute(module.Id, module.Name, module.Port!.Value, module.Target!, module.Token, log));
+            routes.Add(new ServiceRoute(module.Id, module.Name, module.Port!.Value, config, log));
             log($"{module.Name}: port {module.Port} forwards to {module.Target}{(module.Token == null ? ", without a token." : ", with its token.")}");
         }
         return routes;

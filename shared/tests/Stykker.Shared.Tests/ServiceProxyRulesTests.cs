@@ -233,6 +233,5 @@ public class ServiceProxyRulesTests
     {
         Assert.Equal(503, ServiceProxyRules.NotRunningStatus);
         Assert.Equal("Qwen Code is not running. Start the Qwen Code desktop app on the PC.", ServiceProxyRules.NotRunningMessage("Qwen Code"));
-        Assert.Equal("Qwen Code: the token file cannot be read.", ServiceProxyRules.TokenFileMessage("Qwen Code"));
     }
 }
