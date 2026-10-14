@@ -71,9 +71,6 @@ Die Reihenfolge folgt einem Ziel: **die Zentrale als App auf dem Handy, mit eine
 
 ## Kleines, das zwischendurch geht
 
-- `sys/README.md` und ihre deutsche Fassung beschreiben noch „nur auf 127.0.0.1“. Die Zentrale, der Netzschalter und die Rollen fehlen dort. (Für das HUD ist das nachgezogen.)
-- `hud/docs/entscheidungen.md` und `cmd/PLAN.md` stehen noch auf dem Stand vor „alles Web“.
-- Der Verweis „Processes“ im Monitor zeigt fest auf `127.0.0.1:8077`. In der Zentrale sollte er das Modul SYS wählen.
 - HUD hat keine Tests. Die Endpunkte der Zentrale (`/api/hub…`) wären der erste Kandidat.
 - Ein Service Worker, damit die installierte App ohne Netz wenigstens sagt, dass der PC nicht erreichbar ist.
 - `stykker.json` kennt jetzt `modules` mit `external`, `port`, `target` und `start`. Knoten und Netzschalter aus Abschnitt 4.2 des Plans fehlen.
