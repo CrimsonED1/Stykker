@@ -1,3 +1,4 @@
+using Stykker.Pairing;
 namespace StykkerLlm.Cli;
 
 public enum ColorMode { Auto, TrueColor, Ansi256, Ansi16, None }
@@ -10,7 +11,7 @@ public sealed class CliArgs
     public string Command = "";
     public List<string> Words = new();
     public string? DataDir;
-    public int Port = 8078;
+    public int Port = StykkerPorts.Llm;
     public bool Sim;
     public string? Snapshot;
     public string Keys = "";

@@ -806,7 +806,7 @@ public sealed class StateSnapshot
         Enabled = J.Bool(p, "enabled"),
         Running = J.Bool(p, "running"),
         BindLan = J.Bool(p, "bindLan"),
-        Port = J.Int(p, "port", 8079),
+        Port = J.Int(p, "port", 17500),
         TargetKey = J.Str(p, "targetKey") ?? "",
         TargetValue = J.Str(p, "targetValue") ?? "",
         TargetName = J.Str(p, "targetName") ?? "",

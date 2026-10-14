@@ -1,3 +1,4 @@
+using Stykker.Pairing;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
@@ -96,8 +97,8 @@ public sealed class ServerClient : IDisposable
         catch { return false; }
     }
 
-    // Adresse des Servers: der Standardport 8078 auf diesem Rechner
-    public static string DefaultUrl(int port = 8078) => $"http://127.0.0.1:{port}";
+    // Adresse des Servers: der Standardport (StykkerPorts.Llm) auf diesem Rechner
+    public static string DefaultUrl(int port = StykkerPorts.Llm) => $"http://127.0.0.1:{port}";
 
     // Läuft der Server (mit Schlüssel aus dem Datenordner)? Lädt dabei gleich den ersten Zustand.
     public async Task<bool> PingAsync(CancellationToken ct = default)

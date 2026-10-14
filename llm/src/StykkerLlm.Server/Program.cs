@@ -1,12 +1,13 @@
 using System.Text;
 using System.Text.Json;
+using Stykker.Pairing;
 using StykkerLlm.Core;
 using StykkerLlm.Core.Eval;
 using StykkerLlm.Platform.Windows;
 using StykkerLlm.Server;
 using StykkerLlm.Server.Components;
 
-// StykkerLLM-Server: Web-Oberfläche auf http://127.0.0.1:8078, lokal immer, aus dem Heimnetz mit dem Schalter Home/VPN
+// StykkerLLM-Server: Web-Oberfläche auf http://127.0.0.1:17401, lokal immer, aus dem Heimnetz mit dem Schalter Home/VPN
 // und dem Zugangscode. Der Server hält die Engine; Fenster, TUI und Telefon sind Clients (S3/S4/S5).
 // Ein Server je Datenordner: läuft schon einer, öffnet ein zweiter Start nur den Browser.
 if (args.Contains("--help") || args.Contains("-h"))
@@ -15,14 +16,14 @@ if (args.Contains("--help") || args.Contains("-h"))
         StykkerLLM-Server - the web interface and the engine behind it
 
           --data-dir <folder>   other data folder (default: the one of the app)
-          --port <number>       web port (default 8078; the Stykker-Proxy uses 17500)
+          --port <number>       web port (default 17401; the Stykker-Proxy uses 17500)
           --no-browser          do not open a browser on start
           --no-tray             no tray icon (the window starts the server this way: it has an icon itself)
           --stay                keep running when no window, terminal or web page is open (also a setting)
           --pairing-file <file> the pairing file to use (default: the shared one, the same as StykkerHud and StykkerSys)
           --hub-config <file>   the stykker.json whose "hostNames" this server also answers to (default: the hub's file,
                                 only with the default data folder)
-          --hub-port <number>   port of the hub that may show this page in a frame (default 8079; 0 = off)
+          --hub-port <number>   port of the hub that may show this page in a frame (default 17400; 0 = off)
           --platform basic      no system access (like Linux): no auto-detection, no GPU/system values.
                                 Useful to try that mode on Windows.
           --help                this text
@@ -38,7 +39,7 @@ if (args.Contains("--help") || args.Contains("-h"))
 var dataDir = args.SkipWhile(a => a != "--data-dir").Skip(1).FirstOrDefault();
 var paths = AppPaths.FromDataDir(dataDir);
 Directory.CreateDirectory(paths.Root);
-int port = int.TryParse(args.SkipWhile(a => a != "--port").Skip(1).FirstOrDefault(), out var pp) ? pp : 8078;
+int port = int.TryParse(args.SkipWhile(a => a != "--port").Skip(1).FirstOrDefault(), out var pp) ? pp : StykkerPorts.Llm;
 bool noBrowser = args.Contains("--no-browser");
 // Kopplungsablage: ohne Angabe die gemeinsame (Vorgabe) bzw. eine pairing.dat im Datenordner (AppPaths.PairingFile)
 var pairingFile = args.SkipWhile(a => a != "--pairing-file").Skip(1).FirstOrDefault();
@@ -50,7 +51,7 @@ var extraHostNames = hubConfig != null || paths.IsDefault
     : Array.Empty<string>();
 var hostRule = HostNameRule.ForThisPc(extraHostNames);
 // Port der Zentrale, die diese Oberfläche in einem Frame zeigt (docs/plan-stykkernode.md); 0 = Einbetten aus
-int hubPort = int.TryParse(args.SkipWhile(a => a != "--hub-port").Skip(1).FirstOrDefault(), out var hp) ? hp : 8079;
+int hubPort = int.TryParse(args.SkipWhile(a => a != "--hub-port").Skip(1).FirstOrDefault(), out var hp) ? hp : StykkerPorts.Hub;
 AppLog.Init("StykkerLLM-Server", paths);
 AppLog.CatchUnhandled();
 AppLog.Write($"start: port {port}, args {string.Join(' ', args.Where(a => a.StartsWith("--", StringComparison.Ordinal)))}");
@@ -73,7 +74,18 @@ if (!first)
 var builder = WebApplication.CreateBuilder(new WebApplicationOptions { Args = args, ContentRootPath = AppContext.BaseDirectory });
 // Auf allen Adressen lauschen: der Schalter Home/VPN entscheidet im AccessGate, wer von außen durchkommt
 // (sonst müsste der Prozess für jede Änderung neu starten). Ohne eingeschalteten Schalter bleibt nur 127.0.0.1 erreichbar.
-builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
+// Übergang 8078 → 17401 (Auftrag 4.3): auf dem Vorgabeport zusätzlich auf dem alten Port, dort nur für die Model-Hosts
+// (der Filter steht weiter unten). Ist 8078 belegt, startet der Server trotzdem, nur ohne den alten Port.
+bool legacyOpen = LegacyPort.Listens(port);
+if (legacyOpen && !LegacyPort.IsFree(LegacyPort.Port))
+{
+    legacyOpen = false;
+    AppLog.Write(Strings.LegacyPortBusy(port));
+}
+if (legacyOpen) AppLog.Write(Strings.LegacyPortOpen(port));
+builder.WebHost.UseUrls(legacyOpen
+    ? new[] { $"http://0.0.0.0:{port}", $"http://0.0.0.0:{LegacyPort.Port}" }
+    : new[] { $"http://0.0.0.0:{port}" });
 // Aus dem Build-Ordner (nicht veröffentlicht): CSS und blazor.web.js aus den Quellen/Paketen statt aus wwwroot
 if (!Directory.Exists(Path.Combine(AppContext.BaseDirectory, "wwwroot"))) builder.WebHost.UseStaticWebAssets();
 builder.Logging.SetMinimumLevel(LogLevel.Warning);
@@ -118,6 +130,28 @@ var launcher = app.Services.GetRequiredService<ActionContext>().Launcher;
 engineHost.StartProfile = launcher.StartProfileAsync;
 engineHost.UnloadServer = launcher.UnloadIfIdleAsync;   // Leerlauf-Entladen
 var gate = new AccessGate(engineHost.Access, engineHost.Key, port, () => ThemeCatalog.Find(engineHost.Engine.Settings.Theme), hostRule);
+
+// ── Übergang 8078 → 17401 (Auftrag 4.3): auf dem alten Port nur die Wege der Model-Hosts, alles andere 410 ──
+if (legacyOpen)
+{
+    bool hostNoted = false;   // die Zeile im Log kommt einmal je Start
+    app.Use(async (ctx, next) =>
+    {
+        if (ctx.Connection.LocalPort != LegacyPort.Port) { await next(); return; }
+        if (!LegacyPort.Passes(ctx.Request.Path.Value ?? "", ctx.Request.Method))
+        {
+            ctx.Response.StatusCode = StatusCodes.Status410Gone;
+            await ctx.Response.WriteAsync(Strings.LegacyPortMoved(port));
+            return;
+        }
+        if (!hostNoted)
+        {
+            hostNoted = true;
+            AppLog.Write(Strings.LegacyHostConnected);
+        }
+        await next();
+    });
+}
 
 // ── Einbetten: mit --hub-port darf die Zentrale (derselbe Rechnername, dieser Port) die Oberfläche in einem Frame zeigen ──
 if (hubPort > 0)

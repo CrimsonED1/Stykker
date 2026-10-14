@@ -17,7 +17,7 @@ public static class FramePolicy
         return name == null ? Self : $"{Self} {scheme}://{name}:{hubPort}";
     }
 
-    // "pc:8078" -> "pc", "[::1]:8078" -> "[::1]"; null bei allem, was kein Name und keine Adresse ist
+    // "pc:17401" -> "pc", "[::1]:17401" -> "[::1]"; null bei allem, was kein Name und keine Adresse ist
     private static string? HostName(string? host)
     {
         if (string.IsNullOrEmpty(host) || host.Length > 255) return null;

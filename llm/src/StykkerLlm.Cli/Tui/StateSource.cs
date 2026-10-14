@@ -1,3 +1,4 @@
+using Stykker.Pairing;
 using StykkerLlm.Core;
 
 namespace StykkerLlm.Cli.Tui;
@@ -75,7 +76,7 @@ public sealed class SimSource : IStateSource
 
     public SimSource() => _sim.World.Start();
     public string Status => "";
-    public int Port => 8078;
+    public int Port => StykkerPorts.Llm;
     public MonitorEngine Engine => _sim.Engine;
 
     public async Task<StateSnapshot?> PollAsync(CancellationToken ct)

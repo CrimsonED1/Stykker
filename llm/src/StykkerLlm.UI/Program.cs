@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using Photino.NET;
+using Stykker.Pairing;
 using StykkerLlm.Core;
 using StykkerLlm.Platform.Windows;
 
@@ -252,10 +253,10 @@ internal sealed record ShellArgs(int Port, string? DataDir, bool Gpu, string Pag
     // intern: der Wächter startet so das eigentliche Fenster
     public const string ChildFlag = "--window-process";
 
-    // StykkerUI [--port 8078] [--data-dir <ordner>] [--gpu] [--page runs]
+    // StykkerUI [--port 17401] [--data-dir <ordner>] [--gpu] [--page runs]
     public static ShellArgs Parse(string[] args)
     {
-        int port = 8078; string? data = null; bool gpu = false; string page = ""; bool child = false; string? pairing = null;
+        int port = StykkerPorts.Llm; string? data = null; bool gpu = false; string page = ""; bool child = false; string? pairing = null;
         for (int i = 0; i < args.Length; i++)
         {
             switch (args[i])
