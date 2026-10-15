@@ -129,8 +129,9 @@ public sealed class MonitorEngine : IDisposable
         if (csvNote != null && !readOnly) { settings.CsvLog = null; try { settings.Save(); } catch { } }
         Csv = new RequestLog(readOnly ? null : csvPath) { MaxBytes = limits.MaxCsvBytes };
         ProxyCsv = new ProxyLog(readOnly ? null : Path.Combine(paths.LogsDir, "proxy.csv")) { MaxBytes = limits.MaxCsvBytes };
+        _providerKeys = readOnly ? null : new ProviderKeys(paths.Root, platform);
         Proxies = new ProxyManager(() => Registry.Servers, settings, OnProxyRecord, factory: proxyFactory, http: _http,
-            keys: readOnly ? null : new ProviderKeys(paths.Root, platform));
+            keys: _providerKeys);
         Claude = new ClaudeDesktop(platform, () => Proxies.Port, paths.Root);
         if (!readOnly)
         {
@@ -160,6 +161,81 @@ public sealed class MonitorEngine : IDisposable
             if (await Recorder.RepairAsync() > 0) RecordingsChanged?.Invoke();
         });
     }
+
+    // ── Modelltest der Sicherheitsprüfung (ClassifierTest): je Cloud-Anbieter, ein Lauf je Engine ──
+
+    private readonly ProviderKeys? _providerKeys;
+    private readonly object _classifierGate = new();
+    private bool _classifierBusy;
+    private CancellationTokenSource? _classifierCts;
+    // Der letzte Modelltest (läuft er gerade, ist Running gesetzt); null = noch keiner gestartet
+    public ClassifierTest? ClassifierRun { get; private set; }
+    // Der HttpClient des Modelltests (Tests setzen einen Fake); sonst ein eigener ohne Zeitgrenze, die Klasse begrenzt je Anfrage
+    public Func<HttpClient>? ClassifierClient { get; set; }
+
+    // Startet den Modelltest für einen eingetragenen Anbieter. Ohne Schlüssel oder ohne gelistete Modelle geht nichts ins Netz.
+    public bool StartClassifierTest(string providerUrl, out string? error)
+    {
+        error = null;
+        if (ReadOnly || _providerKeys == null) { error = Strings.ReadOnlyEngine; return false; }
+        var url = ProviderKeys.Normalize(providerUrl);
+        if (!Proxies.Providers.Any(p => ProviderKeys.Normalize(p.BaseUrl).Equals(url, StringComparison.OrdinalIgnoreCase)))
+        { error = Strings.ProxyProviderUnknown; return false; }
+        if (!Proxies.HasProviderKey(url)) { error = Strings.ClassifierTestNoKey; return false; }
+        // Die Modelle holt ProviderModelLists (gedrosselt, im Hintergrund); beim ersten Mal kann die Liste noch leer sein
+        var listed = Proxies.ProviderModelLists(url).Listed;
+        if (listed.Length == 0) { error = Strings.ClassifierTestNoModels; return false; }
+
+        // Ein Lauf je Engine: der Schalter gilt schon ab hier, nicht erst wenn der Hintergrund-Task läuft
+        CancellationTokenSource cts;
+        lock (_classifierGate)
+        {
+            if (_classifierBusy) { error = Strings.ClassifierTestRunning; return false; }
+            _classifierBusy = true;
+            _classifierCts?.Dispose();
+            cts = _classifierCts = new CancellationTokenSource();
+        }
+        ClassifierTest run;
+        bool ownsHttp = ClassifierClient == null;
+        HttpClient http;
+        try
+        {
+            var request = ClassifierTest.PickRequest(Path.Combine(Paths.LogsDir, "proxy-debug"));
+            http = ClassifierClient?.Invoke() ?? new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
+            run = new ClassifierTest(url, listed, request, _providerKeys, http, Path.Combine(Paths.LogsDir, ClassifierTest.CsvFile), _now);
+        }
+        catch
+        {
+            lock (_classifierGate) _classifierBusy = false;   // nichts läuft: der Schalter darf nicht hängen bleiben
+            throw;
+        }
+        ClassifierRun = run;
+        _ = Task.Run(async () =>
+        {
+            try { await run.RunAsync(cts.Token).ConfigureAwait(false); }
+            catch (Exception) { }
+            finally
+            {
+                if (ownsHttp) http.Dispose();
+                lock (_classifierGate) _classifierBusy = false;
+            }
+        });
+        return true;
+    }
+
+    // Bricht einen laufenden Modelltest ab; die bis dahin gemessenen Zeilen bleiben stehen
+    public bool StopClassifierTest()
+    {
+        lock (_classifierGate)
+        {
+            if (!_classifierBusy || _classifierCts == null) return false;
+            _classifierCts.Cancel();
+        }
+        return true;
+    }
+
+    // Welche Testanfrage der nächste Test nähme (für den Hinweis im Dialog): die letzte echte Prüfung oder das Beispiel
+    public ClassifierRequest ClassifierSample() => ClassifierTest.PickRequest(Path.Combine(Paths.LogsDir, "proxy-debug"));
 
     // Die letzten Beobachtungen des Proxys (für die Liste „Letzte Anfragen“: Werkzeuge, Denken, Client), neueste zuletzt
     private readonly Queue<ProxyRecord> _recentProxy = new();
@@ -331,6 +407,7 @@ public sealed class MonitorEngine : IDisposable
     {
         if (_disposed) return;
         _disposed = true;
+        StopClassifierTest();
         Csv.Flush();
         Recorder.Dispose();
         Proxies.Dispose();

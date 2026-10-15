@@ -705,6 +705,12 @@ html[data-theme=titan] .sp4{--spc:var(--st-read)}   /* schnellste Stufe blau: Or
 .pxp-gear{flex:none}
 /* Proxy-Dialog: breiter als die anderen Dialoge, scrollt innen bei wenig Höhe */
 .modal.pxd{max-width:720px;max-height:calc(100vh - 32px);overflow-y:auto}
+/* Modelltest der Sicherheitsprüfung: die Tabelle scrollt innen, die Seite nie waagerecht */
+.pxp-hint{margin-top:6px}
+.ctt-scroll{overflow-x:auto;max-width:100%;margin-top:6px}
+.ctt{font-size:12px;min-width:480px}
+.ctt th,.ctt td{padding:4px 6px;white-space:nowrap;vertical-align:top}
+.ctt .ctt-note{white-space:normal;min-width:160px}
 html[data-theme=titan] .slot.hot{box-shadow:inset 0 0 0 2px var(--bad)}
 
 /* Nach der Endprüfung (Verifier): Kopf klebt auf schmalen Geräten nicht (nahm fast die halbe Höhe ein); ohne GPU keine

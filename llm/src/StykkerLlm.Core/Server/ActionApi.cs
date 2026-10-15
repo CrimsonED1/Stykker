@@ -267,6 +267,13 @@ public static class ActionApi
                 case "proxy.classifier":
                     e.Proxies.SetClassifierValue(req.Arg ?? "");
                     return Ok(e.Proxies.ClassifierValue().Length == 0 ? Strings.ClientAutoSame : Strings.ClientAutoSet);
+                // Modelltest der Sicherheitsprüfung: Arg = Basis-URL eines eingetragenen Anbieters (nur mit Schreibrecht)
+                case "classifier.test.start":
+                    return e.StartClassifierTest(req.Arg ?? "", out var cterr)
+                        ? Ok(Strings.ClassifierTestStarted)
+                        : ActionResult.Fail(cterr ?? Strings.ClassifierTestFailed);
+                case "classifier.test.stop":
+                    return e.StopClassifierTest() ? Ok(Strings.ClassifierTestStopping) : Ok(Strings.ClassifierTestNotRunning);
                 case "proxy.debug":
                     e.Settings.ProxyDebug = req.Flag;
                     e.Settings.Save();
