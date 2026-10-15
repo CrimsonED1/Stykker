@@ -700,6 +700,11 @@ html[data-theme=titan] .sp4{--spc:var(--st-read)}   /* schnellste Stufe blau: Or
 .pxchip:hover{color:var(--ink);border-color:rgb(var(--acc-rgb)/.5)}
 .pxchip-open{all:unset;display:inline-flex;align-items:center;gap:6px;cursor:pointer;color:inherit}
 .pxchip-open:focus-visible{outline:2px solid var(--acc);outline-offset:2px;border-radius:4px}
+/* Schraubenschlüssel in den Chips: „hier öffnen sich die Einstellungen“; er hellt sich auf, wenn der Chip darunter liegt */
+.hchip .ic.wr{opacity:.55;transition:opacity .2s,color .2s}
+button.hchip:hover .ic.wr,.pxchip:hover .ic.wr,.pxchip-open:focus-visible .ic.wr{opacity:1;color:var(--acc)}
+/* Handybreite: Prompt nur als Symbol; die Hauptpunkte rücken enger und dürfen umbrechen, statt die Seite waagerecht zu dehnen */
+@media(max-width:640px){.top nav{flex:0 1 auto;max-width:100%;flex-wrap:wrap;gap:2px}.top nav a{padding:5px 6px}.top nav .navtxt{display:none}}
 /* Proxy-Karte (nur Information): Werte in einer Zeile, lange Ziele brechen um; Zahnrad am Kopf */
 .pxp-v{flex:1;min-width:0;overflow-wrap:anywhere}
 .pxp-gear{flex:none}

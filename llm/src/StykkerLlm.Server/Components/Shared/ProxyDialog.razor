@@ -159,6 +159,7 @@
                             disabled="@(!CanWrite || running)" @onchange="e => _testUrl = e.Value?.ToString()">
                         @foreach (var pv in Providers) { <option value="@pv.Url">@pv.Name</option> }
                     </select>
+                    <label class="small"><input type="checkbox" @bind="_retryUnavailable" disabled="@(!CanWrite || running)" /> @Strings.ClassifierTestRetry</label>
                     @if (running)
                     {
                         <button class="ghost" @onclick="StopTest">@Strings.ClassifierTestStop</button>
@@ -192,14 +193,7 @@
                                 <td>
                                     @if (rr.FormatOk is true && !running)
                                     {
-                                        @if (Offered(tests.ProviderUrl, rr.Model))
-                                        {
-                                            <button class="ghost" disabled="@(!CanWrite)" @onclick="() => UseClassifier(tests.ProviderUrl, rr.Model)">@Strings.ClassifierTestUse</button>
-                                        }
-                                        else
-                                        {
-                                            <span class="small muted">@Strings.ClassifierTestNotOffered</span>
-                                        }
+                                        <button class="ghost" disabled="@(!CanWrite)" @onclick="() => UseClassifier(tests.ProviderUrl, rr.Model)">@Strings.ClassifierTestUse</button>
                                     }
                                 </td>
                             </tr>
@@ -246,6 +240,8 @@
     // Modelltest: der gewählte Anbieter, und ob die Testanfrage die letzte echte Prüfung ist (sonst das Beispiel)
     private string? _testUrl;
     private bool _realRequest;
+    // „Retry unavailable“: Modelle, die beim letzten Lauf 404 hatten, werden für diesen Lauf wieder gefragt
+    private bool _retryUnavailable;
 
     private bool CanWrite => Web.CanWrite && !Host.ReadOnly;
 
@@ -265,6 +261,7 @@
             _port = null;
             _add = _keyFor = _modelsFor = null;
             _testUrl = null;
+            _retryUnavailable = false;
             _realRequest = Host.Engine.ClassifierSample().Real;
             _focus = true;
         }
@@ -327,7 +324,7 @@
     private async Task StartTest()
     {
         if (!CanWrite || TestUrl is not { Length: > 0 } url) return;
-        var r = await Web.RunAsync(new ActionRequest { Action = "classifier.test.start", Arg = url });
+        var r = await Web.RunAsync(new ActionRequest { Action = "classifier.test.start", Arg = url, Flag = _retryUnavailable });
         if (r.Ok) { _flash = ""; Toast.Show(r.Message); } else _flash = r.Message;
     }
 
@@ -338,10 +335,19 @@
         if (r.Ok) { _flash = ""; Toast.Show(r.Message); } else _flash = r.Message;
     }
 
-    // Das geprüfte Modell als Prüfmodell setzen: die Cloud-Zielkennung trägt Anbieter und Modell
+    // Das geprüfte Modell als Prüfmodell setzen: die Cloud-Zielkennung trägt Anbieter und Modell. Ist es beim Anbieter nicht
+    // angehakt, wird es erst als angeboten eingetragen – mit derselben Aktion wie der Modell-Dialog des Anbieters.
     private async Task UseClassifier(string url, string model)
     {
         if (!CanWrite) return;
+        if (!Offered(url, model))
+        {
+            var offered = Providers.FirstOrDefault(p => p.Url == url).Offered ?? Array.Empty<string>();
+            var add = new ActionRequest { Action = "provider.models", Arg = url };
+            add.Values["models"] = string.Join('\n', offered.Append(model));
+            var a = await Web.RunAsync(add);
+            if (!a.Ok) { _flash = a.Message; return; }
+        }
         var r = await Web.RunAsync(new ActionRequest { Action = "proxy.classifier", Arg = ProxyTarget.CloudKey(url, model) });
         if (r.Ok) { _flash = ""; Toast.Show(r.Message); } else _flash = r.Message;
     }

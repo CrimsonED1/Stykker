@@ -174,7 +174,8 @@ public sealed class MonitorEngine : IDisposable
     public Func<HttpClient>? ClassifierClient { get; set; }
 
     // Startet den Modelltest für einen eingetragenen Anbieter. Ohne Schlüssel oder ohne gelistete Modelle geht nichts ins Netz.
-    public bool StartClassifierTest(string providerUrl, out string? error)
+    // retryUnavailable: Modelle, die beim letzten Lauf 404 geantwortet haben, werden auch dieses Mal gefragt
+    public bool StartClassifierTest(string providerUrl, bool retryUnavailable, out string? error)
     {
         error = null;
         if (ReadOnly || _providerKeys == null) { error = Strings.ReadOnlyEngine; return false; }
@@ -202,7 +203,10 @@ public sealed class MonitorEngine : IDisposable
         {
             var request = ClassifierTest.PickRequest(Path.Combine(Paths.LogsDir, "proxy-debug"));
             http = ClassifierClient?.Invoke() ?? new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
-            run = new ClassifierTest(url, listed, request, _providerKeys, http, Path.Combine(Paths.LogsDir, ClassifierTest.CsvFile), _now);
+            // Die angehakten Modelle des Anbieters laufen zuerst
+            var offered = Proxies.ProviderStates().Where(p => p.Url.Equals(url, StringComparison.OrdinalIgnoreCase)).SelectMany(p => p.Offered).ToArray();
+            run = new ClassifierTest(url, listed, request, _providerKeys, http, Path.Combine(Paths.LogsDir, ClassifierTest.CsvFile), _now,
+                offered: offered, deadPath: Path.Combine(Paths.LogsDir, ClassifierTest.DeadFile), retryUnavailable: retryUnavailable);
         }
         catch
         {

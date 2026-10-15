@@ -42,6 +42,7 @@
         <NavLink href="results">@Strings.NavEval</NavLink>
         <NavLink href="bench">@Strings.NavBenchmarks</NavLink>
         <NavLink href="recordings">@Strings.NavRecordings</NavLink>
+        <NavLink href="prompt" title="@Strings.BtnPrompt" aria-label="@Strings.BtnPrompt"><Icon Name="chat" /><span class="navtxt">@Strings.BtnPrompt</span></NavLink>
     </nav>
     @* Statusleiste (U3): Proxy, Grafikspeicher mit Minibalken, freier Arbeitsspeicher, Server – je ein Chip *@
     @{ var px = Host.Engine.Proxies; var srv = Host.Engine.Servers; int busy = srv.Count(x => x.Current > 0); }
@@ -49,7 +50,7 @@
         @* Proxy-Chip: der Schalter daneben schaltet den Proxy (wie bisher); ein Klick auf den Chip selbst öffnet den Proxy-Dialog *@
         <span class="hchip pxchip @(px.Running ? "on" : "")">
             <button class="pxchip-open" title="@Strings.HdrProxyTip" aria-label="@Strings.PxOpenDialog" aria-haspopup="dialog" @onclick="() => ProxyDlg.Open()">
-                <span class="lamp"></span>@Strings.HdrProxy <b>@(px.Running ? ":" + px.Port.ToString(CultureInfo.InvariantCulture) : Strings.HdrProxyOff)</b>
+                <span class="lamp"></span>@Strings.HdrProxy <b>@(px.Running ? ":" + px.Port.ToString(CultureInfo.InvariantCulture) : Strings.HdrProxyOff)</b><Icon Name="wrench" Class="sm wr" />
             </button>
             <button class="switch sm @(px.Running ? "on" : "")" role="switch" aria-checked="@(px.Running ? "true" : "false")"
                     aria-label="@Strings.PxSwitch" title="@(CanWrite ? Strings.PxSwitch : WriteReason)" disabled="@(!CanWrite)" @onclick="ToggleProxy"><i></i></button>
@@ -73,7 +74,7 @@
             {
                 var c = client;
                 <button class="hchip @(c.Enabled ? "on" : "")" title="@Strings.ClientChipTip(c.Title, c.Enabled)" aria-label="@Strings.ClientChipTip(c.Title, c.Enabled)"
-                        @onclick="() => Dialogs.Open(c.Id)"><span class="lamp"></span><Icon Name="@c.IconName" /><b>@c.Title</b></button>
+                        @onclick="() => Dialogs.Open(c.Id)"><span class="lamp"></span><Icon Name="@c.IconName" /><b>@c.Title</b><Icon Name="wrench" Class="sm wr" /></button>
             }
         }
         <span class="hchip @(busy > 0 ? "busy" : "")" title="@Strings.HdrServersTip"><Icon Name="slots" /><b>@Strings.HdrServers(srv.Count, busy)</b></span>
@@ -105,7 +106,6 @@
             <NavLink href="models">@Strings.EvalModels</NavLink>
             <span class="grp">@Strings.GroupTools</span>
             <NavLink href="gpu">@Strings.GpuDetails</NavLink>
-            <NavLink href="prompt">@Strings.BtnPrompt</NavLink>
             <NavLink href="compare">@Strings.BtnCompare</NavLink>
             <span class="grp">@Strings.GroupView</span>
             <NavLink href="hosts">@Strings.HostsTitle</NavLink>
@@ -168,7 +168,7 @@ else if (Viewer.Known && Viewer.IsViewer)
     private bool _shell;                 // in der Fenster-Hülle: dort die Zurück/Vor-Knöpfe zeigen
     private string _density = DensityAuto;   // auto = nach Fensterbreite (der Umschalter im ☰ überstimmt sie)
     // Seiten, die nicht als Hauptpunkt in der Kopfzeile stehen, sondern im ☰
-    private static readonly string[] MorePages = { "runs", "catalog", "models", "gpu", "prompt", "compare", "hosts", "nodes", "phone", "settings", "bugreport", "serverdetail" };
+    private static readonly string[] MorePages = { "runs", "catalog", "models", "gpu", "compare", "hosts", "nodes", "phone", "settings", "bugreport", "serverdetail" };
 
     protected override void OnInitialized() => _t = new Timer(_ => InvokeAsync(StateHasChanged), null, 2000, 2000);
 
