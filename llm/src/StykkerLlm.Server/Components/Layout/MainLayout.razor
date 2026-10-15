@@ -4,6 +4,8 @@
 @inject IHostApplicationLifetime Life
 @inject WebPrompt Prompt
 @inject ClientDialogs Dialogs
+@inject ProxyDialogs ProxyDlg
+@inject Toasts Toast
 @inject ViewerSession Viewer
 @inject WebActions Web
 @inject NavigationManager Nav
@@ -44,9 +46,14 @@
     @* Statusleiste (U3): Proxy, Grafikspeicher mit Minibalken, freier Arbeitsspeicher, Server – je ein Chip *@
     @{ var px = Host.Engine.Proxies; var srv = Host.Engine.Servers; int busy = srv.Count(x => x.Current > 0); }
     <div class="status">
-        <a class="hchip @(px.Running ? "on" : "")" href="./#proxy" title="@Strings.HdrProxyTip">
-            <span class="lamp"></span>@Strings.HdrProxy <b>@(px.Running ? ":" + px.Port.ToString(CultureInfo.InvariantCulture) : Strings.HdrProxyOff)</b>
-        </a>
+        @* Proxy-Chip: der Schalter daneben schaltet den Proxy (wie bisher); ein Klick auf den Chip selbst öffnet den Proxy-Dialog *@
+        <span class="hchip pxchip @(px.Running ? "on" : "")">
+            <button class="pxchip-open" title="@Strings.HdrProxyTip" aria-label="@Strings.PxOpenDialog" aria-haspopup="dialog" @onclick="() => ProxyDlg.Open()">
+                <span class="lamp"></span>@Strings.HdrProxy <b>@(px.Running ? ":" + px.Port.ToString(CultureInfo.InvariantCulture) : Strings.HdrProxyOff)</b>
+            </button>
+            <button class="switch sm @(px.Running ? "on" : "")" role="switch" aria-checked="@(px.Running ? "true" : "false")"
+                    aria-label="@Strings.PxSwitch" title="@(CanWrite ? Strings.PxSwitch : WriteReason)" disabled="@(!CanWrite)" @onclick="ToggleProxy"><i></i></button>
+        </span>
         @if (Host.Engine.Gpu is { } g)
         {
             var frac = g.MemTotalGb > 0 ? Math.Clamp(g.MemUsedGb / g.MemTotalGb, 0, 1) : 0;
@@ -149,6 +156,7 @@ else if (Viewer.Known && Viewer.IsViewer)
 <main>@Body</main>
 <PromptDialog />
 <ClientDialog />
+<ProxyDialog />
 <ToastHost />
 <CommandPalette />
 </div>
@@ -231,6 +239,16 @@ else if (Viewer.Known && Viewer.IsViewer)
     {
         var result = await Web.RunAsync(new ActionRequest { Action = "freevram" });
         if (!result.Ok) await Prompt.InformAsync(Strings.BtnFreeVram, result.Message, warning: true);
+    }
+
+    // Der Proxy-Schalter in der Kopfleiste: dieselbe Aktion wie der Schalter im Proxy-Dialog (Viewer und Read-only: gesperrt)
+    private bool CanWrite => Web.CanWrite && !Host.ReadOnly;
+    private string WriteReason => Host.ReadOnly ? Strings.ServerReadOnlyHint : Strings.ViewerOnly;
+
+    private void ToggleProxy()
+    {
+        if (!CanWrite) return;
+        if (!Host.Engine.Proxies.Toggle(out var error) && error != null) Toast.Show(error, warn: true);
     }
 
     private void DismissLost() => Host.ClearLost();

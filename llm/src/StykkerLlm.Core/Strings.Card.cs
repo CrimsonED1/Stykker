@@ -41,6 +41,11 @@ public static partial class Strings
     public const string PxReachable = "reachable", PxUnreachable = "not reachable", PxNoMachines = "none attached", PxNoCloud = "none added";
     public static string PxModelList(int n) => $"{n} models under /v1/models";
     public const string PxRunning = "running", PxStopped = "stopped";
+    // Proxy-Karte (nur Information) und Proxy-Dialog (alles Bedienbare)
+    public const string PxSettings = "Settings", PxOpenDialog = "Open the Stykker-Proxy settings", PxSwitch = "Run the Stykker-Proxy",
+        PxTarget = "Target", PxClassifier = "Classifier model";
+    public static string PxSourceCounts(int machines, int cloud) =>
+        (machines == 1 ? "1 machine" : $"{machines} machines") + " · " + (cloud == 1 ? "1 cloud provider" : $"{cloud} cloud providers");
     // Claude Desktop als Client des Proxys (3P-Konfiguration der App, Schalter neben dem Proxy)
     public const string ClaudeTitle = "Claude Desktop via the Stykker-Proxy";
     public const string ClaudeOffHint = "Point Claude Desktop at the Stykker-Proxy. The app reads its configuration at start, so restart it afterwards.";

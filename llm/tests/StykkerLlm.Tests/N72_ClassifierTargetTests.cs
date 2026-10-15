@@ -33,6 +33,22 @@ public class N72_ClassifierTargetTests
     }
 
     [TestMethod]
+    public void A_check_under_the_session_name_is_recognised_by_its_shape()
+    {
+        var check = "{\"model\":\"claude-stykker\",\"max_tokens\":2112,\"stop_sequences\":[\"</block>\"],\"messages\":[]}"u8.ToArray();
+        var chat = "{\"model\":\"claude-stykker\",\"max_tokens\":32000,\"tools\":[{\"name\":\"Bash\"}],\"stop_sequences\":[\"</block>\"],\"messages\":[]}"u8.ToArray();
+        Assert.IsTrue(RouterProxy.IsSafetyCheck(check));
+        Assert.IsFalse(RouterProxy.IsSafetyCheck(chat), "ein Gespräch mit Werkzeugen ist keine Prüfung");
+        Assert.IsFalse(RouterProxy.IsSafetyCheck("{\"model\":\"claude-stykker\",\"messages\":[]}"u8.ToArray()));
+
+        var proxy = new RouterProxy(0);
+        var targets = new[] { Main, Check };
+        proxy.SetTargets(targets, Main.Key, Check.Key);
+        Assert.AreSame(Check, proxy.ClassifierTarget(targets, ClaudeDesktop.ModelAlias, check));
+        Assert.IsNull(proxy.ClassifierTarget(targets, ClaudeDesktop.ModelAlias, chat));
+    }
+
+    [TestMethod]
     public void Without_a_check_target_nothing_changes()
     {
         var proxy = new RouterProxy(0);

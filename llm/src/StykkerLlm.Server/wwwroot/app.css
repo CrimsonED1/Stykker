@@ -695,6 +695,16 @@ html[data-theme=titan] .sp4{--spc:var(--st-read)}   /* schnellste Stufe blau: Or
 .pf-launch.failed{color:var(--bad)}
 .pxp-port{width:96px}
 .pxs-err{color:var(--bad);padding:0 2px 4px 18px}
+/* Proxy-Chip der Kopfleiste: Chip mit Schalter; der Chip selbst (Knopf links) öffnet den Proxy-Dialog */
+.pxchip{padding-right:4px}
+.pxchip:hover{color:var(--ink);border-color:rgb(var(--acc-rgb)/.5)}
+.pxchip-open{all:unset;display:inline-flex;align-items:center;gap:6px;cursor:pointer;color:inherit}
+.pxchip-open:focus-visible{outline:2px solid var(--acc);outline-offset:2px;border-radius:4px}
+/* Proxy-Karte (nur Information): Werte in einer Zeile, lange Ziele brechen um; Zahnrad am Kopf */
+.pxp-v{flex:1;min-width:0;overflow-wrap:anywhere}
+.pxp-gear{flex:none}
+/* Proxy-Dialog: breiter als die anderen Dialoge, scrollt innen bei wenig Höhe */
+.modal.pxd{max-width:720px;max-height:calc(100vh - 32px);overflow-y:auto}
 html[data-theme=titan] .slot.hot{box-shadow:inset 0 0 0 2px var(--bad)}
 
 /* Nach der Endprüfung (Verifier): Kopf klebt auf schmalen Geräten nicht (nahm fast die halbe Höhe ein); ohne GPU keine

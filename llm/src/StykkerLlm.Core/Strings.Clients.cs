@@ -9,7 +9,7 @@ public static partial class Strings
         ClientDesktopDirectHint = "While the switch is off, the desktop app talks directly to Anthropic. That is not an error.",
         ClientCliHint = "Opens a new console window. The CLI uses the address of the Stykker-Proxy.",
         ClientProxyOff = "Proxy is off – start it first",
-        ClientAutoSection = "Auto mode", ClientAutoLabel = "Safety check model", ClientAutoSame = "Same as the proxy target",
+        ClientAutoSection = "Auto security classifier", ClientAutoLabel = "Classifier model", ClientAutoSame = "Same as the proxy target",
         ClientAutoSet = "Safety check model set",
         ProxyDebugLabel = "Debug: save the full text of every proxy request (logs\\proxy-debug, last 100)",
         ProxyDebugOn = "Proxy debug on: request texts go to logs\\proxy-debug", ProxyDebugOff = "Proxy debug off",

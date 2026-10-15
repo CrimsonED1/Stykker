@@ -65,11 +65,33 @@ public class RouterProxy : RequestProxy
         !string.IsNullOrWhiteSpace(model) && model.StartsWith("claude-", StringComparison.OrdinalIgnoreCase)
         && !model.Equals(ClaudeDesktop.ModelAlias, StringComparison.OrdinalIgnoreCase);
 
-    // Das Ziel der Sicherheitsprüfung für diese Anfrage, oder null (kein Claude-Name, nicht gesetzt oder Ziel nicht da)
-    internal ProxyTarget? ClassifierTarget(IReadOnlyList<ProxyTarget> targets, string? wanted)
+    // Das Ziel der Sicherheitsprüfung für diese Anfrage, oder null (keine Prüfung, nicht gesetzt oder Ziel nicht da).
+    // Eine Prüfung ist eine Anfrage an einen anderen Claude-Namen, oder – so fragt Claude Code hinter einem Proxy an –
+    // eine Anfrage unter dem Namen des Gesprächs, die wie die Prüfung aufgebaut ist (IsSafetyCheck).
+    internal ProxyTarget? ClassifierTarget(IReadOnlyList<ProxyTarget> targets, string? wanted, byte[]? body = null)
     {
         var key = _classifierKey;
-        return IsOtherClaudeModel(wanted) && !string.IsNullOrEmpty(key) ? targets.FirstOrDefault(x => x.Key == key) : null;
+        if (string.IsNullOrEmpty(key) || !(IsOtherClaudeModel(wanted) || IsSafetyCheck(body))) return null;
+        return targets.FirstOrDefault(x => x.Key == key);
+    }
+
+    // Die Sicherheitsprüfung von Claude Code (Modus „auto“): keine Werkzeuge und das Stoppzeichen „</block>“, mit dem sie ihr
+    // Urteil abschließt. Gelesen werden nur diese beiden Felder, nie der Text.
+    internal static bool IsSafetyCheck(byte[]? body)
+    {
+        if (body == null || body.Length == 0) return false;
+        try
+        {
+            using var doc = JsonDocument.Parse(body);
+            var root = doc.RootElement;
+            if (root.ValueKind != JsonValueKind.Object) return false;
+            if (root.TryGetProperty("tools", out var tools) && tools.ValueKind == JsonValueKind.Array && tools.GetArrayLength() > 0) return false;
+            if (!root.TryGetProperty("stop_sequences", out var stops) || stops.ValueKind != JsonValueKind.Array) return false;
+            foreach (var s in stops.EnumerateArray())
+                if (s.ValueKind == JsonValueKind.String && s.GetString() == "</block>") return true;
+            return false;
+        }
+        catch (JsonException) { return false; }
     }
 
     protected override async Task<ProxyRoute> RouteAsync(string method, string target, IReadOnlyList<(string Name, string Value)> headers, byte[]? body, CancellationToken ct)
@@ -113,7 +135,7 @@ public class RouterProxy : RequestProxy
         ProxyTarget? t = null;
         if (!string.IsNullOrWhiteSpace(wanted) && !wanted.Equals(VirtualModel, StringComparison.OrdinalIgnoreCase))
             t = targets.FirstOrDefault(x => Matches(x, wanted));
-        t ??= ClassifierTarget(targets, wanted);
+        t ??= ClassifierTarget(targets, wanted, body);
         if (t == null && HostStart != null && !string.IsNullOrWhiteSpace(wanted) && !wanted.Equals(VirtualModel, StringComparison.OrdinalIgnoreCase))
         {
             // Läuft nirgends: auf einem Host mit der Datei und genug Grafikspeicher starten und warten, bis es bereit ist
