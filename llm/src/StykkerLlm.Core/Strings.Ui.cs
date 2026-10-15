@@ -275,7 +275,7 @@ public static partial class Strings
     public const string StopUnverifiedText =
         "Windows does not tell when this process was started, so the monitor cannot check that it is still the server you saw (the process id could have been reused).\n\nStop it anyway?";
     public static string CsvLogOutside(string path) =>
-        $"The request log path in settings.json points outside the data folder and is ignored for safety. Using {path} instead.";
+        $"The request log path in settings.json points outside the logs folder and the data folder and is ignored for safety. Using {path} instead.";
     public static string RecordingLimitReached(int mb) => $"A recording reached the size limit of {mb} MB and was stopped and saved.";
 }
 
@@ -355,7 +355,7 @@ public static partial class Strings
     public const string SetMaxLogsMb = "Total size of logs (MB)";
     public const string SetMaxCsvMb = "Size of the request log (MB)";
     public const string AboutVersion = "Version";
-    public const string AboutDataDir = "Data folder";
+    public const string AboutDataDir = "Data folder", AboutLogsDir = "Logs folder";
     public const string AboutServer = "Web interface";
     public const string AboutDriver = "Driver";
     public const string AboutOs = "System";

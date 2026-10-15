@@ -2,15 +2,19 @@ using System.Text;
 
 namespace StykkerLlm.Core;
 
-// Ein Protokoll je Programm: StykkerLLM-Server.log, StykkerUI.log, stykker.log. Es liegt bei der App (Ordner "logs"
-// neben der exe), wenn dort geschrieben werden darf – so findet man es neben dem Programm, das es geschrieben hat.
-// Sonst (z. B. unter Programme) im Datenordner unter "logs". Über 2 MB wird die Datei zu <name>.1.log und neu begonnen.
+// Ein Protokoll je Programm: StykkerLLM-Server.log, StykkerUI.log, stykker.log. Es liegt im Protokollordner (AppPaths.LogsDir):
+// bei der App (Ordner "logs" neben der exe), wenn dort geschrieben werden darf – so findet man es neben dem Programm, das es
+// geschrieben hat. Sonst (z. B. unter Programme) im Datenordner unter "logs". Mit --data-dir alles im Datenordner.
+// Über 2 MB wird die Datei zu <name>.1.log und neu begonnen.
 // Nichts hier ist fatal: kann nicht geschrieben werden, geht die Zeile verloren, das Programm läuft weiter.
 public static class AppLog
 {
     public const long MaxBytes = 2 * 1024 * 1024;
     private static readonly object Gate = new();
     private static string? _file;
+
+    // Die Programme, die ein Protokoll schreiben (Dateiname <name>.log und <name>.1.log nach dem Umbruch)
+    private static readonly string[] Programs = { "StykkerLLM-Server", "StykkerUI", "stykker", "StykkerHost", "StykkerHost-service" };
 
     public static string? File => _file;
     public static string? App { get; private set; }
@@ -19,16 +23,26 @@ public static class AppLog
     public static string? Init(string app, AppPaths paths, string? appDir = null)
     {
         App = app;
-        lock (Gate) _file = PickFile(app, paths, appDir ?? AppContext.BaseDirectory);
+        lock (Gate) _file = PickFile(app, paths, appDir ?? paths.AppDir);
         Write($"── {app} {Version()} · {Environment.OSVersion.VersionString} · .NET {Environment.Version} · data {paths.Root}");
         return _file;
     }
 
-    // Kandidaten für Protokolle (bei der App, im Datenordner) – der Fehlerbericht sammelt aus beiden
+    // Kandidaten für Protokolle (neben der App, im Protokollordner, alte Protokolle im Datenordner) – der Fehlerbericht sammelt aus allen
     public static IEnumerable<string> Dirs(AppPaths paths, string? appDir = null)
     {
-        yield return Path.Combine(appDir ?? AppContext.BaseDirectory, "logs");
+        if ((appDir ?? paths.AppDir) is { } app) yield return Path.Combine(app, "logs");
         yield return paths.LogsDir;
+        yield return Path.Combine(paths.Root, "logs");
+    }
+
+    // Die Protokolle der Programme selbst (StykkerUI.log, StykkerLLM-Server.log …, auch <name>.1.log): das Aufräumen der
+    // Server-Logs im selben Ordner lässt sie in Ruhe
+    public static bool IsProgramLog(string fileName)
+    {
+        var name = Path.GetFileName(fileName);
+        return Programs.Any(p => name.Equals(p + ".log", StringComparison.OrdinalIgnoreCase)
+                              || name.Equals(p + ".1.log", StringComparison.OrdinalIgnoreCase));
     }
 
     public static void Write(string line)
@@ -65,20 +79,18 @@ public static class AppLog
         typeof(AppLog).Assembly.GetCustomAttributes(typeof(System.Reflection.AssemblyInformationalVersionAttribute), false)
             .OfType<System.Reflection.AssemblyInformationalVersionAttribute>().FirstOrDefault()?.InformationalVersion ?? "?";
 
-    // Bei der App, wenn schreibbar (Probe: Ordner anlegen und an die Datei anhängen), sonst im Datenordner
-    internal static string? PickFile(string app, AppPaths paths, string appDir)
+    // Der Protokollordner (AppPaths.PickLogsDir: bei der App, wenn schreibbar, sonst im Datenordner). appDir null = der Ordner
+    // des Datenordners (--data-dir). Die Datei wird angelegt und zum Anhängen geöffnet; geht das nicht, gibt es kein Protokoll.
+    internal static string? PickFile(string app, AppPaths paths, string? appDir)
     {
-        foreach (var dir in new[] { Path.Combine(appDir, "logs"), paths.LogsDir })
+        try
         {
-            try
-            {
-                Directory.CreateDirectory(dir);
-                var file = Path.Combine(dir, app + ".log");
-                using (new FileStream(file, FileMode.Append, FileAccess.Write, FileShare.ReadWrite)) { }
-                return file;
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException) { }
+            var dir = appDir == null ? paths.LogsDir : AppPaths.PickLogsDir(appDir, paths.Root);
+            Directory.CreateDirectory(dir);
+            var file = Path.Combine(dir, app + ".log");
+            using (new FileStream(file, FileMode.Append, FileAccess.Write, FileShare.ReadWrite)) { }
+            return file;
         }
-        return null;
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException) { return null; }
     }
 }

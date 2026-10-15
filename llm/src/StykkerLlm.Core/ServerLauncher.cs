@@ -362,7 +362,8 @@ public static class ServerLauncher
     public static void PruneLogs(string dir, long maxBytes, string? keep = null) =>
         PruneLogs(dir, maxBytes, keep == null ? Array.Empty<string>() : new[] { keep }, int.MaxValue);
 
-    // Löscht die ältesten *.log im Ordner, bis alle zusammen unter dem Limit (Größe und Anzahl) liegen; die Dateien in keep bleiben
+    // Löscht die ältesten *.log im Ordner, bis alle zusammen unter dem Limit (Größe und Anzahl) liegen; die Dateien in keep bleiben.
+    // Die Protokolle der Programme (AppLog.IsProgramLog) liegen im selben Ordner und zählen nicht mit.
     public static void PruneLogs(string dir, long maxBytes, IEnumerable<string> keep, int maxFiles)
     {
         try
@@ -370,7 +371,8 @@ public static class ServerLauncher
             if (!Directory.Exists(dir)) return;
             var keepSet = keep.Where(k => !string.IsNullOrEmpty(k)).Select(k => { try { return Path.GetFullPath(k); } catch { return k; } })
                               .ToHashSet(StringComparer.OrdinalIgnoreCase);
-            var files = new DirectoryInfo(dir).GetFiles("*.log").OrderBy(f => f.LastWriteTimeUtc).ToList();
+            var files = new DirectoryInfo(dir).GetFiles("*.log").Where(f => !AppLog.IsProgramLog(f.Name))
+                                              .OrderBy(f => f.LastWriteTimeUtc).ToList();
             long total = files.Sum(f => f.Length);
             int count = files.Count;
             foreach (var f in files)

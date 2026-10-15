@@ -7,19 +7,25 @@ namespace StykkerLlm.Core;
 public sealed class AppPaths
 {
     public string Root { get; }
+    // Ordner der Programmdatei (<exe>), in dem Protokolle und Aufnahmen liegen dürfen. null = nur der Datenordner
+    // (--data-dir, Tests). Ohne null entscheidet PickLogsDir, ob es <exe>\logs oder <Datenordner>\logs wird.
+    public string? AppDir { get; }
     public string SettingsFile => Path.Combine(Root, "settings.json");
     public string LibraryFile => Path.Combine(Root, "library.json");
-    public string LogsDir => Path.Combine(Root, "logs");
-    public string DefaultCsv => Path.Combine(Root, "requests.csv");
-    public string RecordingsDir => Path.Combine(Root, "recordings");
+    // Protokolle: Anfrageprotokoll, Server-Logs (<name>-<port>.log), Aufnahmen und die Logs der Programme. Eine Stelle für alles.
+    public string LogsDir => _logsDir.Value;
+    public string DefaultCsv => Path.Combine(LogsDir, "requests.csv");
+    public string RecordingsDir => Path.Combine(LogsDir, "recordings");
     // Test-Suite für Modelle: eigene Aufgaben-Dateien (*.json) und gespeicherte Läufe
     public string EvalSuitesDir => Path.Combine(Root, "eval");
     public string EvalResultsDir => Path.Combine(Root, "eval-results");
     // DPAPI-geschützter Schlüssel der Startbestätigung (siehe ConfirmKey)
     public string ConfirmKeyFile => Path.Combine(Root, "confirm.key");
 
-    // Pfad des Anfrageprotokolls: nur innerhalb des Datenordners erlaubt. Ein anderer Pfad in settings.json (manipuliert oder aus
-    // Versehen) wird ignoriert; note erklärt das für die Anzeige.
+    private readonly Lazy<string> _logsDir;
+
+    // Pfad des Anfrageprotokolls: nur im Protokollordner oder (für alte settings.json) im Datenordner erlaubt. Ein anderer Pfad
+    // (manipuliert oder aus Versehen) wird ignoriert; note erklärt das für die Anzeige.
     public string ResolveCsvLog(string? configured, out string? note)
     {
         note = null;
@@ -27,24 +33,64 @@ public sealed class AppPaths
         try
         {
             var full = Path.GetFullPath(configured);
-            var root = Path.GetFullPath(Root).TrimEnd('\\', '/') + Path.DirectorySeparatorChar;
-            if (full.StartsWith(root, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal)
-                && Path.GetFileName(full).Length > 0) return full;
+            if ((IsUnder(full, LogsDir) || IsUnder(full, Root)) && Path.GetFileName(full).Length > 0) return full;
         }
         catch { /* ungültiger Pfad: wie außerhalb behandeln */ }
         note = Strings.CsvLogOutside(DefaultCsv);
         return DefaultCsv;
     }
 
+    // Liegt der Pfad im Datenordner oder im Protokollordner? Für alles, was ein Gerät im Netz anfordern darf (Logs ansehen)
+    public bool IsInDataOrLogs(string file) => IsUnder(file, Root) || IsUnder(file, LogsDir);
+
+    // Liegt die Datei (vollständiger Pfad) unter dem Ordner? Derselbe Vergleich wie überall in den Pfadprüfungen
+    internal static bool IsUnder(string file, string dir)
+    {
+        try
+        {
+            var root = Path.GetFullPath(dir).TrimEnd('\\', '/') + Path.DirectorySeparatorChar;
+            var full = Path.GetFullPath(file);
+            return full.StartsWith(root, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
+        }
+        catch { return false; }
+    }
+
+    // Der Protokollordner: <appDir>\logs, wenn dort ein Ordner angelegt und beschrieben werden kann, sonst <dataRoot>\logs.
+    // Die einzige Stelle, die das entscheidet (AppLog.PickFile nutzt sie auch). Die Probe schreibt eine Datei, die gleich
+    // wieder gelöscht wird.
+    public static string PickLogsDir(string appDir, string dataRoot)
+    {
+        var app = Path.Combine(appDir, "logs");
+        return IsWritableFolder(app) ? app : Path.Combine(dataRoot, "logs");
+    }
+
+    private static bool IsWritableFolder(string dir)
+    {
+        try
+        {
+            Directory.CreateDirectory(dir);
+            using (new FileStream(Path.Combine(dir, ".write-test-" + Environment.ProcessId + ".tmp"), FileMode.Create,
+                       FileAccess.Write, FileShare.None, 1, FileOptions.DeleteOnClose)) { }
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException) { return false; }
+    }
+
     // true nur für die Vorgabe (%APPDATA%\StykkerLLM): dann liegt die Kopplung in der gemeinsamen Ablage
     public bool IsDefault { get; }
 
-    public AppPaths(string root) : this(root, isDefault: false) { }
+    // Ein Datenordner für sich (--data-dir, Tests): alle Protokolle und Aufnahmen bleiben darin
+    public AppPaths(string root) : this(root, isDefault: false, appDir: null) { }
 
-    internal AppPaths(string root, bool isDefault)
+    // Ein Ordner, der zur App gehört (Hintergrunddienst, Host): Protokolle neben der exe, wenn dort schreibbar
+    public static AppPaths InAppFolder(string root) => new(root, isDefault: false, appDir: AppContext.BaseDirectory);
+
+    internal AppPaths(string root, bool isDefault, string? appDir = null)
     {
         Root = root;
         IsDefault = isDefault;
+        AppDir = appDir;
+        _logsDir = new Lazy<string>(() => appDir == null ? Path.Combine(root, "logs") : PickLogsDir(appDir, root));
     }
 
     // Die pairing.dat für diesen Datenordner. Ein Pfad aus --pairing-file hat Vorrang. Für die Vorgabe ist es die
@@ -55,10 +101,12 @@ public sealed class AppPaths
         : Path.Combine(Root, Stykker.Pairing.PairingStore.FileName);
 
     public static AppPaths Default() =>
-        new(MigrateRoot(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData)), isDefault: true);
+        new(MigrateRoot(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData)), isDefault: true,
+            appDir: AppContext.BaseDirectory);
 
     // Der Datenordner aus --data-dir, oder die Vorgabe. Ein Pfad, der auf die Vorgabe zeigt, IST die Vorgabe: das Fenster
-    // startet den Server immer mit --data-dir, und die Kopplung soll trotzdem in der gemeinsamen Ablage liegen.
+    // startet den Server immer mit --data-dir, und die Kopplung soll trotzdem in der gemeinsamen Ablage liegen (und die
+    // Protokolle neben der exe). Jeder andere --data-dir (Tests, Probeläufe) hält alles im Datenordner.
     // Der Vorgabe-Zweig verschiebt nichts (die Migration macht Default(), das Fenster hat sie schon ausgeführt).
     public static AppPaths FromDataDir(string? dataDir)
     {
@@ -67,7 +115,7 @@ public sealed class AppPaths
         var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
         var defaultRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "StykkerLLM");
         bool isDefault = string.Equals(full.TrimEnd('\\', '/'), Path.GetFullPath(defaultRoot).TrimEnd('\\', '/'), comparison);
-        return new AppPaths(full, isDefault);
+        return new AppPaths(full, isDefault, isDefault ? AppContext.BaseDirectory : null);
     }
 
     // %APPDATA%\StykkerLLM; alte Daten von %APPDATA%\StykkerSLM werden einmalig übernommen (Ordner wird umbenannt),
@@ -125,7 +173,7 @@ public static class ProviderPresets
 public sealed class AppSettings
 {
     public int IntervalMs { get; set; } = 1000;
-    // Protokoll abgeschlossener Anfragen (CSV); leer = aus. null = Standardpfad im Datenordner.
+    // Protokoll abgeschlossener Anfragen (CSV); leer = aus. null = Standardpfad im Protokollordner (AppPaths.LogsDir).
     public string? CsvLog { get; set; }
     public string Theme { get; set; } = ThemeCatalog.SystemName;   // Dark, Spacepunk Titan oder System
     public bool OverlayVisible { get; set; }
