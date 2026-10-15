@@ -58,6 +58,6 @@ The data folder holds `starter.json` (programs and settings, no secrets, no proc
 dotnet test starter\StykkerStarter.slnx
 ```
 
-Last run on 2026-10-14: 57 of 57 tests passed, the build shows 0 warnings. A trial run with the test program in two versions showed: copy and check of version 1, start, the next check finding version 2, stop of the old process (ended after 10 s), start of version 2 on a new process ID, removal of version 1, and a second start handing over to the first instance.
+Last run on 2026-10-15: 69 of 69 tests passed, the build shows 0 warnings. A trial run with the test program, with no copy, showed: version 1 starts from the source folder; a new file in that folder is seen at the second check, and the program is restarted from the same folder (the old process ended after 10 s); with the program stopped, a version 2 in the folder is reported as changed and nothing is started, and a restarted Starter starts version 2; with "ask before updating" on, a change is only offered and the running program is left alone. The trial run with a copy (2026-10-14) showed: copy and check of version 1, start, the next check finding version 2, stop of the old process (ended after 10 s), start of version 2 on a new process ID, removal of version 1, and a second start handing over to the first instance.
 
 License: Apache-2.0 (see [`LICENSE`](LICENSE)).

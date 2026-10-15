@@ -58,6 +58,6 @@ Der Datenordner enthält `starter.json` (Programme und Einstellungen, keine Gehe
 dotnet test starter\StykkerStarter.slnx
 ```
 
-Letzter Lauf am 2026-10-14: 57 von 57 Tests bestanden, der Build zeigt 0 Warnungen. Ein Probelauf mit dem Testprogramm in zwei Versionen zeigte: Kopie und Prüfung von Version 1, Start, die nächste Prüfung findet Version 2, das alte Programm wird beendet (nach 10 s), Version 2 startet mit neuer Prozess-ID, Version 1 wird entfernt, und ein zweiter Start übergibt an die erste Instanz.
+Letzter Lauf am 2026-10-15: 69 von 69 Tests bestanden, der Build zeigt 0 Warnungen. Ein Probelauf mit dem Testprogramm ohne Kopie zeigte: Version 1 startet aus dem Quellordner; eine neue Datei in diesem Ordner wird bei der zweiten Prüfung erkannt, und das Programm startet aus demselben Ordner neu (das alte Programm endete nach 10 s); bei gestopptem Programm wird eine Version 2 im Ordner als geändert gemeldet, und nichts startet; ein neu gestarteter Starter startet Version 2; mit „Ask before updating“ an wird eine Änderung nur angeboten, und das laufende Programm bleibt unberührt. Der Probelauf mit Kopie (2026-10-14) zeigte: Kopie und Prüfung von Version 1, Start, die nächste Prüfung findet Version 2, das alte Programm wird beendet (nach 10 s), Version 2 startet mit neuer Prozess-ID, Version 1 wird entfernt, und ein zweiter Start übergibt an die erste Instanz.
 
 Lizenz: Apache-2.0 (siehe [`LICENSE`](LICENSE)).
