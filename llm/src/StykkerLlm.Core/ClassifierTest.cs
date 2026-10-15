@@ -31,7 +31,7 @@ public sealed class ClassifierTest
     private static readonly string[] SkipWords =
     {
         "embed", "rerank", "guard", "safety", "reward", "parakeet", "whisper", "tts", "asr", "canary", "riva",
-        "flux", "stable-diffusion", "sdxl", "clip", "nv-embed", "bge", "e5",
+        "flux", "stable-diffusion", "sdxl", "clip", "nv-embed", "bge",
     };
     private static readonly Dictionary<string, object> CsvGates = new();
 
