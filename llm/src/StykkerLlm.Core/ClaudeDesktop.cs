@@ -280,8 +280,9 @@ public sealed class ClaudeDesktop
             ["inferenceCredentialKind"] = "static",
             ["inferenceGatewayApiKey"] = ApiKey,
             ["inferenceGatewayAuthScheme"] = "bearer",
-            // Modelle als Objekte mit "name", wie die App sie selbst anlegt; eine Liste reiner Namen erkennt sie nicht
-            ["inferenceModels"] = new JsonArray(new JsonObject { ["name"] = ModelAlias }),
+            // Keine feste Modellliste: die App holt beim Start alle Modelle des Proxys (/v1/models) – lokale Server,
+            // Hosts und gewählte Cloud-Modelle. Der erste Eintrag dort ist claude-stykker (das aktuelle Ziel des Proxys).
+            ["modelDiscoveryEnabled"] = true,
         };
         return o.ToJsonString(Pretty);
     }

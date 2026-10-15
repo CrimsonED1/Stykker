@@ -39,7 +39,8 @@ public class ClaudeDesktopTests
         Assert.AreEqual("http://127.0.0.1:17500", (string?)node["inferenceGatewayBaseUrl"], "die App hängt /v1/messages selbst an");
         Assert.AreEqual("static", (string?)node["inferenceCredentialKind"]);
         Assert.AreEqual("bearer", (string?)node["inferenceGatewayAuthScheme"]);
-        Assert.AreEqual(ClaudeDesktop.ModelAlias, (string?)((JsonArray)node["inferenceModels"]!)[0]!["name"]);
+        Assert.IsNull(node["inferenceModels"], "keine feste Liste: die App holt die Modelle vom Proxy");
+        Assert.AreEqual(true, (bool?)node["modelDiscoveryEnabled"]);
         Assert.AreEqual("stykker", (string?)node["inferenceGatewayApiKey"]);
 
         var meta = JsonNode.Parse(File.ReadAllText(Path.Combine(LibDir(layer), "_meta.json")))!;

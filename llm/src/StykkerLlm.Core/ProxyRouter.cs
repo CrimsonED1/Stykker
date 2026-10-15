@@ -64,7 +64,14 @@ public class RouterProxy : RequestProxy
 
         // Modellliste zusammenfassen (der Client sieht so alle Backends auf einmal)
         if (method == "GET" && (path.Equals("/v1/models", StringComparison.OrdinalIgnoreCase) || path.Equals("/models", StringComparison.OrdinalIgnoreCase)))
-            return Local(200, ModelsJson(targets, StartableModels?.Invoke()));
+        {
+            // Claude Desktop (Anthropic-Client) bekommt nur, was sofort antwortet: laufende lokale Server und die gewählten
+            // Cloud-Modelle – keine Modelldateien, die erst starten müssten. Andere Clients sehen die Liste wie bisher.
+            bool anthropic = headers.Any(h => h.Name.Equals("anthropic-version", StringComparison.OrdinalIgnoreCase));
+            return anthropic
+                ? Local(200, ModelsJson(targets.Where(t => t.Cloud || t.Ready).ToList()))
+                : Local(200, ModelsJson(targets, StartableModels?.Invoke()));
+        }
 
         // Die Claude-App schickt /v1/messages und erwartet Anthropic-Ereignisse zurück: übersetzen statt durchreichen
         if (method == "POST" && AnthropicBridge.IsMessagesPath(path))
@@ -377,18 +384,36 @@ public class RouterProxy : RequestProxy
 
     private static ProxyRoute Local(int status, string json) => new("", VirtualModel, null, "application/json; charset=utf-8", Encoding.UTF8.GetBytes(json), status);
 
+    // Die Modellliste in einer Form, die OpenAI- und Anthropic-Clients beide lesen: je Eintrag „object“/„owned_by“ (OpenAI)
+    // und „type“/„display_name“/„created_at“ (Anthropic), dazu „has_more“, „first_id“, „last_id“. Claude Desktop füllt
+    // damit seine Modellauswahl (modelDiscoveryEnabled); der erste Eintrag ist dort das Standardmodell.
     private static string ModelsJson(IReadOnlyList<ProxyTarget> targets, IReadOnlyList<string>? startable = null)
     {
+        var entries = new List<(string Id, string Display, string Owner)>
+        {
+            // Der Name, den die Claude-App als Standard ansprach: geht an das Standardziel des Proxys
+            (ClaudeDesktop.ModelAlias, "Stykker · current target", "stykker"),
+            (VirtualModel, "Stykker · current target (stykker)", "stykker"),
+        };
+        var seen = new HashSet<string>(entries.Select(e => e.Id), StringComparer.OrdinalIgnoreCase);
+        foreach (var t in targets)
+            if (t.EffectiveModel is { Length: > 0 } m && seen.Add(m))
+                entries.Add((m, string.IsNullOrWhiteSpace(t.DisplayName) ? m : t.DisplayName, "stykker-proxy"));
+        // dazu die Modelldateien der Hosts: sie starten bei der ersten Anfrage
+        foreach (var m in startable ?? Array.Empty<string>())
+            if (!string.IsNullOrEmpty(m) && seen.Add(m)) entries.Add((m, m, "stykker-proxy"));
+
         var sb = new StringBuilder();
         sb.Append("{\"object\":\"list\",\"data\":[");
-        sb.Append("{\"id\":\"").Append(VirtualModel).Append("\",\"object\":\"model\",\"owned_by\":\"stykker\"}");
-        // Dazu der Name, den die Claude-App anspricht (unbekanntes Modell → Standardziel): so sieht auch die
-        // Modell-Erkennung der App ein Claude-artiges Modell.
-        sb.Append(",{\"id\":\"").Append(ClaudeDesktop.ModelAlias).Append("\",\"object\":\"model\",\"owned_by\":\"stykker\"}");
-        // dazu die Modelldateien der Hosts: sie starten bei der ersten Anfrage
-        foreach (var m in targets.Select(t => t.EffectiveModel).Concat(startable ?? Array.Empty<string>()).Where(m => !string.IsNullOrEmpty(m)).Distinct(StringComparer.OrdinalIgnoreCase))
-            sb.Append(",{\"id\":\"").Append(JsonEscape(m!)).Append("\",\"object\":\"model\",\"owned_by\":\"stykker-proxy\"}");
-        sb.Append("]}");
+        for (int i = 0; i < entries.Count; i++)
+        {
+            var (id, display, owner) = entries[i];
+            if (i > 0) sb.Append(',');
+            sb.Append("{\"id\":\"").Append(JsonEscape(id)).Append("\",\"object\":\"model\",\"owned_by\":\"").Append(owner)
+              .Append("\",\"type\":\"model\",\"display_name\":\"").Append(JsonEscape(display)).Append("\",\"created_at\":\"1970-01-01T00:00:00Z\"}");
+        }
+        sb.Append("],\"has_more\":false,\"first_id\":\"").Append(JsonEscape(entries[0].Id))
+          .Append("\",\"last_id\":\"").Append(JsonEscape(entries[^1].Id)).Append("\"}");
         return sb.ToString();
     }
 
