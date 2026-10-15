@@ -28,7 +28,8 @@ public static class AnthropicBridge
     // ── Anfrage: Anthropic → OpenAI ──
 
     // includeUsage: den Zielserver um die Schlussmeldung mit den Tokenzahlen bitten (stream_options).
-    public static byte[] ToOpenAi(byte[] anthropicBody, string model, bool includeUsage = true)
+    // noThinking: das Denken ausdrücklich abschalten (Sicherheitsprüfung von Claude Code: sie hat nur 60 s und will ein kurzes Urteil)
+    public static byte[] ToOpenAi(byte[] anthropicBody, string model, bool includeUsage = true, bool noThinking = false)
     {
         JsonObject? a = null;
         try { a = JsonNode.Parse(anthropicBody.AsSpan()) as JsonObject; } catch { }
@@ -82,6 +83,7 @@ public static class AnthropicBridge
         // Denken schaltet Anthropic über ein Objekt ein; llama.cpp über chat_template_kwargs
         if (a["thinking"] is JsonObject th && StrOf(th["type"]) == "enabled")
             req["chat_template_kwargs"] = new JsonObject { ["enable_thinking"] = true };
+        if (noThinking) req["chat_template_kwargs"] = new JsonObject { ["enable_thinking"] = false };
 
         return Encoding.UTF8.GetBytes(req.ToJsonString(Json));
     }
