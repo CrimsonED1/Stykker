@@ -7,7 +7,7 @@ namespace StykkerLlm.Core;
 public static class HostStatus
 {
     // Eigener Datenordner neben dem des Servers: %APPDATA%\StykkerLLM\host (eigene Sperre, eigene Einstellungen)
-    public static AppPaths DefaultPaths() => new(Path.Combine(AppPaths.Default().Root, "host"));
+    public static AppPaths DefaultPaths() => AppPaths.InAppFolder(Path.Combine(AppPaths.Default().Root, "host"));
 
     // Kurz für den Tooltip (höchstens 63 Zeichen): „StykkerHost · 2 running · 9.8/16 GB“
     public static string Tip(IReadOnlyList<ServerWatcher> servers, GpuSample? gpu)

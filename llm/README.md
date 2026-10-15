@@ -158,14 +158,16 @@ tasks with real file and shell tools). Results are saved in the data folder and 
 ## Logs and bug reports
 
 Each program writes its own log (`StykkerLLM-Server.log`, `StykkerUI.log`, `stykker.log`) to `logs` next to the program,
-or to the data folder when the program folder is read-only. **☰ → Report a bug** (or `stykker bugreport <text>`) packs
+or to the data folder when the program folder is read-only. The request log (`requests.csv`), the server logs and the
+recordings are in that same `logs` folder; the settings, the library and the other user data stay in the data folder.
+With `--data-dir` everything stays in that folder. The settings page shows both folders under *About StykkerLLM*. **☰ → Report a bug** (or `stykker bugreport <text>`) packs
 your description, the logs, settings and current state into a zip – keys, the access code, devices and provider keys are
 never included; API keys, tokens, your Windows user name and the PC name are blacked out – and opens a prefilled GitHub
 issue. Nothing is uploaded automatically: you attach the zip yourself.
 
 ## Data and privacy
 
-- Everything lives in `%APPDATA%\StykkerLLM\` (settings, profiles, history, recordings, logs, results). Nothing leaves the
+- Settings, profiles, history and results live in `%APPDATA%\StykkerLLM\`; logs, the request log and recordings in `logs` next to the program. Nothing leaves the
   machine, except requests to a cloud provider you add yourself.
 - API keys of started servers (`--api-key`, `--hf-token`, …) are never stored, shown or copied.
 - Access code, devices and the server key are bound to your Windows account (DPAPI). Only a hash of each device cookie is

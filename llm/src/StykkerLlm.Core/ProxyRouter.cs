@@ -31,6 +31,7 @@ public class RouterProxy : RequestProxy
 
     private volatile ProxyTarget[] _targets = Array.Empty<ProxyTarget>();
     private volatile string? _defaultKey;
+    private volatile string? _classifierKey;
 
     // So lange auf ein noch ladendes Ziel warten, statt sofort 503 zu antworten
     public TimeSpan LoadingWait { get; set; } = TimeSpan.FromSeconds(120);
@@ -50,10 +51,25 @@ public class RouterProxy : RequestProxy
     public RouterProxy(int listenPort) : base(VirtualModel, "", listenPort) { }
 
     // Wird im Takt der Oberfläche neu gesetzt (Server können kommen und gehen)
-    public void SetTargets(IReadOnlyList<ProxyTarget> targets, string? defaultKey)
+    // classifierKey: Ziel für die Sicherheitsprüfung von Claude Code (Modus „auto“), null = wie das Standardziel
+    public void SetTargets(IReadOnlyList<ProxyTarget> targets, string? defaultKey, string? classifierKey = null)
     {
         _targets = targets.ToArray();
         _defaultKey = defaultKey;
+        _classifierKey = classifierKey;
+    }
+
+    // Ein Claude-Modellname, der nicht claude-stykker ist (claude-sonnet-…, claude-haiku-…): so fragt Claude Code im Modus
+    // „auto“ seine Sicherheitsprüfung an. Die Sitzung selbst läuft über claude-stykker.
+    internal static bool IsOtherClaudeModel(string? model) =>
+        !string.IsNullOrWhiteSpace(model) && model.StartsWith("claude-", StringComparison.OrdinalIgnoreCase)
+        && !model.Equals(ClaudeDesktop.ModelAlias, StringComparison.OrdinalIgnoreCase);
+
+    // Das Ziel der Sicherheitsprüfung für diese Anfrage, oder null (kein Claude-Name, nicht gesetzt oder Ziel nicht da)
+    internal ProxyTarget? ClassifierTarget(IReadOnlyList<ProxyTarget> targets, string? wanted)
+    {
+        var key = _classifierKey;
+        return IsOtherClaudeModel(wanted) && !string.IsNullOrEmpty(key) ? targets.FirstOrDefault(x => x.Key == key) : null;
     }
 
     protected override async Task<ProxyRoute> RouteAsync(string method, string target, IReadOnlyList<(string Name, string Value)> headers, byte[]? body, CancellationToken ct)
@@ -97,6 +113,7 @@ public class RouterProxy : RequestProxy
         ProxyTarget? t = null;
         if (!string.IsNullOrWhiteSpace(wanted) && !wanted.Equals(VirtualModel, StringComparison.OrdinalIgnoreCase))
             t = targets.FirstOrDefault(x => Matches(x, wanted));
+        t ??= ClassifierTarget(targets, wanted);
         if (t == null && HostStart != null && !string.IsNullOrWhiteSpace(wanted) && !wanted.Equals(VirtualModel, StringComparison.OrdinalIgnoreCase))
         {
             // Läuft nirgends: auf einem Host mit der Datei und genug Grafikspeicher starten und warten, bis es bereit ist

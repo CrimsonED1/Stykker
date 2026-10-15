@@ -159,7 +159,8 @@ public class N70_ClientTests
         Assert.AreEqual("cmd.exe", call.File, "auch mit Windows Terminal: start vererbt die Umgebungsvariablen sicher");
         CollectionAssert.AreEqual(new[] { "/c", "start", "", "/D", f.Home, "cmd.exe", "/k", cli }, call.Args);
         Assert.AreEqual(f.Home, call.Dir, "Arbeitsordner: der Benutzerordner");
-        Assert.AreEqual(2, call.Env.Count);
+        Assert.AreEqual(3, call.Env.Count);
+        Assert.AreEqual(ClaudeDesktop.ModelAlias, call.Env["ANTHROPIC_MODEL"], "die Sitzung über claude-stykker, Prüfungen über andere Namen");
         Assert.AreEqual("http://127.0.0.1:17500", call.Env["ANTHROPIC_BASE_URL"]);
         Assert.AreEqual("stykker", call.Env["ANTHROPIC_AUTH_TOKEN"]);
     }

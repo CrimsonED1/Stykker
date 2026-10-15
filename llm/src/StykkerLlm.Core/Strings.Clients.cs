@@ -8,7 +8,10 @@ public static partial class Strings
         ClientViaProxy = "via Stykker-Proxy", ClientDirect = "direct to Anthropic", ClientUseProxy = "Use the Stykker-Proxy",
         ClientDesktopDirectHint = "While the switch is off, the desktop app talks directly to Anthropic. That is not an error.",
         ClientCliHint = "Opens a new console window. The CLI uses the address of the Stykker-Proxy.",
-        ClientProxyOff = "Proxy is off – start it first";
+        ClientProxyOff = "Proxy is off – start it first",
+        ClientAutoSection = "Auto mode", ClientAutoLabel = "Safety check model", ClientAutoSame = "Same as the proxy target",
+        ClientAutoSet = "Safety check model set",
+        ClientAutoHint = "In auto mode Claude Code checks each command with a second model before it runs. These checks go to the model chosen here. If your main model has only one slot, choose another running server or a cloud model, otherwise the checks wait or fail.";
 
     public static string ClientChipTip(string title, bool viaProxy) => $"{title}: {(viaProxy ? ClientViaProxy : ClientDirect)}";
     public static string ClientStartNotInstalled(string title) => $"{title} is not installed on this PC";

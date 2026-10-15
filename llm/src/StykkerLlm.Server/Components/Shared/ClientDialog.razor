@@ -59,6 +59,18 @@
                 </div>
             }
 
+            @if (client.Id == ClaudeClient.ClientId)
+            {
+                var choices = Host.Engine.Proxies.Choices();
+                <h3 class="sec">@Strings.ClientAutoSection</h3>
+                <div class="small muted">@Strings.ClientAutoHint</div>
+                <select class="cdlg-sel" aria-label="@Strings.ClientAutoLabel" title="@Strings.ClientAutoLabel" disabled="@(!CanWrite)"
+                        value="@Host.Engine.Proxies.ClassifierValue()" @onchange="OnClassifier">
+                    <option value="">@Strings.ClientAutoSame</option>
+                    @foreach (var c in choices) { <option value="@c.Value">@c.Display</option> }
+                </select>
+            }
+
             @if (_flash.Length > 0) { <div class="small pxp-flash">@_flash</div> }
             <div class="row end">
                 <button class="ghost" @onclick="Close">@Strings.Close</button>
@@ -136,6 +148,13 @@
         var r = await Web.RunAsync(new ActionRequest { Action = "client.close", Arg = _client.Id });
         _ask = false;
         if (r.Ok) Toast.Show(r.Message); else _flash = r.Message;
+    }
+
+    private async Task OnClassifier(ChangeEventArgs e)
+    {
+        if (!CanWrite) return;
+        var r = await Web.RunAsync(new ActionRequest { Action = "proxy.classifier", Arg = e.Value?.ToString() ?? "" });
+        if (r.Ok) { _flash = ""; Toast.Show(r.Message); } else _flash = r.Message;
     }
 
     private async Task Launch(ClientInstall install)

@@ -87,6 +87,9 @@ public sealed class ClaudeClient : IProxyClient
                     // Dieselben Angaben wie für die Desktop-App: Adresse des Proxys und der statische Schlüssel
                     env["ANTHROPIC_BASE_URL"] = NetAddr.Url("127.0.0.1", _port());
                     env["ANTHROPIC_AUTH_TOKEN"] = ClaudeDesktop.ApiKey;
+                    // Die Sitzung läuft über claude-stykker (Standardziel); andere Claude-Namen (Sicherheitsprüfung im
+                    // Modus „auto“) gehen an das eingestellte Prüf-Ziel
+                    env["ANTHROPIC_MODEL"] = ClaudeDesktop.ModelAlias;
                 }
                 (file, args) = ConsoleCommand(path);
                 workDir = _probe.UserProfile is { Length: > 0 } home ? home : Path.GetDirectoryName(path) ?? "";

@@ -33,7 +33,7 @@ public sealed class MonitorEngine : IDisposable
     // Alle Proxy-Clients (Kopfleiste, Client-Dialog, Aktionen client.*); heute nur Claude (Clients/ProxyClients.cs)
     public ProxyClients Clients { get; }
     public RequestLog Csv { get; }
-    // Hinweis für die Oberfläche, wenn der Pfad des Anfrageprotokolls außerhalb des Datenordners lag und ersetzt wurde; sonst null
+    // Hinweis für die Oberfläche, wenn der Pfad des Anfrageprotokolls außerhalb des Protokoll- und Datenordners lag und ersetzt wurde; sonst null
     public string? CsvLogNote { get; }
 
     public IReadOnlyList<ServerWatcher> Servers => Registry.Servers;
