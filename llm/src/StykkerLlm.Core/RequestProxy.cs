@@ -427,7 +427,7 @@ public class RequestProxy : IDisposable
             if (track && req.Header("Content-Encoding") == null) stream = BodyWantsStream(body);
             tap.Stream = stream;
 
-            using var up = new HttpRequestMessage(new HttpMethod(req.Method), route.Upstream + req.Target);
+            using var up = new HttpRequestMessage(new HttpMethod(req.Method), NetAddr.JoinUpstream(route.Upstream, req.Target));
             if (body.Length > 0 || req.Method is "POST" or "PUT" or "PATCH") up.Content = new ByteArrayContent(body);
             var own = route.Headers;
             foreach (var (name, value) in req.Headers)

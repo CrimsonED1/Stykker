@@ -105,6 +105,17 @@ public interface IPlatform : IDisposable
 // Adress-Hilfen für Listener (IPv4 und IPv6)
 public static class NetAddr
 {
+    // Basisadresse eines Ziels und Pfad der Anfrage zusammensetzen. Cloud-Anbieter werden mit „/v1“ am Ende eingetragen
+    // (https://integrate.api.nvidia.com/v1), Clients schicken „/v1/chat/completions“: ein doppeltes /v1 fällt weg.
+    public static string JoinUpstream(string baseUrl, string pathAndQuery)
+    {
+        var b = baseUrl.TrimEnd('/');
+        if (b.EndsWith("/v1", StringComparison.OrdinalIgnoreCase)
+            && (pathAndQuery.StartsWith("/v1/", StringComparison.OrdinalIgnoreCase) || pathAndQuery.Equals("/v1", StringComparison.OrdinalIgnoreCase)))
+            pathAndQuery = pathAndQuery[3..];
+        return b + pathAndQuery;
+    }
+
     public static bool IsAny(string a) => a is "0.0.0.0" or "::" or "0:0:0:0:0:0:0:0";
 
     public static bool IsLoopback(string a) => a.StartsWith("127.", StringComparison.Ordinal) || a is "::1" or "0:0:0:0:0:0:0:1";

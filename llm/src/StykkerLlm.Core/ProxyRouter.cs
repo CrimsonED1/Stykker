@@ -141,7 +141,7 @@ public class RouterProxy : RequestProxy
             send.Add((name, value));
         }
 
-        string url = t.Url.TrimEnd('/') + "/v1/chat/completions";
+        string url = NetAddr.JoinUpstream(t.Url, "/v1/chat/completions");
         return new ProxyRoute("", t.RouteKey, null,
             LocalStream: (net, tap, token) => BridgeAsync(net, url, send, openAi, requested, own, via, tap, token));
     }
