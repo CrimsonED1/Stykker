@@ -565,8 +565,6 @@ button.hchip:hover{color:var(--ink);border-color:rgb(var(--acc-rgb)/.5)}
 .cdlg-opt.off{opacity:.55}
 .cdlg-opt .ghost{flex:none}
 .cdlg .sec{margin-bottom:4px}
-/* Der Client-Dialog deckt ab: die Kartenfarbe über dem vollen Hintergrund statt durchscheinend */
-.modal.cdlg{background:linear-gradient(180deg,var(--card-top),var(--card-bottom)),var(--bg)}
 .cdlg-sel{width:100%;margin-top:8px}
 .pxp-row{display:flex;align-items:center;gap:8px;margin-top:10px;flex-wrap:wrap}
 .pxp-row select{flex:1;min-width:0}
@@ -707,3 +705,8 @@ html.shell .big,html.shell .kpi,html.shell .kpi>div,html.shell .brand .logo,html
 .end-lost{color:var(--bad)}
 /* Im Frame der Zentrale (?embed=1, Klasse embed am html): die Marke steht schon in deren Leiste. Navigation und Status bleiben. */
 .embed .top .brand{display:none}
+/* Eingebettete Fenster (Dialoge, Menüs, Befehlsfeld, Meldungen) decken ab: die Kartenfarbe liegt über dem vollen
+   Hintergrund statt durchscheinend, in allen Themen */
+html:root .modal.modal{background:linear-gradient(180deg,var(--card-top),var(--card-bottom)),var(--bg)}
+html:root[data-theme=titan] .modal.modal{background:linear-gradient(var(--card),var(--card)),var(--bg)}
+html:root details.menu>div,html:root .cmdk,html:root .toast{background:linear-gradient(var(--card),var(--card)),var(--bg)}
