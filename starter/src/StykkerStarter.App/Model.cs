@@ -9,6 +9,7 @@ using StykkerStarter.Core.Source;
 using StykkerStarter.Core.Start;
 using StykkerStarter.Core.Update;
 using StykkerStarter.Core.Versions;
+using StykkerStarter.Core.Web;
 using StykkerStarter.Platform.Windows;
 
 namespace StykkerStarter.App;
@@ -87,6 +88,7 @@ internal sealed class Model : IDisposable
     {
         foreach (var program in _config.Programs.ToList())
         {
+            if (ProgramCheck.BrokenReason(program) != null) continue;   // ein kaputter Eintrag läuft nie
             try
             {
                 if (!program.CopyToLocal)
@@ -187,6 +189,7 @@ internal sealed class Model : IDisposable
         bool changed = false;
         foreach (var program in _config.Programs.ToList())
         {
+            if (ProgramCheck.BrokenReason(program) != null) continue;
             var result = _engine.Check(program, _config.Settings);
             _checks[program.Id] = result;
             changed |= result.Kind == CheckKind.Updated;   // ohne Kopie: der neue Stand steht in der Datei
@@ -201,7 +204,7 @@ internal sealed class Model : IDisposable
 
     private void UpdateProgram(string id)
     {
-        var program = Find(id);
+        var program = Runnable(id);
         if (program == null) return;
         var cts = new CancellationTokenSource();
         _cancel = cts;
@@ -226,7 +229,7 @@ internal sealed class Model : IDisposable
 
     private void StartProgram(string id)
     {
-        var program = Find(id);
+        var program = Runnable(id);
         if (program == null) return;
         var outcome = StartNow(program);
         _notice = outcome.Ok ? $"{program.Name} is running" : $"{program.Name} did not start: {outcome.Message}";
@@ -244,7 +247,7 @@ internal sealed class Model : IDisposable
 
     private void StopProgram(string id)
     {
-        var program = Find(id);
+        var program = Runnable(id);
         if (program == null) return;
         var report = _service.Stop(program);
         int count = report.Closed.Count + report.Killed.Count;
@@ -256,7 +259,7 @@ internal sealed class Model : IDisposable
 
     private void RestartProgram(string id)
     {
-        var program = Find(id);
+        var program = Runnable(id);
         if (program == null) return;
         var report = _service.Stop(program);
         var outcome = report.AllGone ? StartNow(program) : new StartOutcome(false, null, "the old version did not stop");
@@ -270,23 +273,23 @@ internal sealed class Model : IDisposable
         if (program == null) return;
         if (_service.IsRunning(program))
         {
-            _notice = $"Stop {program.Name} before removing it";
+            _notice = $"Stop {Label(program)} before removing it";
             Publish();
             return;
         }
-        var dir = _layout.ProgramDir(program.Id);
-        VersionCopier.DeleteTree(dir);
+        // Eine Id, die kein einfacher Ordnername ist, trifft nie einen Ordner (ein kaputter Eintrag hat keinen)
+        if (_layout.TryProgramDir(program.Id) is { } dir) VersionCopier.DeleteTree(dir);
         _config.Programs.Remove(program);
         _checks.Remove(program.Id);
         SaveConfig();
-        _notice = $"{program.Name} removed; its local copies are deleted";
+        _notice = $"{Label(program)} removed; its local copies are deleted";
         Publish();
     }
 
     private void CleanupAll()
     {
         int removed = 0;
-        foreach (var program in _config.Programs)
+        foreach (var program in _config.Programs.Where(p => ProgramCheck.BrokenReason(p) == null))
             removed += _service.Cleanup(program, _config.Settings.VersionsKept).Removed.Count;
         SaveConfig();
         _notice = removed == 0 ? "Nothing to remove" : $"Removed {removed} unused {(removed == 1 ? "copy" : "copies")}";
@@ -436,7 +439,7 @@ internal sealed class Model : IDisposable
         _programs = _config.Programs.Select(ProgramSnapshot).ToArray();
         var settings = _config.Settings;
         var interval = _checkEverySeconds.HasValue ? $"{_checkEverySeconds} s" : $"{settings.CheckIntervalMinutes} min";
-        var json = JsonSerializer.Serialize(new
+        var json = PageJson.Serialize(new
         {
             type = "state",
             programs = _programs,
@@ -482,10 +485,12 @@ internal sealed class Model : IDisposable
             UpdateWithoutAsking: p.UpdateWithoutAsking,
             KeepPrevious: p.KeepPrevious,
             CopyToLocal: p.CopyToLocal,
-            ChangedSinceStart: check?.Kind == CheckKind.ChangedSinceStart);
+            ChangedSinceStart: check?.Kind == CheckKind.ChangedSinceStart,
+            Broken: ProgramCheck.BrokenReason(p));
     }
 
     private long LocalBytes() => _config.Programs
+        .Where(p => DataLayout.IsPlainName(p.Id))
         .SelectMany(p => p.Copies.Select(c => SizeOf(p.Id, c.Folder)))
         .Sum();
 
@@ -493,7 +498,7 @@ internal sealed class Model : IDisposable
     private long CleanupBytes()
     {
         long total = 0;
-        foreach (var p in _config.Programs)
+        foreach (var p in _config.Programs.Where(q => DataLayout.IsPlainName(q.Id)))
         {
             foreach (var copy in p.Copies.Where(c => !p.CopyToLocal || c.Folder != p.CurrentFolder))
             {
@@ -546,9 +551,22 @@ internal sealed class Model : IDisposable
         catch (IOException ex) { _log.Write($"config: not saved: {ex.Message}"); }
     }
 
-    private void Reply(object payload) => _sink(JsonSerializer.Serialize(payload));
+    private void Reply(object payload) => _sink(PageJson.Serialize(payload));
 
     private ProgramEntry? Find(string id) => _config.Find(id);
+
+    // Ein kaputter Eintrag läuft nie: der Starter sagt, warum; entfernen lässt er sich
+    private ProgramEntry? Runnable(string id)
+    {
+        var program = Find(id);
+        if (program == null) return null;
+        if (ProgramCheck.BrokenReason(program) is not { } reason) return program;
+        _notice = $"{Label(program)} is a broken entry ({reason}); remove it";
+        Publish();
+        return null;
+    }
+
+    private static string Label(ProgramEntry program) => string.IsNullOrWhiteSpace(program.Name) ? program.Id : program.Name;
 
     private string UniqueId(string name)
     {
@@ -581,12 +599,6 @@ internal sealed class Model : IDisposable
         public void Report(CopyProgress value) => report(value);
     }
 }
-
-// Ein Programm, wie die Seite und der Tray es sehen
-internal sealed record ProgramView(
-    string Id, string Name, string Source, string Arguments, string? Local, string? SourceVersion, bool Reachable,
-    string? UpdateVersion, bool Running, int[] Pids, string? Folder, bool HasCopy, bool StartWithStarter,
-    bool UpdateWithoutAsking, bool KeepPrevious, bool CopyToLocal, bool ChangedSinceStart);
 
 // Der laufende Kopiervorgang für die Seite
 internal sealed record CopyView(string Name, CopyProgress P)

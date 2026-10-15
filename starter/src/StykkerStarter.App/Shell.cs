@@ -5,6 +5,7 @@ using System.Text.Json;
 using Photino.NET;
 using Stykker.Shared.Windows;
 using StykkerStarter.Core;
+using StykkerStarter.Core.Web;
 
 namespace StykkerStarter.App;
 
@@ -203,6 +204,11 @@ internal sealed class Shell : IDisposable
         var programs = _model?.Programs ?? Array.Empty<ProgramView>();
         foreach (var p in programs)
         {
+            if (p.Broken != null)
+            {
+                items.Add(new TrayIcon.Item(0, $"{(string.IsNullOrWhiteSpace(p.Name) ? "(no name)" : p.Name)} · broken entry", Disabled: true));
+                continue;
+            }
             var state = p.Running ? "running" : "stopped";
             var where = p.CopyToLocal ? p.Local ?? "–" : "runs from source";
             items.Add(new TrayIcon.Item(0, $"{p.Name} {where} · {state}", Disabled: true));

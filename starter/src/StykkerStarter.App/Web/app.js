@@ -50,8 +50,10 @@
     }
     list.innerHTML = programs.map(function (p) {
       var chips = [];
-      chips.push(p.running ? '<span class="chip run">Running</span>' : '<span class="chip off">Stopped</span>');
-      if (!p.reachable) chips.push('<span class="chip err">Source not reachable</span>');
+      // Ein kaputter Eintrag (Grund in p.broken) läuft nie; er lässt sich nur entfernen
+      if (p.broken) chips.push('<span class="chip err">Broken entry</span>');
+      else chips.push(p.running ? '<span class="chip run">Running</span>' : '<span class="chip off">Stopped</span>');
+      if (!p.broken && !p.reachable) chips.push('<span class="chip err">Source not reachable</span>');
       if (p.updateVersion) chips.push('<span class="chip upd">Update ' + esc(p.updateVersion) + '</span>');
       var buttons = [];
       if (p.updateVersion) buttons.push('<button class="btn sm primary" data-act="update" data-id="' + esc(p.id) + '">' +
@@ -60,7 +62,7 @@
       if (p.running) {
         buttons.push('<button class="btn sm" data-act="restart" data-id="' + esc(p.id) + '">Restart</button>');
         buttons.push('<button class="btn sm danger" data-act="stop" data-id="' + esc(p.id) + '">Stop</button>');
-      } else if (p.hasCopy || !p.copyToLocal) {
+      } else if (!p.broken && (p.hasCopy || !p.copyToLocal)) {
         buttons.push('<button class="btn sm primary" data-act="start" data-id="' + esc(p.id) + '">Start</button>');
       }
       buttons.push('<button class="btn sm quiet danger" data-act="remove" data-id="' + esc(p.id) + '">' +
@@ -68,9 +70,10 @@
       var pids = p.pids && p.pids.length ? p.pids.join(', ') : '–';
       return '<div class="app">' +
         '<div class="icon">' + initials(p.name) + '</div>' +
-        '<div style="min-width:0"><h3>' + esc(p.name) + ' ' + chips.join(' ') + '</h3>' +
-        '<div class="path" title="' + esc(p.source) + '">' + esc(p.source) + '</div>' +
-        '<div class="meta">' + (p.copyToLocal ? '<span>Local <b>' + esc(p.local || '–') + '</b></span>' : '<span><b>runs from source</b></span>') +
+        '<div style="min-width:0"><h3>' + esc(p.name || '(no name)') + ' ' + chips.join(' ') + '</h3>' +
+        '<div class="path" title="' + esc(p.source) + '">' + esc(p.source || '(no source file)') + '</div>' +
+        '<div class="meta">' + (p.broken ? '<span><b>' + esc(p.broken) + '</b></span>' :
+          (p.copyToLocal ? '<span>Local <b>' + esc(p.local || '–') + '</b></span>' : '<span><b>runs from source</b></span>')) +
         '<span>Source <b>' + esc(p.sourceVersion || '–') + '</b></span>' +
         '<span>PID <b class="mono">' + esc(pids) + '</b></span></div></div>' +
         '<div class="actions">' + buttons.join('') + '</div></div>';
