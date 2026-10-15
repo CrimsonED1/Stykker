@@ -1,21 +1,19 @@
-// Prüft die Weiterleitung fremder Dienste der Zentrale (docs/plan-stykkernode.md, Abschnitt 4.5 bis 4.7; Auftrag Schritt 5,
-// Abschnitt 8.2). Startet eine Zentrale mit einer Temp-Konfiguration, den Test-Daemon aus dem Qwen-Fork (selbst, wie die
-// Desktop-App ihn betreibt) und einen kleinen Strom- und WebSocket-Server (Node-http, ohne Pakete). "Handy" = Anfragen an
-// die Netzadresse dieser Maschine.
+// Prüft die Weiterleitung fremder Dienste der Zentrale (docs/plan-stykkernode.md, Abschnitt 4.5 bis 4.8 und 10). Startet den
+// Test-Daemon aus dem Qwen-Fork mit Local Control (wie die Desktop-App, nur mit einer Temp-Ablage), trägt seine URL über den
+// Endpunkt der Zentrale ein, startet die Zentrale neu und prüft: Weiterleitung, Tausch gegen ein Geräte-Token, Ablehnen eines
+// fremden Ziels, Ersetzen und Entfernen. Dazu einen kleinen Strom- und WebSocket-Server (Node-http, ohne Pakete). "Handy" =
+// Anfragen an die Netzadresse dieser Maschine.
 //
 //   node tools/check-proxy.mjs --qwen-cli <Pfad zu cli.js> [--hud-dll <Pfad zu StykkerHUD-Server.dll>]
 //
 // Der Pfad zum Qwen-CLI gehört nicht in die Repo: er kommt von der Kommandozeile und landet nur in der Temp-Konfiguration.
-// Die Ablagen liegen in einem Temp-Ordner; die echte Konfiguration und die echte Kopplung werden nie gelesen.
-//
-// Der Test-Daemon ist ein Stand-in für die Desktop-App: das Skript startet ihn mit demselben Token, das es in eine Token-Datei
-// (protection "none") im Temp-Ordner schreibt. Die Zentrale liest das Token aus dieser Datei. Die Zentrale selbst startet
-// keinen Dienst; "start" in der Konfiguration wird nur ignoriert und einmal ins Log geschrieben.
+// Die Ablagen liegen in einem Temp-Ordner. Die echte Konfiguration (%APPDATA%\Stykker) und die Daten der echten Qwen-App werden
+// nie gelesen oder geschrieben. Adressen, Geheimnisse und Tokens werden nie ausgegeben, nur ihre Länge oder ob sie fehlen.
 import { chromium } from "playwright-core";
 import { spawn, execFile } from "node:child_process";
 import { createServer, request as httpRequest } from "node:http";
 import { createHash, randomBytes } from "node:crypto";
-import { mkdtempSync, writeFileSync, existsSync, rmSync, unlinkSync } from "node:fs";
+import { mkdtempSync, writeFileSync, readFileSync, existsSync, rmSync } from "node:fs";
 import { tmpdir, networkInterfaces } from "node:os";
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -34,35 +32,27 @@ if (!qwenCli || !existsSync(qwenCli)) {
     process.exit(2);
 }
 
-// Ports dieses Probelaufs (Auftrag, Abschnitt 5): Zentrale 8090, Weiterleitung 8091. Der Test-Daemon 17451, nur wenn frei
-// (sonst 41999). Der Strom-Dienst im Skript bekommt 8092 und 41998. Das Ziel in der Konfiguration folgt dem Daemon.
+// Ports dieses Probelaufs: Zentrale 8090; Weiterleitungen 8091 (Qwen), 8092 (Strom-Test); der Strom-Dienst 41998; der
+// Test-Daemon 17451, nur wenn frei (sonst 41999). Local Control nimmt den Port des Daemons auf seiner Netzadresse.
 const HUD = 8090, QWEN_FWD = 8091, STREAM_FWD = 8092, STREAM = 41998;
 const DAEMON = await freePort([17451, 41999]);
 const PHONE_UA = "Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit/537.36 Chrome/141.0 Mobile Safari/537.36";
 const LAN = pickLan();
 const QWEN_MESSAGE = "Qwen Code is not running. Start the Qwen Code desktop app on the PC.";
-const TOKEN_MESSAGE = "Qwen Code: the token file cannot be read.";
 
 const tmp = mkdtempSync(join(tmpdir(), "stykker-proxy-check-"));
 const qwenHome = join(tmp, "qwen-home");
 const configFile = join(tmp, "stykker.json");
 const pairingFile = join(tmp, "pairing.dat");
-const tokenFile = join(tmp, "qwen-token.txt");
-const servicesFile = join(tmp, "services.dat");
 
-// Die Konfiguration: Qwen mit festem Ziel und Token-Datei. "start" steht noch drin, damit der Test zeigt, dass die
-// Zentrale es ignoriert.
-const config = (tokenPath = tokenFile, target = `http://127.0.0.1:${DAEMON}`) => ({
-    modules: [
-        {
-            id: "qwen", name: "Qwen Code", external: true, port: QWEN_FWD, target,
-            tokenFile: { path: tokenPath, protection: "none" },
-            start: { command: "node", args: [qwenCli, "serve", "--port", String(DAEMON), "--no-open"], env: { QWEN_HOME: qwenHome }, tokenEnv: "QWEN_SERVER_TOKEN" },
-        },
-        { id: "stream", name: "Stream test", external: true, port: STREAM_FWD, target: `http://127.0.0.1:${STREAM}` },
-    ],
+// Die Ausgangslage: nur der Strom-Dienst steht in der Datei. Qwen kommt später über den Endpunkt dazu.
+const streamOnly = () => ({
+    modules: [{ id: "stream", name: "Stream test", external: true, port: STREAM_FWD, target: `http://127.0.0.1:${STREAM}` }],
 });
-writeFileSync(configFile, JSON.stringify(config(), null, 2));
+writeFileSync(configFile, JSON.stringify(streamOnly(), null, 2));
+const readConfig = () => JSON.parse(readFileSync(configFile, "utf8"));
+const writeConfig = (obj) => writeFileSync(configFile, JSON.stringify(obj, null, 2));
+const configText = () => readFileSync(configFile, "utf8");
 
 const checks = [];
 const check = (name, ok, detail = "") => { checks.push({ name, ok: !!ok, detail: String(detail) }); };
@@ -81,7 +71,7 @@ function ps(script) {
 const taskkill = (pid) => new Promise((resolveKill) =>
     execFile("taskkill", ["/PID", String(pid)], { windowsHide: true, timeout: 20000 },
         (err, stdout) => resolveKill(err ? "failed" : stdout.trim())));
-// Den Test-Daemon beenden: nur über die PID, die das Skript selbst gestartet hat (mit seinen Kindern)
+// Einen Prozess beenden, den das Skript selbst gestartet hat: nur über seine PID (mit seinen Kindern)
 const killOwn = (pid) => new Promise((resolveKill) =>
     execFile("taskkill", ["/PID", String(pid), "/T", "/F"], { windowsHide: true, timeout: 20000 },
         (err, stdout) => resolveKill(err ? "failed" : stdout.trim())));
@@ -90,12 +80,11 @@ const childNodePids = async (parentPid) => {
     const out = await ps(`Get-CimInstance Win32_Process -Filter "ParentProcessId=${parentPid}" | Where-Object { $_.Name -eq 'node.exe' } | ForEach-Object { $_.ProcessId }`);
     return out.split(/\s+/).filter(Boolean).map(Number);
 };
-const commandLine = (pid) => ps(`(Get-CimInstance Win32_Process -Filter "ProcessId=${pid}").CommandLine`);
 const listeners = (port) => ps(`Get-NetTCPConnection -LocalPort ${port} -State Listen -ErrorAction SilentlyContinue | ForEach-Object { $_.LocalAddress } | Sort-Object -Unique`);
 const alive = (pid) => ps(`if (Get-Process -Id ${pid} -ErrorAction SilentlyContinue) { 'yes' } else { 'no' }`).then((s) => s === "yes");
 
 // ── HTTP ──
-function http({ host = "127.0.0.1", port, path, method = "GET", headers = {} }) {
+function http({ host = "127.0.0.1", port, path, method = "GET", headers = {}, body }) {
     return new Promise((resolveHttp, reject) => {
         const req = httpRequest({ host, port, path, method, headers, timeout: 15000 }, (res) => {
             const chunks = [];
@@ -104,12 +93,16 @@ function http({ host = "127.0.0.1", port, path, method = "GET", headers = {} }) 
         });
         req.on("timeout", () => req.destroy(new Error("timeout")));
         req.on("error", reject);
-        req.end();
+        if (body !== undefined) {
+            req.setHeader("Content-Type", "application/json");
+            req.end(JSON.stringify(body));
+        } else req.end();
     });
 }
-const local = (port, path, headers, method) => http({ port, path, headers, method });
+const local = (port, path, headers, method, body) => http({ port, path, headers, method, body });
 const phone = (port, path, headers = {}, method) => http({ host: LAN, port, path, method, headers: { "User-Agent": PHONE_UA, ...headers } });
-const tryHttp = (opts) => http(opts).catch((e) => ({ status: 0, error: e.code || e.message }));
+const tryHttp = (opts) => http(opts).catch((e) => ({ status: 0, body: "", error: e.code || e.message }));
+const json = (r) => { try { return JSON.parse(r.body); } catch { return {}; } };
 
 // WebSocket-Handshake: 101 mit Socket, oder die Antwort einer Ablehnung (z. B. 403)
 function wsOpen({ host = "127.0.0.1", port, path, headers = {} }) {
@@ -201,11 +194,10 @@ stream.on("upgrade", (req, socket) => {
 await new Promise((r) => stream.listen(STREAM, "127.0.0.1", r));
 
 // ── Zentrale starten und beenden ──
-// Die Zentrale läuft als eigener Prozess mit eigener (verborgener) Konsole, damit taskkill sie geordnet beendet. Ihre
-// Ausgabe landet in Dateien im Temp-Ordner.
+// Die Zentrale läuft als eigener Prozess mit verborgener Konsole, damit taskkill sie geordnet beendet. Ihre Ausgabe landet
+// in Dateien im Temp-Ordner. Die Logs liest PowerShell, weil die Umleitung der Zentrale die Dateien offen hält.
 const logFiles = [];
 let hud = null;
-// Die Logs liest PowerShell: die Umleitung der Zentrale hält die Datei offen, und Node liest sie dann nicht.
 const q = (s) => `'${String(s).replace(/'/g, "''")}'`;
 const readLogs = () => ps(logFiles.map((f) => `if (Test-Path -LiteralPath ${q(f)}) { Get-Content -Raw -LiteralPath ${q(f)} }`).join("\n"))
     .catch(() => "");
@@ -229,6 +221,7 @@ async function waitUntil(test, ms = 40000) {
 const hubUp = () => waitUntil(async () => (await local(HUD, "/api/hub")).status === 200);
 // Beendet die Zentrale und wartet, bis sie weg ist. Erst nach 45 s ohne Ende gilt sie als erzwungen beendet (forced).
 async function stopHud() {
+    if (!hud) return { sent: "none", gone: true, forced: false, seconds: 0 };
     const pid = hud.pid;
     const sent = await taskkill(pid);
     const startedAt = Date.now();
@@ -244,14 +237,20 @@ async function stopHud() {
     return { sent, gone, forced, seconds };
 }
 
-// ── Test-Daemon: wie die Desktop-App ihn betreibt, mit einem Token, das die Token-Datei enthält ──
+// ── Test-Daemon: Qwen mit Local Control, wie die Desktop-App es einschaltet (Netz, Kopplung, eigenes Geräte-Token) ──
 const daemons = [];
-async function startDaemon(token) {
-    const child = spawn("node", [qwenCli, "serve", "--port", String(DAEMON), "--hostname", "127.0.0.1", "--require-auth", "--no-open", "--workspace", tmp],
-        { windowsHide: true, stdio: "ignore", env: { ...process.env, QWEN_HOME: qwenHome, QWEN_SERVER_TOKEN: token } });
+async function startDaemon() {
+    const child = spawn("node", [qwenCli, "serve", "--port", String(DAEMON), "--hostname", "127.0.0.1", "--local-control", "--no-open", "--workspace", tmp],
+        { windowsHide: true, stdio: "ignore", env: { ...process.env, QWEN_HOME: qwenHome } });
     daemons.push(child);
-    const up = await waitUntil(async () => (await tryHttp({ port: DAEMON, path: "/health" })).status === 401, 60000);
-    return { pid: child.pid, up };
+    const active = await waitUntil(async () => json(await local(DAEMON, "/workspace/local-control")).active === true, 60000);
+    return { pid: child.pid, active };
+}
+// Die Adresse und das Geheimnis, wie Qwen sie unter Local Control zeigt. Der Daemon liefert sie auf loopback ohne Token.
+// Nur im Speicher des Skripts; nichts davon wird ausgegeben.
+async function localControlUrl() {
+    const status = json(await local(DAEMON, "/workspace/local-control"));
+    return status.active && status.url ? status.url : null;
 }
 // Den Daemon beenden (nur über die eigene PID mit ihren Kindern) und warten, bis er weg ist
 async function killDaemon(pid) {
@@ -259,7 +258,6 @@ async function killDaemon(pid) {
     const gone = await waitUntil(async () => !(await alive(pid)), 20000);
     return { sent, gone };
 }
-const writeToken = (token) => writeFileSync(tokenFile, token + "\n");
 
 // ── Browser ──
 const browser = await chromium.launch({ channel: "chrome", headless: true });
@@ -305,7 +303,6 @@ async function phoneOpensQwen(cookie) {
         const frame = await (await page.locator("#frame").elementHandle()).contentFrame();
         await frame.waitForLoadState("load");
         await page.waitForTimeout(1500);
-        // Gerendert? Ein Text allein sagt wenig: die Oberfläche zählt, sobald sie Elemente mit Größe hat.
         await frame.waitForFunction(() => document.body && document.body.getBoundingClientRect().width > 0 && document.body.querySelectorAll("*").length > 5, null, { timeout: 15000 }).catch(() => { });
         return await frame.evaluate(() => ({
             url: location.href, bodyChars: (document.body?.innerText || "").length,
@@ -319,63 +316,109 @@ async function phoneOpensQwen(cookie) {
 }
 
 // ── Ablauf ──
-const token1 = newToken();
-writeToken(token1);
+let secret = null;      // das Geheimnis aus der Local-Control-URL (nur im Speicher)
+let deviceToken = null; // das Geräte-Token, das die Zentrale in stykker.json eintragen soll (nur im Speicher)
 try {
-    // Teil 1: Netzschalter aus (nur diese Maschine). Der Daemon läuft schon, bevor die Zentrale startet.
-    const d1 = await startDaemon(token1);
-    check("the test daemon answers 401 without a token", d1.up, `pid ${d1.pid}`);
+    // Teil 1: Qwen mit Local Control, die Zentrale ohne Netzschalter (nur diese Maschine)
+    const d1 = await startDaemon();
+    check("1 test daemon runs with Local Control on", d1.active, `pid ${d1.pid}`);
     const daemonPid = d1.pid;
+    const url = await localControlUrl();
+    check("1 Local Control gives a URL with a secret and a LAN address", !!url && /#token=/.test(url) && !/^http:\/\/127\.0\.0\.1[:/]/.test(url),
+        url ? "address and secret held in the script only" : "none");
+    secret = url ? url.split("#token=")[1] : null;
+    const lanUrl = url;
     const listen = (await listeners(DAEMON)).split(/\s+/).filter(Boolean);
-    check("1 test daemon listens on 127.0.0.1 only", listen.length > 0 && listen.every((a) => a === "127.0.0.1"), `listen: ${listen.join(",")}`);
-    const cmd = await commandLine(daemonPid);
-    check("1 daemon command line has --require-auth and no token", cmd.includes("--require-auth") && !cmd.includes(token1), `pid ${daemonPid}`);
+    check("1 Local Control listens on a LAN address (not only loopback)", listen.some((a) => a !== "127.0.0.1"), `listen: ${listen.length} addresses`);
 
     await startHud();
-    check("hub starts and answers on its port", await hubUp(), `port ${HUD}`);
+    check("1 hub starts and answers on its port", await hubUp(), `port ${HUD}`);
     await sleep(1500);
     check("1 the hub starts no service", (await childNodePids(hud.pid)).length === 0, "node children of the hub");
-    check("1 the hub writes no services.dat", !existsSync(servicesFile), "");
     let log = await readLogs();
-    check("1 the hub logs that start is ignored", log.includes('"start" is ignored'), `${log.length} chars read`);
-    check("1 the hub log holds no token", log.length > 0 && !log.includes(token1), `${log.length} chars checked`);
 
-    // 3: die API des Daemons ohne Token: 401; über die Weiterleitung mit dem Token aus der Datei: 200
-    const noToken = await tryHttp({ port: DAEMON, path: "/capabilities" });
-    const noTokenHealth = await tryHttp({ port: DAEMON, path: "/health" });
-    check("3 daemon /capabilities without token -> 401", noToken.status === 401, `status ${noToken.status}`);
-    check("3 daemon /health without token -> 401", noTokenHealth.status === 401, `status ${noTokenHealth.status}`);
-    const viaForwarder = await tryHttp({ port: QWEN_FWD, path: "/capabilities" });
-    check("3 the hub adds the token from the token file -> 200", viaForwarder.status === 200, `status ${viaForwarder.status}`);
+    // Die Ausgangslage: nur der Strom-Dienst, ohne Token
+    const streamList = json(await local(HUD, "/api/hub/services")).services ?? [];
+    check("2 the services list shows the stream service without a token", streamList.length === 1 && streamList[0].id === "stream" && streamList[0].tokenSet === false,
+        JSON.stringify(streamList.map((s) => ({ id: s.id, tokenSet: s.tokenSet, running: s.running }))));
+    const suggested = json(await local(HUD, "/api/hub/services")).suggestedPort;
+    check("2 the suggested port is the first free one from 17450", suggested === 17450, `suggested ${suggested}`);
 
-    // 2: am PC /hub, Qwen wählen: Oberfläche im Frame, WebSocket /acp geht auf
+    // 3: fremdes Ziel und andere Fehler werden abgelehnt, ohne dass etwas geschrieben oder gezeigt wird
+    const before = configText();
+    const foreignUrl = `http://192.0.2.10:16000/#token=placeholder-secret-value`;
+    const foreign = await local(HUD, "/api/hub/services", { Origin: `http://127.0.0.1:${HUD}` }, "POST",
+        { name: "Qwen Code", id: "qwen", port: QWEN_FWD, url: foreignUrl });
+    check("3 a URL on another machine is refused with 400", foreign.status === 400 && json(foreign).message?.includes("not one of this PC's addresses"),
+        `status ${foreign.status}: ${json(foreign).message ?? ""}`);
+    check("3 the refusal holds no secret and no token", !foreign.body.includes("placeholder-secret-value"), "");
+    check("3 the refused entry is not written", configText() === before, "");
+    const notURL = await local(HUD, "/api/hub/services", { Origin: `http://127.0.0.1:${HUD}` }, "POST",
+        { name: "Qwen Code", id: "qwen", port: QWEN_FWD, url: "http://127.0.0.1:41999/" });
+    check("3 a URL without a secret is refused", notURL.status === 400 && json(notURL).message?.includes("not a Local Control URL"), `status ${notURL.status}`);
+    const sameId = await local(HUD, "/api/hub/services", { Origin: `http://127.0.0.1:${HUD}` }, "POST",
+        { name: "Again", id: "stream", port: 17460, url: lanUrl });
+    check("3 a taken id is refused before anything is paired", sameId.status === 400 && json(sameId).message === "This id is taken.", `status ${sameId.status}`);
+    const foreignPage = await tryHttp({ port: HUD, path: "/api/hub/services", headers: { Origin: "http://evil.example" }, method: "GET" });
+    check("3 the services list answers only this page (foreign origin on POST refused)", (await local(HUD, "/api/hub/services", { Origin: "http://evil.example" }, "POST",
+        { name: "x", id: "evil", port: 17470, url: lanUrl })).status === 403, `GET from foreign origin: ${foreignPage.status}`);
+
+    // 4: die Local-Control-URL eintragen: Tausch, Datei, Antwort ohne Token
+    const add = await local(HUD, "/api/hub/services", { Origin: `http://127.0.0.1:${HUD}` }, "POST",
+        { name: "Qwen Code", id: "qwen", port: QWEN_FWD, url: lanUrl });
+    check("4 adding the Local Control URL gives 200 and asks for a restart", add.status === 200 && json(add).restart === true, `status ${add.status}: ${json(add).message ?? ""}`);
+    check("4 the answer holds no token and no secret", !add.body.includes(secret) && !/"token"/.test(add.body), "");
+    const cfgAfterAdd = readConfig();
+    const qwenEntry = cfgAfterAdd.modules.find((m) => m.id === "qwen");
+    deviceToken = qwenEntry?.token ?? null;
+    check("4 stykker.json holds a device token of its own (not the secret)", !!deviceToken && deviceToken !== secret && deviceToken.length === 43 && !configText().includes(secret),
+        `token length ${deviceToken?.length ?? 0}, secret in file: ${configText().includes(secret ?? "x")}`);
+    check("4 the entry keeps the LAN address Qwen showed, with the port", qwenEntry?.port === QWEN_FWD && qwenEntry?.external === true && qwenEntry?.target?.endsWith(`:${DAEMON}`),
+        `port ${qwenEntry?.port}, target ${qwenEntry?.target ? qwenEntry.target.replace(/\/\/[^:]+/, "//<address>") : "none"}`);
+    const devices = json(await local(DAEMON, "/workspace/local-control/devices"));
+    check("4 the device appears in Qwen's device list as \"Stykker hub\"", (devices.devices ?? []).some((d) => d.label === "Stykker hub"),
+        `${(devices.devices ?? []).length} devices, labels: ${(devices.devices ?? []).map((d) => d.label).join(", ")}`);
+    const services1 = json(await local(HUD, "/api/hub/services"));
+    const qwenListed = (services1.services ?? []).find((s) => s.id === "qwen");
+    check("4 the services list says the token is set and the forward starts after a restart", qwenListed?.tokenSet === true && qwenListed?.running === false,
+        `tokenSet ${qwenListed?.tokenSet}, running ${qwenListed?.running}`);
+
+    // 5: Neustart der Zentrale: der Weg läuft, die Seite lädt, der WebSocket geht auf, das Token steht nicht in den Antworten
+    await stopHud();
+    await startHud();
+    check("5 hub restarts with the Qwen entry", await hubUp(), "");
+    await sleep(1000);
+    const viaForwarder = await tryHttp({ port: QWEN_FWD, path: "/workspace/local-control/devices" });
+    check("5 through the forwarder with the device token -> 200", viaForwarder.status === 200, `status ${viaForwarder.status}`);
+    const hubNow = await local(HUD, "/api/hub");
+    const accessNow = await local(HUD, "/api/hub/access");
+    const servicesNow = await local(HUD, "/api/hub/services");
+    check("5 the token and the secret are in no answer of the hub (/api/hub, /access, /services)",
+        [hubNow, accessNow, servicesNow].every((r) => !r.body.includes(deviceToken) && !r.body.includes(secret)), "");
+    check("5 the forward is listed as running in /api/hub", json(hubNow).modules.some((m) => m.id === "qwen" && m.up === true), "");
     const pc = await pcOpensQwen();
-    check("2 Qwen opens in the frame at the PC, no sign-in page", pc.url.includes(`:${QWEN_FWD}/`) && !pc.signIn && pc.elements > 5 && pc.bodyWidth > 0,
+    check("5 Qwen opens in the frame at the PC, no sign-in page", pc.url.includes(`:${QWEN_FWD}/`) && !pc.signIn && pc.elements > 5 && pc.bodyWidth > 0,
         `frame ${pc.url.replace(/^https?:\/\/[^/]+/, "")}, ${pc.elements} elements, body ${pc.bodyWidth} px, ${pc.bodyChars} text chars`);
-    check("2 WebSocket /acp opens through the forwarder", pc.ws === "open", `ws: ${pc.ws}`);
+    check("5 WebSocket /acp opens through the forwarder", pc.ws === "open", `ws: ${pc.ws}`);
 
-    // 7 (vom PC): fremde Origin, auch als WebSocket -> 403
+    // 6: fremde Origin und fremder Name im Host-Kopf (DNS-Rebinding): 403, auch als WebSocket
     const foreignHttp = await tryHttp({ port: QWEN_FWD, path: "/capabilities", headers: { Origin: "http://evil.example" } });
     const foreignWs = await wsOpen({ port: QWEN_FWD, path: "/acp", headers: { Origin: "http://evil.example" } });
-    check("7 foreign Origin on 8091 -> 403", foreignHttp.status === 403, `status ${foreignHttp.status}`);
-    check("7 foreign Origin on 8091 as WebSocket -> 403", foreignWs.status === 403, `status ${foreignWs.status}`);
-
-    // 7 (DNS-Rebinding): fremder Name im Host-Kopf, von dieser Maschine, auch mit passender Origin -> 403, auch als WebSocket
+    check("6 foreign Origin on 8091 -> 403", foreignHttp.status === 403, `status ${foreignHttp.status}`);
+    check("6 foreign Origin on 8091 as WebSocket -> 403", foreignWs.status === 403, `status ${foreignWs.status}`);
     const rebindHeaders = { Host: "evil.example:8091", Origin: "http://evil.example:8091" };
     const rebindHttp = await tryHttp({ port: QWEN_FWD, path: "/capabilities", headers: rebindHeaders });
     const rebindWs = await wsOpen({ port: QWEN_FWD, path: "/acp", headers: rebindHeaders });
-    check("7 foreign Host name on 8091 (DNS rebinding) -> 403", rebindHttp.status === 403, `status ${rebindHttp.status}: ${rebindHttp.body?.slice(0, 60) ?? ""}`);
-    check("7 foreign Host name on 8091 as WebSocket -> 403", rebindWs.status === 403, `status ${rebindWs.status}`);
+    check("6 foreign Host name on 8091 (DNS rebinding) -> 403", rebindHttp.status === 403, `status ${rebindHttp.status}`);
+    check("6 foreign Host name on 8091 as WebSocket -> 403", rebindWs.status === 403, `status ${rebindWs.status}`);
 
-    // 8: was beim Dienst ankommt: kein stykker_device; der Strom-Dienst hat kein tokenFile, also kein Authorization
+    // 7: was beim Dienst ankommt (der Strom-Dienst hat kein Token: kein Authorization), Strom und Echo über die Weiterleitung
     await local(STREAM_FWD, "/probe", { Cookie: "a=1; stykker_device=device-secret-value; b=2", Origin: `http://127.0.0.1:${STREAM_FWD}` });
-    const last = JSON.parse((await local(STREAM, "/last")).body);
-    check("8 device cookie is removed, other cookies stay", last.cookie === "a=1; b=2", `cookie seen: ${last.cookie}`);
-    check("8 without tokenFile no Authorization is sent", last.authorization === null, `authorization: ${last.authorization ? "present" : "none"}`);
-    check("8 Host is the target's", last.host === `127.0.0.1:${STREAM}`, `host ${last.host}`);
-    check("8 Origin is rewritten to the target", last.origin === `http://127.0.0.1:${STREAM}`, `origin ${last.origin}`);
-
-    // 9: Antwortstrom: der erste Teil kommt an, bevor der letzte geschrieben ist; alle 20 Teile
+    const last = json(await local(STREAM, "/last"));
+    check("7 device cookie is removed, other cookies stay", last.cookie === "a=1; b=2", `cookie seen: ${last.cookie}`);
+    check("7 without a token no Authorization is sent", last.authorization === null, `authorization: ${last.authorization ? "present" : "none"}`);
+    check("7 Host is the target's", last.host === `127.0.0.1:${STREAM}`, `host ${last.host}`);
+    check("7 Origin is rewritten to the target", last.origin === `http://127.0.0.1:${STREAM}`, `origin ${last.origin}`);
     const stamps = [];
     await new Promise((resolveStream, reject) => {
         const req = httpRequest({ host: "127.0.0.1", port: STREAM_FWD, path: "/stream" }, (res) => {
@@ -385,11 +428,9 @@ try {
         req.on("error", reject);
         req.end();
     });
-    check("9 all 20 parts arrive through the forwarder", stamps.length === 20, `${stamps.length} parts`);
-    check("9 parts arrive while the stream runs, not at the end", stamps.length === 20 && stamps[19] - stamps[0] >= 4000,
+    check("7 all 20 parts arrive through the forwarder", stamps.length === 20, `${stamps.length} parts`);
+    check("7 parts arrive while the stream runs, not at the end", stamps.length === 20 && stamps[19] - stamps[0] >= 4000,
         `first to last ${stamps.length ? stamps[stamps.length - 1] - stamps[0] : 0} ms`);
-
-    // 10: WebSocket-Echo über die Weiterleitung, 50 Nachrichten hin und zurück
     const echo = await wsOpen({ port: STREAM_FWD, path: "/ws" });
     let echoed = [];
     if (echo.status === 101) {
@@ -411,80 +452,68 @@ try {
         }).catch((e) => e.message);
         echo.socket.destroy();
     }
-    check("10 50 messages echo back through the forwarder", Array.isArray(echoed) && echoed.length === 50 && echoed[49] === "m49",
+    check("7 50 messages echo back through the forwarder", Array.isArray(echoed) && echoed.length === 50 && echoed[49] === "m49",
         Array.isArray(echoed) ? `${echoed.length} echoes` : echoed);
 
-    // Der Daemon geht aus, die Datei bleibt: 503 mit dem Text, und /api/hub meldet up: false
-    const killed = await killDaemon(daemonPid);
-    check("the test daemon is killed by its own pid", killed.gone, `taskkill: ${killed.sent}`);
-    const down = await tryHttp({ port: QWEN_FWD, path: "/capabilities" });
-    check("daemon gone -> 503 with the not-running text", down.status === 503 && down.body?.includes(QWEN_MESSAGE), `status ${down.status}: ${down.body?.slice(0, 80) ?? down.error ?? ""}`);
-    const hubDown = JSON.parse((await local(HUD, "/api/hub")).body);
-    check("daemon gone -> /api/hub says up: false for qwen", hubDown.modules.some((m) => m.id === "qwen" && m.up === false), "");
+    // 8: Änderungen wirken ohne Neustart: ein anderes Token (Daemon lehnt es ab), dann ein totes Ziel (503), dann zurück
+    const cfgLive = readConfig();
+    cfgLive.modules.find((m) => m.id === "qwen").token = "wrong-token-value-not-the-device";
+    writeConfig(cfgLive);
+    await sleep(300);
+    const badToken = await tryHttp({ port: QWEN_FWD, path: "/workspace/local-control/devices" });
+    check("8 a changed token in the file takes effect without a restart (daemon refuses it)", badToken.status === 401, `status ${badToken.status}`);
+    const cfgDead = readConfig();
+    cfgDead.modules.find((m) => m.id === "qwen").token = deviceToken;
+    const deadPort = await freePort([8192, 8193, 8194]);   // ein Port, auf dem nichts hört
+    cfgDead.modules.find((m) => m.id === "qwen").target = `http://127.0.0.1:${deadPort}`;
+    writeConfig(cfgDead);
+    await sleep(300);
+    const deadTarget = await tryHttp({ port: QWEN_FWD, path: "/" });
+    check("8 a target that does not answer -> 503 with the not-running text", deadTarget.status === 503 && deadTarget.body.includes(QWEN_MESSAGE),
+        `status ${deadTarget.status}`);
+    const cfgBack = readConfig();
+    cfgBack.modules.find((m) => m.id === "qwen").target = `http://${new URL(lanUrl).hostname}:${DAEMON}`;
+    writeConfig(cfgBack);
+    await sleep(300);
+    const back = await tryHttp({ port: QWEN_FWD, path: "/workspace/local-control/devices" });
+    check("8 the file back as it was -> the next request goes through", back.status === 200, `status ${back.status}`);
+
+    // 9: URL ersetzen: dasselbe Gerät (Tausch mit dem gespeicherten Token), andere URL: die Probe ist abgelehnt
+    const devicesBeforeReplace = (json(await local(DAEMON, "/workspace/local-control/devices")).devices ?? []).length;
+    const replaced = await local(HUD, "/api/hub/services/qwen/url", { Origin: `http://127.0.0.1:${HUD}` }, "POST", { url: lanUrl });
+    check("9 replacing the URL with the same one gives 200 and works at once", replaced.status === 200 && json(replaced).restart === false, `status ${replaced.status}`);
+    const devicesAfterReplace = (json(await local(DAEMON, "/workspace/local-control/devices")).devices ?? []).length;
+    check("9 replacing reuses the device: no second device in Qwen's list", devicesAfterReplace === devicesBeforeReplace, `${devicesBeforeReplace} before, ${devicesAfterReplace} after`);
+    check("9 the token in the file is still the device's", readConfig().modules.find((m) => m.id === "qwen").token === deviceToken, "");
+    const loopbackUrl = `http://127.0.0.1:${DAEMON}/#token=${secret}`;
+    const replacedLoop = await local(HUD, "/api/hub/services/qwen/url", { Origin: `http://127.0.0.1:${HUD}` }, "POST", { url: loopbackUrl });
+    check("9 a URL on loopback (not the Local Control listener) is refused with 400", replacedLoop.status === 400, `status ${replacedLoop.status}: ${json(replacedLoop).message ?? ""}`);
+    check("9 the refused replace holds no secret", !replacedLoop.body.includes(secret), "");
+    check("9 after the refused replace the file is as before", readConfig().modules.find((m) => m.id === "qwen").target === `http://${new URL(lanUrl).hostname}:${DAEMON}`, "");
+
+    // 10: Log und Datei: kein Token, kein Geheimnis im Log
     log = await readLogs();
-    check("daemon gone -> the hub logs the reason", log.includes("not reachable: the target does not answer"), "");
+    check("10 the hub log holds no device token and no secret", !log.includes(deviceToken) && !log.includes(secret), `${log.length} chars checked`);
 
-    // Die Datei fehlt: der Daemon läuft wieder, die Token-Datei ist weg -> 503 mit dem Token-Text
-    const d2 = await startDaemon(token1);
-    check("the test daemon answers again", d2.up, `pid ${d2.pid}`);
-    await sleep(1000);
-    unlinkSync(tokenFile);
-    const noFile = await tryHttp({ port: QWEN_FWD, path: "/capabilities" });
-    check("token file missing -> 503 with the token-file text", noFile.status === 503 && noFile.body?.includes(TOKEN_MESSAGE), `status ${noFile.status}: ${noFile.body?.slice(0, 80) ?? ""}`);
-    const hubNoFile = JSON.parse((await local(HUD, "/api/hub")).body);
-    check("token file missing -> /api/hub says up: false for qwen", hubNoFile.modules.some((m) => m.id === "qwen" && m.up === false), "");
-    log = await readLogs();
-    check("token file missing -> the hub logs the reason, not the token", log.includes("the token file is missing") && !log.includes(token1), "");
-    writeToken(token1);
-    const back = await tryHttp({ port: QWEN_FWD, path: "/capabilities" });
-    check("token file written again -> the next request goes through", back.status === 200, `status ${back.status}`);
-
-    // Ein neues Token: Datei neu geschrieben, Daemon mit dem neuen Token neu gestartet -> die nächste Anfrage geht durch
-    await killDaemon(d2.pid);
-    const token2 = newToken();
-    writeToken(token2);
-    const d3 = await startDaemon(token2);
-    check("the test daemon runs with the new token", d3.up, `pid ${d3.pid}`);
-    const rotated = await tryHttp({ port: QWEN_FWD, path: "/capabilities" });
-    check("new token in the file, daemon restarted -> the next request goes through", rotated.status === 200, `status ${rotated.status}`);
-
-    // Den Netzschalter einschalten (wirkt nach dem nächsten Start), dann beenden
-    await local(HUD, "/api/hub/remote?on=true", {}, "POST");
-    const stop1 = await stopHud();
-    check("the hub ends on taskkill without /F, not forced", stop1.gone && !stop1.forced, `taskkill: ${stop1.sent}, after ${stop1.seconds} s, forced: ${stop1.forced}`);
-    check("the hub does not stop the daemon it does not own", await alive(d3.pid), `pid ${d3.pid}`);
-
-    // Teil 2: Netzschalter an, Handy
+    // 11: Netzschalter an, Handy: der gekoppelte Gerät mit Rolle admin für Qwen lädt Qwen
+    // Der Schalter wird am laufenden Hub umgelegt; wirksam wird er mit dem Neustart (der Port öffnet sich dann)
+    const switched = await local(HUD, "/api/hub/remote?on=true", { Origin: `http://127.0.0.1:${HUD}` }, "POST");
+    check("11 the network switch is set on the running hub", switched.status === 200, `status ${switched.status}`);
+    await stopHud();
     await startHud();
-    check("hub restarts with network access on", await hubUp(), "");
-    const lanOk = !!LAN;
-    check("a LAN address exists for the phone checks", lanOk, LAN ? "found" : "none");
-    if (lanOk) {
-        // 4: Handy ohne Gerät auf 8091 -> 401
+    check("11 hub restarts with network access on", await hubUp(), "");
+    if (LAN) {
         const unpaired = await tryHttp({ host: LAN, port: QWEN_FWD, path: "/", headers: { "User-Agent": PHONE_UA } });
-        check("4 phone without device on 8091 -> 401", unpaired.status === 401, `status ${unpaired.status}: ${unpaired.body?.slice(0, 80) ?? ""}`);
-
-        // Kopplung: Code am PC abholen, das Handy meldet sich an der Zentrale an
-        const access = JSON.parse((await local(HUD, "/api/hub/access")).body);
+        check("11 phone without device on 8091 -> 401", unpaired.status === 401, `status ${unpaired.status}`);
+        const access = json(await local(HUD, "/api/hub/access"));
         const paired = await phone(HUD, `/pair?code=${access.code.replace(/\s/g, "")}`);
         const cookieHeader = paired.headers["set-cookie"]?.[0] ?? "";
         const device = (cookieHeader.match(/stykker_device=([^;]+)/) || [])[1];
-        check("phone pairs with the code (cookie set)", paired.status === 302 && !!device, `status ${paired.status}`);
-
-        // 5: gekoppelt, aber Rolle viewer für qwen
-        const hubList = JSON.parse((await phone(HUD, "/api/hub", { Cookie: `stykker_device=${device}` })).body);
-        check("5 /api/hub does not name qwen for a viewer", !hubList.modules.some((m) => m.id === "qwen"),
-            `modules seen: ${hubList.modules.map((m) => m.id).join(", ") || "none"}`);
+        check("11 phone pairs with the code (cookie set)", paired.status === 302 && !!device, `status ${paired.status}`);
+        const hubList = json(await phone(HUD, "/api/hub", { Cookie: `stykker_device=${device}` }));
+        check("11 /api/hub does not name qwen for a viewer", !hubList.modules.some((m) => m.id === "qwen"), `modules seen: ${hubList.modules.map((m) => m.id).join(", ") || "none"}`);
         const viewer = await phone(QWEN_FWD, "/", { Cookie: `stykker_device=${device}` });
-        check("5 phone viewer on 8091 -> 403", viewer.status === 403, `status ${viewer.status}: ${viewer.body.slice(0, 90)}`);
-
-        // 7 (vom Handy): fremde Origin mit gültigem Gerät, auch als WebSocket -> 403
-        const foreignPhone = await phone(QWEN_FWD, "/capabilities", { Cookie: `stykker_device=${device}`, Origin: "http://evil.example" });
-        const foreignPhoneWs = await wsOpen({ host: LAN, port: QWEN_FWD, path: "/acp", headers: { Cookie: `stykker_device=${device}`, Origin: "http://evil.example", "User-Agent": PHONE_UA } });
-        check("7 phone with foreign Origin on 8091 -> 403", foreignPhone.status === 403, `status ${foreignPhone.status}`);
-        check("7 phone with foreign Origin on 8091 as WebSocket -> 403", foreignPhoneWs.status === 403, `status ${foreignPhoneWs.status}`);
-
-        // 6: am PC Rolle admin für qwen setzen (in der Oberfläche), dann lädt Qwen am Handy
+        check("11 phone viewer on 8091 -> 403", viewer.status === 403, `status ${viewer.status}`);
         const pcPage = await browser.newPage({ viewport: { width: 1200, height: 900 } });
         try {
             await pcPage.goto(`http://127.0.0.1:${HUD}/hub`, { waitUntil: "load" });
@@ -494,51 +523,67 @@ try {
         } finally {
             await pcPage.close();
         }
-        const hubAfter = JSON.parse((await phone(HUD, "/api/hub", { Cookie: `stykker_device=${device}` })).body);
-        check("6 after admin for qwen, /api/hub names qwen", hubAfter.modules.some((m) => m.id === "qwen" && m.up === true),
-            `modules seen: ${hubAfter.modules.map((m) => m.id).join(", ")}`);
-        const adminPhone = await phone(QWEN_FWD, "/", { Cookie: `stykker_device=${device}` });
-        check("6 phone admin on 8091 -> the Qwen page", adminPhone.status === 200, `status ${adminPhone.status}`);
+        const hubAfter = json(await phone(HUD, "/api/hub", { Cookie: `stykker_device=${device}` }));
+        check("11 after admin for qwen, /api/hub names qwen", hubAfter.modules.some((m) => m.id === "qwen" && m.up === true), `modules seen: ${hubAfter.modules.map((m) => m.id).join(", ")}`);
         const framed = await phoneOpensQwen(device);
-        check("6 Qwen loads in the frame on the phone", framed.url.includes(`:${QWEN_FWD}/`) && framed.elements > 5 && framed.bodyWidth > 0,
+        check("11 Qwen loads in the frame on the phone", framed.url.includes(`:${QWEN_FWD}/`) && framed.elements > 5 && framed.bodyWidth > 0,
             `${framed.elements} elements, body ${framed.bodyWidth} px wide, ${framed.bodyChars} text chars, ${framed.htmlChars} html chars, ${framed.ready}`);
+    } else {
+        check("11 a LAN address exists for the phone checks", false, "none");
     }
+
+    // 12: der Daemon geht aus, der Eintrag bleibt: 503 mit dem Text, /api/hub meldet up: false. Der Strom-Dienst geht weiter.
+    const killed = await killDaemon(daemonPid);
+    check("12 the test daemon is killed by its own pid", killed.gone, `taskkill: ${killed.sent}`);
+    const down = await tryHttp({ port: QWEN_FWD, path: "/" });
+    check("12 daemon gone -> 503 with the not-running text", down.status === 503 && down.body.includes(QWEN_MESSAGE), `status ${down.status}`);
+    const hubDown = json(await local(HUD, "/api/hub"));
+    check("12 daemon gone -> /api/hub says up: false for qwen", hubDown.modules.some((m) => m.id === "qwen" && m.up === false), "");
+    check("12 the stream service still forwards", (await tryHttp({ port: STREAM_FWD, path: "/probe" })).status === 200, "");
+
+    // 13: entfernen: der Eintrag geht aus der Datei, der Weg antwortet bis zum Neustart mit 503, danach ist der Port zu
+    const removed = await local(HUD, "/api/hub/services/qwen", { Origin: `http://127.0.0.1:${HUD}` }, "DELETE");
+    check("13 removing the service gives 200 and names the device to remove in Qwen", removed.status === 200 && json(removed).message?.includes("Remove the device"), `status ${removed.status}`);
+    check("13 the entry is gone from stykker.json, the stream service stays", !readConfig().modules.some((m) => m.id === "qwen") && readConfig().modules.some((m) => m.id === "stream"), "");
+    const gone503 = await tryHttp({ port: QWEN_FWD, path: "/" });
+    check("13 until the restart the port answers 503 (the entry is gone)", gone503.status === 503 && gone503.body.includes(QWEN_MESSAGE), `status ${gone503.status}`);
+    const removedAgain = await local(HUD, "/api/hub/services/qwen", { Origin: `http://127.0.0.1:${HUD}` }, "DELETE");
+    check("13 removing it again gives 404", removedAgain.status === 404, `status ${removedAgain.status}`);
     const stop2 = await stopHud();
-    check("the second run ends on taskkill without /F, not forced", stop2.gone && !stop2.forced, `taskkill: ${stop2.sent}, after ${stop2.seconds} s, forced: ${stop2.forced}`);
-    check("the daemon of the run keeps running after the hub ends", await alive(d3.pid), `pid ${d3.pid}`);
-    await killDaemon(d3.pid);
-
-    // Teil 3: ohne tokenFile und mit einer URL statt target: kein Port, /hub wie vorher
-    const plainFile = join(tmp, "plain.json");
-    writeFileSync(plainFile, JSON.stringify({ modules: [{ id: "qwen", name: "Qwen Code", external: true, url: `http://127.0.0.1:${QWEN_FWD}/` }] }));
-    await startHud(plainFile);
-    check("12 hub runs with the old config", await hubUp(), "");
-    const closed = await tryHttp({ port: QWEN_FWD, path: "/" });
-    check("12 no extra port is open (8091 refuses)", closed.status === 0, closed.error ?? `status ${closed.status}`);
-    const hubPage = await local(HUD, "/hub");
-    check("12 /hub answers as before", hubPage.status === 200, `status ${hubPage.status}`);
-    const plainList = JSON.parse((await local(HUD, "/api/hub")).body);
-    check("12 external url is listed as before", plainList.modules.some((m) => m.id === "qwen" && m.url === `http://127.0.0.1:${QWEN_FWD}/`), "");
+    check("13 the hub ends on taskkill without /F, not forced", stop2.gone && !stop2.forced, `taskkill: ${stop2.sent}, after ${stop2.seconds} s, forced: ${stop2.forced}`);
+    await startHud();
+    check("13 after the restart port 8091 is closed", (await hubUp()) && (await tryHttp({ port: QWEN_FWD, path: "/" })).status === 0, "");
     await stopHud();
 
-    // Teil 4: ein Ziel auf einem fremden Rechner wird abgelehnt: kein Port, der Dienst als nicht erreichbar gelistet
+    // 14: eine Datei mit fremdem Ziel von Hand: kein Port, der Dienst als nicht laufend gelistet
     const foreignFile = join(tmp, "foreign-target.json");
-    writeFileSync(foreignFile, JSON.stringify(config(tokenFile, "http://192.0.2.10:16000"), null, 2));
+    writeFileSync(foreignFile, JSON.stringify({ modules: [{ id: "qwen", name: "Qwen Code", external: true, port: 8093, target: "http://192.0.2.10:16000", token: "placeholder-token" }] }, null, 2));
     await startHud(foreignFile);
-    check("4 hub runs with a target on another machine", await hubUp(), "");
-    const refusedPort = await tryHttp({ port: QWEN_FWD, path: "/" });
-    check("4 target on another machine -> no forwarding port (8091 refuses)", refusedPort.status === 0, refusedPort.error ?? `status ${refusedPort.status}`);
-    const refusedList = JSON.parse((await local(HUD, "/api/hub")).body);
-    check("4 the entry is listed as not running", refusedList.modules.some((m) => m.id === "qwen" && m.up === false), "");
+    check("14 hub runs with a target on another machine", await hubUp(), "");
+    check("14 target on another machine -> no forwarding port (8093 refuses)", (await tryHttp({ port: 8093, path: "/" })).status === 0, "");
+    const refusedList = json(await local(HUD, "/api/hub"));
+    check("14 the entry is listed as not running", refusedList.modules.some((m) => m.id === "qwen" && m.up === false), "");
     await stopHud();
 
-    // Teil 5: ohne stykker.json die Vorgabe
-    await startHud(join(tmp, "missing", "stykker.json"));
-    check("12 without any stykker.json the defaults are listed", await hubUp(), "");
-    const defaults = JSON.parse((await local(HUD, "/api/hub")).body);
-    check("12 defaults: monitor, sys, llm", defaults.modules.map((m) => m.id).join(",") === "monitor,sys,llm",
-        defaults.modules.map((m) => m.id).join(","));
+    // 15: eine kaputte Datei wird nicht überschrieben
+    writeFileSync(configFile, "{ broken");
+    await startHud();
+    check("15 hub runs with a broken stykker.json (defaults)", await hubUp(), "");
+    const brokenAdd = await local(HUD, "/api/hub/services", { Origin: `http://127.0.0.1:${HUD}` }, "POST",
+        { name: "Qwen Code", id: "qwen", port: QWEN_FWD, url: "http://192.0.2.10:16000/#token=placeholder" });
+    check("15 a broken stykker.json is not overwritten", brokenAdd.status === 400 && configText() === "{ broken", `status ${brokenAdd.status}`);
     await stopHud();
+    writeConfig(streamOnly());
+
+    // 16: ohne stykker.json die Vorgabe
+    await startHud(join(tmp, "missing", "stykker.json"));
+    check("16 without any stykker.json the defaults are listed", await hubUp(), "");
+    const defaults = json(await local(HUD, "/api/hub"));
+    check("16 defaults: monitor, sys, llm", defaults.modules.map((m) => m.id).join(",") === "monitor,sys,llm", defaults.modules.map((m) => m.id).join(","));
+    await stopHud();
+} catch (error) {
+    // Ein unerwarteter Fehler im Ablauf: er gilt als nicht bestanden und wird mit seiner Art gemeldet, nie mit Inhalten
+    check("the run stopped early", false, `${error.code || error.name || "error"}: ${String(error.message).replace(/\S+@\S+|[0-9a-f]{32,}|[A-Za-z0-9_-]{40,}/g, "<hidden>")}`);
 } finally {
     // Aufräumen auch nach einem Fehler: nur die Prozesse, die diese Probe gestartet hat, je über ihre PID
     if (hud) await stopHud().catch(() => { });
@@ -558,7 +603,7 @@ if (failed.length) {
     process.exitCode = 1;
 }
 
-// Der erste freie Port der Liste (Auftrag: 17451, sonst 41999)
+// Der erste freie Port der Liste (17451, sonst 41999)
 async function freePort(candidates) {
     for (const port of candidates) {
         const free = await new Promise((resolveFree) => {

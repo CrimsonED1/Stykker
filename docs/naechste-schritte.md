@@ -47,7 +47,8 @@ Die Reihenfolge folgt einem Ziel: **die Zentrale als App auf dem Handy, mit eine
 ### 4. Fremde Dienste in der Zentrale, Qwen Code zuerst (umgesetzt am 2026-10-14)
 
 - **Stand:** umgesetzt im HUD-Server (am 2026-10-14 nach dem Kurswechsel unten). Was gebaut und geprüft ist, steht in [plan-stykkernode.md](plan-stykkernode.md), Abschnitt 10. Geprüft mit `hud/tools/check-proxy.mjs` (59 von 59), nur Qwen Code, nur von dieser Maschine aus; am echten Handy und über die Windows-Firewall nicht geprüft.
-- **Was:** Ein Eintrag in `stykker.json` mit `"external": true`, `port` und `target` bekommt eine eigene Weiterleitung auf einem eigenen Port (YARP 2.3.0). Sie prüft die Stykker-Kopplung und die Rolle `admin` für dieses Modul und nimmt das Einbett-Verbot aus der Antwort. Das Token liest sie aus der Datei `tokenFile` (`none` oder `dpapi-user:<Zusatzwert>`) und setzt es ein. Antwortet das Ziel nicht, oder ist die Token-Datei nicht lesbar, kommt 503 mit einem Text. Der Code dafür stand als Versuch in `spikes/frame-proxy`.
+- **Was:** Ein Eintrag in `stykker.json` mit `"external": true`, `port` und `target` bekommt eine eigene Weiterleitung auf einem eigenen Port (YARP 2.3.0). Sie prüft die Stykker-Kopplung und die Rolle `admin` für dieses Modul und nimmt das Einbett-Verbot aus der Antwort. Das Token steht als `token` im Eintrag und setzt sie ein. Antwortet das Ziel nicht, kommt 503 mit einem Text. Der Code dafür stand als Versuch in `spikes/frame-proxy`.
+- **Kurswechsel 2 (2026-10-14, Local Control):** Die Token-Datei entfällt. Qwen Code wird über Local Control eingetragen: Die Zentrale nimmt die URL, die Qwen unter Local Control zeigt, tauscht ihr Geheimnis einmal gegen ein eigenes Geräte-Token (eine Anfrage an den LAN-Zugang von Local Control) und speichert das Geräte-Token im Eintrag. Ein Eintrag wirkt damit ohne Eingriff in die App. Das Ziel muss dieser PC sein (127.0.0.1, eine Adresse dieses PCs oder ein Name aus `hostNames`). Der Fork bleibt unverändert. Warum kein Eingriff: der Tausch ist eine Anfrage mit Kopfzeilen, kein Verhalten des Browsers. Das Gerät erscheint in Qwens Geräteliste als „Stykker hub“.
 - **Kurswechsel (2026-10-14, später am Tag):** Die Zentrale startet keinen Dienst mehr; `start` wird ignoriert, und `services.dat` mit den Dienst-Tokens entfällt. Die Desktop-App von Qwen Code betreibt den Daemon auf festem Port (17451) und legt ihr Token in `daemon-token.bin` ab (DPAPI, Zusatzwert `qwen-desktop.daemon-token.v1`). Die Zentrale liest dieses Token nur. Ein früherer Entwurf mit einer Verbindungsdatei `daemon.json` ist verworfen; er wäre eine Änderung am Fork nötig gewesen.
 - **Warum:** Qwen Code erscheint unter der Leiste der Zentrale, und das Handy braucht keinen zweiten Code.
 - **Fertig, wenn:** Qwen Code am Handy im Frame läuft, ein nicht gekoppeltes Gerät und ein Zuschauer abgewiesen werden, und ein langer Antwortstrom durchläuft.
@@ -76,13 +77,13 @@ Die Reihenfolge folgt einem Ziel: **die Zentrale als App auf dem Handy, mit eine
 
 - HUD hat keine Tests. Die Endpunkte der Zentrale (`/api/hub…`) wären der erste Kandidat.
 - Ein Service Worker, damit die installierte App ohne Netz wenigstens sagt, dass der PC nicht erreichbar ist.
-- `stykker.json` kennt jetzt `modules` mit `external`, `port`, `target` und `tokenFile`. Knoten und Netzschalter aus Abschnitt 4.2 des Plans fehlen.
+- `stykker.json` kennt jetzt `modules` mit `external`, `port`, `target` und `token` (Klartext, bewusst). Knoten und Netzschalter aus Abschnitt 4.2 des Plans fehlen.
 - Workflows im Wurzelordner mit Pfadfiltern und Tag-Releases je Werkzeug. Die Workflows unter `llm/.github` laufen in der Monorepo nicht.
 - Die Einzel-Repos (`Stykker-CMD`, `-HUD`, `-LLM`) brauchen einen Verweis auf die Monorepo.
 
 ## Offen bei dir
 
 - **Zertifikat** (Schritt 2): Tailscale oder eigene Zertifizierungsstelle.
-- **Eintrag für Qwen Code** in deiner `stykker.json` (Schritt 4): Port und Ziel setzt du so, wie die Desktop-App ihren Daemon betreibt (Einstellung „Daemon port“, 17451). Das Token liest die Zentrale aus der Datei `daemon-token.bin` der App (`tokenFile`); du gibst es nirgends ein.
+- **Qwen Code eintragen** (Schritt 4): In der Qwen-Desktop-App Local Control einschalten (es hält den PC wach, solange es an ist), die URL kopieren, im Bereich „Devices“ der Zentrale unter „Services“ einfügen und die Zentrale neu starten. Das Token holt die Zentrale selbst; es steht im Klartext in `stykker.json`, wie entschieden.
 - **Alte Commits bei GitHub:** Am 13.10. waren Bildschirmfotos der Prozessliste kurz auf `origin/dev`. Der Branch ist bereinigt und inzwischen gelöscht; per Hash können die Commits bei GitHub noch abrufbar sein. Endgültig entfernt sie nur der GitHub-Support.
 - **NanoCut-Historie:** steckt weiter in der Historie der Monorepo. Entfernen geht nur mit Umschreiben und erzwungenem Push.

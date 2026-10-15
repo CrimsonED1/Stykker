@@ -335,7 +335,7 @@ Noch nicht geprüft:
 
 ### Fremde Dienste in der Zentrale: Qwen Code (Schritt 4, 2026-10-14)
 
-Die Zentrale leitet einen fremden Dienst auf einem eigenen Port an sein festes Ziel weiter. Das Token kommt aus einer Datei, die die Desktop-App des Dienstes ablegt. Die Zentrale startet keinen Dienst mehr. Qwen Code ist der erste Fall: seine Desktop-App betreibt den Daemon auf einem festen Port (Einstellung „Daemon port“, 17451). Am Handy braucht es dafür kein Qwen-Token.
+Die Zentrale leitet einen fremden Dienst auf einem eigenen Port an sein festes Ziel weiter. Das Token kommt aus einer Datei, die die Desktop-App des Dienstes ablegt. (Überholt: die Token-Datei ist seit „Local Control in der Zentrale“ entfallen, siehe unten.) Die Zentrale startet keinen Dienst mehr. Qwen Code ist der erste Fall: seine Desktop-App betreibt den Daemon auf einem festen Port (Einstellung „Daemon port“, 17451). Am Handy braucht es dafür kein Qwen-Token.
 
 | Wo | Was |
 |---|---|
@@ -448,3 +448,40 @@ Der Besitzer hat die Ports neu geordnet: alle Werkzeuge unter dem LLM-Proxy (175
 | Suche (UDP) | 17501 | bleibt |
 
 Übergang: StykkerLLM hört auf dem Vorgabeport zusätzlich auf 8078, nur für `/hosts/connect` und `POST /hosts/pair` (installierte StykkerHost-Agenten). Alles andere auf 8078 antwortet mit 410. Der Übergang entfällt in einer späteren Version (CHANGELOG von LLM).
+
+### Local Control in der Zentrale (Auftrag Local Control, 2026-10-15)
+
+Qwen Code kommt über Local Control in die Zentrale. Die Desktop-App schaltet Local Control ein und zeigt eine URL `http(s)://<Adresse>:<Port>/#token=<Geheimnis>`. Der Besitzer kopiert sie und fügt sie unter „Services“ im Bereich „Devices“ ein. Die Zentrale tauscht das Geheimnis einmal gegen ein Geräte-Token und speichert das Geräte-Token im Eintrag, im Klartext in `stykker.json` (Entscheidung des Besitzers). Das Gerät erscheint in Qwens Geräteliste als „Stykker hub“. Am Fork ändert sich nichts.
+
+Der Tausch ist eine Anfrage: `POST {Adresse}/workspace/local-control/devices` mit `Authorization: Bearer <Geheimnis>`, dem User-Agent `Stykker hub` (Qwen nimmt daraus den Namen) und dem Körper `{}` oder `{"previousToken": …}`. Eine bekannte Anfrage bekommt `reused` statt eines neuen Tokens. Der Listener von Local Control nimmt nur seine eigene Adresse als `Host` an; die Zentrale schickt deshalb die Adresse aus der URL unverändert.
+
+| Wo | Was |
+|---|---|
+| `shared/src/Stykker.Shared/Config/HubModules.cs` | Feld `token` statt `tokenFile`; das Ziel prüft `ServiceTargetRule`. `ToString` lässt das Token weg. |
+| `shared/src/Stykker.Shared/Config/ServiceTargetRule.cs` | Die Regel für das Ziel: `127.0.0.1`, `localhost`, eine IPv4-Adresse dieses PCs oder ein Name aus `hostNames`; `http` oder `https` mit Port. Eine Funktion ohne Netzzugriff. |
+| `shared/src/Stykker.Shared/Config/HubConfigFile.cs` | `stykker.json` wird neu gelesen, wenn sich Zeit oder Länge ändern. Ziel und Token wirken ohne Neustart; ein neuer Port braucht einen Neustart. |
+| `shared/src/Stykker.Shared/Config/HubConfigWriter.cs` | Eintragen, Ersetzen, Entfernen und Liste. Atomar geschrieben (Datei daneben, dann Verschieben); andere Einträge und Felder bleiben; Kommentare gehen verloren; eine Datei, die kein JSON ist, wird nicht angefasst. |
+| `shared/src/Stykker.Shared/Web/LocalControlExchange.cs` | URL lesen und den Tausch machen. Keine Meldung enthält Geheimnis, Token oder URL. |
+| `shared/src/Stykker.Pairing/ServiceTokenFile.cs` | entfällt (samt Tests) |
+| `hud/src/StykkerHud.Server/ServiceForwarding.cs` | Ziel und Token je Anfrage aus `stykker.json`; die Erreichbarkeit prüft jetzt das Ziel selbst (vorher der Port der Weiterleitung auf 127.0.0.1). |
+| `hud/src/StykkerHud.Server/Program.cs` | Endpunkte nur lokal und von der eigenen Seite: `GET/POST /api/hub/services`, `POST /api/hub/services/{id}/url`, `DELETE /api/hub/services/{id}`. |
+| `hud/src/StykkerHud.Server/wwwroot/hub.html`, `hub.js`, `hub.css` | Abschnitt „Services“ im Bereich „Devices“. |
+| `hud/tools/check-proxy.mjs` | Startet den Test-Daemon aus dem Fork mit Local Control und prüft den ganzen Weg (71 Fälle, siehe unten). |
+
+Geprüft (2026-10-15):
+
+- **Build:** Shared, HUD, SYS und LLM (Release) ohne Warnungen.
+- **Tests:** `Stykker.Shared.Tests` 283 von 283 (vorher 194), `Stykker.Pairing.Tests` 109 von 109 (vorher 128: die 19 Tests der Token-Datei fallen weg).
+- **`check-proxy`:** 71 von 71 (ein Lauf, Test-Daemon aus dem Fork mit Local Control auf einer Netzadresse dieses PCs). Gezeigt wird: eine fremde Adresse, eine URL ohne Geheimnis und eine doppelte Id werden abgelehnt, ohne dass etwas geschrieben wird; die URL wird eingetragen, das Geräte-Token steht in der Datei, nicht das Geheimnis; das Gerät erscheint in Qwens Geräteliste; über die Weiterleitung kommt das Token mit (200), Seite und WebSocket `/acp` gehen auf, und in keiner Antwort von `/api/hub`, `/access` oder `/services` steht das Token; ein geändertes Token wirkt ohne Neustart (401), ein totes Ziel gibt 503; eine URL ersetzen nutzt das Gerät weiter (kein zweites Gerät); eine URL auf Loopback wird abgelehnt; kein Geheimnis im Log; das Handy mit Gerät (Rolle admin) lädt Qwen, ohne Gerät 401, Zuschauer 403; das Entfernen nimmt den Eintrag aus der Datei, der Port antwortet bis zum Neustart mit 503; der Daemon weg gibt 503; ein fremdes Ziel von Hand öffnet keinen Port; eine kaputte Datei bleibt unverändert; ohne Datei gelten die Vorgaben.
+- **Local Control:** der Tausch wurde vorab am Test-Daemon mit `curl` geprüft (Antwort, Wiederverwendung, Löschen des eigenen Geräts durch das Token).
+
+Dabei entschieden:
+
+- **Tausch statt Geheimnis.** Der Tausch ist eine einzige Anfrage mit Kopfzeilen, kein Verhalten des Browsers. Die Zentrale speichert deshalb das Geräte-Token und nie das Geheimnis. Scheitert der Tausch, wird nichts gespeichert (kein Rückfall auf das Geheimnis).
+- **Ersetzen nutzt das Gerät weiter.** Das gespeicherte Geräte-Token geht als `previousToken` mit; Qwen antwortet dann `reused`.
+- **Entfernen löscht das Gerät in Qwen nicht.** Die Zentrale kennt nur das Token, nicht die Geräte-Id. Das Gerät bleibt in Qwens Liste, bis der Besitzer es dort entfernt.
+
+Noch nicht geprüft:
+
+- **Echtes Handy, Windows-Firewall, Tailscale-Zertifikat (HTTPS).** Die Prüfung läuft über http auf der Netzadresse dieses PCs. HTTPS-Ziele sind nur durch die Regel und Tests abgedeckt.
+- **Die Adresse ändert sich.** Wechselt die Netzadresse dieses PCs, zeigt das Ziel ins Leere, bis der Besitzer die neue URL einfügt (503 bis dahin).
