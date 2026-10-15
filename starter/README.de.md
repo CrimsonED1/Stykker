@@ -32,7 +32,7 @@ starter\src\StykkerStarter.App\bin\Debug\net10.0-windows\StykkerStarter.exe
 | `--gpu` | zeichnet über die Grafikkarte. Ohne ihn zeichnet das Fenster in Software, wie StykkerUI |
 | `--check-every <Sekunden>` | Prüfabstand in Sekunden statt der Einstellung (für Probeläufe) |
 
-Der Datenordner enthält `starter.json` (Programme und Einstellungen, keine Geheimnisse, keine Prozess-IDs), `starter.log` (eine Zeile je Ereignis), die Versionsordner und den Cache der WebView2 in `web-shell\`.
+Der Datenordner enthält `starter.json` (Programme und Einstellungen, keine Geheimnisse, keine Prozess-IDs), die Versionsordner und den Cache der WebView2 in `web-shell\`. Das Protokoll hat eine Zeile je Ereignis und liegt neben der Exe im Ordner `logs\` als `starter-<Rechner>.log`, damit sich Protokolle mehrerer PCs auf einer Freigabe nicht mischen. Ist dieser Ordner nicht beschreibbar, liegt es als `logs\starter.log` im Datenordner.
 
 ## Aufbau
 

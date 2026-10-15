@@ -32,7 +32,7 @@ starter\src\StykkerStarter.App\bin\Debug\net10.0-windows\StykkerStarter.exe
 | `--gpu` | draw through the graphics card. Without it the window draws in software, like StykkerUI |
 | `--check-every <seconds>` | check interval in seconds instead of the setting (for trial runs) |
 
-The data folder holds `starter.json` (programs and settings, no secrets, no process IDs), `starter.log` (one line per event), the version folders, and the WebView2 cache in `web-shell\`.
+The data folder holds `starter.json` (programs and settings, no secrets, no process IDs), the version folders, and the WebView2 cache in `web-shell\`. The log has one line per event and lies in `logs\` next to the exe as `starter-<machine>.log`, so logs of several PCs on one share do not mix. Where that folder is not writable, it is `logs\starter.log` in the data folder.
 
 ## Layout
 
@@ -58,6 +58,6 @@ The data folder holds `starter.json` (programs and settings, no secrets, no proc
 dotnet test starter\StykkerStarter.slnx
 ```
 
-Last run on 2026-10-15: 72 of 72 tests passed, the build shows 0 warnings. A trial run with the test program, with no copy, showed: version 1 starts from the source folder; a changed `.dll` in a subfolder is seen at the second check, and the program is restarted from the same folder (the old process ended after 10 s); a log file and a text file change nothing; with the program stopped, a version 2 in the folder is reported as changed and nothing is started, and a restarted Starter starts version 2; with "ask before updating" on, a change is only offered and the running program is left alone. The trial run with a copy (2026-10-14) showed: copy and check of version 1, start, the next check finding version 2, stop of the old process (ended after 10 s), start of version 2 on a new process ID, removal of version 1, and a second start handing over to the first instance.
+Last run on 2026-10-15: 90 of 90 tests passed, the build shows 0 warnings. A trial run with the test program, with no copy, showed: version 1 starts from the source folder; a changed `.dll` in a subfolder is seen at the second check, and the program is restarted from the same folder (the old process ended after 10 s); a log file and a text file change nothing; with the program stopped, a version 2 in the folder is reported as changed and nothing is started, and a restarted Starter starts version 2; with "ask before updating" on, a change is only offered and the running program is left alone. The trial run with a copy (2026-10-14) showed: copy and check of version 1, start, the next check finding version 2, stop of the old process (ended after 10 s), start of version 2 on a new process ID, removal of version 1, and a second start handing over to the first instance.
 
 License: Apache-2.0 (see [`LICENSE`](LICENSE)).
