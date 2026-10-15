@@ -416,8 +416,18 @@ public static class ServerLauncher
             LogFile = plan.LogFile, ProfileId = plan.ProfileId,
         };
         var p = new Process { StartInfo = psi, EnableRaisingEvents = true };
-        p.OutputDataReceived += (_, e) => ls.Output.Add(e.Data);
-        p.ErrorDataReceived += (_, e) => ls.Output.Add(e.Data);
+        // Ein anderes Programm als llama-server schreibt kein eigenes Log (--log-file): seine Ausgabe kommt in die Logdatei des Plans
+        StreamWriter? own = null;
+        if (!IsLlamaServer(plan.Program, plan.Args))
+            try { own = new StreamWriter(new FileStream(plan.LogFile, FileMode.Append, FileAccess.Write, FileShare.ReadWrite), new UTF8Encoding(false)) { AutoFlush = true }; }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+        void Line(string? text)
+        {
+            ls.Output.Add(text);
+            if (own != null && text != null) lock (own) { try { own.WriteLine(text); } catch (Exception ex) when (ex is IOException or ObjectDisposedException) { } }
+        }
+        p.OutputDataReceived += (_, e) => Line(e.Data);
+        p.ErrorDataReceived += (_, e) => Line(e.Data);
         p.Exited += (_, _) =>
         {
             // Die letzten Ausgabezeilen eintreffen lassen, bevor der Fehlertext zusammengestellt wird
@@ -425,8 +435,11 @@ public static class ServerLauncher
             int? code = null;
             try { code = p.ExitCode; } catch { }
             ls.MarkExited(code);
+            AppLog.Write($"launch {plan.Name}: exited, code {code?.ToString() ?? "?"}");
+            if (own != null) lock (own) { try { own.Dispose(); } catch { } }
         };
         p.Start();
+        AppLog.Write($"launch {plan.Name}: {Path.GetFileName(plan.Program)} started, pid {p.Id}, port {plan.Port}");
         p.BeginOutputReadLine();
         p.BeginErrorReadLine();
         ls.Proc = p;
