@@ -6,7 +6,7 @@ namespace Stykker.Shared.Tests;
 // Dokumentationsnetzen (192.0.2.0/24, example.*), die Regel selbst macht keinen Netzwerkzugriff.
 public class ServiceTargetRuleTests
 {
-    private static readonly string[] ThisPc = ["192.0.2.10", "100.64.0.7"];
+    private static readonly string[] ThisPc = ["192.0.2.10", "192.0.2.11"];
     private static readonly string[] Names = ["pc.example.ts.net"];
 
     [Theory]
@@ -23,7 +23,7 @@ public class ServiceTargetRuleTests
     [Theory]
     [InlineData("http://192.0.2.10:16001", "http://192.0.2.10:16001")]
     [InlineData("https://192.0.2.10:16001/", "https://192.0.2.10:16001")]
-    [InlineData("http://100.64.0.7:16001", "http://100.64.0.7:16001")]
+    [InlineData("http://192.0.2.11:16001", "http://192.0.2.11:16001")]
     public void An_address_of_this_pc_is_allowed(string target, string expected) =>
         Assert.Equal(expected, ServiceTargetRule.Allowed(target, ThisPc, Names));
 
