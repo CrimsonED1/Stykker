@@ -14,6 +14,10 @@ public static partial class Strings
     public const string PromptBusy = "An answer is still coming.";
     public const string PromptNeedsKey = "The server wants an API key (started with --api-key). Enter it in the field above.";
     public const string PromptNoServer = "No server with a loaded model.";
+    // Einträge „Via Stykker-Proxy“ (Cloud-Modelle und das aktuelle Ziel des Proxys)
+    public const string PromptViaGroup = "Via Stykker-Proxy", PromptViaCurrent = "Stykker-Proxy · current target";
+    public const string PromptViaHint = "Sent through the Stykker-Proxy, which adds the provider's key. This page never sees the key.";
+    public const string PromptViaGone = "This model is no longer offered by the proxy. Choose another one.";
     public static string PromptHttpError(int code, string text) => $"HTTP {code}: {text}";
     public static string PromptNotReachable(string why) => $"Server not reachable: {why}";
     // Werkzeuge

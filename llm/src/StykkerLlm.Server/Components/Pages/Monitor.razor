@@ -358,7 +358,7 @@
             <code class="pxp-url" title="@baseUrl · @Strings.ProxyBar(px.Running, px.Port, px.TargetName(), px.BindLan)">@baseUrl.Replace("http://", "")</code>
             <button class="ib quiet" title="@Strings.PxCopy" aria-label="@Strings.PxCopy" @onclick="() => Copy(baseUrl)"><Icon Name="@(_copied ? "r-ok" : "file")" /></button>
         }
-        <button class="ib quiet pxp-gear" title="@Strings.PxSettings" aria-label="@Strings.PxSettings" aria-haspopup="dialog" @onclick="() => ProxyDlg.Open()"><Icon Name="gear" /></button>
+        <button class="ib quiet pxp-gear" title="@Strings.PxSettings" aria-label="@Strings.PxSettings" aria-haspopup="dialog" @onclick="() => ProxyDlg.Open()"><Icon Name="wrench" /></button>
     </div>
     @if (_flash.Length > 0) { <div class="small pxp-flash">@_flash</div> }
 

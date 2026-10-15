@@ -20,6 +20,8 @@ public sealed record ClassifierRequest(byte[] Body, bool Real);
 public sealed class ClassifierTest
 {
     public const string CsvFile = "classifier-test.csv";
+    // Modelle, die der Anbieter mit 404 abgelehnt hat: je Zeile „<Anbieter-URL>|<Modell>“, beim nächsten Lauf übersprungen
+    public const string DeadFile = "classifier-dead.txt";
     // Kopfzeile der CSV (Datenformat, kein Anzeigetext)
     internal const string CsvHeader = "Time,Provider,Model,Status,FirstByteSec,TotalSec,Format ok,Note";
     // Eine Antwort, die nicht in dieser Zeit vollständig kommt, gilt als Zeitüberschreitung (wie bei Claude Code)
@@ -33,7 +35,12 @@ public sealed class ClassifierTest
         "embed", "rerank", "guard", "safety", "reward", "parakeet", "whisper", "tts", "asr", "canary", "riva",
         "flux", "stable-diffusion", "sdxl", "clip", "nv-embed", "bge",
     };
-    private static readonly Dictionary<string, object> CsvGates = new();
+    // Bekannte aktuelle Familien (Teil des Namens, ohne Groß-/Kleinschreibung). Ihre Reihenfolge in der Liste ist die Priorität.
+    private static readonly string[] Families =
+    {
+        "nvidia/", "nemotron", "qwen", "llama-3.3", "llama-4", "mistral", "z-ai/", "glm", "deepseek-v", "gpt-oss", "kimi", "minimax", "gemma-3",
+    };
+    private static readonly Dictionary<string, object> FileGates = new();
 
     private readonly string _url;
     private readonly string[] _models;
@@ -42,6 +49,8 @@ public sealed class ClassifierTest
     private readonly ProviderKeys? _keys;
     private readonly HttpClient _http;
     private readonly string? _csvPath;
+    private readonly string? _deadPath;
+    private readonly bool _retryUnavailable;
     private readonly Func<DateTime> _now;
     private readonly TimeSpan _timeout, _pause, _retryWait;
 
@@ -52,16 +61,21 @@ public sealed class ClassifierTest
     private volatile string _current = "";
     private volatile string _error = "";
 
+    // offered: die beim Anbieter angehakten Modelle (sie laufen zuerst); deadPath: Datei der nicht verfügbaren Modelle;
+    // retryUnavailable: die Liste für diesen Lauf ignorieren („Retry unavailable“)
     public ClassifierTest(string providerUrl, IEnumerable<string> models, ClassifierRequest request, ProviderKeys? keys, HttpClient http,
-        string? csvPath = null, Func<DateTime>? now = null, TimeSpan? timeout = null, TimeSpan? pause = null, TimeSpan? retryWait = null)
+        string? csvPath = null, Func<DateTime>? now = null, TimeSpan? timeout = null, TimeSpan? pause = null, TimeSpan? retryWait = null,
+        IEnumerable<string>? offered = null, string? deadPath = null, bool retryUnavailable = false)
     {
         _url = ProviderKeys.Normalize(providerUrl);
-        _models = models.Where(m => !string.IsNullOrWhiteSpace(m)).Select(m => m.Trim()).Distinct(StringComparer.Ordinal).ToArray();
+        _models = RunOrder(models, offered ?? Array.Empty<string>());
         _request = request.Body;
         _real = request.Real;
         _keys = keys;
         _http = http;
         _csvPath = string.IsNullOrWhiteSpace(csvPath) ? null : csvPath;
+        _deadPath = string.IsNullOrWhiteSpace(deadPath) ? null : deadPath;
+        _retryUnavailable = retryUnavailable;
         _now = now ?? (() => DateTime.Now);
         _timeout = timeout ?? DefaultTimeout;
         _pause = pause ?? DefaultPause;
@@ -81,6 +95,26 @@ public sealed class ClassifierTest
 
     // Die bisherigen Ergebnisse in der Reihenfolge des Laufs (eine Kopie, sicher aus der Oberfläche zu lesen)
     public IReadOnlyList<ClassifierResult> Results { get { lock (_gate) return _results.ToList(); } }
+
+    // Die Reihenfolge des Laufs: (1) die angehakten Modelle des Anbieters, (2) bekannte aktuelle Familien in der Reihenfolge der
+    // Liste, (3) der Rest. Innerhalb einer Gruppe alphabetisch (in Gruppe 2 zuerst nach Familie). Doppelte fallen weg.
+    public static string[] RunOrder(IEnumerable<string> listed, IEnumerable<string> offered)
+    {
+        var chosen = new HashSet<string>(offered.Select(m => (m ?? "").Trim()), StringComparer.Ordinal);
+        return listed.Select(m => (m ?? "").Trim()).Where(m => m.Length > 0).Distinct(StringComparer.Ordinal)
+            .Select(m => (Model: m, Group: chosen.Contains(m) ? 0 : FamilyRank(m) >= 0 ? 1 : 2, Rank: FamilyRank(m)))
+            .OrderBy(x => x.Group).ThenBy(x => x.Group == 1 ? x.Rank : 0).ThenBy(x => x.Model, StringComparer.OrdinalIgnoreCase)
+            .Select(x => x.Model)
+            .ToArray();
+    }
+
+    // Die Stelle der ersten passenden Familie in der Liste, sonst -1
+    private static int FamilyRank(string model)
+    {
+        for (int i = 0; i < Families.Length; i++)
+            if (model.Contains(Families[i], StringComparison.OrdinalIgnoreCase)) return i;
+        return -1;
+    }
 
     // Die Tabelle: brauchbare zuerst (schnellste oben), dann der Rest, übersprungene ganz unten
     public static IReadOnlyList<ClassifierResult> Sorted(IEnumerable<ClassifierResult> rows) =>
@@ -108,6 +142,8 @@ public sealed class ClassifierTest
         {
             var key = _keys?.Get(_url);
             if (string.IsNullOrEmpty(key)) { _error = Strings.ProxyProviderKeyMissingShort; return; }
+            // Was beim letzten Lauf mit 404 abgelehnt wurde, wird übersprungen – außer bei „Retry unavailable“
+            var unavailable = _retryUnavailable ? new HashSet<string>(StringComparer.Ordinal) : DeadModels(_deadPath, _url);
             bool sent = false;
             foreach (var model in _models)
             {
@@ -115,11 +151,15 @@ public sealed class ClassifierTest
                 _current = model;
                 if (SkipWord(model) is { } word)
                     Add(new ClassifierResult(_now(), model, Strings.ClassifierStatusSkipped, null, null, null, Strings.ClassifierNoteSkipped(word)));
+                else if (unavailable.Contains(model))
+                    Add(new ClassifierResult(_now(), model, Strings.ClassifierStatusSkipped, null, null, null, Strings.ClassifierNoteUnavailableLast));
                 else
                 {
                     if (sent) await Task.Delay(_pause, ct).ConfigureAwait(false);
                     sent = true;
-                    Add(await MeasureAsync(model, key, ct).ConfigureAwait(false));
+                    var row = await MeasureAsync(model, key, ct).ConfigureAwait(false);
+                    Add(row);
+                    if (IsGone(row)) MarkDead(_deadPath, _url, model);
                 }
                 _done++;
             }
@@ -232,6 +272,58 @@ public sealed class ClassifierTest
     // Der Schlüssel darf in keiner Notiz und keiner CSV-Zeile stehen, auch wenn ein Anbieter ihn zurückschreibt
     internal static string Redact(string s, string key) => string.IsNullOrEmpty(key) ? s : s.Replace(key, "***", StringComparison.Ordinal);
 
+    // Der Anbieter kennt das Modell nicht: 404, auch mit „Function … Not found for account“ oder „404 page not found“ als Text
+    internal static bool IsGone(ClassifierResult r) =>
+        r.Status == "404" || (r.Status.Length == 3 && r.Status[0] != '2'
+            && (r.Note.Contains("Not found for account", StringComparison.OrdinalIgnoreCase) || r.Note.Contains("404 page not found", StringComparison.OrdinalIgnoreCase)));
+
+    // Die Modelle eines Anbieters aus der Datei der nicht verfügbaren Modelle (fehlende oder unlesbare Datei = keine)
+    internal static HashSet<string> DeadModels(string? path, string url)
+    {
+        var set = new HashSet<string>(StringComparer.Ordinal);
+        if (path == null) return set;
+        string[] lines;
+        try { lines = File.Exists(path) ? File.ReadAllLines(path) : Array.Empty<string>(); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { return set; }
+        foreach (var raw in lines)
+        {
+            var line = raw.Trim();
+            int bar = line.IndexOf('|');
+            if (bar <= 0 || !line[..bar].Equals(url, StringComparison.OrdinalIgnoreCase)) continue;
+            var model = line[(bar + 1)..].Trim();
+            if (model.Length > 0) set.Add(model);
+        }
+        return set;
+    }
+
+    // Ein Modell in die Datei eintragen (je Anbieter und Modell nur einmal)
+    internal static void MarkDead(string? path, string url, string model)
+    {
+        if (path == null) return;
+        var line = url + "|" + model;
+        lock (GateFor(path))
+        {
+            try
+            {
+                if (File.Exists(path) && File.ReadAllLines(path).Any(l => l.Trim().Equals(line, StringComparison.OrdinalIgnoreCase))) return;
+                Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+                File.AppendAllText(path, line + "\r\n", new UTF8Encoding(false));
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { /* gesperrt: dieser Eintrag fällt weg */ }
+        }
+    }
+
+    // Eine Sperre je Datei, damit zwei Läufe nicht durcheinander schreiben
+    private static object GateFor(string path)
+    {
+        var name = Path.GetFullPath(path);
+        lock (FileGates)
+        {
+            if (!FileGates.TryGetValue(name, out var found)) FileGates[name] = found = new object();
+            return found;
+        }
+    }
+
     private void Add(ClassifierResult r)
     {
         lock (_gate) _results.Add(r);
@@ -247,15 +339,7 @@ public sealed class ClassifierTest
             r.TotalSec is double t ? t.ToString("0.00", CultureInfo.InvariantCulture) : "",
             r.FormatOk is bool ok ? (ok ? "yes" : "no") : "",
             Csv(r.Note));
-        // Eine Sperre je Datei, damit zwei Läufe nicht durcheinander schreiben
-        object gate;
-        lock (CsvGates)
-        {
-            var name = Path.GetFullPath(_csvPath);
-            if (!CsvGates.TryGetValue(name, out var found)) CsvGates[name] = found = new object();
-            gate = found;
-        }
-        lock (gate)
+        lock (GateFor(_csvPath))
         {
             try
             {

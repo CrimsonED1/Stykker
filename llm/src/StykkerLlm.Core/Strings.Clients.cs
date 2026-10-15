@@ -28,7 +28,7 @@ public static partial class Strings
         ClassifierTestRealRequest = "Test request: your last real check – it contains your conversation and is sent to the provider.",
         ClassifierTestExampleRequest = "Test request: a built-in example without your conversation. It is sent to the provider.",
         ClassifierTestNoProvider = "Add a cloud provider with its key first.",
-        ClassifierTestNotOffered = "Choose this model under Models first.",
+        ClassifierTestRetry = "Retry unavailable",
         ClassifierTestNoKey = "No API key is stored for this provider. Nothing was sent.",
         ClassifierTestNoModels = "The provider has not listed any model yet. Try again in a few seconds.",
         ClassifierTestRunning = "A classifier test is already running.",
@@ -43,6 +43,7 @@ public static partial class Strings
 
     public static string ClassifierTestProgress(int done, int total) => $"Done {done} of {total} models";
     public static string ClassifierNoteSkipped(string word) => $"Not asked: the name contains '{word}' (not a chat model).";
+    public const string ClassifierNoteUnavailableLast = "Not asked: the provider answered 404 last time. Tick \"Retry unavailable\" to ask again.";
     public static string ClassifierNoteFormat(string reply) => $"The answer does not start with <block>: {reply}";
     public static string ClassifierNoteTimeout(string seconds) => $"No complete answer within {seconds} seconds.";
     public static string ClassifierNoteRetried(string seconds) => $"Rate limited (HTTP 429): asked once more after {seconds} seconds.";
