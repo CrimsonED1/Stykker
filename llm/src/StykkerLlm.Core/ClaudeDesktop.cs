@@ -146,7 +146,7 @@ public sealed class ClaudeDesktop
             // Das bisher angewendete Ziel merken (für das Zurückschalten). Gilt unser Eintrag schon, bleibt das gemerkte Ziel.
             string? previous = prev is { Enabled: true } && prev.PreviousAppliedId != null
                 ? prev.PreviousAppliedId
-                : meta["appliedId"]?.GetValue<string>() is { Length: > 0 } cur && cur != id && !IsLocalGateway(cur) ? cur : prev?.PreviousAppliedId;
+                : meta["appliedId"]?.GetValue<string>() is { Length: > 0 } cur && cur != id && IsNormal(cur) ? cur : prev?.PreviousAppliedId;
             meta["appliedId"] = id;
             AtomicFile.WriteAllText(MetaPath, meta.ToJsonString(Pretty));
             WriteState(new JsonObject { ["enabled"] = true, ["entryId"] = id, ["previousAppliedId"] = previous, ["createdMeta"] = createdMeta });
@@ -176,12 +176,13 @@ public sealed class ClaudeDesktop
                 var ours = new HashSet<string>(entries.Where(e => IsOurs(e, st)).Select(IdOf));
                 for (int i = entries.Count - 1; i >= 0; i--) if (ours.Contains(IdOf(entries[i]))) entries.RemoveAt(i);
                 string applied = meta["appliedId"]?.GetValue<string>() ?? "";
-                // Angewendet ist unser Eintrag, ein anderes Gateway auf diesem Rechner (von Hand angelegt, z. B. „Strata“)
-                // oder nichts: zurück auf das Ziel von vorher, sonst auf Anthropic. Fremde lokale Einträge bleiben in der
-                // Bibliothek, sie werden nur nicht mehr angewendet.
-                if (applied.Length == 0 || ours.Contains(applied) || IsLocalGateway(applied))
+                // Was die App umlenkt, wird nicht mehr angewendet: unser Eintrag, ein von Hand angelegtes Gateway („Strata“),
+                // jeder andere Anbieter als Anthropic. Zurück geht es auf den Anthropic-Eintrag von vorher, wenn es einen gab,
+                // sonst auf gar keinen Eintrag (die App meldet sich dann wie gewohnt bei Anthropic an). Fremde Einträge bleiben
+                // in der Bibliothek, sie werden nur nicht mehr angewendet.
+                if (ours.Contains(applied) || !IsNormal(applied))
                 {
-                    if (st?.PreviousAppliedId is { Length: > 0 } p && HasEntry(entries, p) && !IsLocalGateway(p)) meta["appliedId"] = p;
+                    if (st?.PreviousAppliedId is { Length: > 0 } p && HasEntry(entries, p) && IsNormal(p)) meta["appliedId"] = p;
                     else meta.Remove("appliedId");
                 }
                 foreach (var id in ours)
@@ -206,14 +207,18 @@ public sealed class ClaudeDesktop
     private static bool IsOurs(JsonNode? entry, State? st) =>
         st is { EntryId.Length: > 0 } ? IdOf(entry) == st.EntryId || NameOf(entry) == EntryName : NameOf(entry) == EntryName;
 
-    // Ein Eintrag, der Claude an ein Gateway auf diesem Rechner schickt (127.0.0.1, localhost, ::1)
-    private bool IsLocalGateway(string id)
+    // „Normal“ heißt: die App spricht selbst mit Anthropic. Das ist sie, wenn kein Eintrag angewendet ist, oder wenn der
+    // angewendete Eintrag als Anbieter Anthropic nennt. Alles andere (ein Gateway auf diesem Rechner wie Stykker oder
+    // ein von Hand angelegtes „Strata“, ein fremdes Gateway, Bedrock, Vertex …) lenkt die App um. Ein angewendeter
+    // Eintrag ohne lesbare Datei zählt als umgelenkt: dann hilft nur, ihn nicht mehr anzuwenden.
+    private bool IsNormal(string id)
     {
+        if (id.Length == 0) return true;
         try
         {
-            if (id.Length == 0 || !File.Exists(EntryPath(id)) || JsonNode.Parse(File.ReadAllText(EntryPath(id))) is not JsonObject o) return false;
-            if ((string?)o["inferenceProvider"] != "gateway") return false;
-            return Uri.TryCreate((string?)o["inferenceGatewayBaseUrl"], UriKind.Absolute, out var u) && u.IsLoopback;
+            if (!File.Exists(EntryPath(id)) || JsonNode.Parse(File.ReadAllText(EntryPath(id))) is not JsonObject o) return false;
+            var provider = (string?)o["inferenceProvider"] ?? "";
+            return provider.Equals("anthropic", StringComparison.OrdinalIgnoreCase) || provider.Equals("firstParty", StringComparison.OrdinalIgnoreCase);
         }
         catch { return false; }
     }
@@ -288,8 +293,8 @@ public sealed class ClaudeDesktop
         if (applied.Length == 0) return false;
         var st = ReadState();
         if (st is { Enabled: true } && st.EntryId.Length > 0 && applied == st.EntryId) return true;
-        // Ohne Merkdatei: ein Eintrag mit unserem Namen, oder ein anderes Gateway auf diesem Rechner (von Hand angelegt)
-        return Entries(meta).Any(e => IdOf(e) == applied && NameOf(e) == EntryName) || IsLocalGateway(applied);
+        // Sonst: alles, was die App von Anthropic weglenkt, zählt als eingeschaltet (auch von Hand angelegt)
+        return !IsNormal(applied);
     }
 
     private JsonObject ReadMeta()

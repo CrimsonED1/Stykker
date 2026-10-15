@@ -44,7 +44,7 @@ public static partial class Strings
     // Claude Desktop als Client des Proxys (3P-Konfiguration der App, Schalter neben dem Proxy)
     public const string ClaudeTitle = "Claude Desktop via the Stykker-Proxy";
     public const string ClaudeOffHint = "Point Claude Desktop at the Stykker-Proxy. The app reads its configuration at start, so restart it afterwards.";
-    public const string ClaudeOnHint = "Claude Desktop answers through the Stykker-Proxy – click to switch back to Anthropic.";
+    public const string ClaudeOnHint = "Claude Desktop does not talk to Anthropic directly (the Stykker-Proxy or another gateway) – click to switch back to Anthropic.";
     public const string ClaudeUnsupported = "Only available on Windows with Claude Desktop installed";
     public static string ClaudeEnabled(string url) => $"Claude Desktop → {url}";
     public const string ClaudeDisabled = "Claude Desktop back on Anthropic";

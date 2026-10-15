@@ -185,6 +185,43 @@ public class ClaudeDesktopTests
     }
 
     [TestMethod]
+    public void Any_provider_other_than_Anthropic_counts_as_on_and_switching_off_goes_back_to_Anthropic()
+    {
+        var data = TempDir();
+        var layer = TempDir();
+        Directory.CreateDirectory(LibDir(layer));
+        var remote = Guid.NewGuid().ToString();
+        File.WriteAllText(Path.Combine(LibDir(layer), remote + ".json"),
+            "{\"inferenceProvider\":\"gateway\",\"inferenceGatewayBaseUrl\":\"https://gateway.example/v1/messages\"}");
+        File.WriteAllText(Path.Combine(LibDir(layer), "_meta.json"),
+            "{\"entries\":[{\"id\":\"" + remote + "\",\"name\":\"Remote\"}],\"appliedId\":\"" + remote + "\"}");
+
+        var cd = new ClaudeDesktop(new FakePlatform(), () => 17500, data, layer);
+        Assert.IsTrue(cd.Enabled, "ein fremdes Gateway lenkt die App von Anthropic weg");
+        cd.Disable(out var error);
+
+        Assert.IsNull(error, error);
+        Assert.IsFalse(cd.Enabled);
+        var meta = JsonNode.Parse(File.ReadAllText(Path.Combine(LibDir(layer), "_meta.json")))!;
+        Assert.IsNull(meta["appliedId"]);
+        Assert.IsTrue(File.Exists(Path.Combine(LibDir(layer), remote + ".json")), "der Eintrag bleibt in der Bibliothek");
+    }
+
+    [TestMethod]
+    public void An_applied_Anthropic_entry_is_normal()
+    {
+        var data = TempDir();
+        var layer = TempDir();
+        Directory.CreateDirectory(LibDir(layer));
+        var normal = Guid.NewGuid().ToString();
+        File.WriteAllText(Path.Combine(LibDir(layer), normal + ".json"), "{\"inferenceProvider\":\"anthropic\"}");
+        File.WriteAllText(Path.Combine(LibDir(layer), "_meta.json"),
+            "{\"entries\":[{\"id\":\"" + normal + "\",\"name\":\"Default\"}],\"appliedId\":\"" + normal + "\"}");
+
+        Assert.IsFalse(new ClaudeDesktop(new FakePlatform(), () => 17500, data, layer).Enabled);
+    }
+
+    [TestMethod]
     public void Running_CountsOnlyAppProcesses()
     {
         var plat = new FakePlatform();
