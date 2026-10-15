@@ -12,7 +12,7 @@ public static class HostServiceFiles
 
     // ProgramData\StykkerLLM\host (der Dienst); der Tray-Host nutzt weiter den Ordner des Benutzers
     public static AppPaths ServicePaths() =>
-        new(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "StykkerLLM", "host"));
+        AppPaths.InAppFolder(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "StykkerLLM", "host"));
 
     public sealed record Request(string Server = "", string Code = "", bool Unpair = false);
     public sealed record Result(bool Ok, string Message);

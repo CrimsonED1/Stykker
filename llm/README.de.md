@@ -161,14 +161,16 @@ Eigene Reihen: JSON-Dateien unter `eval\` im Datenordner.
 ## Protokolle und Fehlerberichte
 
 Jedes Programm schreibt sein eigenes Protokoll (`StykkerLLM-Server.log`, `StykkerUI.log`, `stykker.log`) in `logs` neben dem
-Programm, oder in den Datenordner, wenn der Programmordner schreibgeschützt ist. **☰ → Report a bug** (oder
+Programm, oder in den Datenordner, wenn der Programmordner schreibgeschützt ist. Das Anfrageprotokoll (`requests.csv`), die
+Server-Logs und die Aufnahmen liegen im selben `logs`-Ordner; Einstellungen, Bibliothek und die übrigen Benutzerdaten bleiben im
+Datenordner. Mit `--data-dir` bleibt alles in diesem Ordner. Die Einstellungsseite zeigt beide Ordner unter *About StykkerLLM*. **☰ → Report a bug** (oder
 `stykker bugreport <text>`) packt deine Beschreibung, die Protokolle, Einstellungen und den aktuellen Stand in ein Zip –
 Schlüssel, Zugangscode, Geräte und Anbieter-Schlüssel sind nie dabei; API-Schlüssel, Tokens, dein Windows-Benutzername und der
 PC-Name werden geschwärzt – und öffnet ein vorausgefülltes GitHub-Issue. Hochgeladen wird nichts: Das Zip hängst du selbst an.
 
 ## Daten und Datenschutz
 
-- Alles liegt in `%APPDATA%\StykkerLLM\` (Einstellungen, Profile, Verlauf, Aufnahmen, Logs, Ergebnisse). Nichts verlässt den
+- Einstellungen, Profile, Verlauf und Ergebnisse liegen in `%APPDATA%\StykkerLLM\`; Logs, Anfrageprotokoll und Aufnahmen in `logs` neben dem Programm. Nichts verlässt den
   Rechner, außer Anfragen an einen Cloud-Anbieter, den du selbst einträgst.
 - API-Schlüssel gestarteter Server (`--api-key`, `--hf-token`, …) werden nie gespeichert, angezeigt oder kopiert.
 - Zugangscode, Geräte und Serverschlüssel sind an dein Windows-Konto gebunden (DPAPI). Von Geräte-Cookies wird nur ein Hash

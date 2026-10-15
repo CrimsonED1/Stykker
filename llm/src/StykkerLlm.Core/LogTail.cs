@@ -1,26 +1,21 @@
 namespace StykkerLlm.Core;
 
 // Ein Serverlog ansehen, ohne es zu öffnen: „Open log“ beim anhaltenden Hinweis und auf der Detailseite (Web, Telefon).
-// Gelesen werden nur Dateien im Datenordner – ein Gerät im Netz darf keine beliebigen Pfade über den Server ziehen.
+// Gelesen werden nur Dateien im Datenordner oder im Protokollordner – ein Gerät im Netz darf keine beliebigen Pfade über den Server ziehen.
 public static class LogTail
 {
     public const int MaxBytes = 256 * 1024;
     public const int MaxLines = 200;
 
-    // Liegt die Datei im Datenordner? ( derselbe Vergleich wie beim Löschen von Aufnahmen)
+    // Liegt die Datei im Datenordner oder im Protokollordner? (derselbe Vergleich wie beim Löschen von Aufnahmen)
     public static bool Inside(AppPaths paths, string? file)
     {
         if (string.IsNullOrWhiteSpace(file)) return false;
-        try
-        {
-            var root = Path.GetFullPath(paths.Root).TrimEnd('\\', '/') + Path.DirectorySeparatorChar;
-            var full = Path.GetFullPath(file);
-            return full.StartsWith(root, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
-        }
+        try { return paths.IsInDataOrLogs(Path.GetFullPath(file)); }
         catch { return false; }   // kaputter Pfad, Laufwerk weg: lieber nichts anzeigen
     }
 
-    // Die letzten Zeilen der Logdatei; null = nicht im Datenordner, nicht vorhanden oder nicht lesbar
+    // Die letzten Zeilen der Logdatei; null = nicht im Datenordner/Protokollordner, nicht vorhanden oder nicht lesbar
     public static string? Read(AppPaths paths, string? file, int maxLines = MaxLines)
     {
         if (!Inside(paths, file)) return null;

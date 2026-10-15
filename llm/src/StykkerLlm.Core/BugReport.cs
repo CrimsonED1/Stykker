@@ -31,7 +31,7 @@ public static partial class BugReport
             foreach (var logDir in AppLog.Dirs(paths, appDir).Distinct(StringComparer.OrdinalIgnoreCase))
             {
                 if (!Directory.Exists(logDir)) continue;
-                var tag = string.Equals(Path.GetFullPath(logDir).TrimEnd('\\', '/'), Path.GetFullPath(paths.LogsDir).TrimEnd('\\', '/'),
+                var tag = string.Equals(Path.GetFullPath(logDir).TrimEnd('\\', '/'), Path.GetFullPath(Path.Combine(paths.Root, "logs")).TrimEnd('\\', '/'),
                     StringComparison.OrdinalIgnoreCase) ? "data" : "app";
                 foreach (var file in Directory.GetFiles(logDir, "*.log").OrderBy(f => f, StringComparer.OrdinalIgnoreCase))
                 {
