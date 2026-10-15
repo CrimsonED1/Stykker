@@ -2,6 +2,10 @@
 
 The process list of this machine: every process with its CPU share, memory, GPU share and graphics memory, and three things you can do to a process: open its file location, change its priority, end it. Part of the Stykker suite. It was split out of [StykkerHUD](../hud/README.md), which keeps the system monitor. The interface uses the same shared design system as StykkerHUD.
 
+## The overview
+
+`/overview` is the page to look at first: processor and memory of the whole machine (total load, one column per core, memory and commit, the largest programs by memory and by processor), the graphics card (load of its busiest engine, each engine, graphics memory in use, the programs with the most graphics memory) and the drives in short form, with a link to the Disks page. Each block shows its history since the page was opened. A value Windows does not report shows `–`. Nothing is measured while the page is closed. The total graphics memory is not shown, because the Windows counters do not report it; the GPU load is the busiest engine, not a sum.
+
 ## What it shows
 
 - **One row per program.** Processes with the same name **and** the same file become one row `×N`, with the summed CPU, memory, GPU, graphics memory and threads. The chevron on the left opens the individual processes, each with its own PID and its own menu. Two programs with the same name but different files stay apart.
@@ -49,8 +53,9 @@ GPU values per process come from the Windows GPU counters. Where those counters 
 | Path | What it is |
 |---|---|
 | `src/StykkerSys.Core/` | The model (`Samples.cs`), the actions and their refusals (`ProcessActions.cs`), the sampler (`ProcessSampler`: CPU share from time differences, memory every third tick, GPU attached per process) and `SysService` (the viewer loop). Knows no Windows API. |
-| `src/StykkerSys.Platform.Windows/` | `WindowsProcessProbe`: GPU per process through the shared counters, file paths through `OpenProcess` and `QueryFullProcessImageNameW`. `Shell.cs` opens Explorer with the file selected. |
-| `src/StykkerSys.Server/` | Blazor Server on `http://127.0.0.1:17402`, on all addresses only when the network switch is on at start (see [Who may do what](#who-may-do-what)): the page (`Processes.razor`, `sys.js`), `/api/snapshot`, the three action routes under `/api/process/`, and the tray icon. |
+| `src/StykkerSys.Core/Overview.cs` | The overview: its model, `OverviewSampler` (processor and memory, the GPU, the largest programs by memory and processor), the pure arithmetic in `OverviewMath` and `OverviewService` (the viewer loop). |
+| `src/StykkerSys.Platform.Windows/` | `WindowsProcessProbe`: GPU per process through the shared counters, file paths through `OpenProcess` and `QueryFullProcessImageNameW`. `WindowsHardwareProbe`: processor, memory and GPU for the overview, plus the graphics memory of all adapters. `Shell.cs` opens Explorer with the file selected. |
+| `src/StykkerSys.Server/` | Blazor Server on `http://127.0.0.1:17402`, on all addresses only when the network switch is on at start (see [Who may do what](#who-may-do-what)): the pages (`Processes.razor`, `sys.js`; `Overview.razor`, `overview.js`; `Disks.razor`, `disks.js`), `/api/snapshot`, `/api/overview`, `/api/disks`, the three action routes under `/api/process/`, and the tray icon. |
 | `src/StykkerSys.UI/` | `StykkerSYS.exe`, the Photino window around those pages. Starts the server if none runs. |
 | `tests/StykkerSys.Tests/` | xUnit tests: state thresholds, refusals, end and priority on a sacrificial `ping`, the sampler with a fake probe, the Windows probe. |
 | `tools/check-actions.mjs` | End-to-end test of the actions on a sacrificial process: changes its priority, drives the row menu, checks that asking protects it, that cancelling ends nothing and that confirming ends it, plus the refusals (cross-site, foreign origin, non-JSON, system PID). |
@@ -86,7 +91,7 @@ Environment variable for the design system: `STYKKERSYS_DESIGN_SYSTEM`.
 ## Verifying
 
 ```powershell
-# unit tests (21)
+# unit tests (38)
 dotnet test tests\StykkerSys.Tests\StykkerSys.Tests.csproj
 
 # with the server running on port 17402 (needs Google Chrome and `npm install` once in tools/)
@@ -95,7 +100,7 @@ node tools\check-groups.mjs --port 17402    # 16 checks
 node tools\shot.mjs --port 17402 --out docs\screenshots --name sys
 ```
 
-Last run on 2026-10-09: 21/21 unit tests, 16/16 action checks, 16/16 grouping checks.
+Last run on 2026-10-15: 38/38 unit tests (the overview was added then). The action and grouping checks were last run on 2026-10-09 (16/16 and 16/16) and were not repeated for the overview.
 
 ## Not built yet
 
