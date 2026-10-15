@@ -126,12 +126,13 @@ public sealed class StarterEngine
             return new StartOutcome(false, null, ProgramService.SourceFolderUnreachable);
         }
 
-        var version = VersionPlanner.VersionOf(source, _versions.Read(program.SourceExe));
+        var listHash = source.ProgramListHash;
+        var version = VersionPlanner.VersionOf(listHash, _versions.Read(program.SourceExe));
         var outcome = _service.StartCurrent(program);
         if (outcome.Ok)
         {
             program.StartedVersion = version;
-            program.StartedListHash = source.ListHash;
+            program.StartedListHash = listHash;
             _seen.Remove(program.Id);
         }
         return outcome;
@@ -153,9 +154,10 @@ public sealed class StarterEngine
             return new CheckResult(CheckKind.Unreachable, ProgramService.SourceFolderUnreachable, null, null, null);
         }
 
-        var version = VersionPlanner.VersionOf(source, _versions.Read(program.SourceExe));
-        var stand = (version, source.ListHash);
-        if (program.StartedListHash == source.ListHash && program.StartedVersion == version)
+        var listHash = source.ProgramListHash;
+        var version = VersionPlanner.VersionOf(listHash, _versions.Read(program.SourceExe));
+        var stand = (version, listHash);
+        if (program.StartedListHash == listHash && program.StartedVersion == version)
         {
             _seen.Remove(program.Id);
             return new CheckResult(CheckKind.UpToDate, "up to date", version, null, null);
@@ -178,7 +180,7 @@ public sealed class StarterEngine
             return new CheckResult(CheckKind.UpdateAvailable, $"{version} is ready", version, null, null);
         }
 
-        var outcome = _service.RestartInPlace(program, version, source.ListHash);
+        var outcome = _service.RestartInPlace(program, version, listHash);
         _seen.Remove(program.Id);
         _log?.Write($"restart {program.Id} with {version}: {outcome.Kind}, {outcome.Message}");
         return new CheckResult(CheckKind.Updated, outcome.Message, version, null, outcome);

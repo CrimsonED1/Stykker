@@ -25,7 +25,7 @@ public class InPlaceTests : IDisposable
     public InPlaceTests()
     {
         _layout = new DataLayout(_temp.Sub("data"));
-        _exe = SourceFixtures.CreateSource(_temp, "source", ("data.txt", "one"));
+        _exe = SourceFixtures.CreateSource(_temp, "source", ("data.txt", "one"), ("lib\\payload.dll", "one"));
         _source = Path.GetDirectoryName(_exe)!;
         _program = SourceFixtures.Program(_exe);
         _program.CopyToLocal = false;
@@ -37,9 +37,10 @@ public class InPlaceTests : IDisposable
 
     public void Dispose() => _temp.Dispose();
 
-    // Ändert eine Datei der Quelle (der Stand der Dateiliste ändert sich, die Version nicht)
+    // Ändert eine Programmdatei der Quelle (eine .dll: die .exe bleibt, weil sie für die Version gelesen wird).
+    // Der Stand ändert sich, die Version nicht.
     private void ChangeSource(string content = "two, changed") =>
-        File.WriteAllText(Path.Combine(_source, "data.txt"), content);
+        File.WriteAllText(Path.Combine(_source, "lib", "payload.dll"), content);
 
     [Fact]
     public void Start_without_copy_runs_from_the_source_and_creates_nothing_under_the_data_folder()
@@ -53,7 +54,7 @@ public class InPlaceTests : IDisposable
         var proc = Assert.Single(_fakes.Procs);
         Assert.Equal(Path.GetFullPath(_exe), proc.ImagePath);
         Assert.Equal(SourceFixtures.VersionOf(_exe), _program.StartedVersion);
-        Assert.Equal(SourceTree.Read(_exe).ListHash, _program.StartedListHash);
+        Assert.Equal(SourceTree.Read(_exe).ProgramListHash, _program.StartedListHash);
     }
 
     [Fact]
@@ -90,8 +91,40 @@ public class InPlaceTests : IDisposable
         Assert.False(_fakes.IsRunning(oldPid));
         var now = Assert.Single(_fakes.Procs, p => p.Running);
         Assert.NotEqual(oldPid, now.Pid);
-        Assert.Equal(SourceTree.Read(_exe).ListHash, _program.StartedListHash);
+        Assert.Equal(SourceTree.Read(_exe).ProgramListHash, _program.StartedListHash);
         Assert.Equal(CheckKind.UpToDate, _engine.Check(_program, RestartWithoutAsking).Kind);
+    }
+
+    [Fact]
+    public void A_changed_log_or_settings_file_in_the_source_is_neither_a_new_build_nor_a_restart()
+    {
+        _engine.StartInPlace(_program);
+        var pid = _fakes.Procs.Single().Pid;
+        TempFolder.Write(Path.Combine(_source, "logs", "run.log"), "first line");
+        TempFolder.Write(Path.Combine(_source, "settings.json"), "{}");
+        var startsBefore = _launcher.Started.Count;
+
+        File.WriteAllText(Path.Combine(_source, "logs", "run.log"), "first line and a second line");
+        File.WriteAllText(Path.Combine(_source, "settings.json"), "{ \"changed\": true }");
+
+        Assert.Equal(CheckKind.UpToDate, _engine.Check(_program, RestartWithoutAsking).Kind);
+        Assert.Equal(CheckKind.UpToDate, _engine.Check(_program, RestartWithoutAsking).Kind);
+        Assert.Empty(_fakes.Calls);
+        Assert.True(_fakes.IsRunning(pid));
+        Assert.Equal(startsBefore, _launcher.Started.Count);
+    }
+
+    [Fact]
+    public void A_changed_dll_in_a_subfolder_is_a_new_build_after_two_checks()
+    {
+        TempFolder.Write(Path.Combine(_source, "lib", "plugin.dll"), "one");
+        _engine.StartInPlace(_program);
+        var oldPid = _fakes.Procs.Single().Pid;
+        File.WriteAllText(Path.Combine(_source, "lib", "plugin.dll"), "two, changed");
+
+        Assert.Equal(CheckKind.ChangedSinceStart, _engine.Check(_program, RestartWithoutAsking).Kind);
+        Assert.Equal(CheckKind.Updated, _engine.Check(_program, RestartWithoutAsking).Kind);
+        Assert.False(_fakes.IsRunning(oldPid));
     }
 
     [Fact]
@@ -150,7 +183,7 @@ public class InPlaceTests : IDisposable
         var offer = _engine.Check(_program, asking);
 
         Assert.Equal(CheckKind.UpdateAvailable, offer.Kind);
-        Assert.NotEqual(SourceTree.Read(_exe).ListHash, _program.StartedListHash);
+        Assert.NotEqual(SourceTree.Read(_exe).ProgramListHash, _program.StartedListHash);
         Assert.True(_fakes.IsRunning(oldPid));
         Assert.Empty(_fakes.Calls);
     }

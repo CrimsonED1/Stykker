@@ -28,6 +28,18 @@ public sealed class SourceTree
     // SHA-256 der Liste (Pfad, Größe, Änderungszeit, sortiert). Gleiche Liste heißt: es ist derselbe Stand.
     public string ListHash => _listHash ??= ComputeListHash(Files);
 
+    private string? _programListHash;
+
+    // Ohne Kopie: der Hash nur über die Programmdateien (.exe und .dll, in allen Unterordnern). Logs, Daten und
+    // Einstellungen im Quellordner zählen dann nicht als neuer Build.
+    public string ProgramListHash => _programListHash ??= ComputeListHash(Files.Where(f => IsProgramFile(f.RelativePath)));
+
+    public static bool IsProgramFile(string relativePath)
+    {
+        var ext = Path.GetExtension(relativePath);
+        return ext.Equals(".exe", StringComparison.OrdinalIgnoreCase) || ext.Equals(".dll", StringComparison.OrdinalIgnoreCase);
+    }
+
     public static string ComputeListHash(IEnumerable<SourceFile> files)
     {
         var text = new StringBuilder();

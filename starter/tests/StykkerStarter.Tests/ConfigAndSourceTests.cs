@@ -119,6 +119,24 @@ public class SourceTreeTests
     }
 
     [Fact]
+    public void Program_list_hash_counts_only_exe_and_dll_in_every_folder()
+    {
+        using var temp = new TempFolder();
+        var exe = SourceFixtures.CreateSource(temp, "source", ("logs\\run.log", "a"), ("sub\\Lib.DLL", "b"),
+            ("settings.json", "c"), ("app.pdb", "d"));
+        var folder = Path.GetDirectoryName(exe)!;
+        var before = SourceTree.Read(exe).ProgramListHash;
+
+        File.WriteAllText(Path.Combine(folder, "logs", "run.log"), "a longer log line");
+        File.WriteAllText(Path.Combine(folder, "settings.json"), "a longer settings file");
+        File.WriteAllText(Path.Combine(folder, "app.pdb"), "a longer pdb");
+        Assert.Equal(before, SourceTree.Read(exe).ProgramListHash);
+
+        File.WriteAllText(Path.Combine(folder, "sub", "Lib.DLL"), "a longer library");
+        Assert.NotEqual(before, SourceTree.Read(exe).ProgramListHash);
+    }
+
+    [Fact]
     public void Missing_program_file_is_reported_as_unreachable_not_as_a_crash()
     {
         using var temp = new TempFolder();
