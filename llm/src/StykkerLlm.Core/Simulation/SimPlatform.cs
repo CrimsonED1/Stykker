@@ -239,6 +239,26 @@ public sealed class SimPlatform : IPlatform
         return list.OrderByDescending(x => x.Item2).Take(count).ToList();
     }
 
+    // Auslastung je Prozess und Engine: die Server teilen die Last der GPU, 3D trägt den Großteil
+    public GpuUtilReading? ReadGpuUtil()
+    {
+        if (!_w.ShowGpu) return null;
+        double busy = _w.TotalLoad();
+        double util = Math.Clamp(3 + busy * 88 + (_noise.NextDouble() - 0.5) * 6, 0, 100);
+        var procs = _w.Servers.Where(s => s.HasEngine || s.Loaded)
+            .Select(s => ((s.Spec.Kind == BackendKind.Ollama ? "ollama" : s.Spec.Strata ? "strata" : "llama-server"), Math.Clamp(util * (0.5 + _noise.NextDouble() * 0.5), 0, 100)))
+            .ToList();
+        procs.Add(("dwm", Math.Clamp(1 + busy * 3, 0, 100)));
+        var engines = new List<(string Engine, double Percent)>
+        {
+            ("3D", Math.Clamp(util * 0.9, 0, 100)),
+            ("Compute", Math.Clamp(util * 0.12, 0, 100)),
+            ("Copy", Math.Clamp(busy * 4, 0, 100)),
+            ("Video decode", 0),
+        };
+        return new GpuUtilReading(procs.OrderByDescending(p => p.Item2).ToList(), engines);
+    }
+
     public IReadOnlyList<(string Name, double Gb)>? ReadRamTop(int count)
     {
         if (!_w.ShowSystem) return null;

@@ -190,73 +190,76 @@
 </div>
 </div>
 <aside class="mon-side">
-@* Hardware (U5): GPU und System in einer Karte, je Programm als gestapelter Balken mit Legende; Details auf /gpu *@
+@* Hardware (U5): GPU und System in einer Karte, je Programm als gestapelter Balken mit Legende; Details auf /gpu.
+   Aussehen und Markup: die Hardware-Bausteine des Design-Systems (hw-*), dieselben wie in StykkerSYS. *@
 @if (e.Gpu != null || e.Sys != null || e.Disks != null)
 {
     <div class="mon-area mon-hw">
     <h3 class="sec">@Strings.SectionHardware</h3>
-    <div class="card hw">
+    <section class="hw-card">
         @if (e.Gpu is { } g)
         {
-            <h2>@Strings.Gpu <small class="muted">@g.Name · @g.MemTotalGb.ToString("0", CultureInfo.InvariantCulture) GB</small><a class="more" href="gpu" title="@Strings.GpuDetails">@Strings.HwDetails <Icon Name="open" /></a></h2>
-            <div class="meters">
-                @Meter(Strings.GpuLoad, g.Util.ToString("0", CultureInfo.InvariantCulture), "%", g.Util / 100, null)
-                @Meter(Strings.GpuVram, g.MemUsedGb.ToString("0.0", CultureInfo.InvariantCulture), "/ " + g.MemTotalGb.ToString("0", CultureInfo.InvariantCulture) + " GB", g.MemUsedGb / Math.Max(1, g.MemTotalGb), Strings.HwFree(Math.Max(0, g.MemTotalGb - g.MemUsedGb)))
-                @Meter(Strings.GpuPower, g.PowerW.ToString("0", CultureInfo.InvariantCulture), "/ " + g.PowerLimitW.ToString("0", CultureInfo.InvariantCulture) + " W", g.PowerW / Math.Max(1, g.PowerLimitW), null)
-                @Meter(Strings.GpuTemp, g.TempC.ToString("0", CultureInfo.InvariantCulture), "°C", Math.Clamp(g.TempC / 90.0, 0, 1), g.Throttled ? g.ThrottleText() : Strings.GpuClocksFree, warnNote: g.Throttled)
+            <div class="hw-head">@Strings.Gpu <span class="hw-sub">@g.Name · @g.MemTotalGb.ToString("0", CultureInfo.InvariantCulture) GB</span><a class="hw-more" href="gpu" title="@Strings.GpuDetails">@Strings.HwDetails <Icon Name="open" /></a></div>
+            <div class="hw-meters">
+                <HwMeter Label="@Strings.GpuLoad" Value="@g.Util.ToString("0", CultureInfo.InvariantCulture)" Unit="%" Fraction="@(g.Util / 100)" />
+                <HwMeter Label="@Strings.GpuVram" Value="@g.MemUsedGb.ToString("0.0", CultureInfo.InvariantCulture)" Unit="@("/ " + g.MemTotalGb.ToString("0", CultureInfo.InvariantCulture) + " GB")" Fraction="@(g.MemUsedGb / Math.Max(1, g.MemTotalGb))" Note="@Strings.HwFree(Math.Max(0, g.MemTotalGb - g.MemUsedGb))" />
+                <HwMeter Label="@Strings.GpuPower" Value="@g.PowerW.ToString("0", CultureInfo.InvariantCulture)" Unit="@("/ " + g.PowerLimitW.ToString("0", CultureInfo.InvariantCulture) + " W")" Fraction="@(g.PowerW / Math.Max(1, g.PowerLimitW))" />
+                <HwMeter Label="@Strings.GpuTemp" Value="@g.TempC.ToString("0", CultureInfo.InvariantCulture)" Unit="°C" Fraction="@Math.Clamp(g.TempC / 90.0, 0, 1)" Note="@(g.Throttled ? g.ThrottleText() : Strings.GpuClocksFree)" NoteWarn="@g.Throttled" />
             </div>
-            <div class="subh">@Strings.GpuConsumers</div>
-            <StackBar Items="e.VramTop" UsedGb="g.MemUsedGb" TotalGb="g.MemTotalGb" MoreHref="gpu" />
+            <div class="hw-subh">@Strings.GpuConsumers</div>
+            <HwStack Items="e.VramTop" UsedGb="g.MemUsedGb" TotalGb="g.MemTotalGb" MoreHref="gpu" />
         }
         @if (e.Sys is { } sy)
         {
-            <h2 class="@(e.Gpu != null ? "hw-sep" : "")">@Strings.SystemCard
+            <div class="hw-head @(e.Gpu != null ? "hw-sep" : "")">@Strings.SystemCard
                 @if (e.Memory is { } mem)
                 {
-                    <small class="muted" title="@Strings.HwMemTip(mem.Modules, mem.TotalGb, mem.Channels)">@mem.Short · @mem.Modules×@((mem.TotalGb / Math.Max(1, mem.Modules)).ToString("0", CultureInfo.InvariantCulture)) GB · ≈@mem.BandwidthGbs.ToString("0", CultureInfo.InvariantCulture) GB/s</small>
+                    <span class="hw-sub" title="@Strings.HwMemTip(mem.Modules, mem.TotalGb, mem.Channels)">@mem.Short · @mem.Modules×@((mem.TotalGb / Math.Max(1, mem.Modules)).ToString("0", CultureInfo.InvariantCulture)) GB · ≈@mem.BandwidthGbs.ToString("0", CultureInfo.InvariantCulture) GB/s</span>
                 }
-            </h2>
-            <div class="meters">
-                @Meter(Strings.CpuLoad, sy.CpuPercent.ToString("0", CultureInfo.InvariantCulture), "%", sy.CpuPercent / 100, Strings.LogicalCores(sy.Cores), tip: CoreTip(sy))
-                @Meter(Strings.Memory, sy.RamUsedGb.ToString("0.0", CultureInfo.InvariantCulture), "/ " + sy.RamTotalGb.ToString("0", CultureInfo.InvariantCulture) + " GB", sy.RamFrac, Strings.HwFree(Math.Max(0, sy.RamTotalGb - sy.RamUsedGb)))
             </div>
+            <div class="hw-meters">
+                <HwMeter Label="@Strings.CpuLoad" Value="@sy.CpuPercent.ToString("0", CultureInfo.InvariantCulture)" Unit="%" Fraction="@(sy.CpuPercent / 100)" Note="@Strings.LogicalCores(sy.Cores)" Tip="@CoreTip(sy)" />
+                <HwMeter Label="@Strings.Memory" Value="@sy.RamUsedGb.ToString("0.0", CultureInfo.InvariantCulture)" Unit="@("/ " + sy.RamTotalGb.ToString("0", CultureInfo.InvariantCulture) + " GB")" Fraction="@sy.RamFrac" Note="@Strings.HwFree(Math.Max(0, sy.RamTotalGb - sy.RamUsedGb))" />
+            </div>
+            @if (sy.CoreLoads is { Length: > 0 } cores)
+            {
+                <div class="hw-cores" title="@CoreTip(sy)">@foreach (var c in cores) { <i style="--h:@Math.Max(2, c).ToString("0.#", CultureInfo.InvariantCulture)%"></i> }</div>
+            }
             @if (e.RamTop.Count > 0)
             {
-                <div class="subh">@Strings.RamConsumers</div>
-                <StackBar Items="e.RamTop" UsedGb="sy.RamUsedGb" TotalGb="sy.RamTotalGb" />
+                <div class="hw-subh">@Strings.RamConsumers</div>
+                <HwStack Items="e.RamTop" UsedGb="sy.RamUsedGb" TotalGb="sy.RamTotalGb" />
             }
         }
-    </div>
+    </section>
     @* Laufwerke (Stykker.Shared/Disk): je Volume Belegung, Lesen, Schreiben, Auslastung; Hinweis, wenn ein Modellserver stark liest *@
     @if (e.Disks is { } dk && dk.Volumes.Count > 0)
     {
         var hints = DiskHints.Lines(DiskHints.ServersOf(e.Servers), e.DiskProcesses, dk.Volumes);
-        <div class="card hw dsk-card">
-            <h2>@Strings.DisksCard <small class="muted">@dk.Volumes.Count @Strings.DisksVolumes</small><a class="more" href="disks" title="@Strings.DisksPageTitle">@Strings.DisksDetails <Icon Name="open" /></a></h2>
-            <div class="dsk-list">
-                @foreach (var v in dk.Volumes)
-                {
-                    double used = v.TotalBytes > 0 ? Math.Clamp(v.UsedBytes / v.TotalBytes, 0, 1) : 0;
-                    <div class="dsk">
-                        <div class="dsk-top">
-                            <b class="dsk-letter">@v.Letter:</b>
-                            <span class="dsk-kind" data-k="@v.Kind" title="@DiskKinds.Label(v.Kind)">@DiskKinds.Label(v.Kind)</span>
-                            <span class="dsk-free muted" title="@v.Label">@DiskFormat.Size(v.FreeBytes) @Strings.DisksFree · @DiskFormat.Size(v.TotalBytes)</span>
-                        </div>
-                        <div class="bar"><div style="width:@((int)(used * 100))%"></div></div>
-                        <div class="dsk-io">
-                            <span>@Strings.DisksRead <b>@DiskRate(v.ReadBytesPerSec)</b></span>
-                            <span>@Strings.DisksWrite <b>@DiskRate(v.WriteBytesPerSec)</b></span>
-                            <span>@Strings.DisksBusy <b>@DiskPercent(v.BusyPercent)</b></span>
-                        </div>
+        <section class="hw-card">
+            <div class="hw-head">@Strings.DisksCard <span class="hw-sub">@dk.Volumes.Count @Strings.DisksVolumes</span><a class="hw-more" href="disks" title="@Strings.DisksPageTitle">@Strings.DisksDetails <Icon Name="open" /></a></div>
+            @foreach (var v in dk.Volumes)
+            {
+                double used = v.TotalBytes > 0 ? Math.Clamp(v.UsedBytes / v.TotalBytes, 0, 1) : 0;
+                <div class="hw-vol">
+                    <div class="hw-vol-top">
+                        <span class="hw-letter">@v.Letter:</span>
+                        <span class="hw-kind" data-k="@v.Kind" title="@DiskKinds.Label(v.Kind)">@DiskKinds.Label(v.Kind)</span>
+                        <span class="hw-free" title="@v.Label">@DiskFormat.Size(v.FreeBytes) @Strings.DisksFree · @DiskFormat.Size(v.TotalBytes)</span>
                     </div>
-                }
-            </div>
+                    <div class="hw-bar"><i style="--w:@((int)(used * 100))%"></i></div>
+                    <div class="hw-io">
+                        <span>@Strings.DisksRead <b>@DiskRate(v.ReadBytesPerSec)</b></span>
+                        <span>@Strings.DisksWrite <b>@DiskRate(v.WriteBytesPerSec)</b></span>
+                        <span>@Strings.DisksBusy <b>@DiskPercent(v.BusyPercent)</b></span>
+                    </div>
+                </div>
+            }
             @foreach (var line in hints)
             {
-                <div class="dsk-hint">@line</div>
+                <div class="hw-hint">@line</div>
             }
-        </div>
+        </section>
     }
     </div>
 }
@@ -507,16 +510,7 @@
     private static string DiskRate(double? bytesPerSec) => bytesPerSec is double b ? DiskFormat.Rate(b) : "–";
     private static string DiskPercent(double? pct) => pct is double p ? p.ToString("0", CultureInfo.InvariantCulture) + " %" : "–";
 
-    // Eine Messanzeige der Hardware-Karte: Name, rechts eine Notiz (frei, Drosselung), großer Wert, Balken
-    private static RenderFragment Meter(string label, string value, string unit, double frac, string? note, bool warnNote = false, string? tip = null) => __builder =>
-    {
-        frac = Math.Clamp(frac, 0, 1);
-        <div class="meter @(frac > .92 ? "hot" : "")" title="@tip">
-            <div class="l"><span>@label</span>@if (note != null) { <span class="@(warnNote ? "warnc" : "")" title="@note">@note</span> }</div>
-            <div class="v"><b>@value</b> <small>@unit</small></div>
-            <div class="bar"><div style="width:@((int)(frac * 100))%"></div></div>
-        </div>
-    };
+    // (Die Messanzeigen der Hardware-Karte sind die Bausteine HwMeter und HwStack.)
 
     // VRAM-Vorhersage eines Profils (U6): gemessen beim letzten Lauf, sonst aus dem GGUF-Kopf geschätzt (einmal je
     // Profil im Hintergrund gelesen und gemerkt), sonst null

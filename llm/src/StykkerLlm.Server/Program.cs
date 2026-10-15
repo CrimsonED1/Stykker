@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using Stykker.Pairing;
+using Stykker.Shared.Web;
 using StykkerLlm.Core;
 using StykkerLlm.Core.Eval;
 using StykkerLlm.Platform.Windows;
@@ -335,6 +336,9 @@ app.MapGet("/api/log", (string? path, AppPaths data) =>
     var text = LogTail.Read(data, path);
     return text == null ? Results.NotFound() : Results.Text(text, "text/plain; charset=utf-8");
 });
+
+// Das gemeinsame Design-System unter /ds (wie in StykkerSYS): die Hardware-Bausteine und ihre Stile kommen von dort.
+DesignSystemHost.Map(app, DesignSystemHost.Resolve(args, "STYKKERLLM_DESIGN_SYSTEM"));
 
 app.MapStaticAssets();
 // Blazor setzt von sich aus "frame-ancestors 'self'". Mit Zentrale kommt der Kopf von oben (FramePolicy), sonst bleibt die Vorgabe.

@@ -52,6 +52,10 @@ public sealed record GpuSample(string Name, double Util, double MemUsedGb, doubl
     private const ulong ThrottleMask = 0x4 | 0x8 | 0x20 | 0x40 | 0x80;
 }
 
+// Eine Lesung der GPU-Auslastung: je Prozess (Prozent über alle Engines, größte zuerst) und je Engine-Art über alle
+// Prozesse (3D, Compute, Copy, Video decode …; die Summe darf über 100 % liegen).
+public sealed record GpuUtilReading(IReadOnlyList<(string Name, double Percent)> Processes, IReadOnlyList<(string Engine, double Percent)> Engines);
+
 // GPU-Speicher eines Prozesses (Windows: PDH "GPU Process Memory")
 public interface IGpuMemoryQuery : IDisposable
 {
@@ -98,6 +102,8 @@ public interface IPlatform : IDisposable
     IReadOnlyList<(string Name, double Gb)>? ReadRamTop(int count) => null;
     // GPU-Auslastung je Prozess in Prozent (über alle Engines summiert), größte zuerst. Standard: nicht verfügbar.
     IReadOnlyList<(string Name, double Percent)> ReadGpuUtilTop(int count) => Array.Empty<(string, double)>();
+    // Auslastung je Prozess und je Engine aus einer Abfrage (Gerätedetails). Standard: nicht verfügbar.
+    GpuUtilReading? ReadGpuUtil() => null;
     // Laufwerke: Volumes und physische Laufwerke mit Lesen, Schreiben und Auslastung (Stykker.Shared/Disk). null = nicht verfügbar.
     DiskSample? ReadDisks() => null;
     // Prozesse mit dem meisten Platten-E/A (Lesen und Schreiben je Sekunde), größte zuerst. Standard: nicht verfügbar.

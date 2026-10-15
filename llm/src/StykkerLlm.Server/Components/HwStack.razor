@@ -1,0 +1,49 @@
+@* Gestapelter Balken je Programm mit Legende (Markup und Stil: shared/design-system/components/Hardware). Der Anteil „andere“
+   und „frei" steht ohne Farbe im Balken; die Legende nennt bis zu acht Programme, der Rest kommt als „+n" und, wenn
+   MoreHref gesetzt ist, auf die Detailseite. Die Farben kommen aus den Tokens des gezeigten Themas. *@
+@{
+    double total = Math.Max(TotalGb, Math.Max(UsedGb, Items.Sum(i => i.Gb)));
+    double sum = Items.Sum(i => i.Gb);
+    // Abschnittsfarben: Akzent, Zweitfarbe, Grün, Gelb, dann Mischungen
+    string[] pal =
+    {
+        "var(--acc)", "var(--second)", "var(--good)", "var(--warn)",
+        "color-mix(in srgb,var(--acc),var(--bad))", "color-mix(in srgb,var(--second),var(--good))",
+        "color-mix(in srgb,var(--warn) 60%,var(--bad))", "color-mix(in srgb,var(--acc) 60%,var(--ink))",
+    };
+    var legend = Items.Take(8).ToList();
+    int more = Items.Count - legend.Count;
+}
+<div class="hw-stack">
+    @for (int i = 0; i < Items.Count; i++)
+    {
+        var (name, gb) = Items[i];
+        <i style="width:@Pct(gb, total);--c:@pal[i % pal.Length]" title="@Strings.MemSegmentTip(name, gb, TotalGb)"></i>
+    }
+    @if (UsedGb - sum > 0.05)
+    {
+        <i style="width:@Pct(UsedGb - sum, total);--c:rgb(var(--muted-rgb)/.45)" title="@Strings.MemSegmentTip(Strings.MemOther, UsedGb - sum, TotalGb)"></i>
+    }
+</div>
+<div class="hw-legend">
+    @for (int i = 0; i < legend.Count; i++)
+    {
+        var (name, gb) = legend[i];
+        <div title="@Strings.MemSegmentTip(name, gb, TotalGb)"><i style="--c:@pal[i % pal.Length]"></i><span>@name</span><span class="hw-val"><b>@gb.ToString("0.0", CultureInfo.InvariantCulture)</b><small>GB</small></span></div>
+    }
+    @if (more > 0)
+    {
+        @if (MoreHref != null) { <div><a href="@MoreHref">@Strings.MemMore(more)</a></div> }
+        else { <div class="hw-muted">@Strings.MemMore(more)</div> }
+    }
+</div>
+
+@code {
+    [Parameter] public IReadOnlyList<(string Name, double Gb)> Items { get; set; } = Array.Empty<(string, double)>();
+    [Parameter] public double UsedGb { get; set; }
+    [Parameter] public double TotalGb { get; set; }
+    // Gesetzt: „+n" führt auf diese Seite (GPU-Details)
+    [Parameter] public string? MoreHref { get; set; }
+
+    private static string Pct(double v, double total) => (total > 0 ? 100 * v / total : 0).ToString("0.###", CultureInfo.InvariantCulture) + "%";
+}

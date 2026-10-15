@@ -1,0 +1,23 @@
+@* Eine Kennzahl mit Balken in den Hardware-Karten (Markup und Stil: shared/design-system/components/Hardware).
+   Die Zahl steht in der Schrift der Zahlen, die Einheit klein daneben. Fehlt der Wert, steht „–" an seiner Stelle. *@
+<div class="hw-meter" title="@Tip">
+    <div class="hw-meter-hd"><span>@Label</span></div>
+    <div class="hw-val @(Na ? "na" : "")"><b>@Value</b>@if (!string.IsNullOrEmpty(Unit)) { <small>@Unit</small> }</div>
+    <div class="hw-bar @(Hot ? "hot" : "")"><i style="--w:@(Pct)%"></i></div>
+    @if (!string.IsNullOrEmpty(Note)) { <div class="hw-note @(NoteWarn ? "warn" : "")" title="@Note">@Note</div> }
+</div>
+
+@code {
+    [Parameter] public string Label { get; set; } = "";
+    [Parameter] public string Value { get; set; } = "–";
+    [Parameter] public string? Unit { get; set; }
+    // Anteil 0 bis 1 für den Balken; null = kein Balken-Wert (leer)
+    [Parameter] public double? Fraction { get; set; }
+    [Parameter] public string? Note { get; set; }
+    [Parameter] public bool NoteWarn { get; set; }
+    [Parameter] public string? Tip { get; set; }
+    [Parameter] public bool Na { get; set; }
+
+    private int Pct => (int)(Math.Clamp(Fraction ?? 0, 0, 1) * 100);
+    private bool Hot => (Fraction ?? 0) > .92;
+}

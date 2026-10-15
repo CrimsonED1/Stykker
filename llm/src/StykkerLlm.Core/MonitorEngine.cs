@@ -61,6 +61,7 @@ public sealed class MonitorEngine : IDisposable
     private volatile List<ProcessIoRow> _diskProcs = new();
     public IReadOnlyList<ProcessIoRow> DiskProcesses => _diskProcs;
     public DiskHistory DiskHistory { get; } = new();
+    public GpuHistory GpuHistory { get; } = new();
     private const int DiskProcessCount = 12;
     public int Ticks { get; private set; }
     // Ausnahme des letzten Takts (der nächste Takt versucht es neu); null = alles gut
@@ -374,7 +375,12 @@ public sealed class MonitorEngine : IDisposable
             if (!ReadOnly) Proxies.Maintain();
             if (!ReadOnly) Claude.Maintain(now);
             // NVML-Aufrufe sind die teuersten Messungen: im Leerlauf nur alle 2 s (bei Aufnahme jede Sekunde)
-            if (Gpu == null || GpuEveryTick || (now - _lastGpuRead).TotalSeconds >= 1.9) { Gpu = Platform.ReadGpu(); _lastGpuRead = now; }
+            if (Gpu == null || GpuEveryTick || (now - _lastGpuRead).TotalSeconds >= 1.9)
+            {
+                Gpu = Platform.ReadGpu();
+                _lastGpuRead = now;
+                if (Gpu is { } gpuSample) GpuHistory.Add(gpuSample);
+            }
             if ((now - _lastDiskRead).TotalSeconds >= 0.95)
             {
                 _lastDiskRead = now;

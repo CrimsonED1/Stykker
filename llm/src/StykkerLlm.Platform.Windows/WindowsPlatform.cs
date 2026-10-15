@@ -311,6 +311,20 @@ public sealed class WindowsPlatform : IPlatform
         }
     }
 
+    // Auslastung je Prozess und je Engine aus einer Abfrage des gemeinsamen Zählers (Stykker.Shared)
+    public GpuUtilReading? ReadGpuUtil()
+    {
+        lock (_gpuLock)
+        {
+            if (_disposed) return null;
+            var s = _gpuUtil.Read();
+            if (s == null) return null;
+            var procs = s.Processes.OrderByDescending(r => r.Value).Select(r => (_procNames.NameOf(r.Pid), r.Value)).ToList();
+            var engines = s.Engines.OrderByDescending(e => e.Percent).Select(e => (e.Engine, e.Percent)).ToList();
+            return new GpuUtilReading(procs, engines);
+        }
+    }
+
     // Laufwerke und Platten-E/A (Stykker.Shared): ein Schloss, weil der Takt und die Hintergrundabfrage der Prozesse dieselbe Instanz nutzen
     public DiskSample? ReadDisks()
     {
