@@ -75,6 +75,67 @@ public class ClaudeDesktopTests
     }
 
     [TestMethod]
+    public void Disable_RemovesTheLibraryAgain_WhenEnableCreatedIt()
+    {
+        var data = TempDir();
+        var layer = TempDir();
+        var cd = new ClaudeDesktop(new FakePlatform(), () => 17500, data, layer);
+        cd.Enable(out var error);
+        Assert.IsNull(error, error);
+
+        cd.Disable(out error);
+
+        Assert.IsNull(error, error);
+        Assert.IsFalse(cd.Enabled);
+        Assert.IsFalse(File.Exists(Path.Combine(LibDir(layer), "_meta.json")), "die Ablage war vorher nicht da");
+        Assert.IsFalse(Directory.Exists(LibDir(layer)));
+    }
+
+    [TestMethod]
+    public void Disable_AppliesNoOtherEntry_WhenNoneWasAppliedBefore()
+    {
+        var data = TempDir();
+        var layer = TempDir();
+        // Eine Bibliothek mit einem Eintrag, aber nichts angewendet: die App sprach direkt mit Anthropic
+        Directory.CreateDirectory(LibDir(layer));
+        var other = Guid.NewGuid().ToString();
+        File.WriteAllText(Path.Combine(LibDir(layer), other + ".json"), "{\"inferenceProvider\":\"gateway\"}");
+        File.WriteAllText(Path.Combine(LibDir(layer), "_meta.json"), $"{{\"entries\":[{{\"id\":\"{other}\",\"name\":\"Other\"}}]}}");
+
+        var cd = new ClaudeDesktop(new FakePlatform(), () => 17500, data, layer);
+        cd.Enable(out var error);
+        Assert.IsNull(error, error);
+        cd.Disable(out error);
+
+        Assert.IsNull(error, error);
+        var meta = JsonNode.Parse(File.ReadAllText(Path.Combine(LibDir(layer), "_meta.json")))!;
+        Assert.IsNull(meta["appliedId"], "kein anderer Eintrag wird angewendet");
+        Assert.AreEqual(1, ((JsonArray)meta["entries"]!).Count);
+        Assert.IsTrue(File.Exists(Path.Combine(LibDir(layer), other + ".json")));
+    }
+
+    [TestMethod]
+    public void Disable_WithoutStateFile_FindsOurEntryByName()
+    {
+        var data = TempDir();
+        var layer = TempDir();
+        new ClaudeDesktop(new FakePlatform(), () => 17500, data, layer).Enable(out var error);
+        Assert.IsNull(error, error);
+        File.Delete(Path.Combine(data, "claude-desktop.json"));
+
+        var cd = new ClaudeDesktop(new FakePlatform(), () => 17500, data, layer);
+        Assert.IsTrue(cd.Enabled, "am Namen erkannt");
+        cd.Disable(out error);
+
+        Assert.IsNull(error, error);
+        Assert.IsFalse(cd.Enabled);
+        var meta = JsonNode.Parse(File.ReadAllText(Path.Combine(LibDir(layer), "_meta.json")))!;
+        Assert.IsNull(meta["appliedId"]);
+        Assert.AreEqual(0, ((JsonArray)meta["entries"]!).Count);
+        Assert.AreEqual(0, Directory.GetFiles(LibDir(layer), "*.json").Count(f => !f.EndsWith("_meta.json", StringComparison.Ordinal)));
+    }
+
+    [TestMethod]
     public void Running_CountsOnlyAppProcesses()
     {
         var plat = new FakePlatform();

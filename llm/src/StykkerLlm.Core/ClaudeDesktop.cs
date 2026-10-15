@@ -40,10 +40,27 @@ public sealed class ClaudeDesktop
         _enabled = CurrentEnabled();
     }
 
-    // %LOCALAPPDATA%\Claude-3p – die Ablage, die die App selbst als Profil der Dritt-Anbieter-Konfiguration benutzt
-    public static string DefaultDir() => OperatingSystem.IsWindows()
-        ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Claude-3p")
-        : "";
+    // %LOCALAPPDATA%\Claude-3p – die Ablage, die die App selbst als Profil der Dritt-Anbieter-Konfiguration benutzt.
+    // Die App ist ein MSIX-Paket: was sie selbst nach %LOCALAPPDATA% schreibt, landet in ihrem Paket-Cache
+    // (Packages\Claude_*\LocalCache\Local), und dort liest sie zuerst. Hat sie dort schon eine eigene Claude-3p-Ablage,
+    // wäre eine Änderung am echten Ordner für sie unsichtbar – dann gilt ihre Kopie.
+    public static string DefaultDir()
+    {
+        if (!OperatingSystem.IsWindows()) return "";
+        var local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        try
+        {
+            var packages = Path.Combine(local, "Packages");
+            if (Directory.Exists(packages))
+                foreach (var pkg in Directory.GetDirectories(packages, "Claude_*"))
+                {
+                    var cached = Path.Combine(pkg, "LocalCache", "Local", "Claude-3p");
+                    if (File.Exists(Path.Combine(cached, "configLibrary", "_meta.json"))) return cached;
+                }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+        return Path.Combine(local, "Claude-3p");
+    }
 
     public bool Supported => _dir.Length > 0;
     public string Dir => _dir;
@@ -74,6 +91,8 @@ public sealed class ClaudeDesktop
         if (!Supported) { error = Strings.ClaudeUnsupported; return ""; }
         try
         {
+            // Gab es vorher keine Ablage, legt erst dieser Schalter sie an; das Ausschalten räumt sie dann wieder weg
+            bool createdMeta = ReadState()?.CreatedMeta ?? !File.Exists(MetaPath);
             Directory.CreateDirectory(Path.Combine(_dir, "configLibrary"));
             var meta = ReadMeta();
             var entries = Entries(meta);
@@ -87,37 +106,58 @@ public sealed class ClaudeDesktop
                 : meta["appliedId"]?.GetValue<string>() is { Length: > 0 } cur && cur != id ? cur : prev?.PreviousAppliedId;
             meta["appliedId"] = id;
             AtomicFile.WriteAllText(MetaPath, meta.ToJsonString(Pretty));
-            WriteState(new JsonObject { ["enabled"] = true, ["entryId"] = id, ["previousAppliedId"] = previous });
+            WriteState(new JsonObject { ["enabled"] = true, ["entryId"] = id, ["previousAppliedId"] = previous, ["createdMeta"] = createdMeta });
             lock (_lock) _enabled = true;
             return Strings.ClaudeEnabled(BaseUrl);
         }
         catch (Exception ex) { error = Strings.ClaudeFailed(ex.Message); return ""; }
     }
 
-    // Ausschalten: unseren Eintrag entfernen und das vorherige Ziel wieder anwenden
+    // Ausschalten: unsere Einträge entfernen und das vorherige Ziel wieder anwenden. War vorher keins angewendet (die App
+    // sprach direkt mit Anthropic), bleibt auch keins angewendet – nie ein anderer Eintrag aus der Bibliothek. Hat erst
+    // das Einschalten die Ablage angelegt und ist sonst nichts darin, verschwindet sie wieder. Fehlt die eigene
+    // Merkdatei (anderer Datenordner, gelöscht), werden unsere Einträge am Namen erkannt.
     public string Disable(out string? error)
     {
         error = null;
         if (!Supported) { error = Strings.ClaudeUnsupported; return ""; }
         try
         {
-            if (ReadState() is { } st)
+            var st = ReadState();
+            if (File.Exists(MetaPath))
             {
                 var meta = ReadMeta();
                 var entries = Entries(meta);
-                for (int i = entries.Count - 1; i >= 0; i--) if (IdOf(entries[i]) == st.EntryId) entries.RemoveAt(i);
-                string restored = st.PreviousAppliedId is { Length: > 0 } p && HasEntry(entries, p)
-                    ? p : entries.Count > 0 ? IdOf(entries[0]) : "";
-                meta["appliedId"] = restored;
-                AtomicFile.WriteAllText(MetaPath, meta.ToJsonString(Pretty));
-                try { if (File.Exists(EntryPath(st.EntryId))) File.Delete(EntryPath(st.EntryId)); } catch { }
-                DeleteState();
+                var ours = new HashSet<string>(entries.Where(e => IsOurs(e, st)).Select(IdOf));
+                for (int i = entries.Count - 1; i >= 0; i--) if (ours.Contains(IdOf(entries[i]))) entries.RemoveAt(i);
+                string applied = meta["appliedId"]?.GetValue<string>() ?? "";
+                if (applied.Length == 0 || ours.Contains(applied))
+                {
+                    if (st?.PreviousAppliedId is { Length: > 0 } p && HasEntry(entries, p)) meta["appliedId"] = p;
+                    else meta.Remove("appliedId");
+                }
+                foreach (var id in ours)
+                    try { if (File.Exists(EntryPath(id))) File.Delete(EntryPath(id)); } catch { }
+                if (st?.CreatedMeta == true && entries.Count == 0)
+                {
+                    File.Delete(MetaPath);
+                    var lib = Path.Combine(_dir, "configLibrary");
+                    if (!Directory.EnumerateFileSystemEntries(lib).Any()) Directory.Delete(lib);
+                }
+                else AtomicFile.WriteAllText(MetaPath, meta.ToJsonString(Pretty));
             }
+            DeleteState();
             lock (_lock) _enabled = false;
             return Strings.ClaudeDisabled;
         }
         catch (Exception ex) { error = Strings.ClaudeFailed(ex.Message); return ""; }
     }
+
+    // Ein Eintrag von uns: der aus der Merkdatei, oder einer mit unserem Namen (ohne Merkdatei)
+    private static bool IsOurs(JsonNode? entry, State? st) =>
+        st is { EntryId.Length: > 0 } ? IdOf(entry) == st.EntryId || NameOf(entry) == EntryName : NameOf(entry) == EntryName;
+
+    private static string NameOf(JsonNode? n) => n is JsonObject o ? o["name"]?.GetValue<string>() ?? "" : "";
 
     // Eine laufende Claude-Desktop-App beenden. Nur die Prozesse aus dem MSIX-Installationsordner werden beendet.
     public int CloseRunning(out string? error)
@@ -166,9 +206,13 @@ public sealed class ClaudeDesktop
     private bool CurrentEnabled()
     {
         if (!Supported) return false;
+        var meta = ReadMeta();
+        var applied = meta["appliedId"]?.GetValue<string>() ?? "";
+        if (applied.Length == 0) return false;
         var st = ReadState();
-        if (st is not { Enabled: true } || st.EntryId.Length == 0) return false;
-        return (ReadMeta()["appliedId"]?.GetValue<string>() ?? "") == st.EntryId;
+        if (st is { Enabled: true } && st.EntryId.Length > 0) return applied == st.EntryId;
+        // Ohne Merkdatei: angewendet ist ein Eintrag mit unserem Namen
+        return Entries(meta).Any(e => IdOf(e) == applied && NameOf(e) == EntryName);
     }
 
     private JsonObject ReadMeta()
@@ -192,14 +236,15 @@ public sealed class ClaudeDesktop
     private static string IdOf(JsonNode? n) => n is JsonObject o ? o["id"]?.GetValue<string>() ?? "" : "";
     private static bool HasEntry(JsonArray entries, string id) => entries.Any(e => IdOf(e) == id);
 
-    private sealed record State(bool Enabled, string EntryId, string? PreviousAppliedId);
+    private sealed record State(bool Enabled, string EntryId, string? PreviousAppliedId, bool CreatedMeta);
 
     private State? ReadState()
     {
         try
         {
             if (!File.Exists(_stateFile) || JsonNode.Parse(File.ReadAllText(_stateFile)) is not JsonObject o) return null;
-            return new State(o["enabled"]?.GetValue<bool>() == true, o["entryId"]?.GetValue<string>() ?? "", o["previousAppliedId"]?.GetValue<string>());
+            return new State(o["enabled"]?.GetValue<bool>() == true, o["entryId"]?.GetValue<string>() ?? "", o["previousAppliedId"]?.GetValue<string>(),
+                o["createdMeta"]?.GetValue<bool>() == true);
         }
         catch { return null; }
     }
