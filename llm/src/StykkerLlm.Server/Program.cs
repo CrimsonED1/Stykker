@@ -113,6 +113,7 @@ builder.Services.AddSingleton(sp => new ActionContext
 });
 // je Browser-Sitzung: Rückfragen als Dialog, Start/Stop über den LaunchCoordinator des Core
 builder.Services.AddScoped<WebPrompt>();
+builder.Services.AddScoped<ClientDialogs>();   // der offene Client-Dialog (Kopfleiste, Monitor)
 builder.Services.AddScoped(sp => new LaunchCoordinator(sp.GetRequiredService<EngineHost>().Engine, sp.GetRequiredService<WebPrompt>()));
 builder.Services.AddScoped<ViewerSession>();
 builder.Services.AddScoped<WebActions>();

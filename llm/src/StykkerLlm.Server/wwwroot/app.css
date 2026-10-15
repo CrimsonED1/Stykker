@@ -552,6 +552,19 @@ html[data-theme=titan] .pf-cmd code{border-radius:0}
 .claude-ask{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px;padding:7px 9px;border:1px solid rgb(var(--warn-rgb)/.5);border-radius:8px;background:rgb(var(--warn-rgb)/.08)}
 .claude-ask .lamp{background:var(--warn)}
 .claude-ask .t{flex:1;min-width:0;font-size:12px}
+/* Client-Dialog (Claude Desktop, Claude Code): Chip als Knopf, Zeilen für Schalter und Startvarianten */
+button.hchip{font:inherit;cursor:pointer}
+button.hchip:hover{color:var(--ink);border-color:rgb(var(--acc-rgb)/.5)}
+.cdlg-hd{display:flex;align-items:center;gap:10px}
+.cdlg-hd h2{margin:0}
+.cdlg-t{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.cdlg-note{margin-top:6px}
+.cdlg-row{display:flex;align-items:center;gap:12px;margin-top:14px}
+.cdlg-l{flex:1;min-width:0}
+.cdlg-opt{display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--line)}
+.cdlg-opt.off{opacity:.55}
+.cdlg-opt .ghost{flex:none}
+.cdlg .sec{margin-bottom:4px}
 .pxp-row{display:flex;align-items:center;gap:8px;margin-top:10px;flex-wrap:wrap}
 .pxp-row select{flex:1;min-width:0}
 .pxp-l{font-size:12px;color:var(--muted);display:inline-flex;align-items:center;gap:4px;min-width:120px}

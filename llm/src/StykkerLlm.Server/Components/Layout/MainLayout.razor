@@ -3,6 +3,7 @@
 @inject EngineHost Host
 @inject IHostApplicationLifetime Life
 @inject WebPrompt Prompt
+@inject ClientDialogs Dialogs
 @inject ViewerSession Viewer
 @inject WebActions Web
 @inject NavigationManager Nav
@@ -57,6 +58,16 @@
         @if (Host.Engine.Sys is { } s)
         {
             <span class="hchip" title="@Strings.RamFreeGb(s.RamTotalGb - s.RamUsedGb)"><Icon Name="ram" /><b>@((s.RamTotalGb - s.RamUsedGb).ToString("0.0", CultureInfo.InvariantCulture))</b><span class="muted">GB free</span></span>
+        }
+        @* Ein Chip je Proxy-Client (Claude Desktop, Claude Code): Lampe an, wenn er über den Stykker-Proxy läuft; Klick öffnet den Dialog *@
+        @foreach (var client in Host.Engine.Clients.All)
+        {
+            if (client.Supported)
+            {
+                var c = client;
+                <button class="hchip @(c.Enabled ? "on" : "")" title="@Strings.ClientChipTip(c.Title, c.Enabled)" aria-label="@Strings.ClientChipTip(c.Title, c.Enabled)"
+                        @onclick="() => Dialogs.Open(c.Id)"><span class="lamp"></span><Icon Name="@c.IconName" /><b>@c.Title</b></button>
+            }
         }
         <span class="hchip @(busy > 0 ? "busy" : "")" title="@Strings.HdrServersTip"><Icon Name="slots" /><b>@Strings.HdrServers(srv.Count, busy)</b></span>
         @if (Host.ReadOnly)
@@ -137,6 +148,7 @@ else if (Viewer.Known && Viewer.IsViewer)
 }
 <main>@Body</main>
 <PromptDialog />
+<ClientDialog />
 <ToastHost />
 <CommandPalette />
 </div>
