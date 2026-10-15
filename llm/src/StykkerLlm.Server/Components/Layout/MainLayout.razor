@@ -11,11 +11,10 @@
 @inject NavigationManager Nav
 @inject IJSRuntime JS
 
-@* Die Themen (ThemeCatalog: Dark, Spacepunk Titan) stehen als CSS-Variablen im Kopf, die Wahl als Meta-Angabe:
-   ui.js setzt daraus html[data-theme] – bei „System“ nach dem Hell/Dunkel des Systems. Ein Wechsel über /settings
-   ist ohne Neuladen sichtbar, weil der Kopf jeden Takt neu gezeichnet wird. *@
+@* Die Themen (Dark, Spacepunk Titan) stehen in shared/design-system/tokens.css (html[data-theme]); hier nur die Wahl als
+   Meta-Angabe: ui.js setzt daraus html[data-theme] – bei „System“ nach dem Hell/Dunkel des Systems. Ein Wechsel über
+   /settings ist ohne Neuladen sichtbar, weil der Kopf jeden Takt neu gezeichnet wird. *@
 <HeadContent>
-    <style>@ThemeCatalog.Css()</style>
     <meta name="stykker-theme" content="@ThemeCatalog.Mode(Host.Engine.Settings.Theme)" />
 </HeadContent>
 

@@ -21,4 +21,13 @@
     <ProjectReference Include="..\StykkerLlm.Platform.Windows\StykkerLlm.Platform.Windows.csproj" />
   </ItemGroup>
 
+  <!-- Das Design-System kommt beim Veröffentlichen neben die exe (Ordner design-system), damit die Seite auch ohne die
+       Monorepo gestylt ist. DesignSystemHost.FindFrom sucht diesen Ordner zuerst. Nur die Dateien, die die Seiten laden;
+       in die Quelle wird nichts kopiert. -->
+  <ItemGroup>
+    <None Include="..\..\..\shared\design-system\tokens.css" Link="design-system\tokens.css" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="..\..\..\shared\design-system\components\*.css" Link="design-system\components\%(Filename)%(Extension)" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="..\..\..\shared\design-system\components\*.js" Link="design-system\components\%(Filename)%(Extension)" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>
