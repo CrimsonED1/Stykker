@@ -176,12 +176,15 @@
             }
 
             @* Modelltest der Sicherheitsprüfung: jedes Modell eines Anbieters bekommt eine Prüfung und zeigt, ob es schnell und
-               im Format antwortet *@
+               im Format antwortet. Die Zeilen kommen aus der CSV (letzter Lauf je Modell) oder aus dem laufenden Lauf; brauchbare
+               stehen oben und sind hervorgehoben. Die Knöpfe setzen das Modell als Auto- oder Bildmodell, nur wenn der Test es bestanden hat *@
             @if (_tab == ProxyDialogTabs.Tests)
             {
                 var tests = Host.Engine.ClassifierRun;
                 var running = tests is { Running: true };
                 var testUrl = ClassifierTestUrl;
+                IReadOnlyList<ClassifierResult> cRows = Providers.Count > 0 ? Host.Engine.ClassifierRows(testUrl) : Array.Empty<ClassifierResult>();
+                IReadOnlyList<VisionResult> cVision = Providers.Count > 0 ? Host.Engine.VisionRows(testUrl) : Array.Empty<VisionResult>();
                 <h3 class="sec">@Strings.ClassifierTestButton</h3>
                 <div class="small muted pxp-hint">@(_realRequest ? Strings.ClassifierTestRealRequest : Strings.ClassifierTestExampleRequest)</div>
                 @if (Providers.Count == 0)
@@ -206,53 +209,72 @@
                         }
                     </div>
                 }
-                @if (tests != null)
+                @if (running || cRows.Count > 0)
                 {
-                    var c = tests.Counts;
+                    var c = running ? tests!.Counts : ClassifierTest.CountOf(cRows);
                     @if (running)
                     {
-                        var st = tests.Status;
+                        var st = tests!.Status;
                         var sec = st.RequestSeconds;
                         <div class="ctt-live">
                             <div class="ctt-live-head"><b>@st.Model</b> <span class="muted">@Strings.TestPhaseText(st.Phase, st.WaitSeconds)</span><span class="ctt-live-sec">@Strings.ClassifierTestSeconds(sec)</span></div>
-                            <div class="bar"><div style="width:@(LivePct(sec, tests.TimeoutSeconds))%"></div></div>
-                            <div class="small muted">@Strings.ClassifierTestCounts(tests.Done, tests.Total, c.Ok, c.Failed, c.Skipped)@(Strings.ClassifierTestLeft(tests.RemainingSec()) is { Length: > 0 } left ? " · " + left : "")</div>
+                            <div class="bar"><div style="width:@(LivePct(sec, tests!.TimeoutSeconds))%"></div></div>
+                            <div class="small muted">@Strings.ClassifierTestCounts(tests!.Done, tests!.Total, c.Ok, c.Failed, c.Skipped)@(Strings.ClassifierTestLeft(tests!.RemainingSec()) is { Length: > 0 } left ? " · " + left : "")</div>
                         </div>
                     }
                     else
                     {
-                        <div class="small muted pxp-hint">@Strings.ClassifierTestCounts(tests.Done, tests.Total, c.Ok, c.Failed, c.Skipped)</div>
+                        <div class="small muted pxp-hint">@Strings.ClassifierTestSummary(c.Ok, c.Failed, c.Skipped)</div>
+                        <div class="small muted ctt-when">@Strings.TestResultsFrom(cRows.Max(r => r.Time))</div>
                     }
                     <div class="ctt-scroll">
                         <table class="ctt">
                             <thead><tr>
                                 <th>@Strings.ClassifierColModel</th><th>@Strings.ClassifierColFormat</th><th>@Strings.ClassifierColStatus</th>
-                                <th>@Strings.ClassifierColFirst</th><th>@Strings.ClassifierColTotal</th><th>@Strings.ClassifierColNote</th><th></th>
+                                <th>@Strings.ClassifierColFirst</th><th>@Strings.ClassifierColTotal</th><th>@Strings.ClassifierColNote</th><th>@Strings.TestColActions</th>
                             </tr></thead>
                             <tbody>
                             @if (running)
                             {
-                                var st = tests.Status;
+                                var st = tests!.Status;
                                 <tr class="ctt-run">
                                     <td title="@st.Model">@st.Model</td><td>–</td>
                                     <td><Icon Name="s-load" Class="spin" /> @Strings.TestPhaseText(st.Phase, st.WaitSeconds)</td>
                                     <td>–</td><td>@Strings.ClassifierTestSeconds(st.RequestSeconds)</td><td></td><td></td>
                                 </tr>
                             }
-                            @foreach (var row in ClassifierTest.Sorted(tests.Results))
+                            @foreach (var row in ClassifierTest.Sorted(cRows))
                             {
                                 var rr = row;
-                                <tr>
-                                    <td title="@rr.Model">@rr.Model</td>
-                                    <td>@(rr.FormatOk is true ? Strings.ClassifierFormatOk : rr.FormatOk is false ? Strings.ClassifierFormatNo : "–")</td>
-                                    <td>@rr.Status</td>
-                                    <td>@(rr.FirstByteSec is double fb ? fb.ToString("0.00", CultureInfo.InvariantCulture) : "–")</td>
-                                    <td>@(rr.TotalSec is double tt ? tt.ToString("0.00", CultureInfo.InvariantCulture) : "–")</td>
-                                    <td class="ctt-note" title="@NoteTitle(rr.Status, rr.Note, tests.TimeoutSeconds)">@NoteShown(rr.Status, rr.Note, tests.TimeoutSeconds)</td>
+                                bool ok = rr.FormatOk is true;
+                                bool skipped = rr.Status == Strings.ClassifierStatusSkipped;
+                                bool isAuto = px.ClassifierValue() == ProxyTarget.CloudKey(testUrl, rr.Model);
+                                bool isVision = px.VisionValue() == ProxyTarget.CloudKey(testUrl, rr.Model);
+                                var autoState = ModelTestTable.AsAuto(cRows, rr.Model);
+                                var visionState = ModelTestTable.AsVision(cVision, rr.Model);
+                                bool listed = Offered(testUrl, rr.Model);
+                                <tr class="@(ok ? "ctt-good" : skipped ? "ctt-dim" : "")">
+                                    <td title="@rr.Model">@rr.Model
+                                        @if (isAuto) { <span class="ctt-mark">@Strings.TestMarkAuto</span> }
+                                        @if (isVision) { <span class="ctt-mark">@Strings.TestMarkVision</span> }
+                                    </td>
                                     <td>
-                                        @if (rr.FormatOk is true && !running)
+                                        @if (ok) { <span class="ctt-ok">@Strings.ClassifierFormatOk · @Sec(rr.TotalSec) s</span> }
+                                        else { @(rr.FormatOk is false ? Strings.ClassifierFormatNo : "–") }
+                                    </td>
+                                    <td>@rr.Status</td>
+                                    <td>@Sec(rr.FirstByteSec)</td>
+                                    <td>@Sec(rr.TotalSec)</td>
+                                    <td class="ctt-note" title="@NoteTitle(rr.Status, rr.Note, tests?.TimeoutSeconds ?? ClassifierTest.DefaultTimeout.TotalSeconds)">@NoteShown(rr.Status, rr.Note, tests?.TimeoutSeconds ?? ClassifierTest.DefaultTimeout.TotalSeconds)</td>
+                                    <td class="ctt-acts">
+                                        @if (CanWrite)
                                         {
-                                            <button class="ghost" disabled="@(!CanWrite)" @onclick='() => UseModel("proxy.classifier", tests.ProviderUrl, rr.Model)'>@Strings.ClassifierTestUse</button>
+                                            <button class="ghost ctt-btn" title="@(listed ? Strings.TestInListTip : Strings.TestAddModelsTip)" aria-label="@(listed ? Strings.TestInList : Strings.TestAddModels)"
+                                                    disabled="@running" @onclick="() => ToggleOffered(testUrl, rr.Model)"><Icon Name="@(listed ? "check" : "plus")" /><span class="ctt-lbl">@(listed ? Strings.TestInList : Strings.TestAddModels)</span></button>
+                                            <button class="ghost ctt-btn" title="@UseTip(autoState, Strings.ClassifierTestUse, Strings.TestNotTestedAuto, Strings.TestFailedAuto)" aria-label="@Strings.ClassifierTestUse"
+                                                    disabled="@(running || autoState != ModelTestTable.UseState.Usable)" @onclick='() => UseModel("proxy.classifier", testUrl, rr.Model)'><Icon Name="proxy" /><span class="ctt-lbl">@Strings.ClassifierTestUse</span></button>
+                                            <button class="ghost ctt-btn" title="@UseTip(visionState, Strings.VisionTestUse, Strings.TestNotTestedVision, Strings.TestFailedVision)" aria-label="@Strings.VisionTestUse"
+                                                    disabled="@(running || visionState != ModelTestTable.UseState.Usable)" @onclick='() => UseModel("proxy.vision", testUrl, rr.Model)'><Icon Name="eye" /><span class="ctt-lbl">@Strings.VisionTestUse</span></button>
                                         }
                                     </td>
                                 </tr>
@@ -266,6 +288,8 @@
                 var vtests = Host.Engine.VisionRun;
                 var vrunning = vtests is { Running: true };
                 var visionUrl = VisionTestUrl;
+                IReadOnlyList<VisionResult> vRows = Providers.Count > 0 ? Host.Engine.VisionRows(visionUrl) : Array.Empty<VisionResult>();
+                IReadOnlyList<ClassifierResult> vCls = Providers.Count > 0 ? Host.Engine.ClassifierRows(visionUrl) : Array.Empty<ClassifierResult>();
                 <h3 class="sec">@Strings.VisionTestButton</h3>
                 <div class="small muted pxp-hint">@Strings.VisionTestImageNote</div>
                 @if (Providers.Count == 0)
@@ -290,53 +314,70 @@
                         }
                     </div>
                 }
-                @if (vtests != null)
+                @if (vrunning || vRows.Count > 0)
                 {
-                    var vc = vtests.Counts;
+                    var vc = vrunning ? vtests!.Counts : VisionTest.CountOf(vRows);
                     @if (vrunning)
                     {
-                        var vst = vtests.Status;
+                        var vst = vtests!.Status;
                         var vsec = vst.RequestSeconds;
                         <div class="ctt-live">
                             <div class="ctt-live-head"><b>@vst.Model</b> <span class="muted">@Strings.TestPhaseText(vst.Phase, vst.WaitSeconds)</span><span class="ctt-live-sec">@Strings.ClassifierTestSeconds(vsec)</span></div>
-                            <div class="bar"><div style="width:@(LivePct(vsec, vtests.TimeoutSeconds))%"></div></div>
-                            <div class="small muted">@Strings.ClassifierTestCounts(vtests.Done, vtests.Total, vc.Ok, vc.Failed, vc.Skipped)@(Strings.ClassifierTestLeft(vtests.RemainingSec()) is { Length: > 0 } vleft ? " · " + vleft : "")</div>
+                            <div class="bar"><div style="width:@(LivePct(vsec, vtests!.TimeoutSeconds))%"></div></div>
+                            <div class="small muted">@Strings.ClassifierTestCounts(vtests!.Done, vtests!.Total, vc.Ok, vc.Failed, vc.Skipped)@(Strings.ClassifierTestLeft(vtests!.RemainingSec()) is { Length: > 0 } vleft ? " · " + vleft : "")</div>
                         </div>
                     }
                     else
                     {
-                        <div class="small muted pxp-hint">@Strings.ClassifierTestCounts(vtests.Done, vtests.Total, vc.Ok, vc.Failed, vc.Skipped)</div>
+                        <div class="small muted pxp-hint">@Strings.ClassifierTestSummary(vc.Ok, vc.Failed, vc.Skipped)</div>
+                        <div class="small muted ctt-when">@Strings.TestResultsFrom(vRows.Max(r => r.Time))</div>
                     }
                     <div class="ctt-scroll">
                         <table class="ctt">
                             <thead><tr>
                                 <th>@Strings.ClassifierColModel</th><th>@Strings.ClassifierColStatus</th><th>@Strings.VisionTestColTime</th>
-                                <th>@Strings.VisionTestColOk</th><th>@Strings.ClassifierColNote</th><th></th>
+                                <th>@Strings.VisionTestColOk</th><th>@Strings.ClassifierColNote</th><th>@Strings.TestColActions</th>
                             </tr></thead>
                             <tbody>
                             @if (vrunning)
                             {
-                                var vst = vtests.Status;
+                                var vst = vtests!.Status;
                                 <tr class="ctt-run">
                                     <td title="@vst.Model">@vst.Model</td>
                                     <td><Icon Name="s-load" Class="spin" /> @Strings.TestPhaseText(vst.Phase, vst.WaitSeconds)</td>
                                     <td>@Strings.ClassifierTestSeconds(vst.RequestSeconds)</td><td>–</td><td></td><td></td>
                                 </tr>
                             }
-                            @foreach (var row in VisionTest.Sorted(vtests.Results))
+                            @foreach (var row in VisionTest.Sorted(vRows))
                             {
                                 var vr = row;
                                 bool skipped = vr.Status == Strings.ClassifierStatusSkipped;
-                                <tr>
-                                    <td title="@vr.Model">@vr.Model</td>
+                                bool isAuto = px.ClassifierValue() == ProxyTarget.CloudKey(visionUrl, vr.Model);
+                                bool isVision = px.VisionValue() == ProxyTarget.CloudKey(visionUrl, vr.Model);
+                                var visionState = ModelTestTable.AsVision(vRows, vr.Model);
+                                var autoState = ModelTestTable.AsAuto(vCls, vr.Model);
+                                bool listed = Offered(visionUrl, vr.Model);
+                                <tr class="@(vr.Ok ? "ctt-good" : skipped ? "ctt-dim" : "")">
+                                    <td title="@vr.Model">@vr.Model
+                                        @if (isAuto) { <span class="ctt-mark">@Strings.TestMarkAuto</span> }
+                                        @if (isVision) { <span class="ctt-mark">@Strings.TestMarkVision</span> }
+                                    </td>
                                     <td>@vr.Status</td>
-                                    <td>@(vr.TotalSec is double tt ? tt.ToString("0.00", CultureInfo.InvariantCulture) : "–")</td>
-                                    <td>@(skipped ? "–" : vr.Ok ? Strings.ClassifierFormatOk : Strings.ClassifierFormatNo)</td>
-                                    <td class="ctt-note" title="@NoteTitle(vr.Status, vr.Note, vtests.TimeoutSeconds)">@NoteShown(vr.Status, vr.Note, vtests.TimeoutSeconds)</td>
+                                    <td>@Sec(vr.TotalSec)</td>
                                     <td>
-                                        @if (vr.Ok && !vrunning)
+                                        @if (vr.Ok) { <span class="ctt-ok">@Strings.ClassifierFormatOk · @Sec(vr.TotalSec) s</span> }
+                                        else { @(skipped ? "–" : Strings.ClassifierFormatNo) }
+                                    </td>
+                                    <td class="ctt-note" title="@NoteTitle(vr.Status, vr.Note, vtests?.TimeoutSeconds ?? ClassifierTest.DefaultTimeout.TotalSeconds)">@NoteShown(vr.Status, vr.Note, vtests?.TimeoutSeconds ?? ClassifierTest.DefaultTimeout.TotalSeconds)</td>
+                                    <td class="ctt-acts">
+                                        @if (CanWrite)
                                         {
-                                            <button class="ghost" disabled="@(!CanWrite)" @onclick='() => UseModel("proxy.vision", vtests.ProviderUrl, vr.Model)'>@Strings.VisionTestUse</button>
+                                            <button class="ghost ctt-btn" title="@(listed ? Strings.TestInListTip : Strings.TestAddModelsTip)" aria-label="@(listed ? Strings.TestInList : Strings.TestAddModels)"
+                                                    disabled="@vrunning" @onclick="() => ToggleOffered(visionUrl, vr.Model)"><Icon Name="@(listed ? "check" : "plus")" /><span class="ctt-lbl">@(listed ? Strings.TestInList : Strings.TestAddModels)</span></button>
+                                            <button class="ghost ctt-btn" title="@UseTip(visionState, Strings.VisionTestUse, Strings.TestNotTestedVision, Strings.TestFailedVision)" aria-label="@Strings.VisionTestUse"
+                                                    disabled="@(vrunning || visionState != ModelTestTable.UseState.Usable)" @onclick='() => UseModel("proxy.vision", visionUrl, vr.Model)'><Icon Name="eye" /><span class="ctt-lbl">@Strings.VisionTestUse</span></button>
+                                            <button class="ghost ctt-btn" title="@UseTip(autoState, Strings.ClassifierTestUse, Strings.TestNotTestedAuto, Strings.TestFailedAuto)" aria-label="@Strings.ClassifierTestUse"
+                                                    disabled="@(vrunning || autoState != ModelTestTable.UseState.Usable)" @onclick='() => UseModel("proxy.classifier", visionUrl, vr.Model)'><Icon Name="proxy" /><span class="ctt-lbl">@Strings.ClassifierTestUse</span></button>
                                         }
                                     </td>
                                 </tr>
@@ -530,7 +571,10 @@
         if (!CanWrite) return;
         if (!Offered(url, model))
         {
-            var offered = Providers.FirstOrDefault(p => p.Url == url).Offered ?? Array.Empty<string>();
+            var entry = Providers.FirstOrDefault(p => p.Url == url);
+            // Ohne gelistete Modelle wäre die Auswahl leer und die gewählten Modelle gingen verloren: erst warten
+            if (entry.Models is not { Length: > 0 }) { _flash = Strings.ClassifierTestNoModels; return; }
+            var offered = entry.Offered ?? Array.Empty<string>();
             var add = new ActionRequest { Action = "provider.models", Arg = url };
             add.Values["models"] = string.Join('\n', offered.Append(model));
             var a = await Web.RunAsync(add);
@@ -539,6 +583,31 @@
         var r = await Web.RunAsync(new ActionRequest { Action = action, Arg = ProxyTarget.CloudKey(url, model) });
         if (r.Ok) { _flash = ""; Toast.Show(r.Message); } else _flash = r.Message;
     }
+
+    // „+ Models“ und „✓ in list“: das Modell beim Anbieter an- oder abhaken – dieselbe Aktion wie der Modell-Dialog des Anbieters
+    private async Task ToggleOffered(string url, string model)
+    {
+        if (!CanWrite) return;
+        // Ohne gelistete Modelle wäre die Auswahl leer und die gewählten Modelle gingen verloren: erst warten
+        var entry = Providers.FirstOrDefault(p => p.Url == url);
+        if (entry.Models is not { Length: > 0 }) { _flash = Strings.ClassifierTestNoModels; return; }
+        var offered = entry.Offered ?? Array.Empty<string>();
+        var req = new ActionRequest { Action = "provider.models", Arg = url };
+        req.Values["models"] = string.Join('\n', ModelTestTable.WithOffered(offered, model, !offered.Contains(model)));
+        var r = await Web.RunAsync(req);
+        if (r.Ok) { _flash = ""; Toast.Show(r.Message); } else _flash = r.Message;
+    }
+
+    // Tooltip eines „Use as …“-Knopfes: der Name, wenn er aktiv ist, sonst der Grund (nicht getestet oder nicht bestanden)
+    private static string UseTip(ModelTestTable.UseState state, string label, string notTested, string failed) => state switch
+    {
+        ModelTestTable.UseState.Usable => label,
+        ModelTestTable.UseState.NotTested => notTested,
+        _ => failed,
+    };
+
+    // Sekunden in der Tabelle, zwei Nachkommastellen; ohne Messung „–“
+    private static string Sec(double? sec) => sec is double s ? s.ToString("0.00", CultureInfo.InvariantCulture) : "–";
 
     private void SetLan(bool on) { if (CanWrite) Host.Engine.Proxies.SetBindLan(on); }
 

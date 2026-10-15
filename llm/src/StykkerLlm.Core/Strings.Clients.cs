@@ -28,7 +28,7 @@ public static partial class Strings
 
     // Modelltest der Sicherheitsprüfung (Proxy-Dialog, Abschnitt „Auto security classifier“)
     public const string ClassifierTestButton = "Test classifier models", ClassifierTestStop = "Stop",
-        ClassifierTestProvider = "Provider to test", ClassifierTestUse = "Use as classifier",
+        ClassifierTestProvider = "Provider to test", ClassifierTestUse = "Use as auto",
         ClassifierTestRealRequest = "Test request: your last real check – it contains your conversation and is sent to the provider.",
         ClassifierTestExampleRequest = "Test request: a built-in example without your conversation. It is sent to the provider.",
         ClassifierTestNoProvider = "Add a cloud provider with its key first.",
@@ -77,10 +77,21 @@ public static partial class Strings
     public static string ClassifierNoteError(string message) => $"Connection failed: {message}";
 
     // Modelltest der Bilderkennung (Proxy-Dialog, Abschnitt „Images“): ein eingebautes Bild, Antwort muss Rot und Blau nennen
-    public const string VisionTestButton = "Test vision models", VisionTestUse = "Use as vision model",
+    public const string VisionTestButton = "Test vision models", VisionTestUse = "Use as vision",
         VisionTestImageNote = "Test request: a built-in 64 × 64 image (left red, right blue) and a question. It is sent to the provider.",
         VisionTestRunning = "A model test is already running.", VisionTestStarted = "Vision test started.",
         VisionTestColTime = "Time (s)", VisionTestColOk = "ok";
 
     public static string VisionNoteWrong(string reply) => $"The answer does not name both colours (red and blue): {reply}";
+
+    // Tabellen beider Tests: Knöpfe „+ Models“, „Use as auto“ und „Use as vision“, Markierungen und Hinweise
+    public const string TestAddModels = "+ Models", TestInList = "✓ in list", TestColActions = "Use",
+        TestAddModelsTip = "Offer this model at the provider, as the Models dialog does",
+        TestInListTip = "Offered at the provider. Click to take it off the list.",
+        TestNotTestedAuto = "not tested as classifier", TestNotTestedVision = "not tested for images",
+        TestFailedAuto = "did not pass the classifier test", TestFailedVision = "did not pass the image test",
+        TestMarkAuto = "auto ✓", TestMarkVision = "vision ✓";
+    public static string TestResultsFrom(DateTime time) =>
+        "results from " + time.ToString("yyyy-MM-dd HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture);
+    public static string ClassifierTestSummary(int ok, int failed, int skipped) => $"ok {ok} · failed {failed} · skipped {skipped}";
 }

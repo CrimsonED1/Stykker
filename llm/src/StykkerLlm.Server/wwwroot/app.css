@@ -729,6 +729,19 @@ button.hchip:hover .ic.wr,.pxchip:hover .ic.wr,.pxchip-open:focus-visible .ic.wr
 .ctt-live-head b{overflow-wrap:anywhere}
 .ctt-live-sec{margin-left:auto;font-variant-numeric:tabular-nums}
 .ctt-run td{color:var(--acc)}
+/* Modelltests (beide): brauchbare Zeilen oben grün hervorgehoben mit Badge „ok · Zeit“, übersprungene gedämpft; Knöpfe mit Symbol,
+   Text erst ab Tablet-Breite; „auto ✓“ und „vision ✓“ markieren das gesetzte Modell; Zeile „results from …“ bei gespeicherten Läufen */
+.ctt tr.ctt-good td{background:rgb(var(--good-rgb)/.07)}
+.ctt tr.ctt-good td:first-child{box-shadow:inset 3px 0 0 var(--good)}
+.ctt tr.ctt-dim td{color:var(--muted)}
+.ctt-ok{color:var(--good);border:1px solid rgb(var(--good-rgb)/.5);border-radius:6px;padding:0 5px;font-variant-numeric:tabular-nums}
+.ctt-mark{display:inline-block;margin-left:4px;padding:0 5px;border-radius:6px;font-size:11px;color:var(--acc);border:1px solid rgb(var(--acc-rgb)/.5)}
+.ctt-acts{white-space:nowrap}
+.ctt-btn{display:inline-flex;align-items:center;gap:4px;padding:2px 6px;font-size:12px}
+.ctt-btn .ic{width:12px;height:12px;flex:none}
+.ctt-btn+.ctt-btn{margin-left:4px}
+.ctt-when{margin-top:2px}
+@media(max-width:640px){.ctt-lbl{display:none}}
 html[data-theme=titan] .slot.hot{box-shadow:inset 0 0 0 2px var(--bad)}
 
 /* Nach der Endprüfung (Verifier): Kopf klebt auf schmalen Geräten nicht (nahm fast die halbe Höhe ein); ohne GPU keine

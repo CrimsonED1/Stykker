@@ -307,6 +307,25 @@ public sealed class MonitorEngine : IDisposable
     // Welche Testanfrage der nächste Test nähme (für den Hinweis im Dialog): die letzte echte Prüfung oder das Beispiel
     public ClassifierRequest ClassifierSample() => ClassifierTest.PickRequest(Path.Combine(Paths.LogsDir, "proxy-debug"));
 
+    // Die Zeilen der Sicherheitsprüfung für einen Anbieter: der letzte Lauf je Modell aus classifier-test.csv (auch nach einem
+    // Neustart), darüber die Zeilen des laufenden oder letzten Laufs dieses Anbieters (auch wenn die CSV nicht schreiben konnte)
+    public IReadOnlyList<ClassifierResult> ClassifierRows(string providerUrl)
+    {
+        var url = ProviderKeys.Normalize(providerUrl);
+        var run = ClassifierRun;
+        var current = run != null && run.ProviderUrl.Equals(url, StringComparison.OrdinalIgnoreCase) ? run.Results : Array.Empty<ClassifierResult>();
+        return ModelTestTable.Overlay(ModelTestTable.LastClassifier(Path.Combine(Paths.LogsDir, ClassifierTest.CsvFile), url), current, r => r.Model);
+    }
+
+    // Dasselbe für den Bildtest (vision-test.csv und der letzte Bildtest)
+    public IReadOnlyList<VisionResult> VisionRows(string providerUrl)
+    {
+        var url = ProviderKeys.Normalize(providerUrl);
+        var run = VisionRun;
+        var current = run != null && run.ProviderUrl.Equals(url, StringComparison.OrdinalIgnoreCase) ? run.Results : Array.Empty<VisionResult>();
+        return ModelTestTable.Overlay(ModelTestTable.LastVision(Path.Combine(Paths.LogsDir, VisionTest.CsvFile), url), current, r => r.Model);
+    }
+
     // Die letzten Beobachtungen des Proxys (für die Liste „Letzte Anfragen“: Werkzeuge, Denken, Client), neueste zuletzt
     private readonly Queue<ProxyRecord> _recentProxy = new();
     public IReadOnlyList<ProxyRecord> RecentProxy() { lock (_recentProxy) return _recentProxy.ToList(); }

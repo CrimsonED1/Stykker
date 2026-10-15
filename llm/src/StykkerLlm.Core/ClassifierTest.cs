@@ -195,15 +195,14 @@ public sealed class ClassifierTest
     public IReadOnlyList<ClassifierResult> Results { get { lock (_gate) return _results.ToList(); } }
 
     // Zähler für die Live-Zeile: ok = Format stimmt, skipped = nicht gefragt, failed = gefragt, aber nicht brauchbar
-    public (int Ok, int Failed, int Skipped) Counts
+    public (int Ok, int Failed, int Skipped) Counts => CountOf(Results);
+
+    public static (int Ok, int Failed, int Skipped) CountOf(IEnumerable<ClassifierResult> rows)
     {
-        get
-        {
-            var rows = Results;
-            int ok = rows.Count(r => r.FormatOk is true);
-            int skipped = rows.Count(r => r.Status == Strings.ClassifierStatusSkipped);
-            return (ok, rows.Count - ok - skipped, skipped);
-        }
+        var list = rows.ToList();
+        int ok = list.Count(r => r.FormatOk is true);
+        int skipped = list.Count(r => r.Status == Strings.ClassifierStatusSkipped);
+        return (ok, list.Count - ok - skipped, skipped);
     }
 
     // Grobe Restzeit in Sekunden (null, solange noch keine Anfrage gemessen ist)
