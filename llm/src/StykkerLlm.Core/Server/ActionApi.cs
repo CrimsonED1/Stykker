@@ -264,6 +264,9 @@ public static class ActionApi
                     e.Proxies.SetChoiceValue(req.Arg ?? "");
                     e.Settings.Save();
                     return Ok(e.Proxies.TargetName());
+                case "proxy.classifier":
+                    e.Proxies.SetClassifierValue(req.Arg ?? "");
+                    return Ok(e.Proxies.ClassifierValue().Length == 0 ? Strings.ClientAutoSame : Strings.ClientAutoSet);
                 case "proxy.port":
                 {
                     int port = req.GetInt("port", e.Proxies.Port);

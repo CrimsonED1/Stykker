@@ -143,6 +143,9 @@ public sealed class AppSettings
     public string ProxyTarget { get; set; } = "";
     // Modell dieses Servers (aus den aktiven Modellen); leer = erstes/einziges Modell des Ziels
     public string ProxyTargetModel { get; set; } = "";
+    // Ziel für die Sicherheitsprüfung von Claude Code im Modus „auto“ (Anfragen an claude-… außer claude-stykker):
+    // „<Server-Key>|<Modell>“ oder eine Cloud-Zielkennung; leer = wie das Standardziel
+    public string ProxyClassifier { get; set; } = "";
     // Andere Rechner mit Stykker: ihre Proxy-Modelle werden mit eingesammelt
     public List<RemoteStykker> RemoteStykkers { get; set; } = new();
     // Cloud-Anbieter (OpenRouter, NVIDIA …): der Proxy holt ihre Modelle live und bietet sie als „<Anbieter>/<Modell>" an
@@ -207,6 +210,7 @@ public sealed class AppSettings
         bool portMoved = s.ProxyPort == 8079;
         if (portMoved) s.ProxyPort = 17500;
         s.ProxyTarget ??= "";
+        s.ProxyClassifier ??= "";
         if (s.GpuTopCount <= 0) s.GpuTopCount = 8;
         // Nur noch Dark, Spacepunk Titan und System: ein früheres Thema (Deep Sea, Obsidian …) wird zu Dark
         s.Theme = ThemeCatalog.Normalize(s.Theme);

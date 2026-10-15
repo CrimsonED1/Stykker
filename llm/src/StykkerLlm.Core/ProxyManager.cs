@@ -150,6 +150,28 @@ public sealed class ProxyManager : IDisposable
         SetTarget(v);
     }
 
+    // Ziel der Sicherheitsprüfung (Modus „auto“ von Claude Code) setzen: derselbe Wert wie bei SetChoiceValue, leer = wie das Standardziel
+    public void SetClassifierValue(string value)
+    {
+        _settings.ProxyClassifier = (value ?? "").Trim();
+        _settings.Save();
+        PushTargets();
+    }
+
+    public string ClassifierValue() => _settings.ProxyClassifier;
+
+    // Die Zielkennung der Sicherheitsprüfung, oder null (nicht gesetzt oder das Ziel läuft gerade nicht)
+    private string? ClassifierKey(IReadOnlyList<ProxyTarget> targets)
+    {
+        var v = _settings.ProxyClassifier;
+        if (string.IsNullOrEmpty(v)) return null;
+        if (targets.FirstOrDefault(t => t.Key == v) is { } exact) return exact.Key;
+        int bar = v.IndexOf('|');
+        string server = bar > 0 ? v[..bar] : v, model = bar > 0 ? v[(bar + 1)..] : "";
+        return targets.FirstOrDefault(t => t.ServerKey == server && t.Model != null
+            && (model.Length == 0 || t.Model.Equals(model, StringComparison.OrdinalIgnoreCase)))?.Key;
+    }
+
     // Und umgekehrt: der Wert, den die Auswahl für das gerade eingestellte Ziel zeigen muss ("" = Auto)
     public string ChoiceValue()
     {
@@ -500,7 +522,7 @@ public sealed class ProxyManager : IDisposable
         var names = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var t in targets) names[t.Key] = t.DisplayName.Length > 0 ? t.DisplayName : t.Key;
         _names = names;
-        _proxy.SetTargets(targets, DefaultKey(targets));
+        _proxy.SetTargets(targets, DefaultKey(targets), ClassifierKey(targets));
     }
 
     // Alle Ziele: je geladenes Modell eines lokalen Servers eines, dazu die Modelle der angehängten Rechner und der

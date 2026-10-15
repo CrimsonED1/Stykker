@@ -565,6 +565,9 @@ button.hchip:hover{color:var(--ink);border-color:rgb(var(--acc-rgb)/.5)}
 .cdlg-opt.off{opacity:.55}
 .cdlg-opt .ghost{flex:none}
 .cdlg .sec{margin-bottom:4px}
+/* Der Client-Dialog deckt ab: die Kartenfarbe über dem vollen Hintergrund statt durchscheinend */
+.modal.cdlg{background:linear-gradient(180deg,var(--card-top),var(--card-bottom)),var(--bg)}
+.cdlg-sel{width:100%;margin-top:8px}
 .pxp-row{display:flex;align-items:center;gap:8px;margin-top:10px;flex-wrap:wrap}
 .pxp-row select{flex:1;min-width:0}
 .pxp-l{font-size:12px;color:var(--muted);display:inline-flex;align-items:center;gap:4px;min-width:120px}
