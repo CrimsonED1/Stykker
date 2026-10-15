@@ -273,16 +273,32 @@ public static class ActionApi
                     e.Proxies.Restart();
                     return Ok(port.ToString(Strings.Inv));
                 }
-                // ── Claude Desktop auf den Stykker-Proxy umschalten (3P-Konfiguration der App) ──
+                // ── Proxy-Clients (Claude Desktop, Claude Code): über den Stykker-Proxy schalten, schließen, starten ──
+                // claude.set / claude.close sind die alten Namen für den Claude-Client und bleiben erhalten.
+                case "client.set":
                 case "claude.set":
                 {
-                    var msg = req.Flag ? e.Claude.Enable(out var cerr) : e.Claude.Disable(out cerr);
+                    var client = e.Clients.Get(req.Action == "claude.set" ? ClaudeClient.ClientId : req.Arg);
+                    if (client == null) return ActionResult.Fail(Strings.ClientUnknown(req.Arg ?? ""));
+                    var msg = req.Flag ? client.Enable(out var cerr) : client.Disable(out cerr);
                     return cerr == null ? Ok(msg) : ActionResult.Fail(cerr);
                 }
+                case "client.close":
                 case "claude.close":
                 {
-                    int closed = e.Claude.CloseRunning(out var cerr);
+                    var client = e.Clients.Get(req.Action == "claude.close" ? ClaudeClient.ClientId : req.Arg);
+                    if (client == null) return ActionResult.Fail(Strings.ClientUnknown(req.Arg ?? ""));
+                    int closed = client.CloseRunning(out var cerr);
                     return cerr == null ? Ok(closed == 0 ? Strings.ClaudeNoneClosed : Strings.ClaudeClosed(closed)) : ActionResult.Fail(cerr);
+                }
+                case "client.launch":
+                {
+                    var client = e.Clients.Get(req.Arg);
+                    if (client == null) return ActionResult.Fail(Strings.ClientUnknown(req.Arg ?? ""));
+                    var install = client.Installs.FirstOrDefault(i => i.Key == req.Arg2);
+                    if (install == null) return ActionResult.Fail(Strings.ClientUnknownVariant(req.Arg2 ?? ""));
+                    var msg = client.Launch(install, out var lerr);
+                    return lerr == null ? Ok(msg) : ActionResult.Fail(lerr);
                 }
 
                 // ── Andere Rechner und Cloud-Anbieter ──

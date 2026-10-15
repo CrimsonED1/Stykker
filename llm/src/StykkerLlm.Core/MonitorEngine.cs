@@ -30,6 +30,8 @@ public sealed class MonitorEngine : IDisposable
     public ProxyManager Proxies { get; }
     // Schalter „Claude Desktop auf den Stykker-Proxy" (3P-Ablage der App)
     public ClaudeDesktop Claude { get; }
+    // Alle Proxy-Clients (Kopfleiste, Client-Dialog, Aktionen client.*); heute nur Claude (Clients/ProxyClients.cs)
+    public ProxyClients Clients { get; }
     public RequestLog Csv { get; }
     // Hinweis für die Oberfläche, wenn der Pfad des Anfrageprotokolls außerhalb des Datenordners lag und ersetzt wurde; sonst null
     public string? CsvLogNote { get; }
@@ -127,6 +129,11 @@ public sealed class MonitorEngine : IDisposable
         Proxies = new ProxyManager(() => Registry.Servers, settings, OnProxyRecord, factory: proxyFactory, http: _http,
             keys: readOnly ? null : new ProviderKeys(paths.Root, platform));
         Claude = new ClaudeDesktop(platform, () => Proxies.Port, paths.Root);
+        // Die Proxy-Clients: Claude Desktop und Claude Code. Hier kommt Codex dazu (Clients/ProxyClients.cs).
+        Clients = new ProxyClients(new IProxyClient[]
+        {
+            new ClaudeClient(Claude, () => Proxies.Running, () => Proxies.Port, ClientProbe.System(), new ProcessClientStarter()),
+        });
         // Hinweise des Proxys (z. B. „Ziel-Kontext zu klein") als anhaltenden Hinweis setzen (bleibt bis „Dismiss")
         Proxies.Hint += text =>
         {
