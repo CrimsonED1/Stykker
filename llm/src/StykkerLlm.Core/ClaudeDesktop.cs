@@ -38,6 +38,48 @@ public sealed class ClaudeDesktop
         _dir = threePDir ?? DefaultDir();
         _stateFile = Path.Combine(dataDir, "claude-desktop.json");
         _enabled = CurrentEnabled();
+        if (Supported) Log("start");
+    }
+
+    // Für die Fehlersuche im Log des Servers: welche Ablage gilt, was in ihr steht, was die Merkdatei sagt.
+    // Nur Kennungen und Namen der Einträge, nie ihren Inhalt (dort können Schlüssel stehen).
+    public string Describe()
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.Append("dir=").Append(_dir).Append(Directory.Exists(_dir) ? "" : " (missing)");
+        var local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        var real = Path.Combine(local, "Claude-3p");
+        sb.Append(" | real=").Append(Directory.Exists(real) ? (File.Exists(Path.Combine(real, "configLibrary", "_meta.json")) ? "with _meta" : "no _meta") : "missing");
+        try
+        {
+            var packages = Path.Combine(local, "Packages");
+            var pkgs = Directory.Exists(packages) ? Directory.GetDirectories(packages, "Claude_*") : Array.Empty<string>();
+            if (pkgs.Length == 0) sb.Append(" | package=none");
+            foreach (var pkg in pkgs)
+            {
+                var cached = Path.Combine(pkg, "LocalCache", "Local", "Claude-3p");
+                sb.Append(" | package ").Append(Path.GetFileName(pkg)).Append(": cache ")
+                  .Append(Directory.Exists(cached) ? (File.Exists(Path.Combine(cached, "configLibrary", "_meta.json")) ? "with _meta" : "no _meta") : "missing");
+            }
+        }
+        catch (Exception ex) { sb.Append(" | packages: ").Append(ex.GetType().Name); }
+        if (File.Exists(MetaPath))
+        {
+            var meta = ReadMeta();
+            sb.Append(" | appliedId=").Append(meta["appliedId"]?.GetValue<string>() ?? "(none)");
+            sb.Append(" entries=[").Append(string.Join(", ", Entries(meta).Select(e => $"{IdOf(e)}:{NameOf(e)}{(File.Exists(EntryPath(IdOf(e))) ? "" : "(file missing)")}"))).Append(']');
+            sb.Append(" otherKeys=[").Append(string.Join(",", meta.Select(kv => kv.Key).Where(k => k is not "appliedId" and not "entries"))).Append(']');
+        }
+        else sb.Append(" | no _meta.json");
+        var st = ReadState();
+        sb.Append(" | state=").Append(st == null ? "(none)" : $"enabled={st.Enabled} entry={st.EntryId} previous={st.PreviousAppliedId ?? "(none)"} createdMeta={st.CreatedMeta}");
+        sb.Append(" | running=").Append(FindAppPids().Count);
+        return sb.ToString();
+    }
+
+    private void Log(string when)
+    {
+        try { AppLog.Write("claude desktop " + when + ": " + Describe()); } catch { }
     }
 
     // %LOCALAPPDATA%\Claude-3p – die Ablage, die die App selbst als Profil der Dritt-Anbieter-Konfiguration benutzt.
@@ -89,6 +131,7 @@ public sealed class ClaudeDesktop
     {
         error = null;
         if (!Supported) { error = Strings.ClaudeUnsupported; return ""; }
+        Log("before switch on");
         try
         {
             // Gab es vorher keine Ablage, legt erst dieser Schalter sie an; das Ausschalten räumt sie dann wieder weg
@@ -108,9 +151,10 @@ public sealed class ClaudeDesktop
             AtomicFile.WriteAllText(MetaPath, meta.ToJsonString(Pretty));
             WriteState(new JsonObject { ["enabled"] = true, ["entryId"] = id, ["previousAppliedId"] = previous, ["createdMeta"] = createdMeta });
             lock (_lock) _enabled = true;
+            Log("after switch on");
             return Strings.ClaudeEnabled(BaseUrl);
         }
-        catch (Exception ex) { error = Strings.ClaudeFailed(ex.Message); return ""; }
+        catch (Exception ex) { error = Strings.ClaudeFailed(ex.Message); AppLog.Write("claude desktop switch on failed: " + ex); return ""; }
     }
 
     // Ausschalten: unsere Einträge entfernen und das vorherige Ziel wieder anwenden. War vorher keins angewendet (die App
@@ -121,6 +165,7 @@ public sealed class ClaudeDesktop
     {
         error = null;
         if (!Supported) { error = Strings.ClaudeUnsupported; return ""; }
+        Log("before switch off");
         try
         {
             var st = ReadState();
@@ -148,9 +193,10 @@ public sealed class ClaudeDesktop
             }
             DeleteState();
             lock (_lock) _enabled = false;
+            Log("after switch off");
             return Strings.ClaudeDisabled;
         }
-        catch (Exception ex) { error = Strings.ClaudeFailed(ex.Message); return ""; }
+        catch (Exception ex) { error = Strings.ClaudeFailed(ex.Message); AppLog.Write("claude desktop switch off failed: " + ex); return ""; }
     }
 
     // Ein Eintrag von uns: der aus der Merkdatei, oder einer mit unserem Namen (ohne Merkdatei)
@@ -173,6 +219,7 @@ public sealed class ClaudeDesktop
             else if (error == null && e is { Length: > 0 }) error = e;
         }
         lock (_lock) _pids = FindAppPids();
+        AppLog.Write($"claude desktop close: {closed} closed{(error == null ? "" : ", error: " + error)}");
         return closed;
     }
 
