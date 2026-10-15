@@ -49,11 +49,13 @@
           <div class="field">
             <span class="label">Program file</span>
             <div class="inline"><input class="mono" id="f-path" placeholder="a .exe file, on a share or in a build folder"><button class="btn" id="f-browse">Browse…</button></div>
-            <span class="muted small">The whole folder of this file is copied. The program then runs from the copy, so the source can be replaced while it runs.</span>
+            <span class="muted small">With the copy (the default) the whole folder of this file is copied, and the program runs from the copy, so the source can be replaced while it runs.</span>
           </div>
           <div class="found" id="f-info"><span class="muted">Choose a program file to see what is found.</span></div>
           <div class="field"><span class="label">Name</span><input id="f-name"></div>
           <div class="field"><span class="label">Arguments</span><input class="mono" id="f-args" placeholder="none"></div>
+          <label class="check"><input type="checkbox" id="f-copy" checked><span>Copy to this PC before starting</span></label>
+          <span class="muted small">Without a copy, the program runs from the source folder; a build into that folder can fail while the program runs, because Windows locks its files.</span>
           <label class="check"><input type="checkbox" id="f-start" checked><span>Start this program when the Starter starts</span></label>
           <label class="check"><input type="checkbox" id="f-noask"><span>Update without asking (a running program is updated when it is started again)</span></label>
           <label class="check"><input type="checkbox" id="f-keep" checked><span>Keep the previous version, so I can go back</span></label>

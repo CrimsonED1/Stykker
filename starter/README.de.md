@@ -11,6 +11,7 @@ Betreibt Programme aus einem Quellordner als lokale Kopien und hält sie aktuell
 - **Kopien sind nie halb:** eine Kopie entsteht in `<version>.partial`, wird geprüft und erst dann benannt. Eine abgebrochene oder gescheiterte Kopie hinterlässt weder einen Teilordner noch einen fertigen Ordner; die laufende Version bleibt unberührt.
 - **Aufräumen:** eine alte Kopie wird entfernt, wenn nichts aus ihrem Ordner läuft und sie außerhalb der behaltenen Versionen liegt (Vorgabe 2, damit man zurückgehen kann).
 - **Quelle nicht erreichbar** (eine Freigabe ist offline): das Programm läuft weiter aus der letzten Kopie, der Status sagt es.
+- **Ohne Kopie** (Option „Copy to this PC before starting“ aus): das Programm läuft direkt aus dem Ordner seiner Quelle. Es wird nichts kopiert und nichts unter dem Datenordner abgelegt. Der Starter prüft die Quelle in jedem Takt. Ein geänderter Build zählt, sobald zwei Prüfungen hintereinander denselben Stand sehen; läuft das Programm dann, beendet der Starter, was aus diesem Ordner läuft (höflich, nach 10 s endgültig), und startet neu, oder bietet es nur an, wenn die Einstellungen es so verlangen. Version und Dateilisten-Hash, mit dem das Programm gestartet wurde, stehen in `starter.json`. Ein neuer Build, der nicht startet, wird nicht zurückgenommen; der Status sagt es. Ist die Quelle nicht erreichbar, kann das Programm nicht starten.
 - **Autostart:** ein Eintrag unter `HKCU\…\CurrentVersion\Run`, der den Starter im Tray startet (`--tray`), nur wenn die Einstellung an ist. Ein Testdatenordner ändert die Registry nie.
 - **Ein Starter je Benutzer:** ein zweiter Start übergibt dem ersten und endet.
 
@@ -48,6 +49,7 @@ Der Datenordner enthält `starter.json` (Programme und Einstellungen, keine Gehe
 - **Konsolenprogramme** haben kein Hauptfenster, das Schließen bittet sie also nicht. Sie werden nach der Frist von 10 s beendet.
 - **Von Hand gestartet:** ein Programm, das jemand von Hand aus dem Ordner der Kopie gestartet hat, wird beim Update ebenfalls beendet. Der Update-Dialog nennt die Prozesse.
 - **Erkennung nur am Inhalt** (ohne Dateiversion) gibt es nicht als Auswahl; die Dateiversion entscheidet, und bei gleicher Version entscheidet der Ordnerinhalt.
+- **Ohne Kopie** kann ein Build in den Quellordner scheitern, solange das Programm läuft, weil Windows die laufenden Dateien sperrt. Jeder Prozess, der aus dem Quellordner oder einem Unterordner läuft, zählt beim Neustart zum Programm und wird beendet.
 - **Nicht änderbar:** ein Programm lässt sich nach dem Hinzufügen nicht bearbeiten. Man entfernt es und fügt es neu hinzu.
 
 ## Prüfen

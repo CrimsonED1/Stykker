@@ -204,7 +204,8 @@ internal sealed class Shell : IDisposable
         foreach (var p in programs)
         {
             var state = p.Running ? "running" : "stopped";
-            items.Add(new TrayIcon.Item(0, $"{p.Name} {p.Local ?? "–"} · {state}", Disabled: true));
+            var where = p.CopyToLocal ? p.Local ?? "–" : "runs from source";
+            items.Add(new TrayIcon.Item(0, $"{p.Name} {where} · {state}", Disabled: true));
         }
         foreach (var p in programs.Where(p => p.UpdateVersion != null))
         {

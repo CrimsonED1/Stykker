@@ -89,6 +89,15 @@ internal sealed class Model : IDisposable
         {
             try
             {
+                if (!program.CopyToLocal)
+                {
+                    if (program.StartWithStarter && !_service.IsRunning(program))
+                    {
+                        var started = _engine.StartInPlace(program);
+                        _log.Write($"start {program.Id} at start: {(started.Ok ? "ok" : "failed")}, {started.Message}");
+                    }
+                    continue;
+                }
                 if (program.Current == null)
                 {
                     var outcome = _engine.Install(program);
@@ -161,7 +170,8 @@ internal sealed class Model : IDisposable
             case "add":
                 Enqueue(() => AddProgram(new NewProgram(
                     Str(message, "path"), Str(message, "name"), Str(message, "args"),
-                    Bool(message, "startWithStarter", true), Bool(message, "updateWithoutAsking", false), Bool(message, "keepPrevious", true))));
+                    Bool(message, "startWithStarter", true), Bool(message, "updateWithoutAsking", false), Bool(message, "keepPrevious", true),
+                    Bool(message, "copyToLocal", true))));
                 break;
             case "settings":
                 Enqueue(() => SaveSettings(message));
@@ -179,8 +189,8 @@ internal sealed class Model : IDisposable
         {
             var result = _engine.Check(program, _config.Settings);
             _checks[program.Id] = result;
-            changed |= result.Kind == CheckKind.Updated;
-            if (result.Kind == CheckKind.Updated) _service.Cleanup(program, _config.Settings.VersionsKept);
+            changed |= result.Kind == CheckKind.Updated;   // ohne Kopie: der neue Stand steht in der Datei
+            if (result.Kind == CheckKind.Updated && program.CopyToLocal) _service.Cleanup(program, _config.Settings.VersionsKept);
             if (result.Kind == CheckKind.UpdateAvailable && result.SourceVersion is { } v && _announced.Add($"{program.Id}:{v}"))
                 _announce("Update available", $"{program.Name} {v} is ready. Open the Starter to update.");
         }
@@ -206,7 +216,7 @@ internal sealed class Model : IDisposable
             _copy = null;
         }
         _checks[program.Id] = result;
-        if (result.Kind == CheckKind.Updated) _service.Cleanup(program, _config.Settings.VersionsKept);
+        if (result.Kind == CheckKind.Updated && program.CopyToLocal) _service.Cleanup(program, _config.Settings.VersionsKept);
         _last = OpView.FromCheck($"Update {program.Name}", result);
         _opSeq++;
         _notice = result.Message;
@@ -218,9 +228,18 @@ internal sealed class Model : IDisposable
     {
         var program = Find(id);
         if (program == null) return;
-        var outcome = _service.StartCurrent(program);
+        var outcome = StartNow(program);
         _notice = outcome.Ok ? $"{program.Name} is running" : $"{program.Name} did not start: {outcome.Message}";
         Publish();
+    }
+
+    // Startet die laufende Kopie; ohne Kopie die Quelle (dabei merkt sich der Starter den Stand, mit dem es startet)
+    private StartOutcome StartNow(ProgramEntry program)
+    {
+        if (program.CopyToLocal) return _service.StartCurrent(program);
+        var outcome = _engine.StartInPlace(program);
+        SaveConfig();
+        return outcome;
     }
 
     private void StopProgram(string id)
@@ -240,7 +259,7 @@ internal sealed class Model : IDisposable
         var program = Find(id);
         if (program == null) return;
         var report = _service.Stop(program);
-        var outcome = report.AllGone ? _service.StartCurrent(program) : new StartOutcome(false, null, "the old version did not stop");
+        var outcome = report.AllGone ? StartNow(program) : new StartOutcome(false, null, "the old version did not stop");
         _notice = outcome.Ok ? $"{program.Name} restarted" : $"{program.Name} did not restart: {outcome.Message}";
         Publish();
     }
@@ -295,6 +314,7 @@ internal sealed class Model : IDisposable
                 bytes = tree.TotalBytes,
                 largest = tree.Files.OrderByDescending(f => f.Size).Select(f => f.RelativePath).FirstOrDefault() ?? "",
                 copyTo = Path.Combine(_layout.Root, "<id>", version ?? "<hash>"),
+                sourceFolder = tree.Folder,
             });
         }
         catch (SourceUnreachableException ex)
@@ -321,9 +341,23 @@ internal sealed class Model : IDisposable
             StartWithStarter = input.StartWithStarter,
             UpdateWithoutAsking = input.UpdateWithoutAsking,
             KeepPrevious = input.KeepPrevious,
+            CopyToLocal = input.CopyToLocal,
         };
         _config.Programs.Add(program);
         SaveConfig();
+
+        if (!program.CopyToLocal)
+        {
+            // Ohne Kopie: nichts zu kopieren, das Programm startet aus dem Quellordner. Der Eintrag bleibt auch, wenn
+            // der Start scheitert; die Liste zeigt dann den Stand.
+            var started = StartNow(program);
+            _last = OpView.FromInPlaceStart(name, started);
+            _opSeq++;
+            _notice = started.Ok ? $"{name} runs from the source folder" : started.Message;
+            SaveConfig();
+            Publish();
+            return;
+        }
 
         var cts = new CancellationTokenSource();
         _cancel = cts;
@@ -446,7 +480,9 @@ internal sealed class Model : IDisposable
             HasCopy: p.Current != null,
             StartWithStarter: p.StartWithStarter,
             UpdateWithoutAsking: p.UpdateWithoutAsking,
-            KeepPrevious: p.KeepPrevious);
+            KeepPrevious: p.KeepPrevious,
+            CopyToLocal: p.CopyToLocal,
+            ChangedSinceStart: check?.Kind == CheckKind.ChangedSinceStart);
     }
 
     private long LocalBytes() => _config.Programs
@@ -459,7 +495,7 @@ internal sealed class Model : IDisposable
         long total = 0;
         foreach (var p in _config.Programs)
         {
-            foreach (var copy in p.Copies.Where(c => c.Folder != p.CurrentFolder))
+            foreach (var copy in p.Copies.Where(c => !p.CopyToLocal || c.Folder != p.CurrentFolder))
             {
                 var dir = _layout.VersionDir(p.Id, copy.Folder);
                 if (FolderProcesses.RunningFrom(_processes, dir, Environment.ProcessId).Count == 0)
@@ -537,7 +573,8 @@ internal sealed class Model : IDisposable
     private static int Int(JsonElement e, string name, int fallback) =>
         e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out var n) ? n : fallback;
 
-    private sealed record NewProgram(string Path, string Name, string Args, bool StartWithStarter, bool UpdateWithoutAsking, bool KeepPrevious);
+    private sealed record NewProgram(string Path, string Name, string Args, bool StartWithStarter, bool UpdateWithoutAsking, bool KeepPrevious,
+        bool CopyToLocal);
 
     private sealed class CopyProgressSink(Action<CopyProgress> report) : IProgress<CopyProgress>
     {
@@ -549,7 +586,7 @@ internal sealed class Model : IDisposable
 internal sealed record ProgramView(
     string Id, string Name, string Source, string Arguments, string? Local, string? SourceVersion, bool Reachable,
     string? UpdateVersion, bool Running, int[] Pids, string? Folder, bool HasCopy, bool StartWithStarter,
-    bool UpdateWithoutAsking, bool KeepPrevious);
+    bool UpdateWithoutAsking, bool KeepPrevious, bool CopyToLocal, bool ChangedSinceStart);
 
 // Der laufende Kopiervorgang für die Seite
 internal sealed record CopyView(string Name, CopyProgress P)
@@ -581,7 +618,7 @@ internal sealed record OpView(string Title, string Kind, string Message, IReadOn
         {
             case CheckKind.Updated when o is not null:
                 AddOutcomeSteps(steps, o);
-                return new OpView(title, o.Kind is UpdateKind.Updated or UpdateKind.Switched or UpdateKind.NothingToDo ? "ok" : "bad", o.Message, steps);
+                return new OpView(title, o.Kind is UpdateKind.Updated or UpdateKind.Restarted or UpdateKind.Switched or UpdateKind.NothingToDo ? "ok" : "bad", o.Message, steps);
             case CheckKind.Unreachable:
                 steps[0] = new OpStep("Source not reachable", "fail", r.Message);
                 return new OpView(title, "bad", r.Message, steps);
@@ -599,6 +636,10 @@ internal sealed record OpView(string Title, string Kind, string Message, IReadOn
         return new OpView($"Copy {name}", o.Kind is UpdateKind.Updated or UpdateKind.Switched ? "ok" : "bad", o.Message, steps);
     }
 
+    public static OpView FromInPlaceStart(string name, StartOutcome o) =>
+        new($"Start {name}", o.Ok ? "ok" : "bad", o.Ok ? $"{name} runs from the source folder" : o.Message,
+            new List<OpStep> { new("Started from the source folder", o.Ok ? "done" : "fail", o.Message) });
+
     private static void AddOutcomeSteps(List<OpStep> steps, UpdateOutcome o)
     {
         switch (o.Kind)
@@ -607,6 +648,10 @@ internal sealed record OpView(string Title, string Kind, string Message, IReadOn
                 steps.Add(new OpStep("Copied and checked", "done", ""));
                 steps.Add(new OpStep("Stopped the old version", "done", $"{o.StoppedPids.Count} process(es)"));
                 steps.Add(new OpStep("Started the new version", "done", ""));
+                break;
+            case UpdateKind.Restarted:
+                steps.Add(new OpStep("Stopped what runs from the source folder", "done", $"{o.StoppedPids.Count} process(es)"));
+                steps.Add(new OpStep("Started the new build from the source folder", "done", ""));
                 break;
             case UpdateKind.RolledBack:
                 steps.Add(new OpStep("Copied and checked", "done", ""));

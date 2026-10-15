@@ -56,10 +56,11 @@
       var buttons = [];
       if (p.updateVersion) buttons.push('<button class="btn sm primary" data-act="update" data-id="' + esc(p.id) + '">' +
         (p.running ? 'Update and restart' : 'Update to ' + esc(p.updateVersion)) + '</button>');
+      if (p.changedSinceStart && !p.updateVersion) chips.push('<span class="chip upd">Changed since last start</span>');
       if (p.running) {
         buttons.push('<button class="btn sm" data-act="restart" data-id="' + esc(p.id) + '">Restart</button>');
         buttons.push('<button class="btn sm danger" data-act="stop" data-id="' + esc(p.id) + '">Stop</button>');
-      } else if (p.hasCopy) {
+      } else if (p.hasCopy || !p.copyToLocal) {
         buttons.push('<button class="btn sm primary" data-act="start" data-id="' + esc(p.id) + '">Start</button>');
       }
       buttons.push('<button class="btn sm quiet danger" data-act="remove" data-id="' + esc(p.id) + '">' +
@@ -69,7 +70,7 @@
         '<div class="icon">' + initials(p.name) + '</div>' +
         '<div style="min-width:0"><h3>' + esc(p.name) + ' ' + chips.join(' ') + '</h3>' +
         '<div class="path" title="' + esc(p.source) + '">' + esc(p.source) + '</div>' +
-        '<div class="meta"><span>Local <b>' + esc(p.local || '–') + '</b></span>' +
+        '<div class="meta">' + (p.copyToLocal ? '<span>Local <b>' + esc(p.local || '–') + '</b></span>' : '<span><b>runs from source</b></span>') +
         '<span>Source <b>' + esc(p.sourceVersion || '–') + '</b></span>' +
         '<span>PID <b class="mono">' + esc(pids) + '</b></span></div></div>' +
         '<div class="actions">' + buttons.join('') + '</div></div>';
@@ -183,6 +184,18 @@
     send({ cmd: 'inspect', path: path });
   }
 
+  function drawFound() {
+    var m = found;
+    if (!m) return;
+    var where = $('f-copy').checked
+      ? '<div class="muted">Copy goes to <span class="mono">' + esc(m.copyTo) + '</span></div>'
+      : '<div class="muted">Runs from <span class="mono">' + esc(m.sourceFolder) + '</span>, no copy</div>';
+    $('f-info').innerHTML =
+      '<div><b>Found:</b> ' + esc(m.name) + ' · version <b>' + esc(m.version) + '</b></div>' +
+      '<div class="muted">Folder: ' + m.files + ' files, ' + size(m.bytes) + (m.largest ? ' · largest: ' + esc(m.largest) : '') + '</div>' +
+      where;
+  }
+
   function renderFound(m) {
     if (m.type === 'error') {
       found = null;
@@ -192,11 +205,14 @@
     }
     found = m;
     if (!$('f-name').value.trim()) $('f-name').value = m.name;
-    $('f-info').innerHTML =
-      '<div><b>Found:</b> ' + esc(m.name) + ' · version <b>' + esc(m.version) + '</b></div>' +
-      '<div class="muted">Folder: ' + m.files + ' files, ' + size(m.bytes) + (m.largest ? ' · largest: ' + esc(m.largest) : '') + '</div>' +
-      '<div class="muted">Copy goes to <span class="mono">' + esc(m.copyTo) + '</span></div>';
+    drawFound();
     $('f-go').disabled = false;
+  }
+
+  // Der Knopf sagt, was passiert: mit Kopie kopieren und starten, ohne Kopie nur starten
+  function updateCopyChoice() {
+    $('f-go').textContent = $('f-copy').checked ? 'Copy and start' : 'Start from the source folder';
+    drawFound();
   }
 
   // ---------- Ereignisse ----------
@@ -238,6 +254,7 @@
     inspectTimer = setTimeout(inspect, 350);
   });
   $('f-cancel').addEventListener('click', function () { show('apps'); });
+  $('f-copy').addEventListener('change', updateCopyChoice);
   $('f-go').addEventListener('click', function () {
     if (!found) return;
     startOp();
@@ -249,6 +266,7 @@
       startWithStarter: $('f-start').checked,
       updateWithoutAsking: $('f-noask').checked,
       keepPrevious: $('f-keep').checked,
+      copyToLocal: $('f-copy').checked,
     });
   });
 

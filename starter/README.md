@@ -11,6 +11,7 @@ Runs programs from a source folder as local copies and keeps them up to date. Yo
 - **Copies are never half:** a copy goes into `<version>.partial`, is checked, and only then gets its name. A cancelled or failed copy leaves no partial folder and no finished folder; the running version is untouched.
 - **Cleanup:** an old copy is removed when nothing runs from its folder and it is outside the number of versions kept (default 2, so you can go back).
 - **Source not reachable** (a share is offline): the program keeps running from its last copy, and the status says so.
+- **Without a copy** (option "Copy to this PC before starting" off): the program runs directly from the folder of its source. Nothing is copied and nothing is kept under the data folder. The Starter checks the source at each check. A changed build counts once two checks in a row see the same state; then, if the program runs, the Starter stops what runs from that folder (polite close, after 10 s the end) and starts it again, or only offers it when the settings ask for that. The version and the file-list hash the program was started with are kept in `starter.json`. A new build that does not start is not rolled back; the status says so. If the source is not reachable, the program cannot start.
 - **Autostart:** an entry under `HKCU\…\CurrentVersion\Run` that starts the Starter in the tray (`--tray`), only when the setting is on. A test data folder never changes the registry.
 - **One Starter per user:** a second start hands over to the first and exits.
 
@@ -48,6 +49,7 @@ The data folder holds `starter.json` (programs and settings, no secrets, no proc
 - **Console programs** have no main window, so the polite close does nothing. They are ended after the 10 s grace period.
 - **Started from elsewhere:** a program that someone started by hand from the copy's folder is stopped on an update too. The update dialog says which processes are ended.
 - **Detection by content only** (without the file version) is not offered as a choice; the file version decides, and the folder content decides when it is equal.
+- **Without a copy**, a build into the source folder can fail while the program runs, because Windows locks the running files. Every process that runs from the source folder, or from a subfolder of it, is stopped on a restart.
 - **No editing** of a program after adding it. Remove it and add it again.
 
 ## Verifying
