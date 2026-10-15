@@ -76,6 +76,36 @@ public sealed class BenchRegression
     }
 }
 
+// Änderung eines Tests gegenüber dem letzten früheren Lauf desselben Ziels, in Prozent (Lesen = Prompt-t/s, Schreiben = Erzeugung)
+public enum BenchTrend { None, Better, Same, Worse }
+
+public sealed record BenchChange(double? ReadPct, double? WritePct, double PreviousRead, double PreviousWrite)
+{
+    public BenchTrend ReadTrend => BenchCompare.Trend(ReadPct);
+    public BenchTrend WriteTrend => BenchCompare.Trend(WritePct);
+}
+
+public static class BenchCompare
+{
+    // Ab so viel Abweichung (in %) gilt eine Änderung als besser oder schlechter; darunter grau
+    public const double BandPct = 5;
+
+    public static double? ChangePct(double previous, double current) =>
+        previous > 0 && current > 0 ? (current - previous) / previous * 100.0 : null;
+
+    public static BenchTrend Trend(double? pct) =>
+        pct is not { } p ? BenchTrend.None : p >= BandPct ? BenchTrend.Better : p <= -BandPct ? BenchTrend.Worse : BenchTrend.Same;
+
+    // Vergleich eines Schritts mit dem gleichen Test des früheren Laufs; null ohne Vorlauf oder ohne gültigen Schritt
+    public static BenchChange? Against(BenchResult? previous, BenchStep step)
+    {
+        if (previous == null || !step.Ok) return null;
+        var before = previous.Steps.FirstOrDefault(s => s.Ok && s.Kind == step.Kind && s.Name == step.Name);
+        if (before == null) return null;
+        return new BenchChange(ChangePct(before.PromptTps, step.PromptTps), ChangePct(before.GenTps, step.GenTps), before.PromptTps, before.GenTps);
+    }
+}
+
 public sealed class BenchOptions
 {
     public static readonly int[] Ladder = { 1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072, 262144 };
@@ -263,7 +293,7 @@ public static class BenchmarkRunner
         var r = new BenchResult
         {
             Started = DateTime.Now, Server = w.Name, ServerKey = w.Key, Model = w.Model != "–" ? w.Model : w.Name,
-            ProfileKey = info.Program != null ? Library.MakeKey(info.Program, info.Args) : "", ProfileName = prof?.Name ?? "",
+            ProfileKey = info.Program != null ? Library.CompareKey(info.Program, info.Args, info.WorkingDir) : "", ProfileName = prof?.Name ?? "",
             Gpu = gpuName, Build = w.Props?.BuildInfo ?? "", ModelSizeGb = w.ModelFileGb ?? 0,
             Cpu = string.IsNullOrEmpty(cpu) ? CpuName() : cpu, Driver = driver ?? "",
         };
@@ -318,13 +348,62 @@ public static class BenchmarkRunner
         return ctx.Count > 0 ? ctx.Max() : null;
     }
 
-    // Bestes früheres Ergebnis derselben Konfiguration (gleicher Profil-Schlüssel, sonst gleicher Server+Modell)
+    // Letzter früherer Lauf derselben Konfiguration (gleicher Profil-Schlüssel, sonst gleicher Server+Modell).
+    // Nur Läufe, die vor diesem begonnen haben: sonst bekäme ein älteres Ergebnis einen neueren als „Vorlauf“.
     public static BenchResult? PreviousSimilar(Library lib, BenchResult current)
     {
-        return lib.Benchmarks.Where(b => b.Id != current.Id && b.Steps.Any(s => s.Ok))
+        return lib.Benchmarks.Where(b => b.Id != current.Id && b.Started < current.Started && b.Steps.Any(s => s.Ok))
             .Where(b => (!string.IsNullOrEmpty(current.ProfileKey) && b.ProfileKey == current.ProfileKey)
                         || (string.IsNullOrEmpty(current.ProfileKey) && b.ServerKey == current.ServerKey && b.Model == current.Model))
             .OrderByDescending(b => b.Started).FirstOrDefault();
+    }
+
+    // Restzeit: aus den bisherigen Schritten (Token je Sekunde lesen und schreiben) und den noch geplanten Tokens.
+    // null = noch keine Messung oder nichts mehr zu tun. Ergebnis in ganzen Minuten, aufgerundet, mindestens 1.
+    public static int? MinutesLeft(BenchOptions opt, BenchResult done)
+    {
+        var reads = done.Steps.Where(s => s.Ok && s.PromptSec > 0 && s.PromptTokens > 0).ToList();
+        var writes = done.Steps.Where(s => s.Ok && s.GenSec > 0 && s.GenTokens > 0).ToList();
+        if (reads.Count == 0 || writes.Count == 0) return null;
+        double readTps = reads.Sum(s => s.PromptTokens) / reads.Sum(s => s.PromptSec);
+        double writeTps = writes.Sum(s => s.GenTokens) / writes.Sum(s => s.GenSec);
+        int repeats = Math.Max(1, opt.Repeats);
+        double promptLeft = 0, genLeft = 0;
+        if (opt.Chat && !done.Steps.Any(s => s.Kind == "chat")) genLeft += opt.GenTokens * repeats;
+        // Schlägt eine Kontextgröße fehl, bricht der Lauf die größeren ab (siehe RunAsync): dann bleibt nichts mehr übrig
+        if (!done.Steps.Any(s => s.Kind == "context" && !s.Ok))
+            foreach (var size in opt.UsableSizes().Where(size => !done.Steps.Any(s => s.Kind == "context" && s.TargetPromptTokens == size)))
+            {
+                promptLeft += (double)size * repeats;
+                genLeft += opt.GenTokens * repeats;
+            }
+        if (opt.Tool && !done.Steps.Any(s => s.Kind == "tool")) genLeft += opt.GenTokens;
+        if (opt.Parallel && opt.Slots > 1 && !done.Steps.Any(s => s.Kind == "parallel"))
+        {
+            int n = Math.Min(opt.Slots, 4);
+            promptLeft += n * 400.0;      // Füllertext je Anfrage, grob
+            genLeft += n * opt.GenTokens;
+        }
+        if (promptLeft + genLeft <= 0) return null;
+        double sec = promptLeft / readTps + genLeft / writeTps;
+        return (int)Math.Max(1, Math.Ceiling(sec / 60));
+    }
+
+    // Welche Parallel-Angaben die Oberfläche zeigt: unbekannt (wie früher), ein Slot (gesperrt), mehrere Slots (frei)
+    public enum ParallelHint { Unknown, OneSlot, ManySlots }
+
+    public static ParallelHint ParallelHintFor(int? slots) => slots switch
+    {
+        null => ParallelHint.Unknown,
+        <= 1 => ParallelHint.OneSlot,
+        _ => ParallelHint.ManySlots,
+    };
+
+    // Slots aus den Startargumenten (-np / --parallel); null, wenn sie dort nicht stehen
+    public static int? SlotsFromArgs(IReadOnlyList<string> args)
+    {
+        int? np = LlamaServerArgs.Parse(args).Np;
+        return np > 0 ? np : null;
     }
 
     private const string ToolsJson = "[{\"type\":\"function\",\"function\":{\"name\":\"get_weather\",\"description\":\"Get the current weather for a city\",\"parameters\":{\"type\":\"object\",\"properties\":{\"city\":{\"type\":\"string\",\"description\":\"City name\"}},\"required\":[\"city\"]}}}]";
@@ -447,7 +526,7 @@ public static class BenchmarkExport
         Row("Context per slot", r => r.ContextPerSlot > 0 ? r.ContextPerSlot.ToString(Inv) : "");
         Row("Date", r => r.Started.ToString("yyyy-MM-dd HH:mm", Inv));
         sb.AppendLine().AppendLine("### Results (tokens per second)").AppendLine();
-        sb.AppendLine("| Test | " + string.Join(" | ", results.Select(r => Esc(r.Title) + " prompt / generation")) + " |");
+        sb.AppendLine("| Test | " + string.Join(" | ", results.Select(r => Esc(r.Title) + " " + Strings.BenchExportReadWrite)) + " |");
         sb.AppendLine("|---|" + string.Join("|", results.Select(_ => "---")) + "|");
         var names = results.SelectMany(r => r.Steps).Select(s => s.Name).Distinct().ToList();
         // Reihenfolge: Chat, Kontext aufsteigend, Werkzeug, parallel
@@ -480,7 +559,7 @@ public static class BenchmarkExport
 
     public static string Csv(IReadOnlyList<BenchResult> results)
     {
-        var sb = new StringBuilder("Date,Title,Model,Quantization,Settings,Gpu,Driver,Cpu,Test,TargetPromptTokens,PromptTokens,PromptTokensPerSec,GenTokens,GenTokensPerSec,AggregateTokensPerSec,Seconds,Ok,Note\r\n");
+        var sb = new StringBuilder("Date,Title,Model,Quantization,Settings,Gpu,Driver,Cpu,Test,TargetPromptTokens,PromptTokens,ReadTokensPerSec,GenTokens,WriteTokensPerSec,AggregateTokensPerSec,Seconds,Ok,Note\r\n");
         string Q(string s) => s.Contains(',') || s.Contains('"') || s.Contains('\n') ? "\"" + s.Replace("\"", "\"\"").Replace("\n", " ") + "\"" : s;
         foreach (var r in results)
             foreach (var s in r.Steps)

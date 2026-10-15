@@ -258,7 +258,19 @@ public static partial class Strings
     public static string BenchRegressionAlert(double dropPct, double previous, double current) =>
         $"Generation speed dropped {dropPct.ToString("0.#", Inv)}% compared with the earlier run ({previous.ToString("0.0", Inv)} -> {current.ToString("0.0", Inv)} t/s).";
     public static string BenchFailed(string m) => $"Benchmark failed: {m}";
-    public const string ColTest = "Test", ColResult = "Result", ColChatTps = "Chat t/s", ColBestPrompt = "Best prompt t/s";
+    public const string ColTest = "Test", ColResult = "Result";
+    public const string ColReadTps = "Read t/s", ColWriteTps = "Write t/s", ColVsLast = "vs last";
+    public const string ColReadTpsTip = "Prompt-reading speed (tokens per second) of the run shown. With repeats: the run with the middle generation speed.";
+    public const string ColWriteTpsTip = "Generation speed (tokens per second) of the run shown. With repeats: the run with the middle generation speed.";
+    public const string ColVsLastTip = "Change against the last earlier run of the same target: green faster, red slower, from 5 % on; grey within 5 %.";
+    public const string BenchVsNone = "No earlier run of this target to compare with.";
+    public static string BenchVsEarlier(double read, double write) => $"Earlier run: read {read.ToString("0.0", Inv)} t/s, write {write.ToString("0.0", Inv)} t/s.";
+    public const string BenchParallelPlain = "Parallel requests";
+    public const string BenchParallelOneSlot = "This server has one slot. Start it with -np 4 to run parallel requests.";
+    public const string BenchExportReadWrite = "read / write";
+    public static string BenchLastRun(string time, string status) => $"last run {time} · {status}";
+    public const string BenchLastOk = "ok", BenchLastCancelled = "cancelled";
+    public static string BenchMinutesLeft(int minutes) => $"about {minutes.ToString(Inv)} min left";
 
     public const string BtnCopyMarkdown = "Copy as Markdown";
     public const string BenchSeriesGen = "Generation t/s";
@@ -340,7 +352,7 @@ public static partial class Strings
     public const string ServerGone = "The server stopped answering.";
     public const string ActionFailed = "The server could not do that";
     public const string BenchCancelling = "Cancelling the benchmark …";
-    public const string BenchStepsDone = "steps done";
+    public static string BenchStepsDone(int n) => n == 1 ? "1 step done" : n.ToString(Inv) + " steps done";
     public const string BenchNoResults = "No benchmark has been run yet.";
 
     // Einstellungen und About (auch im Web: Bereich 7 und 8)

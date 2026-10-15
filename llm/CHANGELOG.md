@@ -20,6 +20,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   (name of the target, host `cloud`), which the monitor did not list before.
 
 ### Changed
+- **Benchmark page.** A result shows **Read t/s** and **Write t/s** (were "Best prompt t/s" and "Chat t/s"; the Markdown and
+  CSV exports use the same names, the CSV columns are now `ReadTokensPerSec` and `WriteTokensPerSec`). A column **vs last**
+  compares each test with the last earlier run of the same target: green from +5 %, red from -5 %, grey otherwise. While a
+  run goes, "about N min left" estimates the rest from the speeds so far. The parallel box is disabled with a hint when the
+  server has one slot and shows no hint when it has several. The line under "Run benchmark" names the time and the result
+  ("last run 20:42 · ok") instead of the model name again.
 - **Ports in one block.** The suite moves to 17400–17499, below the LLM proxy (17500): the hub (StykkerHUD) listens on
   **17400** (was 8079), StykkerLLM's web and API on **17401** (was 8078), StykkerSYS on **17402** (was 8077). Foreign
   services start at 17450. The window, `--port`, the `--hub-port` default and the search answer (UDP 17501) follow; the

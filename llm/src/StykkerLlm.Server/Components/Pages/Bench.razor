@@ -6,7 +6,7 @@
 
 @* Benchmark wie im Fenster (docs/ui.md, Bereich 5): Ziel, Umfang, Lauf mit Fortschritt, Ergebnisse *@
 
-@{ var e = Host.Engine; var bench = Host.Benchmarks; bool ro = Host.ReadOnly; }
+@{ var e = Host.Engine; var bench = Host.Benchmarks; bool ro = Host.ReadOnly; var slotState = ParallelState; }
 
 <h2>@Strings.BenchTitle</h2>
 <p class="muted small">@Strings.BenchHint</p>
@@ -32,9 +32,14 @@
         </select>
     </div>
     <div class="row" style="margin-top:10px">
-        <span><input type="checkbox" @bind="_chat" /> @Strings.BenchChat</span>
-        <span><input type="checkbox" @bind="_tool" /> @Strings.BenchTool</span>
-        <span><input type="checkbox" @bind="_parallel" /> @Strings.BenchParallel</span>
+        <label class="chk"><input type="checkbox" @bind="_chat" /> @Strings.BenchChat</label>
+        <label class="chk"><input type="checkbox" @bind="_tool" /> @Strings.BenchTool</label>
+        <label class="chk"><input type="checkbox" @bind="_parallel" disabled="@(slotState == BenchmarkRunner.ParallelHint.OneSlot)" />
+            @(slotState == BenchmarkRunner.ParallelHint.Unknown ? Strings.BenchParallel : Strings.BenchParallelPlain)</label>
+        @if (slotState == BenchmarkRunner.ParallelHint.OneSlot)
+        {
+            <span class="muted small">@Strings.BenchParallelOneSlot</span>
+        }
         <label style="margin:0">@Strings.BenchRepeats <input type="number" min="1" max="10" @bind="_repeats" style="width:64px" /></label>
         <label style="margin:0">@Strings.BenchGenTokens <input type="number" min="16" max="4096" step="16" @bind="_gen" style="width:80px" /></label>
     </div>
@@ -52,7 +57,7 @@
         {
             <button class="bad" @onclick="() => bench.Cancel()">@Strings.Stop</button>
             <span class="muted small">@bench.Status</span>
-            <span class="muted small">@(bench.Current?.Steps.Count.ToString(CultureInfo.InvariantCulture) ?? "0") @Strings.BenchStepsDone</span>
+            <span class="muted small">@Strings.BenchStepsDone(bench.Current?.Steps.Count ?? 0)@(bench.MinutesLeft is { } left ? " · " + Strings.BenchMinutesLeft(left) : "")</span>
         }
         else if (_last.Length > 0)
         {
@@ -68,6 +73,7 @@
 }
 @foreach (var b in e.Library.Benchmarks.OrderByDescending(x => x.Started).Take(20))
 {
+    var previous = BenchmarkRunner.PreviousSimilar(e.Library, b);
     <div class="card">
         <div class="row">
             <b>@b.Title</b>
@@ -83,20 +89,35 @@
         {
             <div class="pill half" style="margin-top:8px;white-space:normal">@Strings.BenchRegressionAlert(rg.DropPct, rg.Previous, rg.Current)</div>
         }
+        <div class="tbl-wrap">
         <table style="margin-top:8px">
-            <tr><th>@Strings.ColTest</th><th class="num">@Strings.ColReqPrompt</th><th class="num">@Strings.ColBestPrompt</th><th class="num">@Strings.ColChatTps</th><th class="num">@Strings.ColReqTime</th><th>@Strings.ColResult</th></tr>
+            <tr><th>@Strings.ColTest</th><th class="num">@Strings.ColReqPrompt</th><th class="num" title="@Strings.ColReadTpsTip">@Strings.ColReadTps</th><th class="num" title="@Strings.ColWriteTpsTip">@Strings.ColWriteTps</th><th class="num" title="@Strings.ColVsLastTip">@Strings.ColVsLast</th><th class="num">@Strings.ColReqTime</th><th>@Strings.ColResult</th></tr>
             @foreach (var st in b.Steps)
             {
+                var change = BenchCompare.Against(previous, st);
                 <tr>
                     <td>@st.Name</td>
                     <td class="num">@st.PromptTokens.ToString("N0", CultureInfo.InvariantCulture)</td>
                     <td class="num">@(st.PromptTps > 0 ? st.PromptTps.ToString("N0", CultureInfo.InvariantCulture) : "–")</td>
                     <td class="num">@(st.GenTps > 0 ? st.GenTps.ToString("0.0", CultureInfo.InvariantCulture) : "–")</td>
+                    @if (change == null)
+                    {
+                        <td class="num muted" title="@(previous == null ? Strings.BenchVsNone : "")">–</td>
+                    }
+                    else
+                    {
+                        <td class="num" style="white-space:nowrap" title="@Strings.BenchVsEarlier(change.PreviousRead, change.PreviousWrite)">
+                            <span class="@DeltaClass(change.ReadTrend)">@Pct(change.ReadPct)</span>
+                            <span class="muted">/</span>
+                            <span class="@DeltaClass(change.WriteTrend)">@Pct(change.WritePct)</span>
+                        </td>
+                    }
                     <td class="num">@st.TotalSec.ToString("0.0", CultureInfo.InvariantCulture) s</td>
                     <td><span class="pill @(st.Ok ? "ok" : "fail")">@(st.Ok ? "ok" : st.Note.Length > 0 ? st.Note : "failed")</span></td>
                 </tr>
             }
         </table>
+        </div>
     </div>
 }
 
@@ -109,6 +130,10 @@
 
     // Aus dem Menü „Bench“ eines Profils: /bench?target=<Profil-ID> – das Ziel steht dann schon drin
     [SupplyParameterFromQuery(Name = "target")] public string? Target { get; set; }
+
+    // Slots des gewählten Ziels: unbekannt (Hinweis wie bisher), ein Slot (Haken gesperrt), mehrere (Haken frei)
+    private BenchmarkRunner.ParallelHint ParallelState =>
+        string.IsNullOrEmpty(_target) ? BenchmarkRunner.ParallelHint.Unknown : BenchmarkRunner.ParallelHintFor(BenchmarkService.KnownSlots(Host.Engine, _target));
 
     protected override void OnInitialized()
     {
@@ -132,6 +157,15 @@
 
     private static string SizeLabel(int size) => size >= 1024 ? (size / 1024) + "k" : size.ToString(CultureInfo.InvariantCulture);
 
+    private static string Pct(double? v) => v is { } p ? p.ToString("+0.0;-0.0;0.0", CultureInfo.InvariantCulture) + " %" : "–";
+
+    private static string DeltaClass(BenchTrend t) => t switch
+    {
+        BenchTrend.Better => "delta-up",
+        BenchTrend.Worse => "delta-down",
+        _ => "muted",
+    };
+
     private async Task Run()
     {
         _last = "";
@@ -143,13 +177,16 @@
             {
                 ["chat"] = _chat ? "1" : "",
                 ["tool"] = _tool ? "1" : "",
-                ["parallel"] = _parallel ? "1" : "",
+                ["parallel"] = _parallel && ParallelState != BenchmarkRunner.ParallelHint.OneSlot ? "1" : "",
                 ["repeats"] = _repeats.ToString(CultureInfo.InvariantCulture),
                 ["genTokens"] = _gen.ToString(CultureInfo.InvariantCulture),
                 ["contextSizes"] = string.Join(",", _sizes),
             },
         };
         var result = await Web.RunAsync(req);
-        _last = result.Message;
+        _last = result.Ok && Guid.TryParseExact(result.Data, "N", out var id)
+            && Host.Engine.Library.Benchmarks.FirstOrDefault(b => b.Id == id) is { } done
+            ? Strings.BenchLastRun(done.Started.ToString("HH:mm", CultureInfo.InvariantCulture), done.Cancelled ? Strings.BenchLastCancelled : Strings.BenchLastOk)
+            : result.Message;
     }
 }
