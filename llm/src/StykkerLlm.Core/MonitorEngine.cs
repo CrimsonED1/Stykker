@@ -132,6 +132,11 @@ public sealed class MonitorEngine : IDisposable
         Proxies = new ProxyManager(() => Registry.Servers, settings, OnProxyRecord, factory: proxyFactory, http: _http,
             keys: readOnly ? null : new ProviderKeys(paths.Root, platform));
         Claude = new ClaudeDesktop(platform, () => Proxies.Port, paths.Root);
+        if (!readOnly)
+        {
+            var debugDir = Path.Combine(paths.LogsDir, "proxy-debug");
+            Proxies.DebugBody = (r, body) => { if (Settings.ProxyDebug) ProxyLog.WriteDebug(debugDir, r, body); };
+        }
         // Die Proxy-Clients: Claude Desktop und Claude Code. Hier kommt Codex dazu (Clients/ProxyClients.cs).
         Clients = new ProxyClients(new IProxyClient[]
         {

@@ -11,6 +11,8 @@ public static partial class Strings
         ClientProxyOff = "Proxy is off – start it first",
         ClientAutoSection = "Auto mode", ClientAutoLabel = "Safety check model", ClientAutoSame = "Same as the proxy target",
         ClientAutoSet = "Safety check model set",
+        ProxyDebugLabel = "Debug: save the full text of every proxy request (logs\\proxy-debug, last 100)",
+        ProxyDebugOn = "Proxy debug on: request texts go to logs\\proxy-debug", ProxyDebugOff = "Proxy debug off",
         ClientAutoHint = "In auto mode Claude Code checks each command with a second model before it runs. These checks go to the model chosen here. If your main model has only one slot, choose another running server or a cloud model, otherwise the checks wait or fail.";
 
     public static string ClientChipTip(string title, bool viaProxy) => $"{title}: {(viaProxy ? ClientViaProxy : ClientDirect)}";

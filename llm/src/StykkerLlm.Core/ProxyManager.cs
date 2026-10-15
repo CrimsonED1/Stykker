@@ -328,6 +328,9 @@ public sealed class ProxyManager : IDisposable
         Restart();
     }
 
+    // Zur Fehlersuche: der volle Anfragetext an den Aufrufer (MonitorEngine schreibt ihn nach logs\proxy-debug), null = aus
+    public Action<ProxyRecord, byte[]>? DebugBody { get; set; }
+
     private bool TryStart(out string? error)
     {
         error = null;
@@ -335,6 +338,7 @@ public sealed class ProxyManager : IDisposable
         var proxy = _factory(_settings.ProxyPort);
         proxy.BindLan = _settings.ProxyBindLan;
         proxy.Recorded += _onRecord;
+        proxy.DebugBody = (r, body) => DebugBody?.Invoke(r, body);   // später gesetzt (MonitorEngine) gilt auch für diesen Proxy
         proxy.UpstreamError += OnUpstreamError;
         // Der Schlüssel eines Cloud-Ziels kommt hier herein und verlässt den Router nur als Authorization-Kopfzeile
         if (_keys != null) proxy.AuthFor = t => t.Cloud ? _keys.Get(ProviderBaseUrl(t.Key)) : null;

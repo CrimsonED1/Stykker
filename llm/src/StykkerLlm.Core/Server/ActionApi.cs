@@ -267,6 +267,10 @@ public static class ActionApi
                 case "proxy.classifier":
                     e.Proxies.SetClassifierValue(req.Arg ?? "");
                     return Ok(e.Proxies.ClassifierValue().Length == 0 ? Strings.ClientAutoSame : Strings.ClientAutoSet);
+                case "proxy.debug":
+                    e.Settings.ProxyDebug = req.Flag;
+                    e.Settings.Save();
+                    return Ok(req.Flag ? Strings.ProxyDebugOn : Strings.ProxyDebugOff);
                 case "proxy.port":
                 {
                     int port = req.GetInt("port", e.Proxies.Port);

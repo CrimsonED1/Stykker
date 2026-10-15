@@ -75,6 +75,8 @@ public class RequestProxy : IDisposable
     // Auch auf dem LAN anbieten (0.0.0.0/::) statt nur Loopback. Für angehängte Rechner; ohne Zugangscode.
     public bool BindLan { get; set; }
     public event Action<ProxyRecord>? Recorded;
+    // Nur zur Fehlersuche (Einstellung „Proxy debug“): bekommt den vollen Anfragetext. null = aus, dann wird nichts kopiert.
+    public Action<ProxyRecord, byte[]>? DebugBody { get; set; }
     // Fehlerantwort eines Backends auf eine getrackte Generierungs-Anfrage (z. B. Status 400): der Text wird ausgewertet,
     // um „Kontext zu klein" verständlich zu melden. Die Antwort selbst wird unverändert weitergeleitet.
     public event Action<string>? UpstreamError;
@@ -550,8 +552,9 @@ public class RequestProxy : IDisposable
                 int q2 = req.Target.IndexOf('?');
                 var rec = new ProxyRecord(route?.ServerKey ?? ServerKey, q2 >= 0 ? req.Target[..q2] : req.Target, start, end, tap.FirstToken, tap.FirstContent,
                     known ? reasoning : -1, known ? content : -1, tap.Tools.ToArray(), tap.FinishReason, ua, stream || tap.Stream, status, aborted,
-                    RouterProxy.ReadModel(req.Body));
+                    RouterProxy.ReadModel(req.Body), RequestShape.Read(req.Body));
                 try { Recorded?.Invoke(rec); } catch { }
+                if (req.Body is { Length: > 0 } dbgBody && DebugBody is { } dbg) { try { dbg(rec, dbgBody); } catch { } }
             }
         }
     }
