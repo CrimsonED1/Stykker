@@ -18,6 +18,7 @@ public enum UpdateKind
     NothingToDo,   // schon der Stand der Quelle
     Switched,      // neue Version eingetragen; das Programm lief nicht, also wurde nichts gestartet
     Updated,       // neue Version läuft, alte ist beendet
+    Restarted,     // ohne Kopie: der neue Stand läuft aus dem Quellordner, der alte ist beendet
     RolledBack,    // neue Version startete nicht; die alte läuft wieder
     Failed,        // Kopieren fehlgeschlagen, oder auch die alte startet nicht mehr; Stand bleibt der alte
 }
@@ -37,6 +38,9 @@ public sealed class ProgramService
     private readonly ProgramTiming _timing;
     private readonly int _ownPid;
 
+    // Meldung, wenn ein Programm ohne Kopie nicht starten kann, weil der Quellordner nicht erreichbar ist
+    public const string SourceFolderUnreachable = "source folder not reachable – no local copy";
+
     public ProgramService(DataLayout layout, IProcessSystem processes, IProgramLauncher launcher, StarterLog? log = null,
         ProgramTiming? timing = null, int? ownPid = null)
     {
@@ -48,9 +52,17 @@ public sealed class ProgramService
         _ownPid = ownPid ?? Environment.ProcessId;
     }
 
-    // Der Ordner der Kopie, mit der das Programm läuft (oder laufen würde). Null, wenn es noch keine Kopie gibt.
-    public string? CurrentDir(ProgramEntry program) =>
-        program.CurrentFolder is { } folder ? _layout.VersionDir(program.Id, folder) : null;
+    // Der Ordner, aus dem das Programm läuft: die Kopie, oder ohne Kopie der Quellordner. Null, wenn es noch keine
+    // Kopie gibt (oder der Quellpfad nicht gültig ist).
+    public string? CurrentDir(ProgramEntry program)
+    {
+        if (!program.CopyToLocal)
+        {
+            try { return Path.GetDirectoryName(Path.GetFullPath(program.SourceExe)); }
+            catch (Exception ex) when (ex is ArgumentException or NotSupportedException) { return null; }
+        }
+        return program.CurrentFolder is { } folder ? _layout.VersionDir(program.Id, folder) : null;
+    }
 
     // Was aus dem Ordner der laufenden Kopie läuft (für den Update-Dialog und das Tray-Menü)
     public IReadOnlyList<ProcessInfo> RunningProcesses(ProgramEntry program) =>
@@ -62,7 +74,8 @@ public sealed class ProgramService
     public StartOutcome StartCurrent(ProgramEntry program)
     {
         var dir = CurrentDir(program);
-        if (dir == null || !Directory.Exists(dir)) return new StartOutcome(false, null, "there is no local copy yet");
+        if (dir == null || !Directory.Exists(dir))
+            return new StartOutcome(false, null, program.CopyToLocal ? "there is no local copy yet" : SourceFolderUnreachable);
         if (IsRunning(program)) return new StartOutcome(true, RunningProcesses(program)[0].Pid, "already running");
         var outcome = StartFrom(program, dir);
         _log?.Write($"start {program.Id}: {(outcome.Ok ? "ok" : "failed")}, pid {outcome.Pid}, {outcome.Message}");
@@ -124,6 +137,29 @@ public sealed class ProgramService
         return new UpdateOutcome(UpdateKind.Failed, $"{plan.Version} did not start ({started.Message}) and the previous version did not start either ({back.Message})", stoppedPids, null);
     }
 
+    // Ohne Kopie: der neue Stand liegt in der Quelle. Beendet, was aus dem Quellordner läuft (erst höflich, nach 10 s
+    // endgültig), startet die Quelle neu und merkt sich den Stand. Startet sie nicht, gibt es keinen Rücksprung; der
+    // Ergebnis sagt es, der alte Stand bleibt gemerkt.
+    public UpdateOutcome RestartInPlace(ProgramEntry program, string version, string listHash)
+    {
+        var stopped = Stop(program);
+        var stoppedPids = stopped.Closed.Concat(stopped.Killed).Distinct().ToList();
+        if (!stopped.AllGone)
+        {
+            _log?.Write($"restart {program.Id}: {stopped.Left.Count} process(es) still run from the source folder; not starting");
+            return new UpdateOutcome(UpdateKind.Failed, "the running program did not stop; the new build was not started", stoppedPids, null);
+        }
+
+        var started = StartCurrent(program);
+        if (!started.Ok)
+            return new UpdateOutcome(UpdateKind.Failed,
+                $"{version} did not start ({started.Message}); there is no previous build to go back to", stoppedPids, null);
+
+        program.StartedVersion = version;
+        program.StartedListHash = listHash;
+        return new UpdateOutcome(UpdateKind.Restarted, $"{version} started from the source folder", stoppedPids, null);
+    }
+
     // Erste Einrichtung: kopieren, eintragen und starten. Schlägt das Starten fehl, bleibt die Kopie stehen und der
     // Eintrag zeigt auf sie; ein Zurückgehen gibt es hier nicht, weil es keine alte Version gibt.
     public UpdateOutcome Install(ProgramEntry program, SourceTree source, CopyPlan plan, IProgress<CopyProgress>? progress = null,
@@ -163,10 +199,11 @@ public sealed class ProgramService
     }
 
     // Entfernt Kopien, die nicht mehr gebraucht werden: alles außer der laufenden und den „keep“ neuesten. Eine Kopie,
-    // aus deren Ordner noch etwas läuft, bleibt. KeepPrevious = false behält nur die laufende.
+    // aus deren Ordner noch etwas läuft, bleibt. KeepPrevious = false behält nur die laufende. Ohne Kopie läuft nichts
+    // aus einer Kopie, also geht auch die zuletzt laufende.
     public CleanupReport Cleanup(ProgramEntry program, int versionsKept)
     {
-        int keep = program.KeepPrevious ? Math.Max(1, versionsKept) : 1;
+        int keep = program.CopyToLocal && program.KeepPrevious ? Math.Max(1, versionsKept) : 1;
         var newest = program.Copies
             .Where(c => c.Folder != program.CurrentFolder)
             .OrderByDescending(c => c.CopiedUtc)
@@ -178,7 +215,8 @@ public sealed class ProgramService
         var kept = new List<string>();
         foreach (var copy in program.Copies.ToList())
         {
-            if (copy.Folder == program.CurrentFolder || newest.Contains(copy.Folder)) continue;
+            bool current = copy.Folder == program.CurrentFolder;
+            if ((current && program.CopyToLocal) || newest.Contains(copy.Folder)) continue;
             var dir = _layout.VersionDir(program.Id, copy.Folder);
             if (FolderProcesses.RunningFrom(_processes, dir, _ownPid).Count > 0)
             {
@@ -192,6 +230,7 @@ public sealed class ProgramService
                 continue;
             }
             program.Copies.Remove(copy);
+            if (current) program.CurrentFolder = null;
             removed.Add(copy.Folder);
             _log?.Write($"cleanup {program.Id}: removed {copy.Folder}");
         }

@@ -61,6 +61,20 @@ public class ConfigStoreTests
     }
 
     [Fact]
+    public void An_entry_without_the_copy_field_keeps_its_copy()
+    {
+        using var temp = new TempFolder();
+        var layout = new DataLayout(temp.Sub("data"));
+        TempFolder.Write(layout.ConfigFile,
+            "{\"programs\":[{\"id\":\"a\",\"name\":\"A\",\"sourceExe\":\"x.exe\",\"currentFolder\":\"1.0\"}]}");
+
+        var program = Assert.Single(ConfigStore.Load(layout).Programs);
+
+        Assert.True(program.CopyToLocal);
+        Assert.Null(program.StartedListHash);
+    }
+
+    [Fact]
     public void Config_holds_no_process_ids_or_secrets()
     {
         using var temp = new TempFolder();

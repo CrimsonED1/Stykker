@@ -24,10 +24,14 @@ public sealed record CopyPlan(PlanKind Kind, string Version, string Folder, stri
 // Ordner: die Version. Gibt es die Version schon mit anderem Inhalt, heißt der Ordner „<version>+<8 Zeichen>“.
 public static class VersionPlanner
 {
+    // Die Version des Standes: die Dateiversion, sonst die ersten acht Zeichen des Listen-Hashes
+    public static string VersionOf(SourceTree source, string? fileVersion) =>
+        string.IsNullOrWhiteSpace(fileVersion) ? source.ListHash[..8] : fileVersion.Trim();
+
     public static CopyPlan Plan(ProgramEntry program, SourceTree source, string? fileVersion, DataLayout layout)
     {
         var listHash = source.ListHash;
-        var version = string.IsNullOrWhiteSpace(fileVersion) ? listHash[..8] : fileVersion.Trim();
+        var version = VersionOf(source, fileVersion);
 
         var current = program.Current;
         if (current != null && current.Version == version && current.ListHash == listHash && IsOnDisk(layout, program, current.Folder))

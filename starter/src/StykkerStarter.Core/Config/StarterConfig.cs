@@ -32,6 +32,14 @@ public sealed class ProgramEntry
     public bool UpdateWithoutAsking { get; set; }
     public bool KeepPrevious { get; set; } = true;
 
+    // Mit Kopie (Vorgabe): das Programm läuft aus einer Kopie im Datenordner. Ohne Kopie läuft es direkt aus dem
+    // Quellordner. Fehlt das Feld in starter.json, gilt die Vorgabe, damit vorhandene Einträge sich nicht ändern.
+    public bool CopyToLocal { get; set; } = true;
+
+    // Ohne Kopie: der Stand, mit dem das Programm zuletzt gestartet wurde (Version und Hash der Dateiliste der Quelle)
+    public string? StartedVersion { get; set; }
+    public string? StartedListHash { get; set; }
+
     // Der Ordner (Name unter <Programm>\) der Kopie, mit der das Programm läuft
     public string? CurrentFolder { get; set; }
 
