@@ -43,7 +43,30 @@ public static partial class Strings
         ClassifierStatusSkipped = "skipped", ClassifierStatusTimeout = "timeout", ClassifierStatusError = "error",
         ClassifierNoteEmpty = "The answer is empty.", ClassifierNoteNotJson = "The answer is not a chat reply in JSON.";
 
-    public static string ClassifierTestProgress(int done, int total) => $"Done {done} of {total} models";
+    // Live-Zeile des Modelltests: Phase, Zähler, Sekunden, Restzeit (beide Tests)
+    public static string TestPhaseText(TestPhase phase, double waitSec) => phase switch
+    {
+        TestPhase.Sending => "sending",
+        TestPhase.WaitingFirstByte => "waiting for the first byte",
+        TestPhase.Receiving => "receiving",
+        TestPhase.RateLimitWait => $"waiting {waitSec.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture)} s (rate limit)",
+        TestPhase.Pause => "pause",
+        _ => "",
+    };
+    public static string ClassifierTestCounts(int done, int total, int ok, int failed, int skipped) =>
+        $"{done} of {total} · ok {ok} · failed {failed} · skipped {skipped}";
+    public static string ClassifierTestSeconds(double sec) => sec.ToString("0", System.Globalization.CultureInfo.InvariantCulture) + " s";
+    // Restzeit grob, auf 5 Sekunden gerundet; ohne Schätzung leer
+    public static string ClassifierTestLeft(double? sec)
+    {
+        if (sec is not double s) return "";
+        int r = (int)(Math.Round(Math.Max(0, s) / 5) * 5);
+        return r < 60 ? $"about {r} s left" : $"about {r / 60} min {r % 60} s left";
+    }
+    // Bekannte Fehler, kurz (die Originalmeldung steht im Tooltip)
+    public const string ClassifierNoteNoImage = "no image input", ClassifierNoteBusy = "provider busy (limit)",
+        ClassifierNoteNotForAccount = "not available for this account";
+    public static string ClassifierNoteSlow(string seconds) => $"slower than {seconds} s";
     public static string ClassifierNoteSkipped(string word) => $"Not asked: the name contains '{word}' (not a chat model).";
     public const string ClassifierNoteUnavailableLast = "Not asked: the provider answered 404 last time. Tick \"Retry unavailable\" to ask again.";
     public static string ClassifierNoteFormat(string reply) => $"The answer does not start with <block>: {reply}";

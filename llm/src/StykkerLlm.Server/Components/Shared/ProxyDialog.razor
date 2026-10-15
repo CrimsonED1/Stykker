@@ -207,7 +207,21 @@
                 }
                 @if (tests != null)
                 {
-                    <div class="small muted pxp-hint">@Strings.ClassifierTestProgress(tests.Done, tests.Total)@(tests.Current.Length > 0 ? " · " + tests.Current : "")</div>
+                    var c = tests.Counts;
+                    @if (running)
+                    {
+                        var st = tests.Status;
+                        var sec = st.RequestSeconds;
+                        <div class="ctt-live">
+                            <div class="ctt-live-head"><b>@st.Model</b> <span class="muted">@Strings.TestPhaseText(st.Phase, st.WaitSeconds)</span><span class="ctt-live-sec">@Strings.ClassifierTestSeconds(sec)</span></div>
+                            <div class="bar"><div style="width:@(LivePct(sec, tests.TimeoutSeconds))%"></div></div>
+                            <div class="small muted">@Strings.ClassifierTestCounts(tests.Done, tests.Total, c.Ok, c.Failed, c.Skipped)@(Strings.ClassifierTestLeft(tests.RemainingSec()) is { Length: > 0 } left ? " · " + left : "")</div>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="small muted pxp-hint">@Strings.ClassifierTestCounts(tests.Done, tests.Total, c.Ok, c.Failed, c.Skipped)</div>
+                    }
                     <div class="ctt-scroll">
                         <table class="ctt">
                             <thead><tr>
@@ -215,6 +229,15 @@
                                 <th>@Strings.ClassifierColFirst</th><th>@Strings.ClassifierColTotal</th><th>@Strings.ClassifierColNote</th><th></th>
                             </tr></thead>
                             <tbody>
+                            @if (running)
+                            {
+                                var st = tests.Status;
+                                <tr class="ctt-run">
+                                    <td title="@st.Model">@st.Model</td><td>–</td>
+                                    <td><Icon Name="s-load" Class="spin" /> @Strings.TestPhaseText(st.Phase, st.WaitSeconds)</td>
+                                    <td>–</td><td>@Strings.ClassifierTestSeconds(st.RequestSeconds)</td><td></td><td></td>
+                                </tr>
+                            }
                             @foreach (var row in ClassifierTest.Sorted(tests.Results))
                             {
                                 var rr = row;
@@ -224,7 +247,7 @@
                                     <td>@rr.Status</td>
                                     <td>@(rr.FirstByteSec is double fb ? fb.ToString("0.00", CultureInfo.InvariantCulture) : "–")</td>
                                     <td>@(rr.TotalSec is double tt ? tt.ToString("0.00", CultureInfo.InvariantCulture) : "–")</td>
-                                    <td class="ctt-note">@rr.Note</td>
+                                    <td class="ctt-note" title="@NoteTitle(rr.Status, rr.Note, tests.TimeoutSeconds)">@NoteShown(rr.Status, rr.Note, tests.TimeoutSeconds)</td>
                                     <td>
                                         @if (rr.FormatOk is true && !running)
                                         {
@@ -268,7 +291,21 @@
                 }
                 @if (vtests != null)
                 {
-                    <div class="small muted pxp-hint">@Strings.ClassifierTestProgress(vtests.Done, vtests.Total)@(vtests.Current.Length > 0 ? " · " + vtests.Current : "")</div>
+                    var vc = vtests.Counts;
+                    @if (vrunning)
+                    {
+                        var vst = vtests.Status;
+                        var vsec = vst.RequestSeconds;
+                        <div class="ctt-live">
+                            <div class="ctt-live-head"><b>@vst.Model</b> <span class="muted">@Strings.TestPhaseText(vst.Phase, vst.WaitSeconds)</span><span class="ctt-live-sec">@Strings.ClassifierTestSeconds(vsec)</span></div>
+                            <div class="bar"><div style="width:@(LivePct(vsec, vtests.TimeoutSeconds))%"></div></div>
+                            <div class="small muted">@Strings.ClassifierTestCounts(vtests.Done, vtests.Total, vc.Ok, vc.Failed, vc.Skipped)@(Strings.ClassifierTestLeft(vtests.RemainingSec()) is { Length: > 0 } vleft ? " · " + vleft : "")</div>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="small muted pxp-hint">@Strings.ClassifierTestCounts(vtests.Done, vtests.Total, vc.Ok, vc.Failed, vc.Skipped)</div>
+                    }
                     <div class="ctt-scroll">
                         <table class="ctt">
                             <thead><tr>
@@ -276,6 +313,15 @@
                                 <th>@Strings.VisionTestColOk</th><th>@Strings.ClassifierColNote</th><th></th>
                             </tr></thead>
                             <tbody>
+                            @if (vrunning)
+                            {
+                                var vst = vtests.Status;
+                                <tr class="ctt-run">
+                                    <td title="@vst.Model">@vst.Model</td>
+                                    <td><Icon Name="s-load" Class="spin" /> @Strings.TestPhaseText(vst.Phase, vst.WaitSeconds)</td>
+                                    <td>@Strings.ClassifierTestSeconds(vst.RequestSeconds)</td><td>–</td><td></td><td></td>
+                                </tr>
+                            }
                             @foreach (var row in VisionTest.Sorted(vtests.Results))
                             {
                                 var vr = row;
@@ -285,7 +331,7 @@
                                     <td>@vr.Status</td>
                                     <td>@(vr.TotalSec is double tt ? tt.ToString("0.00", CultureInfo.InvariantCulture) : "–")</td>
                                     <td>@(skipped ? "–" : vr.Ok ? Strings.ClassifierFormatOk : Strings.ClassifierFormatNo)</td>
-                                    <td class="ctt-note">@vr.Note</td>
+                                    <td class="ctt-note" title="@NoteTitle(vr.Status, vr.Note, vtests.TimeoutSeconds)">@NoteShown(vr.Status, vr.Note, vtests.TimeoutSeconds)</td>
                                     <td>
                                         @if (vr.Ok && !vrunning)
                                         {
@@ -335,6 +381,12 @@
     private bool _realRequest, _retryUnavailable, _retryVision;
 
     private bool CanWrite => Web.CanWrite && !Host.ReadOnly;
+
+    // Anteil der Zeitgrenze, den die laufende Anfrage schon verbraucht hat (0 bis 100) – für den Balken der Live-Zeile
+    private static int LivePct(double sec, double timeoutSec) => timeoutSec <= 0 ? 0 : (int)Math.Min(100, Math.Round(sec / timeoutSec * 100));
+    // Die Notiz, kurz übersetzt wenn bekannt; der Tooltip zeigt dann das Original
+    private static string NoteShown(string status, string note, double timeoutSec) => TestNotes.Friendly(status, note, timeoutSec) ?? note;
+    private static string NoteTitle(string status, string note, double timeoutSec) => TestNotes.Friendly(status, note, timeoutSec) is null ? "" : note;
 
     protected override void OnInitialized()
     {

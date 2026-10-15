@@ -720,6 +720,12 @@ button.hchip:hover .ic.wr,.pxchip:hover .ic.wr,.pxchip-open:focus-visible .ic.wr
 .ctt{font-size:12px;min-width:480px}
 .ctt th,.ctt td{padding:4px 6px;white-space:nowrap;vertical-align:top}
 .ctt .ctt-note{white-space:normal;min-width:160px}
+/* Live-Zeile des Modelltests: laufendes Modell, Phase, Sekunden, Balken bis zur Zeitgrenze, Zähler und Restzeit; die laufende Zeile oben in der Tabelle */
+.ctt-live{margin-top:8px;display:grid;gap:4px;font-size:12px}
+.ctt-live-head{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;min-width:0}
+.ctt-live-head b{overflow-wrap:anywhere}
+.ctt-live-sec{margin-left:auto;font-variant-numeric:tabular-nums}
+.ctt-run td{color:var(--acc)}
 html[data-theme=titan] .slot.hot{box-shadow:inset 0 0 0 2px var(--bad)}
 
 /* Nach der Endprüfung (Verifier): Kopf klebt auf schmalen Geräten nicht (nahm fast die halbe Höhe ein); ohne GPU keine

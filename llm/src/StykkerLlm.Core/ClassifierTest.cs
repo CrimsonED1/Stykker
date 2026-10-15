@@ -14,6 +14,100 @@ public sealed record ClassifierResult(DateTime Time, string Model, string Status
 // Die Testanfrage in Anthropic-Form. Real = die letzte echte Sicherheitsprüfung aus proxy-debug, sonst die eingebaute Beispielanfrage.
 public sealed record ClassifierRequest(byte[] Body, bool Real);
 
+// Die Phase des Modelltests für die Live-Zeile im Proxy-Dialog; Idle = gerade keine Anfrage offen (Überspringen, Ende)
+public enum TestPhase { Idle, Sending, WaitingFirstByte, Receiving, RateLimitWait, Pause }
+
+// Der Lauf-Zustand eines Modelltests (Sicherheitsprüfung und Bilder gleich): Phase seit wann, das Modell, bei 429 die Wartezeit,
+// wie viele Anfragen noch gehen. Die Uhr kommt von außen (Tests). Die Oberfläche liest nur; geschrieben wird aus der Klasse des Laufs.
+public sealed class TestRunStatus
+{
+    private readonly Func<DateTime> _now;
+    private readonly object _gate = new();
+    private TestPhase _phase;
+    private DateTime _phaseSince, _requestSince;
+    private string _model = "";
+    private double _waitSec;
+    private int _toSend;
+
+    public TestRunStatus(Func<DateTime> now) => _now = now;
+
+    public TestPhase Phase { get { lock (_gate) return _phase; } }
+    // Das Modell, das gerade dran ist („" wenn keins)
+    public string Model { get { lock (_gate) return _model; } }
+    // Sekunden in der aktuellen Phase (0 bei Idle)
+    public double PhaseSeconds { get { lock (_gate) return _phase == TestPhase.Idle ? 0 : (_now() - _phaseSince).TotalSeconds; } }
+    // Die Wartezeit der Phase „RateLimitWait“ in Sekunden
+    public double WaitSeconds { get { lock (_gate) return _waitSec; } }
+    // Sekunden seit Beginn der laufenden Anfrage (0, wenn gerade keine offen ist: Pause, Wartezeit bei 429, Ende)
+    public double RequestSeconds { get { lock (_gate) return InFlight ? (_now() - _requestSince).TotalSeconds : 0; } }
+
+    // Ist gerade eine Anfrage offen? (Senden, Warten auf die erste Antwort, Lesen der Antwort)
+    private bool InFlight => _phase is TestPhase.Sending or TestPhase.WaitingFirstByte or TestPhase.Receiving;
+
+    // Ein Lauf beginnt: so viele Anfragen gehen noch raus (ohne die übersprungenen)
+    internal void Begin(int toSend)
+    {
+        lock (_gate) { _phase = TestPhase.Idle; _phaseSince = _now(); _model = ""; _waitSec = 0; _toSend = Math.Max(0, toSend); }
+    }
+
+    // Das nächste Modell ist dran (auch wenn es übersprungen wird)
+    internal void Next(string model)
+    {
+        lock (_gate) _model = model;
+    }
+
+    // Eine Anfrage geht raus: sie zählt nicht mehr zu den offenen
+    internal void Sent()
+    {
+        lock (_gate) _toSend = Math.Max(0, _toSend - 1);
+    }
+
+    // Die Phase wechselt. Bei RateLimitWait zählt die Wartezeit; bei Sending beginnt die Zeit der Anfrage.
+    internal void Enter(TestPhase phase, double waitSec = 0)
+    {
+        lock (_gate)
+        {
+            _phase = phase;
+            _phaseSince = _now();
+            if (phase == TestPhase.Sending) _requestSince = _phaseSince;
+            if (phase == TestPhase.RateLimitWait) _waitSec = waitSec;
+        }
+    }
+
+    // Der Lauf ist zu Ende (oder abgebrochen): nichts läuft mehr
+    internal void End()
+    {
+        lock (_gate) { _phase = TestPhase.Idle; _phaseSince = _now(); _model = ""; _toSend = 0; }
+    }
+
+    // Grobe Restzeit in Sekunden: die laufende Anfrage (soweit sie schon Zeit hat) plus die noch offenen Anfragen mit dem
+    // Durchschnitt der bisher gemessenen Zeiten und je einer Pause. Null, solange noch keine Anfrage gemessen ist.
+    internal double? RemainingSec(IEnumerable<double?> measuredSec, double pauseSec)
+    {
+        var list = measuredSec.Where(v => v is double).Select(v => v!.Value).ToList();
+        lock (_gate)
+        {
+            if (list.Count == 0) return null;
+            double avg = list.Average();
+            double current = InFlight ? Math.Max(0, avg - (_now() - _requestSince).TotalSeconds) : 0;
+            return current + _toSend * (avg + pauseSec);
+        }
+    }
+}
+
+// Bekannte Fehler kurz übersetzt, für die Anzeige. Das Original bleibt in der CSV und im Tooltip. Null = keine Übersetzung.
+public static class TestNotes
+{
+    public static string? Friendly(string status, string note, double timeoutSec)
+    {
+        if (status == Strings.ClassifierStatusTimeout) return Strings.ClassifierNoteSlow(timeoutSec.ToString("0.#", CultureInfo.InvariantCulture));
+        if (status == "400" && note.Contains("multimodal", StringComparison.OrdinalIgnoreCase)) return Strings.ClassifierNoteNoImage;
+        if (status == "503" && note.Contains("ResourceExhausted", StringComparison.OrdinalIgnoreCase)) return Strings.ClassifierNoteBusy;
+        if (status == "404") return Strings.ClassifierNoteNotForAccount;
+        return null;
+    }
+}
+
 // Modelltest der Sicherheitsprüfung (Modus „auto“ von Claude Code): je Modell eines Cloud-Anbieters eine Prüfung schicken und
 // messen, ob es schnell genug und im richtigen Format antwortet. Nacheinander mit Pause; jede Zeile wird sofort an
 // classifier-test.csv angehängt. Abbruch lässt die bis dahin gemessenen Zeilen stehen.
@@ -58,7 +152,6 @@ public sealed class ClassifierTest
     private readonly List<ClassifierResult> _results = new();
     private volatile bool _running;
     private volatile int _done, _total;
-    private volatile string _current = "";
     private volatile string _error = "";
 
     // offered: die beim Anbieter angehakten Modelle (sie laufen zuerst); deadPath: Datei der nicht verfügbaren Modelle;
@@ -80,6 +173,7 @@ public sealed class ClassifierTest
         _timeout = timeout ?? DefaultTimeout;
         _pause = pause ?? DefaultPause;
         _retryWait = retryWait ?? DefaultRetryWait;
+        Status = new TestRunStatus(_now);
     }
 
     public string ProviderUrl => _url;
@@ -88,13 +182,33 @@ public sealed class ClassifierTest
     public bool Running => _running;
     public int Done => _done;
     public int Total => _total;
+    // Phase, Modell und Zeiten des Laufs für die Live-Zeile
+    public TestRunStatus Status { get; }
+    // Die Zeitgrenze je Anfrage in Sekunden (für die Live-Zeile und die Notiz „slower than …“)
+    public double TimeoutSeconds => _timeout.TotalSeconds;
     // Das Modell, das gerade dran ist („" wenn keins)
-    public string Current => _current;
+    public string Current => Status.Model;
     // Warum nichts lief (z. B. kein Schlüssel); sonst leer
     public string Error => _error;
 
     // Die bisherigen Ergebnisse in der Reihenfolge des Laufs (eine Kopie, sicher aus der Oberfläche zu lesen)
     public IReadOnlyList<ClassifierResult> Results { get { lock (_gate) return _results.ToList(); } }
+
+    // Zähler für die Live-Zeile: ok = Format stimmt, skipped = nicht gefragt, failed = gefragt, aber nicht brauchbar
+    public (int Ok, int Failed, int Skipped) Counts
+    {
+        get
+        {
+            var rows = Results;
+            int ok = rows.Count(r => r.FormatOk is true);
+            int skipped = rows.Count(r => r.Status == Strings.ClassifierStatusSkipped);
+            return (ok, rows.Count - ok - skipped, skipped);
+        }
+    }
+
+    // Grobe Restzeit in Sekunden (null, solange noch keine Anfrage gemessen ist)
+    public double? RemainingSec() => Status.RemainingSec(
+        Results.Where(r => r.Status != Strings.ClassifierStatusSkipped).Select(r => r.TotalSec), _pause.TotalSeconds);
 
     // Die Reihenfolge des Laufs: (1) die angehakten Modelle des Anbieters, (2) bekannte aktuelle Familien in der Reihenfolge der
     // Liste, (3) der Rest. Innerhalb einer Gruppe alphabetisch (in Gruppe 2 zuerst nach Familie). Doppelte fallen weg.
@@ -144,21 +258,24 @@ public sealed class ClassifierTest
             if (string.IsNullOrEmpty(key)) { _error = Strings.ProxyProviderKeyMissingShort; return; }
             // Was beim letzten Lauf mit 404 abgelehnt wurde, wird übersprungen – außer bei „Retry unavailable“
             var unavailable = _retryUnavailable ? new HashSet<string>(StringComparer.Ordinal) : DeadModels(_deadPath, _url);
+            Status.Begin(_models.Count(m => SkipWord(m) == null && !unavailable.Contains(m)));
             bool sent = false;
             foreach (var model in _models)
             {
                 ct.ThrowIfCancellationRequested();
-                _current = model;
+                Status.Next(model);
                 if (SkipWord(model) is { } word)
                     Add(new ClassifierResult(_now(), model, Strings.ClassifierStatusSkipped, null, null, null, Strings.ClassifierNoteSkipped(word)));
                 else if (unavailable.Contains(model))
                     Add(new ClassifierResult(_now(), model, Strings.ClassifierStatusSkipped, null, null, null, Strings.ClassifierNoteUnavailableLast));
                 else
                 {
-                    if (sent) await Task.Delay(_pause, ct).ConfigureAwait(false);
+                    if (sent) { Status.Enter(TestPhase.Pause); await Task.Delay(_pause, ct).ConfigureAwait(false); }
                     sent = true;
+                    Status.Sent();
                     var row = await MeasureAsync(model, key, ct).ConfigureAwait(false);
                     Add(row);
+                    Status.Enter(TestPhase.Idle);
                     if (IsGone(row)) MarkDead(_deadPath, _url, model);
                 }
                 _done++;
@@ -167,7 +284,7 @@ public sealed class ClassifierTest
         catch (OperationCanceledException) { /* abgebrochen: was gemessen ist, bleibt */ }
         finally
         {
-            _current = "";
+            Status.End();
             _running = false;
         }
     }
@@ -177,6 +294,7 @@ public sealed class ClassifierTest
     {
         var first = await SendAsync(model, key, ct).ConfigureAwait(false);
         if (first.Status != "429") return first;
+        Status.Enter(TestPhase.RateLimitWait, _retryWait.TotalSeconds);
         await Task.Delay(_retryWait, ct).ConfigureAwait(false);
         var again = await SendAsync(model, key, ct).ConfigureAwait(false);
         var note = Strings.ClassifierNoteRetried(_retryWait.TotalSeconds.ToString("0.#", CultureInfo.InvariantCulture));
@@ -196,10 +314,13 @@ public sealed class ClassifierTest
         double? firstByte = null;
         using var limit = CancellationTokenSource.CreateLinkedTokenSource(ct);
         limit.CancelAfter(_timeout);
+        Status.Enter(TestPhase.Sending);
         try
         {
+            Status.Enter(TestPhase.WaitingFirstByte);
             using var resp = await _http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, limit.Token).ConfigureAwait(false);
             firstByte = clock.Elapsed.TotalSeconds;
+            Status.Enter(TestPhase.Receiving);
             var text = await resp.Content.ReadAsStringAsync(limit.Token).ConfigureAwait(false);
             double total = clock.Elapsed.TotalSeconds;
             string status = ((int)resp.StatusCode).ToString(CultureInfo.InvariantCulture);

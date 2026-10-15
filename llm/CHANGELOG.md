@@ -7,6 +7,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## Unreleased
 
 ### Added
+- **Live status of the model tests.** While the classifier or the vision test runs, the proxy dialog shows a live line
+  above the table: the model being asked, its phase (sending, waiting for the first byte, receiving, pause, rate-limit
+  wait), the seconds with a bar up to the 60 s limit, the counts (done, ok, failed, skipped) and a rough time left. The
+  running model sits at the top of the table with a spinner. Known errors read short in the table ("no image input",
+  "provider busy (limit)", "not available for this account", "slower than 60 s"); the original message stays in the
+  tooltip and in the CSV.
 - **Disks.** The monitor's Hardware area gets a card **Disks**: one row per drive with its letter, type (NVMe, SSD,
   HDD, USB or unknown), used and free space, read and write per second and busy percentage. When a model server reads
   more than 200 MB/s, a line says so ("<server> reads 1.2 GB/s from C:"); the drive comes from the model's path. The
