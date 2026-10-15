@@ -93,8 +93,8 @@ public sealed class MonitorEngine : IDisposable
     {
         if (s.Info.Program is { Length: > 0 } program)
         {
-            var key = Library.MakeKey(program, s.Info.Args);
-            var byKey = Library.Profiles.FirstOrDefault(p => p.Key == key);
+            var key = Library.CompareKey(program, s.Info.Args, s.Info.WorkingDir);
+            var byKey = Library.Profiles.FirstOrDefault(p => Library.CompareKey(p.Program, p.Args, p.WorkingDir) == key);
             if (byKey != null) return byKey;
         }
         return s.Info.Port is int port ? Library.Profiles.FirstOrDefault(p => p.Port == port) : null;
@@ -165,9 +165,14 @@ public sealed class MonitorEngine : IDisposable
     // ── Modelltest der Sicherheitsprüfung (ClassifierTest): je Cloud-Anbieter, ein Lauf je Engine ──
 
     private readonly ProviderKeys? _providerKeys;
+    // Ein Modelltest zur Zeit – Sicherheitsprüfung oder Bilder –, beide gehen an dieselben Anbieter. Stoppen gilt für den laufenden.
     private readonly object _classifierGate = new();
     private bool _classifierBusy;
     private CancellationTokenSource? _classifierCts;
+    // Der letzte Bildtest („Test vision models“); null = noch keiner gestartet
+    public VisionTest? VisionRun { get; private set; }
+    // Der HttpClient des Bildtests (Tests setzen einen Fake); sonst ein eigener ohne Zeitgrenze, die Klasse begrenzt je Anfrage
+    public Func<HttpClient>? VisionClient { get; set; }
     // Der letzte Modelltest (läuft er gerade, ist Running gesetzt); null = noch keiner gestartet
     public ClassifierTest? ClassifierRun { get; private set; }
     // Der HttpClient des Modelltests (Tests setzen einen Fake); sonst ein eigener ohne Zeitgrenze, die Klasse begrenzt je Anfrage
@@ -227,7 +232,7 @@ public sealed class MonitorEngine : IDisposable
         return true;
     }
 
-    // Bricht einen laufenden Modelltest ab; die bis dahin gemessenen Zeilen bleiben stehen
+    // Bricht einen laufenden Modelltest ab (Sicherheitsprüfung oder Bilder); die bis dahin gemessenen Zeilen bleiben stehen
     public bool StopClassifierTest()
     {
         lock (_classifierGate)
@@ -235,6 +240,56 @@ public sealed class MonitorEngine : IDisposable
             if (!_classifierBusy || _classifierCts == null) return false;
             _classifierCts.Cancel();
         }
+        return true;
+    }
+
+    // Startet den Bildtest für einen eingetragenen Anbieter: dieselben Prüfungen wie beim Modelltest der Sicherheitsprüfung,
+    // eigene Datei vision-test.csv, dieselbe Liste der nicht verfügbaren Modelle
+    public bool StartVisionTest(string providerUrl, bool retryUnavailable, out string? error)
+    {
+        error = null;
+        if (ReadOnly || _providerKeys == null) { error = Strings.ReadOnlyEngine; return false; }
+        var url = ProviderKeys.Normalize(providerUrl);
+        if (!Proxies.Providers.Any(p => ProviderKeys.Normalize(p.BaseUrl).Equals(url, StringComparison.OrdinalIgnoreCase)))
+        { error = Strings.ProxyProviderUnknown; return false; }
+        if (!Proxies.HasProviderKey(url)) { error = Strings.ClassifierTestNoKey; return false; }
+        var listed = Proxies.ProviderModelLists(url).Listed;
+        if (listed.Length == 0) { error = Strings.ClassifierTestNoModels; return false; }
+
+        CancellationTokenSource cts;
+        lock (_classifierGate)
+        {
+            if (_classifierBusy) { error = Strings.VisionTestRunning; return false; }
+            _classifierBusy = true;
+            _classifierCts?.Dispose();
+            cts = _classifierCts = new CancellationTokenSource();
+        }
+        VisionTest run;
+        bool ownsHttp = VisionClient == null;
+        HttpClient http;
+        try
+        {
+            http = VisionClient?.Invoke() ?? new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
+            var offered = Proxies.ProviderStates().Where(p => p.Url.Equals(url, StringComparison.OrdinalIgnoreCase)).SelectMany(p => p.Offered).ToArray();
+            run = new VisionTest(url, listed, _providerKeys, http, Path.Combine(Paths.LogsDir, VisionTest.CsvFile), _now,
+                offered: offered, deadPath: Path.Combine(Paths.LogsDir, ClassifierTest.DeadFile), retryUnavailable: retryUnavailable);
+        }
+        catch
+        {
+            lock (_classifierGate) _classifierBusy = false;   // nichts läuft: der Schalter darf nicht hängen bleiben
+            throw;
+        }
+        VisionRun = run;
+        _ = Task.Run(async () =>
+        {
+            try { await run.RunAsync(cts.Token).ConfigureAwait(false); }
+            catch (Exception) { }
+            finally
+            {
+                if (ownsHttp) http.Dispose();
+                lock (_classifierGate) _classifierBusy = false;
+            }
+        });
         return true;
     }
 

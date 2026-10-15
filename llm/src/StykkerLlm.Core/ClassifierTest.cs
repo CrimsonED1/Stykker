@@ -273,9 +273,11 @@ public sealed class ClassifierTest
     internal static string Redact(string s, string key) => string.IsNullOrEmpty(key) ? s : s.Replace(key, "***", StringComparison.Ordinal);
 
     // Der Anbieter kennt das Modell nicht: 404, auch mit „Function … Not found for account“ oder „404 page not found“ als Text
-    internal static bool IsGone(ClassifierResult r) =>
-        r.Status == "404" || (r.Status.Length == 3 && r.Status[0] != '2'
-            && (r.Note.Contains("Not found for account", StringComparison.OrdinalIgnoreCase) || r.Note.Contains("404 page not found", StringComparison.OrdinalIgnoreCase)));
+    internal static bool IsGone(ClassifierResult r) => IsGone(r.Status, r.Note);
+
+    internal static bool IsGone(string status, string note) =>
+        status == "404" || (status.Length == 3 && status[0] != '2'
+            && (note.Contains("Not found for account", StringComparison.OrdinalIgnoreCase) || note.Contains("404 page not found", StringComparison.OrdinalIgnoreCase)));
 
     // Die Modelle eines Anbieters aus der Datei der nicht verfügbaren Modelle (fehlende oder unlesbare Datei = keine)
     internal static HashSet<string> DeadModels(string? path, string url)
@@ -314,7 +316,7 @@ public sealed class ClassifierTest
     }
 
     // Eine Sperre je Datei, damit zwei Läufe nicht durcheinander schreiben
-    private static object GateFor(string path)
+    internal static object GateFor(string path)
     {
         var name = Path.GetFullPath(path);
         lock (FileGates)
@@ -351,7 +353,7 @@ public sealed class ClassifierTest
         }
     }
 
-    private static string Csv(string v) =>
+    internal static string Csv(string v) =>
         v.IndexOfAny(new[] { ',', '"', '\r', '\n' }) >= 0 ? "\"" + v.Replace("\"", "\"\"") + "\"" : v;
 
     // Die Testanfrage: die neueste Datei in proxy-debug (die Namen beginnen mit der Zeit), die eine Sicherheitsprüfung ist;

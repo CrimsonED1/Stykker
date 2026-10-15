@@ -277,6 +277,12 @@ public static class ActionApi
                         : ActionResult.Fail(cterr ?? Strings.ClassifierTestFailed);
                 case "classifier.test.stop":
                     return e.StopClassifierTest() ? Ok(Strings.ClassifierTestStopping) : Ok(Strings.ClassifierTestNotRunning);
+                // Bildtest („Test vision models“): Arg = Basis-URL eines eingetragenen Anbieters, Flag = „Retry unavailable“.
+                // Abbrechen geht über classifier.test.stop – es läuft ohnehin nur ein Modelltest zur Zeit.
+                case "vision.test.start":
+                    return e.StartVisionTest(req.Arg ?? "", req.Flag, out var vterr)
+                        ? Ok(Strings.VisionTestStarted)
+                        : ActionResult.Fail(vterr ?? Strings.ClassifierTestFailed);
                 case "proxy.debug":
                     e.Settings.ProxyDebug = req.Flag;
                     e.Settings.Save();

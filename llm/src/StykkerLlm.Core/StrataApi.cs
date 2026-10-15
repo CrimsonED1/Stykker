@@ -56,8 +56,9 @@ public static class StrataApi
         catch { return null; }
     }
 
-    // Eine Prompt-Zeile aus dem Protokoll: Total = ganzer Prompt, Reused = aus dem Cache, Read = gelesen, Ms = Lesezeit
-    public sealed record PromptLine(int Total, int Reused, int Read, double Ms);
+    // Eine Prompt-Zeile aus dem Protokoll: Total = ganzer Prompt, Reused = aus dem Cache, Read = gelesen, Ms = Lesezeit.
+    // Estimated = Wiederverwendung aus den Fortschrittszeilen geschätzt (Strata nennt sie dort nicht direkt)
+    public sealed record PromptLine(int Total, int Reused, int Read, double Ms, bool Estimated = false);
 
     // null = keine Prompt-Zeile (z. B. eine Zeile über Modellstart oder Werkzeugaufrufe)
     public static PromptLine? ParsePromptLine(string? line)
@@ -65,6 +66,75 @@ public static class StrataApi
         if (string.IsNullOrEmpty(line)) return null;
         var m = LogPatterns.StrataPrompt().Match(line);
         return m.Success ? new PromptLine(LogPatterns.I(m, 1), LogPatterns.I(m, 2), LogPatterns.I(m, 3), LogPatterns.D(m, 4)) : null;
+    }
+
+    // Eine Anfrage aus den Fortschrittszeilen („[strata] reading the prompt: …“, „answering …“, „done: …“). Strata nennt die
+    // Wiederverwendung nicht; sie wird aus der ersten Lesezeile geschätzt: steht „X of Y tokens“ mit X ≥ 50 % von Y und ist die
+    // Zeit bis dahin höchstens 2 s, gilt X als aus dem Cache, sonst 0 (ganz neu gelesen).
+    public sealed class ProgressRequest
+    {
+        public int Total { get; internal set; }
+        public int Reused { get; internal set; }
+        // Zeit der letzten Lesezeile dieser Anfrage in Sekunden
+        public double ReadSeconds { get; internal set; }
+        public bool Answering { get; internal set; }
+        public bool Done { get; internal set; }
+        public int OutputTokens { get; internal set; }
+        public double Tps { get; internal set; }
+
+        // Als Prompt-Zeile für die Zuordnung zu den Anfragen des Servers (Lesetokens = Gesamt minus Wiederverwendung)
+        public PromptLine ToPromptLine() => new(Total, Reused, Math.Max(0, Total - Reused), ReadSeconds * 1000, true);
+    }
+
+    public sealed class ProgressLog
+    {
+        // Wiederverwendung: höchstens bis zu dieser Zeit (Sekunden) und ab diesem Anteil am Prompt
+        public const double ReusedMaxSeconds = 2.0;
+
+        private readonly List<ProgressRequest> _requests = new();
+        private ProgressRequest? _open;
+
+        // Die neueste Anfrage zuletzt (höchstens 64, ältere fallen weg)
+        public IReadOnlyList<ProgressRequest> Requests => _requests;
+
+        // Verarbeitet eine Protokollzeile. Gibt die Anfrage zurück, die diese Zeile eröffnet hat (sonst null).
+        // Eine neue Anfrage beginnt nach „done“, nach der Antwortphase oder wenn sich der Prompt-Umfang ändert.
+        public ProgressRequest? Feed(string? line)
+        {
+            if (string.IsNullOrEmpty(line)) return null;
+            var m = LogPatterns.StrataReading().Match(line);
+            if (m.Success)
+            {
+                int total = LogPatterns.Count(m.Groups[2].Value);
+                double secs = LogPatterns.D(m, 3);
+                bool opens = _open == null || _open.Answering || _open.Total != total;
+                if (!opens) { _open!.ReadSeconds = secs; return null; }
+                int x = m.Groups[1].Success ? LogPatterns.Count(m.Groups[1].Value) : 0;
+                var r = new ProgressRequest { Total = total, ReadSeconds = secs };
+                if (m.Groups[1].Success && x <= total && 2L * x >= total && secs <= ReusedMaxSeconds) r.Reused = x;
+                _open = r;
+                _requests.Add(r);
+                if (_requests.Count > 64) _requests.RemoveAt(0);
+                return r;
+            }
+            if (LogPatterns.StrataPhase().Match(line).Success)
+            {
+                if (_open != null) _open.Answering = true;
+                return null;
+            }
+            m = LogPatterns.StrataDone().Match(line);
+            if (m.Success)
+            {
+                if (_open != null)
+                {
+                    _open.Done = true;
+                    _open.OutputTokens = LogPatterns.Count(m.Groups[1].Value);
+                    _open.Tps = LogPatterns.D(m, 3);
+                }
+                _open = null;
+            }
+            return null;
+        }
     }
 
     public static ReqStatus Status(string finish) => finish switch

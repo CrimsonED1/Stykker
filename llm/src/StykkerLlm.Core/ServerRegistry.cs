@@ -198,7 +198,7 @@ public sealed class ServerRegistry : IDisposable
             foreach (var w in _byKey.Values)
                 if (w.Info.Port == l.Port && w.Info.LogFile == null) w.UsePlanLog(l.LogFile);
         // Gestartete Server, die jetzt lauschen, sind keine "starting"-Einträge mehr
-        foreach (var l in _launches.Where(l => (l.State == LaunchState.Starting || l.StillRunning) && merged.Values.Any(s => s.Pid == l.Pid)).ToList())
+        foreach (var l in _launches.Where(l => (l.State == LaunchState.Starting || l.StillRunning) && merged.Values.Any(s => StartedBy(_platform, l, s))).ToList())
         {
             DismissLaunch(l.Id);
             changed = true;
@@ -210,6 +210,22 @@ public sealed class ServerRegistry : IDisposable
         }
         foreach (var l in lost) ServerLost?.Invoke(l);
         return changed;
+    }
+
+    // Ist der erkannte Server der Prozess, den der Start gestartet hat (oder ein Nachkomme davon, höchstens drei Ebenen)?
+    // Ein Start über den venv-Starter (.venv\Scripts\python.exe) lässt das Basis-Python als Kind lauschen: dessen PID ist
+    // dann nicht die Start-PID. Der Port allein reicht nicht – ein fremder Server kann auf demselben Port lauschen.
+    internal static bool StartedBy(IPlatform platform, LaunchedServer l, ServerInfo s)
+    {
+        if (s.Port != l.Port || l.Pid <= 0) return false;
+        if (s.Pid == l.Pid) return true;
+        int parent = s.ParentPid;
+        for (int depth = 0; depth < 3 && parent > 4; depth++)
+        {
+            if (parent == l.Pid) return true;
+            parent = platform.ReadProcessBasic(parent)?.ParentPid ?? 0;
+        }
+        return false;
     }
 
     private void OnRequestFinished(FinishedRequest f) => RequestFinished?.Invoke(f);

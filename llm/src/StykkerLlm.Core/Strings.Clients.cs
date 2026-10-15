@@ -50,4 +50,12 @@ public static partial class Strings
     public static string ClassifierNoteTimeout(string seconds) => $"No complete answer within {seconds} seconds.";
     public static string ClassifierNoteRetried(string seconds) => $"Rate limited (HTTP 429): asked once more after {seconds} seconds.";
     public static string ClassifierNoteError(string message) => $"Connection failed: {message}";
+
+    // Modelltest der Bilderkennung (Proxy-Dialog, Abschnitt „Images“): ein eingebautes Bild, Antwort muss Rot und Blau nennen
+    public const string VisionTestButton = "Test vision models", VisionTestUse = "Use as vision model",
+        VisionTestImageNote = "Test request: a built-in 64 × 64 image (left red, right blue) and a question. It is sent to the provider.",
+        VisionTestRunning = "A model test is already running.", VisionTestStarted = "Vision test started.",
+        VisionTestColTime = "Time (s)", VisionTestColOk = "ok";
+
+    public static string VisionNoteWrong(string reply) => $"The answer does not name both colours (red and blue): {reply}";
 }

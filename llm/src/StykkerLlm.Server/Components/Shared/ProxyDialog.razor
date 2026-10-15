@@ -149,6 +149,66 @@
                 @foreach (var c in models) { <option value="@c.Value">@c.Display</option> }
             </select>
 
+            @* Bildtest: jedes Modell bekommt ein kleines Bild (links rot, rechts blau) und zeigt, ob es beide Farben nennt *@
+            @{
+                var vtests = Host.Engine.VisionRun;
+                var vrunning = vtests is { Running: true };
+            }
+            <div class="small muted pxp-hint">@Strings.VisionTestImageNote</div>
+            @if (Providers.Count == 0)
+            {
+                <div class="muted small">@Strings.ClassifierTestNoProvider</div>
+            }
+            else
+            {
+                <div class="pxp-row">
+                    <select class="ctt-prov" value="@TestUrl" aria-label="@Strings.ClassifierTestProvider" title="@Strings.ClassifierTestProvider"
+                            disabled="@(!CanWrite || vrunning)" @onchange="e => _testUrl = e.Value?.ToString()">
+                        @foreach (var pv in Providers) { <option value="@pv.Url">@pv.Name</option> }
+                    </select>
+                    @if (vrunning)
+                    {
+                        <button class="ghost" @onclick="StopTest">@Strings.ClassifierTestStop</button>
+                    }
+                    else
+                    {
+                        <button class="primary" disabled="@(!CanWrite || Host.Engine.ClassifierRun is { Running: true })" @onclick="StartVisionTest">@Strings.VisionTestButton</button>
+                    }
+                </div>
+            }
+            @if (vtests != null)
+            {
+                <div class="small muted pxp-hint">@Strings.ClassifierTestProgress(vtests.Done, vtests.Total)@(vtests.Current.Length > 0 ? " · " + vtests.Current : "")</div>
+                <div class="ctt-scroll">
+                    <table class="ctt">
+                        <thead><tr>
+                            <th>@Strings.ClassifierColModel</th><th>@Strings.ClassifierColStatus</th><th>@Strings.VisionTestColTime</th>
+                            <th>@Strings.VisionTestColOk</th><th>@Strings.ClassifierColNote</th><th></th>
+                        </tr></thead>
+                        <tbody>
+                        @foreach (var row in VisionTest.Sorted(vtests.Results))
+                        {
+                            var vr = row;
+                            bool skipped = vr.Status == Strings.ClassifierStatusSkipped;
+                            <tr>
+                                <td title="@vr.Model">@vr.Model</td>
+                                <td>@vr.Status</td>
+                                <td>@(vr.TotalSec is double tt ? tt.ToString("0.00", CultureInfo.InvariantCulture) : "–")</td>
+                                <td>@(skipped ? "–" : vr.Ok ? Strings.ClassifierFormatOk : Strings.ClassifierFormatNo)</td>
+                                <td class="ctt-note">@vr.Note</td>
+                                <td>
+                                    @if (vr.Ok && !vrunning)
+                                    {
+                                        <button class="ghost" disabled="@(!CanWrite)" @onclick='() => UseModel("proxy.vision", vtests.ProviderUrl, vr.Model)'>@Strings.VisionTestUse</button>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                        </tbody>
+                    </table>
+                </div>
+            }
+
             @* Modelltest: jedes Modell eines Anbieters bekommt eine Prüfung und zeigt, ob es schnell und im Format antwortet *@
             @{
                 var tests = Host.Engine.ClassifierRun;
@@ -201,7 +261,7 @@
                                 <td>
                                     @if (rr.FormatOk is true && !running)
                                     {
-                                        <button class="ghost" disabled="@(!CanWrite)" @onclick="() => UseClassifier(tests.ProviderUrl, rr.Model)">@Strings.ClassifierTestUse</button>
+                                        <button class="ghost" disabled="@(!CanWrite)" @onclick='() => UseModel("proxy.classifier", tests.ProviderUrl, rr.Model)'>@Strings.ClassifierTestUse</button>
                                     }
                                 </td>
                             </tr>
@@ -343,6 +403,13 @@
         if (r.Ok) { _flash = ""; Toast.Show(r.Message); } else _flash = r.Message;
     }
 
+    private async Task StartVisionTest()
+    {
+        if (!CanWrite || TestUrl is not { Length: > 0 } url) return;
+        var r = await Web.RunAsync(new ActionRequest { Action = "vision.test.start", Arg = url, Flag = _retryUnavailable });
+        if (r.Ok) { _flash = ""; Toast.Show(r.Message); } else _flash = r.Message;
+    }
+
     private async Task StopTest()
     {
         if (!CanWrite) return;
@@ -350,9 +417,10 @@
         if (r.Ok) { _flash = ""; Toast.Show(r.Message); } else _flash = r.Message;
     }
 
-    // Das geprüfte Modell als Prüfmodell setzen: die Cloud-Zielkennung trägt Anbieter und Modell. Ist es beim Anbieter nicht
-    // angehakt, wird es erst als angeboten eingetragen – mit derselben Aktion wie der Modell-Dialog des Anbieters.
-    private async Task UseClassifier(string url, string model)
+    // Das geprüfte Modell als Prüfmodell setzen (action „proxy.classifier“ oder „proxy.vision“): die Cloud-Zielkennung trägt Anbieter
+    // und Modell. Ist es beim Anbieter nicht angehakt, wird es erst als angeboten eingetragen – mit derselben Aktion wie der
+    // Modell-Dialog des Anbieters.
+    private async Task UseModel(string action, string url, string model)
     {
         if (!CanWrite) return;
         if (!Offered(url, model))
@@ -363,7 +431,7 @@
             var a = await Web.RunAsync(add);
             if (!a.Ok) { _flash = a.Message; return; }
         }
-        var r = await Web.RunAsync(new ActionRequest { Action = "proxy.classifier", Arg = ProxyTarget.CloudKey(url, model) });
+        var r = await Web.RunAsync(new ActionRequest { Action = action, Arg = ProxyTarget.CloudKey(url, model) });
         if (r.Ok) { _flash = ""; Toast.Show(r.Message); } else _flash = r.Message;
     }
 

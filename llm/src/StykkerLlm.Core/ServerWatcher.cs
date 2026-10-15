@@ -14,9 +14,10 @@ public enum ReqStatus { Done, Truncated, Cancelled }
 // Seen = null: Eintrag stammt aus dem beim Start eingelesenen alten Log (Uhrzeit unbekannt).
 // PromptTokens = die gelesenen Token (ohne die aus dem Cache wiederverwendeten), PromptTotal = der ganze Prompt, wenn bekannt.
 // PromptReused = wiederverwendete Token (aus dem Prompt-Cache), -1 = unbekannt.
+// PromptReusedEstimated = PromptReused ist geschätzt (Strata: aus seinen Fortschrittszeilen, nicht vom Server gemeldet).
 public sealed record FinishedRequest(int Seq, string Server, string Model, int Task, int Slot, int PromptTokens, double PromptTps,
     double GenTps, int GenTokens, double Seconds, DateTime? Seen, ReqStatus Status, string Client = "", int PromptTotal = 0, string ServerKey = "",
-    int PromptReused = -1)
+    int PromptReused = -1, bool PromptReusedEstimated = false)
 {
     // Lesedauer in Sekunden: gelesene Token durch Lesegeschwindigkeit (llama: „prompt eval time“, Strata: „prompt_ms“)
     public double PromptSec => PromptTps > 0 && PromptTokens > 0 ? PromptTokens / PromptTps : 0;
@@ -496,6 +497,7 @@ public sealed class ServerWatcher : IDisposable
     private string? StrataLogPath => Info.LogFile ?? _planLog;
     private long _strataLogPos = -1;
     private readonly List<StrataApi.PromptLine> _strataPrompts = new();   // Prompt-Zeilen des Logs, die noch keiner Anfrage zugeordnet sind (älteste zuerst)
+    private readonly StrataApi.ProgressLog _strataProgress = new();       // Fortschrittszeilen („[strata] reading the prompt: …“), Wiederverwendung geschätzt
 
     // Neue, vollständige Zeilen des Strata-Protokolls lesen (beim ersten Mal die letzten 256 KB, wie ReadLog)
     private void ReadStrataLog()
@@ -525,24 +527,32 @@ public sealed class ServerWatcher : IDisposable
             if (from > last) return;
             var text = Encoding.UTF8.GetString(buf, from, last + 1 - from);
             foreach (var line in text.Split('\n'))
-                if (StrataApi.ParsePromptLine(line) is { } p)
-                {
-                    _strataPrompts.Add(p);
-                    if (_strataPrompts.Count > 64) _strataPrompts.RemoveAt(0);
-                }
+            {
+                // Zwei Formate: „strata serve: prompt …“ (mit Wiederverwendung) und die Fortschrittszeilen „[strata] reading …“
+                if (StrataApi.ParsePromptLine(line) is { } p) AddStrataPrompt(p);
+                else if (_strataProgress.Feed(line) is { } opened) AddStrataPrompt(opened.ToPromptLine());
+            }
         }
         catch { /* gesperrt oder weg: beim nächsten Takt wieder */ }
     }
 
     // Zu einer Anfrage (ihr Prompt in Token) die Zeile aus dem Log suchen: (gelesen, wiederverwendet); unbekannt = (total, -1).
     // Die Zeilen kommen in Reihenfolge, darum fliegt alles bis zum Treffer weg.
-    private (int Read, int Reused) StrataPromptOf(int total)
+    // Estimated: die Wiederverwendung stammt aus den Fortschrittszeilen (geschätzt, siehe StrataApi.ProgressLog)
+    private (int Read, int Reused, bool Estimated) StrataPromptOf(int total)
     {
         int idx = _strataPrompts.FindIndex(p => p.Total == total);
-        if (idx < 0) return (total, -1);
+        if (idx < 0) return (total, -1, false);
         var p = _strataPrompts[idx];
         _strataPrompts.RemoveRange(0, idx + 1);
-        return (p.Read, p.Reused);
+        return (p.Read, p.Reused, p.Estimated);
+    }
+
+    // Eine Prompt-Zeile in die Warteliste der Anfragen (älteste zuerst, höchstens 64)
+    private void AddStrataPrompt(StrataApi.PromptLine p)
+    {
+        _strataPrompts.Add(p);
+        if (_strataPrompts.Count > 64) _strataPrompts.RemoveAt(0);
     }
 
     // true = Werte gesetzt; false = /metrics unbrauchbar, dann gilt die normale /slots-Auswertung
@@ -558,10 +568,11 @@ public sealed class ServerWatcher : IDisposable
         foreach (var r in m.Requests.Where(r => r.Time > _strataLast).OrderBy(r => r.Time).TakeLast(12))
         {
             // Strata meldet den ganzen Prompt (prompt_tokens); gelesen werden davon nur die nicht wiederverwendeten Token
-            var (read, reused) = StrataPromptOf(r.PromptTokens);
+            var (read, reused, estimated) = StrataPromptOf(r.PromptTokens);
             var f = new FinishedRequest(++_seqCounter, Name, Model, 0, 0, read,
                 r.PromptMs > 0 ? read * 1000.0 / r.PromptMs : 0, r.DecodeTps, r.OutputTokens, r.Seconds,
-                initial ? null : DateTime.Now, StrataApi.Status(r.Finish), initial ? "" : string.Join(" + ", Clients), r.PromptTokens, Key, reused);
+                initial ? null : DateTime.Now, StrataApi.Status(r.Finish), initial ? "" : string.Join(" + ", Clients), r.PromptTokens, Key, reused,
+                estimated);
             AddFinished(f);
             if (!initial) { _generatedDone += r.OutputTokens; RequestFinished?.Invoke(f); }
         }

@@ -394,7 +394,7 @@ html.shell .hchip .mini i{transition:none;box-shadow:none}
 .acts3{display:flex;gap:4px;margin-left:auto;align-items:center}
 .ib{display:inline-flex;align-items:center;justify-content:center;gap:5px;min-width:30px;height:28px;padding:0 7px;border-radius:8px}
 .ib.txt{padding:0 11px}.ib.quiet{background:transparent;border-color:transparent}
-.ib.danger{color:var(--bad);border-color:rgb(var(--bad-rgb)/.5)}.ib.rec.on{color:var(--bad);border-color:rgb(var(--bad-rgb)/.6)}
+.ib.danger{color:var(--bad);border-color:rgb(var(--bad-rgb)/.5)}.ib.saved{color:var(--good);border-color:rgb(var(--good-rgb)/.5)}.ib.rec.on{color:var(--bad);border-color:rgb(var(--bad-rgb)/.6)}
 .tps{display:flex;align-items:baseline;gap:5px;margin-left:6px;min-width:96px;justify-content:flex-end}
 .tps b{font:600 28px/1 var(--font-num);font-variant-numeric:tabular-nums;color:color-mix(in srgb,var(--ink) 88%,white);transition:color .4s;
   text-shadow:0 0 4px color-mix(in srgb,var(--b) calc(var(--glow)*90%),transparent),0 0 14px color-mix(in srgb,var(--b) calc(var(--glow)*55%),transparent),0 0 32px color-mix(in srgb,var(--b) calc(var(--glow)*28%),transparent)}

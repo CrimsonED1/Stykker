@@ -606,6 +606,7 @@ public static class StateJson
             w.WriteString("client", f.Client);
             w.WriteNumber("promptTotal", f.PromptTotal);
             w.WriteNumber("promptReused", f.PromptReused);
+            w.WriteBoolean("promptReusedEst", f.PromptReusedEstimated);
             w.WriteEndObject();
         }
         w.WriteEndArray();
@@ -1240,7 +1241,7 @@ public sealed class StateSnapshot
                 J.Int(f, "task"), J.Int(f, "slot"), J.Int(f, "promptTokens"), J.Dbl(f, "promptTps"), J.Dbl(f, "genTps"),
                 J.Int(f, "genTokens"), J.Dbl(f, "seconds"), J.TimeOrNull(f, "seen"),
                 Enum.TryParse<ReqStatus>(J.Str(f, "status"), true, out var st) ? st : ReqStatus.Done,
-                J.Str(f, "client") ?? "", J.Int(f, "promptTotal"), J.Str(f, "serverKey") ?? "", J.Int(f, "promptReused", -1)));
+                J.Str(f, "client") ?? "", J.Int(f, "promptTotal"), J.Str(f, "serverKey") ?? "", J.Int(f, "promptReused", -1), J.Bool(f, "promptReusedEst")));
         var history = new double[ServerWatcher.HistoryLength];
         int n = 0;
         foreach (var t in arr(e, "history")) if (n < history.Length) history[n++] = t.GetDouble();

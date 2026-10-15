@@ -6,7 +6,7 @@ namespace StykkerLlm.Core;
 public sealed record RequestRow(
     string Server, string ServerKey, string? Host, string Model, DateTime? Seen, double Seconds,
     double PromptTps, double GenTps, int GenTokens, string Client, string ClientKind,
-    int? Tools, int? ThinkTokens, string Result, int PromptRead = 0, int PromptReused = -1);
+    int? Tools, int? ThinkTokens, string Result, int PromptRead = 0, int PromptReused = -1, bool PromptReusedEstimated = false);
 
 public static class RequestRows
 {
@@ -27,7 +27,7 @@ public static class RequestRows
             var client = px != null ? ClientFromAgent(px.UserAgent) : f.Client;
             rows.Add(new RequestRow(f.Server, f.ServerKey, host, f.Model, f.Seen, f.Seconds, f.PromptTps, f.GenTps, f.GenTokens,
                 client, ClientKind(client), px?.Tools.Length, px is { ReasoningTokens: > 0 } ? px.ReasoningTokens : px != null ? 0 : null,
-                Result(f, px), f.PromptTokens, f.PromptReused));
+                Result(f, px), f.PromptTokens, f.PromptReused, f.PromptReusedEstimated));
         }
         return rows;
     }
@@ -67,7 +67,9 @@ public static class RequestRows
     // Spalte „cache“: "44.9k ↺" bei Wiederverwendung, "—" wenn der ganze Prompt neu gelesen wurde, leer wenn unbekannt
     public static string CacheText(int reused) => reused < 0 ? "" : reused == 0 ? "—" : Short(reused) + " ↺";
 
-    public static string CacheTip(int reused, int read) => Strings.ReqCacheTip(reused, read);
+    // Geschätzte Werte (Strata-Fortschrittszeilen) bekommen den Hinweis dazu
+    public static string CacheTip(int reused, int read, bool estimated = false) =>
+        estimated && reused >= 0 ? Strings.ReqCacheTip(reused, read) + " (" + Strings.ReqCacheEstimated + ")" : Strings.ReqCacheTip(reused, read);
 
     private static string Short(int n) =>
         n >= 1_000_000 ? (n / 1_000_000.0).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + "M"
