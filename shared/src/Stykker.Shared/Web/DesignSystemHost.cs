@@ -14,9 +14,12 @@ public static class DesignSystemHost
     // So folgt sie der Repo, wohin die auch zieht, statt an einem Laufwerk zu hängen.
     public static readonly string DefaultFolder = FindFrom(AppContext.BaseDirectory) ?? LegacyFolder;
 
-    // Der erste Ordner oberhalb von start, der shared/design-system/tokens.css enthält; null, wenn es keinen gibt.
+    // Zuerst ein Ordner design-system neben dem Programm (so liegt er im Veröffentlichungs-Paket, ohne die Monorepo),
+    // sonst der erste Ordner oberhalb von start, der shared/design-system/tokens.css enthält; null, wenn es keinen gibt.
     public static string? FindFrom(string start)
     {
+        var beside = Path.Combine(start, "design-system");
+        if (File.Exists(Path.Combine(beside, "tokens.css"))) return beside;
         for (var directory = new DirectoryInfo(start); directory != null; directory = directory.Parent)
         {
             var candidate = Path.Combine(directory.FullName, "shared", "design-system");

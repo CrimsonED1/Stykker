@@ -64,7 +64,7 @@ dotnet test tests/StykkerLlm.Tests -c Release  # all green (2 tray tests skip wi
 | add a button that changes something | an action in `Core/Server/ActionApi.cs` (`case "my.action"`), then call it from a Razor page (`WebActions.RunAsync`) |
 | show a new value in all UIs | write it in `Core/Server/ServerState.cs` (`StateJson`), read it back in `StateSnapshot` – **additive only, never rename fields** |
 | add or change UI text | `Core/Strings*.cs` only (English). No literal text in pages or commands |
-| change a web page | `Server/Components/Pages/*.razor`, layout in `Components/Layout/MainLayout.razor`, styles in `wwwroot/app.css` (theme colors come from `Core/ThemeCatalog.cs`) |
+| change a web page | `Server/Components/Pages/*.razor`, layout in `Components/Layout/MainLayout.razor`, styles in `wwwroot/app.css` (theme colors come from `shared/design-system/tokens.css`, never a new value in `app.css`) |
 | change the terminal display | `Cli/Tui/TuiApp.cs` (frame, keys, panels), `Cli/Tui/StateSource.cs` (server / simulator), commands in `Cli/Program.cs` |
 | access, pairing, roles | `Core/Server/AccessControl.cs` (devices and roles for `llm`, an adapter on the shared pairing file), `Core/Server/SharedPairing.cs` (opens `pairing.dat`, imports the old files once), `Server/AccessGate.cs` (HTTP entry). The rules and the file format are in `shared/src/Stykker.Pairing`, not here. |
 | model hosts (several PCs) | `Core/Host/*.cs`, `src/StykkerLlm.Host`, page `Hosts.razor`, `docs/hosts.md` |

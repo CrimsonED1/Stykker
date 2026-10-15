@@ -45,6 +45,8 @@ $exe = Join-Path $publishDir "StykkerUI.exe"   # das Fenster um die Weboberfläc
 $cli = Join-Path $publishDir "stykker.exe"
 $server = Join-Path $publishDir "StykkerLLM-Server.exe"
 foreach ($f in @($exe, $cli, $server)) { if (-not (Test-Path $f)) { throw "exe wurde nicht erzeugt: $f" } }
+# Das Design-System gehört neben den Server (sonst läuft die Seite ohne Stile)
+if (-not (Test-Path (Join-Path $publishDir "design-system\tokens.css"))) { throw "Design-System fehlt im App-Ordner: design-system\tokens.css" }
 # Debug-Symbole referenzierter Projekte (Core, Platform) gehören nicht ins Release
 Get-ChildItem $publishDir -File -Filter *.pdb | Remove-Item -Force
 # Der Server bringt zwei Dateien mit, die zu ihm gehören (statische Dateien, IIS-Konfiguration)
