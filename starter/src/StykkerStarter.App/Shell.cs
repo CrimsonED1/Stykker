@@ -24,8 +24,10 @@ internal sealed class Shell : IDisposable
     private readonly object _gate = new();
     private readonly Dictionary<int, Action> _menu = new();   // nur auf dem Tray-Thread benutzt
     private PhotinoWindow? _window;
+    private int _windowThread;   // der Thread, in dem das Fenster läuft (der Hauptthread)
     private bool _ready;      // die Seite hat „shell.ready“ gemeldet: erst dann darf SendWebMessage kommen
-    private bool _quit;
+    private volatile bool _quit;
+    private bool _disposed;
     private int _nextMenuId = MenuFirstDynamic;
     private Model? _model;
     private TrayIcon? _tray;
@@ -58,15 +60,22 @@ internal sealed class Shell : IDisposable
 
         while (!_quit)
             _requests.Take()();
-        _log.Write("end");
         return 0;
     }
 
+    // Das Beenden in fester Reihenfolge; RequestQuit hat schon die Engine und den Timer gestoppt und das Fenster
+    // geschlossen. Jeder Schritt steht im Protokoll. Ein Fehler in einem Schritt bricht das Beenden nicht ab.
     public void Dispose()
     {
-        _model?.Dispose();
-        _tray?.Dispose();
-        _openEvent?.Dispose();
+        if (_disposed) return;
+        _disposed = true;
+        Shutdown.Run(_log, new (string, Action)[]
+        {
+            ("tray icon removed", () => _tray?.Dispose()),
+            ("queue stopped", () => _model?.Dispose()),
+            ("open listener stopped", () => _openEvent?.Dispose()),
+            ("process ends", () => { }),
+        });
     }
 
     private void Post(Action action)
@@ -92,6 +101,7 @@ internal sealed class Shell : IDisposable
             _window.RegisterWebMessageReceivedHandler(OnMessage);
             // Photino verlangt eine Startseite vor WaitForClose; die Seite ist eingebettet (siehe WebContent)
             _window.LoadRawString(WebContent.Page(_gpu));
+            _windowThread = Environment.CurrentManagedThreadId;
         }
         _log.Write("window: open");
         _window.WaitForClose();
@@ -125,7 +135,7 @@ internal sealed class Shell : IDisposable
             {
                 case "pick": Pick(); break;
                 case "close": _window?.Close(); break;
-                case "quit": Quit(); break;
+                case "quit": RequestQuit(); break;
                 case "openFolder":
                     Process.Start(new ProcessStartInfo("explorer.exe", "\"" + _layout.Root + "\"") { UseShellExecute = false });
                     break;
@@ -176,12 +186,34 @@ internal sealed class Shell : IDisposable
         catch (Exception ex) when (ex is InvalidOperationException or ObjectDisposedException) { }
     }
 
-    private void Quit()
+    // Beenden, von jedem Thread (Tray, Seite). Erst die Engine und der Timer, dann das Fenster schließen; danach kehrt
+    // Run zurück und Dispose räumt auf. Das Fenster schließt diese Funktion selbst: der Hauptthread wartet im Fenster,
+    // und eine Nachricht in der Warteschlange käme erst nach dem Schließen dran (dann liefe das Beenden nie).
+    private void RequestQuit()
     {
+        if (_quit) return;
         _quit = true;
-        lock (_gate) _window?.Close();   // beendet das offene Fenster; WaitForClose kehrt zurück
-        Post(() => { });                 // weckt die Schleife, falls gerade kein Fenster offen ist
-        _log.Write("quit");
+        _log.Write("quit: requested");
+        _model?.StopEngine();
+        _log.Write("quit: engine and timer stopped");
+
+        PhotinoWindow? window;
+        int windowThread;
+        lock (_gate)
+        {
+            window = _window;
+            windowThread = _windowThread;
+        }
+        if (window != null)
+        {
+            if (Environment.CurrentManagedThreadId == windowThread) window.Close();
+            else
+            {
+                try { window.Invoke(window.Close); }
+                catch (Exception ex) when (ex is InvalidOperationException or ObjectDisposedException) { }
+            }
+        }
+        Post(() => { });   // weckt die Schleife, falls gerade kein Fenster offen ist
     }
 
     // ---------- Tray ----------
@@ -229,7 +261,7 @@ internal sealed class Shell : IDisposable
         _menu[open] = () => Post(OpenWindow);
         items.Add(new TrayIcon.Item(open, "Open the Starter"));
         var quit = _nextMenuId++;
-        _menu[quit] = () => Post(Quit);
+        _menu[quit] = RequestQuit;
         items.Add(new TrayIcon.Item(quit, "Quit the Starter"));
         return items;
     }

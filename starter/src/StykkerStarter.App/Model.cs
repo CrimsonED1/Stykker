@@ -152,10 +152,17 @@ internal sealed class Model : IDisposable
         }
     }
 
-    public void Dispose()
+    // Beim Beenden: der Timer hört auf, eine laufende Kopie oder Prüfung wird abgebrochen, und es kommt keine neue dazu
+    public void StopEngine()
     {
         _timer?.Dispose();
+        _timer = null;
         _cancel?.Cancel();
+    }
+
+    public void Dispose()
+    {
+        StopEngine();
         _queue.CompleteAdding();
         _thread.Join(TimeSpan.FromSeconds(5));
     }
