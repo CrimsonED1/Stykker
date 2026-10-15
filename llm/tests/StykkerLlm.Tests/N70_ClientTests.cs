@@ -145,7 +145,7 @@ public class N70_ClientTests
     {
         using var f = new Fixture();
         var bin = Path.Combine(f.Root, "bin");
-        var wt = f.File(bin, "wt.exe");
+        f.File(bin, "wt.exe");
         var cli = f.File(bin, "claude.exe");
         f.PathDirs.Add(bin);
         var client = f.Client();
@@ -156,8 +156,8 @@ public class N70_ClientTests
         StringAssert.Contains(msg, "CLI via the Stykker-Proxy");
         Assert.AreEqual(1, f.Starter.Calls.Count);
         var call = f.Starter.Calls[0];
-        Assert.AreEqual(wt, call.File, "Windows Terminal, wenn vorhanden");
-        CollectionAssert.AreEqual(new[] { "-d", f.Home, "cmd.exe", "/k", cli }, call.Args);
+        Assert.AreEqual("cmd.exe", call.File, "auch mit Windows Terminal: start vererbt die Umgebungsvariablen sicher");
+        CollectionAssert.AreEqual(new[] { "/c", "start", "", "/D", f.Home, "cmd.exe", "/k", cli }, call.Args);
         Assert.AreEqual(f.Home, call.Dir, "Arbeitsordner: der Benutzerordner");
         Assert.AreEqual(2, call.Env.Count);
         Assert.AreEqual("http://127.0.0.1:17500", call.Env["ANTHROPIC_BASE_URL"]);
@@ -165,7 +165,7 @@ public class N70_ClientTests
     }
 
     [TestMethod]
-    public void Launch_CliViaProxy_WithoutWindowsTerminal_OpensCmdThroughStart()
+    public void Launch_CliViaProxy_OpensCmdThroughStart()
     {
         using var f = new Fixture();
         var cli = f.File(Path.Combine(f.Root, "bin"), "claude.exe");

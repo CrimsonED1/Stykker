@@ -107,13 +107,12 @@ public sealed class ClaudeClient : IProxyClient
         return Strings.ClientLaunched(install.Label);
     }
 
-    // Ein neues Konsolenfenster mit der CLI: Windows Terminal, falls da, sonst „cmd /k“ über „start“ (das öffnet immer
-    // ein eigenes Fenster). Die Umgebungsvariablen erbt das Fenster vom Start.
+    // Ein neues Konsolenfenster mit der CLI: „cmd /k“ über „start“ (das öffnet immer ein eigenes Fenster; unter Windows 11
+    // im eingestellten Standard-Terminal). Nicht wt.exe: läuft Windows Terminal schon, öffnet es den Tab im vorhandenen
+    // Prozess, und die Umgebungsvariablen dieses Starts kämen dort nicht sicher an.
     private (string File, IReadOnlyList<string> Args) ConsoleCommand(string cliPath)
     {
         var home = _probe.UserProfile is { Length: > 0 } h ? h : Path.GetDirectoryName(cliPath) ?? "";
-        var wt = _probe.FindOnPath("wt.exe");
-        if (wt != null) return (wt, new[] { "-d", home, "cmd.exe", "/k", cliPath });
         return ("cmd.exe", new[] { "/c", "start", "", "/D", home, "cmd.exe", "/k", cliPath });
     }
 
