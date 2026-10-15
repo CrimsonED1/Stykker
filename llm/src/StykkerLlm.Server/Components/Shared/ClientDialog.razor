@@ -1,0 +1,149 @@
+@implements IDisposable
+@inject ClientDialogs Dialogs
+@inject EngineHost Host
+@inject WebActions Web
+@inject Toasts Toast
+@inject IJSRuntime JS
+
+@* Der Dialog eines Proxy-Clients (Claude Desktop, Claude Code): Schalter „über den Stykker-Proxy“, die Frage „Close now / Later“
+   nach dem Umschalten, und die erkannten Startvarianten. Erkannt wird beim Öffnen, nicht in jedem Takt. Nur mit Schreibrecht
+   bedienbar; sonst lesend. Esc, Klick daneben und das X schließen ihn. *@
+@if (_client is { } client)
+{
+    var viaProxy = client.Enabled;
+    var proxyOn = Host.Engine.Proxies.Running;
+    <div class="modal-back" @onclick="Close">
+        <div class="modal cdlg" role="dialog" aria-modal="true" aria-labelledby="cdlg-title" tabindex="-1"
+             @onclick:stopPropagation="true" @onkeydown="OnKey">
+            <div class="cdlg-hd">
+                <Icon Name="@client.IconName" Class="lg" />
+                <div class="cdlg-t">
+                    <h2 id="cdlg-title">@client.Title</h2>
+                    <span class="small @(viaProxy ? "acc" : "muted")">@(viaProxy ? Strings.ClientViaProxy : Strings.ClientDirect)</span>
+                </div>
+                <button class="ib quiet" title="@Strings.Close" aria-label="@Strings.Close" @onclick="Close"><Icon Name="x" /></button>
+            </div>
+            @if (!CanWrite)
+            {
+                <div class="small muted cdlg-note">@Strings.ViewerOnly</div>
+            }
+
+            <div class="cdlg-row">
+                <span class="cdlg-l">@Strings.ClientUseProxy<br /><span class="small muted">@client.SwitchHint</span></span>
+                <button id="cdlg-switch" class="switch @(viaProxy ? "on" : "")" role="switch" aria-checked="@(viaProxy ? "true" : "false")"
+                        aria-label="@Strings.ClientUseProxy" disabled="@(!CanWrite)" @onclick="ToggleProxy"><i></i></button>
+            </div>
+
+            @if (_ask && client.Running)
+            {
+                <div class="claude-ask">
+                    <span class="lamp bad"></span>
+                    <span class="t">@Strings.ClaudeAsk(client.RunningCount)</span>
+                    <button class="primary" disabled="@(!CanWrite)" @onclick="CloseApp">@Strings.ClaudeCloseNow</button>
+                    <button class="ghost" @onclick="() => _ask = false">@Strings.ClaudeLater</button>
+                </div>
+            }
+
+            <h3 class="sec">@Strings.ClientStartSection</h3>
+            @foreach (var i in _installs)
+            {
+                var install = i;
+                var note = NoteFor(install, viaProxy, proxyOn);
+                <div class="cdlg-opt @(install.Available ? "" : "off")">
+                    <div class="cdlg-t">
+                        <b>@install.Label</b>
+                        @if (!install.Available) { <span class="small muted">@Strings.ClientNotInstalledHint</span> }
+                        else if (note.Length > 0) { <span class="small muted">@note</span> }
+                    </div>
+                    <button class="ghost" disabled="@(!CanWrite || !install.Available)" @onclick="() => Launch(install)">@Strings.BtnStart</button>
+                </div>
+            }
+
+            @if (_flash.Length > 0) { <div class="small pxp-flash">@_flash</div> }
+            <div class="row end">
+                <button class="ghost" @onclick="Close">@Strings.Close</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private IProxyClient? _client;
+    private IReadOnlyList<ClientInstall> _installs = Array.Empty<ClientInstall>();
+    private string _flash = "";
+    // Nach dem Umschalten fragen, ob die App jetzt beendet werden soll (sie liest ihre Konfiguration nur beim Start)
+    private bool _ask;
+    private bool _focus;
+
+    private bool CanWrite => Web.CanWrite && !Host.ReadOnly;
+
+    protected override void OnInitialized() => Dialogs.Changed += Refresh;
+
+    // Öffnen: erkennen, was startbar ist, und die Zustände zurücksetzen. Schließen: nur leeren.
+    private void Refresh()
+    {
+        if (Dialogs.OpenId is null) _client = null;
+        else if (Dialogs.OpenId != _client?.Id)
+        {
+            _client = Host.Engine.Clients.Get(Dialogs.OpenId);
+            _installs = _client?.Installs ?? Array.Empty<ClientInstall>();
+            _flash = "";
+            _ask = false;
+            _focus = true;
+        }
+        InvokeAsync(StateHasChanged);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool first)
+    {
+        if (!_focus) return;
+        _focus = false;
+        try { await JS.InvokeVoidAsync("stykkerFocus", "cdlg-switch"); }
+        catch (Exception ex) when (ex is JSException or InvalidOperationException) { }
+    }
+
+    // Hinweis unter einer Startvariante: was sie in diesem Zustand bedeutet
+    private static string NoteFor(ClientInstall install, bool viaProxy, bool proxyOn) => install.Key switch
+    {
+        ClaudeClient.KeyDesktop or ClaudeClient.KeyDesktopExe when !viaProxy => Strings.ClientDesktopDirectHint,
+        ClaudeClient.KeyCliProxy when !proxyOn => Strings.ClientProxyOff,
+        ClaudeClient.KeyCliProxy or ClaudeClient.KeyCliDirect => Strings.ClientCliHint,
+        _ => "",
+    };
+
+    private void OnKey(KeyboardEventArgs e) { if (e.Key == "Escape") Close(); }
+
+    private void Close()
+    {
+        _ask = false;
+        _flash = "";
+        Dialogs.Close();
+    }
+
+    private async Task ToggleProxy()
+    {
+        if (!CanWrite || _client is null) return;
+        var r = await Web.RunAsync(new ActionRequest { Action = "client.set", Arg = _client.Id, Flag = !_client.Enabled });
+        if (!r.Ok) { _flash = r.Message; return; }
+        _flash = "";
+        Toast.Show(r.Message);
+        _ask = _client.Running;
+    }
+
+    private async Task CloseApp()
+    {
+        if (!CanWrite || _client is null) return;
+        var r = await Web.RunAsync(new ActionRequest { Action = "client.close", Arg = _client.Id });
+        _ask = false;
+        if (r.Ok) Toast.Show(r.Message); else _flash = r.Message;
+    }
+
+    private async Task Launch(ClientInstall install)
+    {
+        if (!CanWrite || _client is null) return;
+        var r = await Web.RunAsync(new ActionRequest { Action = "client.launch", Arg = _client.Id, Arg2 = install.Key });
+        if (r.Ok) { _flash = ""; Toast.Show(r.Message); } else _flash = r.Message;
+    }
+
+    public void Dispose() => Dialogs.Changed -= Refresh;
+}

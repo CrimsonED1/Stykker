@@ -17,7 +17,8 @@ public sealed class ClaudeDesktop
     // Name unseres Eintrags in der Konfigurationsbibliothek der App
     private const string EntryName = "Stykker";
     // Der Proxy prüft den Schlüssel örtlicher Ziele nicht; irgendein Wert genügt (nur Cloud-Ziele bekommen einen echten).
-    private const string ApiKey = "stykker";
+    // Auch für die CLI über den Proxy (Clients/ClaudeClient.cs): derselbe Wert in ANTHROPIC_AUTH_TOKEN
+    public const string ApiKey = "stykker";
     // Die App heißt als Prozess „claude"; nur Programmdateien unter diesem Installationsordner (MSIX) zählen.
     private const string ExeName = "claude";
     private const string AppDirMarker = @"\windowsapps\claude_";
