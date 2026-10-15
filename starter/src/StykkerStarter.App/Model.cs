@@ -75,7 +75,14 @@ internal sealed class Model : IDisposable
         Enqueue(() =>
         {
             _config = LoadConfig();
-            _log.Write($"config: {_config.Programs.Count} program(s), data folder {_layout.Root}");
+            _log.Write($"start: starter {Version()}, data folder {_layout.Root}, starter.json {_layout.ConfigFile}");
+            _log.Write($"config: {_config.Programs.Count} program(s)");
+            foreach (var p in _config.Programs)
+            {
+                var broken = ProgramCheck.BrokenReason(p);
+                _log.Write($"config: program {p.Id}: name \"{p.Name}\", source \"{p.SourceExe}\", copyToLocal {p.CopyToLocal}" +
+                           (broken == null ? "" : $", BROKEN: {broken}"));
+            }
             Reschedule();
             StartupPrograms();
             CheckAll();
@@ -328,8 +335,10 @@ internal sealed class Model : IDisposable
 
     private void AddProgram(NewProgram input)
     {
+        _log.Write($"add: received path \"{input.Path}\", name \"{input.Name}\", copyToLocal {input.CopyToLocal}");
         if (!IsProgramPath(input.Path) || !File.Exists(input.Path))
         {
+            _log.Write("add: rejected, not an existing .exe file");
             _notice = "Choose an existing .exe file";
             Publish();
             return;
@@ -354,6 +363,7 @@ internal sealed class Model : IDisposable
             // Ohne Kopie: nichts zu kopieren, das Programm startet aus dem Quellordner. Der Eintrag bleibt auch, wenn
             // der Start scheitert; die Liste zeigt dann den Stand.
             var started = StartNow(program);
+            _log.Write($"add {program.Id}: runs from the source folder, {(started.Ok ? "started" : "not started")}: {started.Message}");
             _last = OpView.FromInPlaceStart(name, started);
             _opSeq++;
             _notice = started.Ok ? $"{name} runs from the source folder" : started.Message;
@@ -384,6 +394,7 @@ internal sealed class Model : IDisposable
         }
 
         if (program.Copies.Count == 0) _config.Programs.Remove(program);   // nichts kopiert: nichts aufnehmen
+        _log.Write($"add {program.Id}: {outcome.Kind}, {outcome.Message}" + (program.Copies.Count == 0 ? " (nothing kept)" : ""));
         _last = OpView.FromInstall(program.Name, outcome);
         _opSeq++;
         _notice = outcome.Message;
@@ -578,6 +589,11 @@ internal sealed class Model : IDisposable
             id = $"{slug}-{n}";
         return id;
     }
+
+    // Die Version der App (Assembly, InformationalVersion), für das Protokoll
+    private static string Version() =>
+        typeof(Model).Assembly.GetCustomAttributes(typeof(System.Reflection.AssemblyInformationalVersionAttribute), false)
+            .OfType<System.Reflection.AssemblyInformationalVersionAttribute>().FirstOrDefault()?.InformationalVersion ?? "?";
 
     private static bool IsProgramPath(string? path) =>
         !string.IsNullOrWhiteSpace(path) && path.EndsWith(".exe", StringComparison.OrdinalIgnoreCase);

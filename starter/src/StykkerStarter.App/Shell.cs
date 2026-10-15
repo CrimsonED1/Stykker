@@ -36,7 +36,7 @@ internal sealed class Shell : IDisposable
     public Shell(DataLayout layout, Program.Options opt, string mutexName)
     {
         _layout = layout;
-        _log = StarterLog.In(layout);
+        _log = StarterLog.Open(AppContext.BaseDirectory, layout, Environment.MachineName);
         _gpu = opt.Gpu;
         _mutexName = mutexName;
         _checkEvery = opt.CheckEverySeconds;
