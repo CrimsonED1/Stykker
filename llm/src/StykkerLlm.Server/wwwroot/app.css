@@ -684,7 +684,7 @@ html[data-theme=titan] .pf.tight{background-image:repeating-linear-gradient(-45d
 /* Übrige Seiten (U12): Kopf bleibt einzeilig, ruhiges Logo, Themenwahl als Umschalter */
 html[data-theme=titan] nav a{font-family:var(--font);letter-spacing:.02em}
 .brand .logo{animation:none}
-.top{flex-wrap:nowrap}.top nav{flex:none}.top .status{min-width:0;flex-wrap:nowrap}.top .status button,.top .status a{white-space:nowrap}
+.top{flex-wrap:wrap}.top nav{flex:none}.top .status{min-width:0;flex-wrap:wrap}.top .status button,.top .status a{white-space:nowrap}
 @media(max-width:1400px){.top{flex-wrap:wrap}.top .status{flex-wrap:wrap;overflow:visible;margin-left:0}}
 html.shell .top{flex-wrap:wrap}html.shell .top .status{flex-wrap:wrap}   /* Fenster: Zurück/Vor brauchen zusätzlich Platz */
 [data-view=small] .top{flex-wrap:wrap}[data-view=small] .top .status{flex-wrap:wrap;overflow:visible}
@@ -736,3 +736,19 @@ html.shell .big,html.shell .kpi,html.shell .kpi>div,html.shell .brand .logo,html
 html:root .modal.modal{background:linear-gradient(180deg,var(--card-top),var(--card-bottom)),var(--bg)}
 html:root[data-theme=titan] .modal.modal{background:linear-gradient(var(--card),var(--card)),var(--bg)}
 html:root details.menu>div,html:root .cmdk,html:root .toast{background:linear-gradient(var(--card),var(--card)),var(--bg)}
+
+/* Kopfleiste (Feinschliff): die Chips verdichten sich stufenweise, die Leiste läuft nie über den Rand. Bis 1700 px fallen die
+   Beschriftungen „GB free“, „/24 GB“ und die Namen der Clients weg (.hlbl). Bis 1500 px und auf dem Handy auch „Proxy“, der
+   Suchtext und „Free VRAM“ (.hlbl2): dann bleiben Symbol und Zahl, der volle Text steht im Tooltip. Umbrechen ist die letzte
+   Stufe, die Statusleiste geht dann in eine zweite Zeile. Auf dem Handy bleibt sie in einer Zeile und scrollt innerhalb der
+   Leiste; die Seite selbst scrollt nie waagerecht. */
+@media(max-width:1700px){.top .hlbl{display:none}}
+@media(max-width:1560px){.top .hsearch .hlbl2{display:none}}
+@media(max-width:1500px){.top .hlbl2,.top .hsearch .kbd{display:none}.top .hsearch{padding:5px 10px}}
+[data-view=small] .top .hlbl,[data-view=small] .top .hlbl2,[data-view=small] .top .hsearch .kbd{display:none}
+[data-view=small] .top .hsearch{padding:5px 10px}
+@media(max-width:640px){html[data-view] .top .status{width:100%;flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;padding-bottom:2px}}
+
+/* Handy (bis 640 px): zuerst, was läuft, dann die letzten Anfragen, dann der Proxy, Saved, Hardware und der Verlauf.
+   Breiter (641–1100 px) bleibt es bei der Reihenfolge von docs/ui.md darüber. */
+@media(max-width:640px){.mon-run{order:1}.mon-rec{order:2}.mon-proxy{order:3}.mon-saved{order:4}.mon-hw{order:5}.mon-hist{order:6}}

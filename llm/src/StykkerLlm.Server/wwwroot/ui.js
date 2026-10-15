@@ -3,6 +3,7 @@
 // Telefon will kompakt, ein großer Bildschirm nicht.
 (function () {
     const KEY = 'stykker.density';
+    const TAB_KEY = 'stykker.proxyTab';
     const root = document.documentElement;
     const read = () => { try { return localStorage.getItem(KEY) || 'auto'; } catch (e) { return 'auto'; } };
 
@@ -133,6 +134,9 @@
         density: read,
         set: function (d) { try { localStorage.setItem(KEY, d); } catch (e) { /* egal: dann eben nur diese Sitzung */ } apply(); },
         shell: inShell,
+        // zuletzt gewählter Reiter des Proxy-Dialogs (je Browser); ohne Speicher bleibt es bei dem Standard des Dialogs
+        proxyTab: function () { try { return localStorage.getItem(TAB_KEY) || ''; } catch (e) { return ''; } },
+        setProxyTab: function (t) { try { localStorage.setItem(TAB_KEY, t); } catch (e) { /* egal: dann eben nur diese Sitzung */ } },
         askClose: askClose,     // auch zum Ansehen ohne Hülle (Bilder, Prüfung)
         back: function () { window.history.back(); },
         forward: function () { window.history.forward(); }

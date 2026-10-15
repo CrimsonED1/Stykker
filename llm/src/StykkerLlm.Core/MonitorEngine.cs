@@ -28,6 +28,8 @@ public sealed class MonitorEngine : IDisposable
     public ServerRegistry Registry { get; }
     public RecordingManager Recorder { get; }
     public ProxyManager Proxies { get; }
+    // Zähler der Wege des Proxys seit Serverstart (Zeile „Routed“ in der Proxy-Karte)
+    public ProxyRouteCounts RouteCounts { get; } = new();
     // Schalter „Claude Desktop auf den Stykker-Proxy" (3P-Ablage der App)
     public ClaudeDesktop Claude { get; }
     // Alle Proxy-Clients (Kopfleiste, Client-Dialog, Aktionen client.*); heute nur Claude (Clients/ProxyClients.cs)
@@ -307,6 +309,7 @@ public sealed class MonitorEngine : IDisposable
             _recentProxy.Enqueue(px);
             while (_recentProxy.Count > 64) _recentProxy.Dequeue();
         }
+        RouteCounts.Add(px);
         // Beobachtung des Proxys an alle laufenden Aufnahmen (Sitzungen sperren intern, der Aufruf kommt von einem Hintergrund-Thread)
         var w = Registry.Servers.FirstOrDefault(x => x.Key == px.ServerKey);
         Recorder.OnProxyRecord(px, w?.Name ?? Proxies.DisplayName(px.ServerKey), w?.Model ?? "");

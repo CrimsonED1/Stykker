@@ -34,7 +34,14 @@ public static partial class Strings
         (need > free ? " – it may not fit, or spill into shared RAM." : ".");
     // Proxy-Panel (U9)
     public const string PxTitle = "Stykker-Proxy", PxOn = "on", PxOff = "off", PxCopy = "Copy address", PxCopied = "Copied";
-    public const string PxAnswers = "Answers as \"stykker\"", PxLan = "Reachable in the network", PxLanOn = "LAN", PxLanOff = "this PC only";
+    public const string PxDefault = "Default model", PxDefaultTip = "Requests without a known model name, and those for \"stykker\" or \"claude-stykker\", go to this model.",
+        PxLan = "Reachable in the network", PxLanOn = "LAN", PxLanOff = "this PC only";
+    // Reiter des Proxy-Dialogs (Sources heißt wie der Abschnitt PxSources)
+    public const string PxTabGeneral = "General", PxTabRouting = "Routing", PxTabTests = "Tests", PxStartTest = "Start test";
+    // Zeile „Routed“ der Proxy-Karte: Zähler seit Serverstart je Weg
+    public const string PxRouted = "Routed", PxRoutedTip = "Requests since the server started, by route. auto: safety check of Claude Code, image: request with an image, cloud: sent to a cloud provider. A safety check sent to the cloud counts twice.";
+    public static string PxRoutedText(int auto, int image, int cloud) =>
+        $"{ReqRouteAuto} {auto.ToString(Inv)} · {ReqRouteImage} {image.ToString(Inv)} · {ReqCloud} {cloud.ToString(Inv)}";
     public const string PxSources = "Sources", PxThisPc = "This PC", PxMachines = "Other Stykker machines", PxCloud = "Cloud providers";
     public static string PxModels(int n) => n == 1 ? "1 model" : $"{n} models";
     public const string PxAdd = "Add", PxCancel = "Cancel", PxSetKey = "Set key", PxRemove = "Remove", PxKeyStored = "key stored", PxKeyMissing = "no key";

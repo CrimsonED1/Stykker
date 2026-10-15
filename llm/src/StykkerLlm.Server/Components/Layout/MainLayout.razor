@@ -50,7 +50,7 @@
         @* Proxy-Chip: der Schalter daneben schaltet den Proxy (wie bisher); ein Klick auf den Chip selbst öffnet den Proxy-Dialog *@
         <span class="hchip pxchip @(px.Running ? "on" : "")">
             <button class="pxchip-open" title="@Strings.HdrProxyTip" aria-label="@Strings.PxOpenDialog" aria-haspopup="dialog" @onclick="() => ProxyDlg.Open()">
-                <span class="lamp"></span>@Strings.HdrProxy <b>@(px.Running ? ":" + px.Port.ToString(CultureInfo.InvariantCulture) : Strings.HdrProxyOff)</b><Icon Name="wrench" Class="sm wr" />
+                <span class="lamp"></span><span class="hlbl2">@Strings.HdrProxy</span> <b>@(px.Running ? ":" + px.Port.ToString(CultureInfo.InvariantCulture) : Strings.HdrProxyOff)</b><Icon Name="wrench" Class="sm wr" />
             </button>
             <button class="switch sm @(px.Running ? "on" : "")" role="switch" aria-checked="@(px.Running ? "true" : "false")"
                     aria-label="@Strings.PxSwitch" title="@(CanWrite ? Strings.PxSwitch : WriteReason)" disabled="@(!CanWrite)" @onclick="ToggleProxy"><i></i></button>
@@ -60,12 +60,12 @@
             var frac = g.MemTotalGb > 0 ? Math.Clamp(g.MemUsedGb / g.MemTotalGb, 0, 1) : 0;
             <a class="hchip @(frac > .92 ? "warn" : "")" href="gpu" title="@g.Name · @Strings.GpuHeadline(g.MemUsedGb, g.MemTotalGb)">
                 <Icon Name="vram" /><span class="mini"><i style="width:@((int)(frac * 100))%"></i></span>
-                <b>@g.MemUsedGb.ToString("0.0", CultureInfo.InvariantCulture)</b><span class="muted">/@g.MemTotalGb.ToString("0", CultureInfo.InvariantCulture) GB</span>
+                <b>@g.MemUsedGb.ToString("0.0", CultureInfo.InvariantCulture)</b><span class="muted hlbl">/@g.MemTotalGb.ToString("0", CultureInfo.InvariantCulture) GB</span>
             </a>
         }
         @if (Host.Engine.Sys is { } s)
         {
-            <span class="hchip" title="@Strings.RamFreeGb(s.RamTotalGb - s.RamUsedGb)"><Icon Name="ram" /><b>@((s.RamTotalGb - s.RamUsedGb).ToString("0.0", CultureInfo.InvariantCulture))</b><span class="muted">GB free</span></span>
+            <span class="hchip" title="@Strings.RamFreeGb(s.RamTotalGb - s.RamUsedGb)"><Icon Name="ram" /><b>@((s.RamTotalGb - s.RamUsedGb).ToString("0.0", CultureInfo.InvariantCulture))</b><span class="muted hlbl">GB free</span></span>
         }
         @* Ein Chip je Proxy-Client (Claude Desktop, Claude Code): Lampe an, wenn er über den Stykker-Proxy läuft; Klick öffnet den Dialog *@
         @foreach (var client in Host.Engine.Clients.All)
@@ -74,7 +74,7 @@
             {
                 var c = client;
                 <button class="hchip @(c.Enabled ? "on" : "")" title="@Strings.ClientChipTip(c.Title, c.Enabled)" aria-label="@Strings.ClientChipTip(c.Title, c.Enabled)"
-                        @onclick="() => Dialogs.Open(c.Id)"><span class="lamp"></span><Icon Name="@c.IconName" /><b>@c.Title</b><Icon Name="wrench" Class="sm wr" /></button>
+                        @onclick="() => Dialogs.Open(c.Id)"><span class="lamp"></span><Icon Name="@c.IconName" /><b class="hlbl">@c.Title</b><Icon Name="wrench" Class="sm wr" /></button>
             }
         }
         <span class="hchip @(busy > 0 ? "busy" : "")" title="@Strings.HdrServersTip"><Icon Name="slots" /><b>@Strings.HdrServers(srv.Count, busy)</b></span>
@@ -86,8 +86,8 @@
         {
             <span class="pill wait" title="@Strings.RemoteRoleHint">@Strings.RoleViewer</span>
         }
-        <button class="hsearch" title="@Strings.CmdTitle (Ctrl+K)" aria-label="@Strings.CmdTitle" onclick="document.getElementById('cmdk-open').click()"><span>@Strings.CmdSearch</span><span class="kbd">Ctrl K</span></button>
-        <button @onclick="FreeVram" disabled="@(Host.ReadOnly || Viewer.IsViewer)" title="@Strings.FreeVramTitle">@Strings.BtnFreeVram</button>
+        <button class="hsearch" title="@Strings.CmdTitle (Ctrl+K)" aria-label="@Strings.CmdTitle" onclick="document.getElementById('cmdk-open').click()"><Icon Name="search" /><span class="hlbl2">@Strings.CmdSearch</span><span class="kbd">Ctrl K</span></button>
+        <button @onclick="FreeVram" disabled="@(Host.ReadOnly || Viewer.IsViewer)" title="@Strings.FreeVramTitle" aria-label="@Strings.FreeVramTitle"><Icon Name="vram" /><span class="hlbl2">@Strings.BtnFreeVram</span></button>
         @if (_confirm)
         {
             <button class="bad" @onclick="StopServer">@Strings.AboutStopReally</button><button @onclick="() => _confirm = false">@Strings.AboutStopCancel</button>

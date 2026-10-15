@@ -348,7 +348,7 @@
 <div id="proxy" class="mon-proxy">
 @* Proxy-Karte (nur Information): an/aus, Adresse zum Kopieren, Ziel, Port, LAN, Quellen, Prüfmodell. Eingaben und Schalter
    stehen im Proxy-Dialog – über das Zahnrad hier oder einen Klick auf den Proxy-Chip in der Kopfleiste. *@
-@{ var models = px.Choices(); var baseUrl = ProxyPanel.BaseUrl(px); var cd = e.Claude; int machines = px.RemoteStates().Count, clouds = px.ProviderStates().Count; }
+@{ var models = px.Choices(); var baseUrl = ProxyPanel.BaseUrl(px); var cd = e.Claude; int machines = px.RemoteStates().Count, clouds = px.ProviderStates().Count; var routes = e.RouteCounts.Snapshot(); }
 <h3 class="sec">@Strings.PxTitle</h3>
 <div class="card pxp @(px.Running ? "on" : "")">
     <div class="pxp-hd">
@@ -388,6 +388,14 @@
     <div class="pxp-row">
         <span class="pxp-l">@Strings.PxClassifier</span>
         <span class="pxp-v">@ProxyPanel.ClassifierLabel(px.ClassifierValue(), models)</span>
+    </div>
+    <div class="pxp-row">
+        <span class="pxp-l">@Strings.ProxyVisionLabel</span>
+        <span class="pxp-v">@ProxyPanel.ClassifierLabel(px.VisionValue(), models)</span>
+    </div>
+    <div class="pxp-row" title="@Strings.PxRoutedTip">
+        <span class="pxp-l">@Strings.PxRouted</span>
+        <span class="pxp-v">@Strings.PxRoutedText(routes.Auto, routes.Image, routes.Cloud)</span>
     </div>
 </div>
 </div>
