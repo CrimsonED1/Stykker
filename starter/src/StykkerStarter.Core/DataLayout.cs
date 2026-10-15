@@ -35,9 +35,16 @@ public sealed class DataLayout
         return new string(name.Select(c => Array.IndexOf(invalid, c) >= 0 ? '_' : c).ToArray());
     }
 
+    // Der Ordner eines Programms, oder null, wenn die Id kein einfacher Ordnername ist (ein kaputter Eintrag darf nie
+    // einen fremden Ordner treffen)
+    public string? TryProgramDir(string programId) => IsPlainName(programId) ? Path.Combine(Root, programId) : null;
+
+    public static bool IsPlainName(string id) =>
+        !string.IsNullOrWhiteSpace(id) && id is not ("." or "..") && Path.GetFileName(id) == id
+        && id.IndexOfAny(Path.GetInvalidFileNameChars()) < 0;
+
     private static void RequireSafeName(string id, string param)
     {
-        if (string.IsNullOrWhiteSpace(id) || id.Contains('/') || id.Contains('\\') || id is "." or "..")
-            throw new ArgumentException("the program id is not a plain folder name", param);
+        if (!IsPlainName(id)) throw new ArgumentException("the program id is not a plain folder name", param);
     }
 }

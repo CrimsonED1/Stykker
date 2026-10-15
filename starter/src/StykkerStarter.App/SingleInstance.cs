@@ -23,7 +23,12 @@ internal static class SingleInstance
         var ev = new EventWaitHandle(false, EventResetMode.AutoReset, EventName(mutexName));
         var thread = new Thread(() =>
         {
-            while (ev.WaitOne()) onOpen();
+            // Beim Beenden wird das Ereignis geschlossen, während dieser Thread wartet: dann endet er leise
+            try
+            {
+                while (ev.WaitOne()) onOpen();
+            }
+            catch (ObjectDisposedException) { }
         })
         {
             IsBackground = true,
