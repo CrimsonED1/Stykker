@@ -265,6 +265,8 @@
         // Nur lesen, was sichtbar ist: ein verborgenes Fenster fragt nicht, und der Server hört dann von selbst
         // auf zu messen (siehe SysService).
         if (document.hidden) return;
+        // Nur auf der Prozessseite: auf der Laufwerkseite (/disks) fragt sonst die Prozessliste mit und hält die Messung wach
+        if (!$("proc-rows")) return;
         try {
             const response = await fetch("/api/snapshot", { cache: "no-store" });
             if (response.ok) render(await response.json());

@@ -21,5 +21,21 @@
 #procs .req.child .cl{margin-left:14px}
 #procs .req.child .mdl{opacity:.9}
 
+/* Die Laufwerkseite (/disks): drei Tabellen im Stil der Prozessliste. Spalten: Art, Laufwerk, Belegung, Lesen, Schreiben,
+   Auslastung; physische Laufwerke mit Nummer und Warteschlange; Programme mit PID. */
+#disk-volumes .req{grid-template-columns:62px minmax(0,1.5fr) minmax(120px,1.6fr) 84px 84px 56px}
+#disk-physical .req{grid-template-columns:62px 28px minmax(0,1.6fr) 84px 84px 56px 56px}
+#disk-procs .req{grid-template-columns:20px minmax(0,1.6fr) 64px 92px 92px}
+#disk-volumes .req .dur{min-width:0}
+#disk-volumes .req .dur>span:last-child{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.disk-table .req .mono{font-family:var(--mono);font-size:var(--t-xs);white-space:nowrap}
+/* Handy: drei Spalten, die Kopfzeile fällt weg (jede Zelle steht bei ihrer Zahl), Art und Nummer kommen weg, sonst passt es nicht */
+@media(max-width:640px){
+    #disk-volumes .req,#disk-physical .req,#disk-procs .req{grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1fr);gap:4px 8px}
+    #disk-volumes .req.head,#disk-physical .req.head,#disk-procs .req.head{display:none}
+    #disk-volumes .req>span:first-child,#disk-physical .req>span:nth-child(-n+2),#disk-procs .req>span:first-child{display:none}
+    #disk-volumes .req .dur{display:flex}   /* die Belegung bleibt sichtbar: das Design-System blendet .dur am Handy aus */
+}
+
 /* In der Zentrale (Frame, ?embed=1): die Marke und die Themenwahl stehen schon in deren Leiste. */
 .embed .top .brand,.embed .top .seg[aria-label="Theme"]{display:none}
