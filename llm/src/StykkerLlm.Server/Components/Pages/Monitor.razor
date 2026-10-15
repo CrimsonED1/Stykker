@@ -9,6 +9,7 @@
 @inject Toasts Toast
 @inject ClientDialogs Dialogs
 @inject ProxyDialogs ProxyDlg
+@using Stykker.Shared.Disk
 
 @* Monitor wie im Fenster (docs/ui.md, Bereiche 2–8): Proxy, Saved, Running, GPU, System, Recent requests, History *@
 
@@ -190,7 +191,7 @@
 </div>
 <aside class="mon-side">
 @* Hardware (U5): GPU und System in einer Karte, je Programm als gestapelter Balken mit Legende; Details auf /gpu *@
-@if (e.Gpu != null || e.Sys != null)
+@if (e.Gpu != null || e.Sys != null || e.Disks != null)
 {
     <div class="mon-area mon-hw">
     <h3 class="sec">@Strings.SectionHardware</h3>
@@ -226,6 +227,37 @@
             }
         }
     </div>
+    @* Laufwerke (Stykker.Shared/Disk): je Volume Belegung, Lesen, Schreiben, Auslastung; Hinweis, wenn ein Modellserver stark liest *@
+    @if (e.Disks is { } dk && dk.Volumes.Count > 0)
+    {
+        var hints = DiskHints.Lines(DiskHints.ServersOf(e.Servers), e.DiskProcesses, dk.Volumes);
+        <div class="card hw dsk-card">
+            <h2>@Strings.DisksCard <small class="muted">@dk.Volumes.Count @Strings.DisksVolumes</small><a class="more" href="disks" title="@Strings.DisksPageTitle">@Strings.DisksDetails <Icon Name="open" /></a></h2>
+            <div class="dsk-list">
+                @foreach (var v in dk.Volumes)
+                {
+                    double used = v.TotalBytes > 0 ? Math.Clamp(v.UsedBytes / v.TotalBytes, 0, 1) : 0;
+                    <div class="dsk">
+                        <div class="dsk-top">
+                            <b class="dsk-letter">@v.Letter:</b>
+                            <span class="dsk-kind" data-k="@v.Kind" title="@DiskKinds.Label(v.Kind)">@DiskKinds.Label(v.Kind)</span>
+                            <span class="dsk-free muted" title="@v.Label">@DiskFormat.Size(v.FreeBytes) @Strings.DisksFree · @DiskFormat.Size(v.TotalBytes)</span>
+                        </div>
+                        <div class="bar"><div style="width:@((int)(used * 100))%"></div></div>
+                        <div class="dsk-io">
+                            <span>@Strings.DisksRead <b>@DiskRate(v.ReadBytesPerSec)</b></span>
+                            <span>@Strings.DisksWrite <b>@DiskRate(v.WriteBytesPerSec)</b></span>
+                            <span>@Strings.DisksBusy <b>@DiskPercent(v.BusyPercent)</b></span>
+                        </div>
+                    </div>
+                }
+            </div>
+            @foreach (var line in hints)
+            {
+                <div class="dsk-hint">@line</div>
+            }
+        </div>
+    }
     </div>
 }
 
@@ -470,6 +502,10 @@
         var r = await Web.RunAsync(new ActionRequest { Action = "host.stop", Arg = hostId, Arg2 = key });
         if (!r.Ok) await Prompt.InformAsync(Strings.ActionFailed, r.Message, warning: true);
     }
+
+    // Laufwerkswerte für die Karte: „–", wenn nicht gemessen (nie eine erfundene 0)
+    private static string DiskRate(double? bytesPerSec) => bytesPerSec is double b ? DiskFormat.Rate(b) : "–";
+    private static string DiskPercent(double? pct) => pct is double p ? p.ToString("0", CultureInfo.InvariantCulture) + " %" : "–";
 
     // Eine Messanzeige der Hardware-Karte: Name, rechts eine Notiz (frei, Drosselung), großer Wert, Balken
     private static RenderFragment Meter(string label, string value, string unit, double frac, string? note, bool warnNote = false, string? tip = null) => __builder =>

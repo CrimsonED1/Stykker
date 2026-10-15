@@ -1,3 +1,5 @@
+using Stykker.Shared.Disk;
+
 namespace StykkerLlm.Core;
 
 // Anhaltender Hinweis für die Oberfläche (z. B. „Ziel-Kontext zu klein"): bleibt sichtbar, bis der Nutzer ihn bestätigt.
@@ -53,6 +55,13 @@ public sealed class MonitorEngine : IDisposable
     // GPU-Auslastung je Prozess in Prozent (alle 5 s, Hintergrund-Task) – für die Liste in den GPU-Details
     private volatile List<(string Name, double Percent)> _gpuUtilTop = new();
     public IReadOnlyList<(string Name, double Percent)> GpuUtilTop => _gpuUtilTop;
+    // Laufwerke (jede Sekunde; die Raten brauchen zwei Abtastungen) und die Prozesse mit dem meisten Platten-E/A (alle 5 s)
+    public DiskSample? Disks { get; private set; }
+    private DateTime _lastDiskRead = DateTime.MinValue;
+    private volatile List<ProcessIoRow> _diskProcs = new();
+    public IReadOnlyList<ProcessIoRow> DiskProcesses => _diskProcs;
+    public DiskHistory DiskHistory { get; } = new();
+    private const int DiskProcessCount = 12;
     public int Ticks { get; private set; }
     // Ausnahme des letzten Takts (der nächste Takt versucht es neu); null = alles gut
     public Exception? LastError { get; private set; }
@@ -347,6 +356,13 @@ public sealed class MonitorEngine : IDisposable
             if (!ReadOnly) Claude.Maintain(now);
             // NVML-Aufrufe sind die teuersten Messungen: im Leerlauf nur alle 2 s (bei Aufnahme jede Sekunde)
             if (Gpu == null || GpuEveryTick || (now - _lastGpuRead).TotalSeconds >= 1.9) { Gpu = Platform.ReadGpu(); _lastGpuRead = now; }
+            if ((now - _lastDiskRead).TotalSeconds >= 0.95)
+            {
+                _lastDiskRead = now;
+                try { Disks = Platform.ReadDisks(); }
+                catch { Disks = null; }   // ein Zählerfehler lässt die Karte leer, der Takt läuft weiter
+                if (Disks is { } disks) DiskHistory.Add(disks);
+            }
             Sys = Platform.ReadSystem();
             if (Recorder.Active)
                 foreach (var s in Recorder.Tick(servers, Gpu, Sys)) _ = StopRecordingAsync(s, limitReached: true);
@@ -361,6 +377,8 @@ public sealed class MonitorEngine : IDisposable
                     try { _gpuUtilTop = Platform.ReadGpuUtilTop(64)?.ToList() ?? new(); }
                     catch { }
                     try { _ramTop = Platform.ReadRamTop(12)?.ToList() ?? new(); }
+                    catch { }
+                    try { _diskProcs = Platform.ReadDiskProcesses(DiskProcessCount)?.ToList() ?? new(); }
                     catch { }
                     finally { _procBusy = false; }
                 });

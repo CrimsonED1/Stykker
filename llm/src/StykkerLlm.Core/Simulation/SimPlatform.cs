@@ -1,3 +1,5 @@
+using Stykker.Shared.Disk;
+
 namespace StykkerLlm.Core;
 
 // Die Plattform der Simulation: lauschende Ports, Prozesse, GPU- und Systemwerte kommen aus der SimWorld.
@@ -167,6 +169,44 @@ public sealed class SimPlatform : IPlatform
             if (s.Spec.Kind == BackendKind.Ollama && !s.Loaded) return (0.0, 0.0);
             return (_w.ServerVramGb(s), 0.0);
         });
+    }
+
+    // Zwei simulierte Laufwerke: eine NVMe mit dem Systemvolume und eine HDD mit einem Datenvolume. Die Last folgt den
+    // Modellen (TotalLoad), damit die Karte und die Seite etwas zeigen. Namen und Größen sind erfunden.
+    public DiskSample? ReadDisks()
+    {
+        double busy = _w.TotalLoad();
+        double nvmeRead = 6e6 + busy * 1.1e9 * (0.8 + _noise.NextDouble() * 0.4);
+        double nvmeWrite = 9e6 + busy * 35e6 * (0.5 + _noise.NextDouble());
+        double hddRead = 1e6 + busy * 140e6 * (0.6 + _noise.NextDouble() * 0.8);
+        double hddWrite = 0.2e6 + busy * 4e6;
+        var disks = new List<PhysicalDiskRow>
+        {
+            new(0, DiskKind.Nvme, "Simulated NVMe 1 TB", nvmeRead, nvmeWrite, Math.Clamp(3 + busy * 70, 0, 100), 0.05 + busy * 0.8),
+            new(1, DiskKind.Hdd, "Simulated HDD 4 TB", hddRead, hddWrite, Math.Clamp(1 + busy * 85, 0, 100), 0.1 + busy * 3),
+        };
+        var volumes = new List<VolumeRow>
+        {
+            new("C", "System", "NTFS", 1000e9, 412e9, 0, DiskKind.Nvme, nvmeRead * 0.9, nvmeWrite * 0.9, disks[0].BusyPercent, disks[0].QueueLength),
+            new("D", "Data", "NTFS", 4000e9, 1510e9, 1, DiskKind.Hdd, hddRead, hddWrite, disks[1].BusyPercent, disks[1].QueueLength),
+        };
+        return new DiskSample(DateTime.Now, disks, volumes);
+    }
+
+    // Die Prozesse mit dem meisten Lesen: der Modellserver, der seine Gewichte nachlädt, wenn eines läuft
+    public IReadOnlyList<ProcessIoRow>? ReadDiskProcesses(int count)
+    {
+        double busy = _w.TotalLoad();
+        // Die PID eines geladenen Simulator-Servers, damit der Hinweis zur Karte passt (Zuordnung über die PID)
+        var srv = _w.Servers.FirstOrDefault(s => s.HasEngine || s.Loaded);
+        int serverPid = srv == null ? 40210 : srv.Spec.Kind == BackendKind.LmStudio || srv.Spec.Strata ? srv.EnginePid : srv.Pid;
+        var rows = new List<ProcessIoRow>
+        {
+            new(serverPid, srv?.Spec.Kind == BackendKind.Ollama ? "ollama" : "llama-server", busy * 1.05e9 * (0.8 + _noise.NextDouble() * 0.4), busy * 2e6),
+            new(40333, "browser", 1e6 + busy * 3e6, 0.4e6),
+            new(40411, "backup-tool", 0, 0.2e6 + busy * 1e6),
+        };
+        return rows.Where(r => r.ReadBytesPerSec + r.WriteBytesPerSec > 0).OrderByDescending(r => r.ReadBytesPerSec + r.WriteBytesPerSec).Take(count).ToList();
     }
 
     public GpuSample? ReadGpu()

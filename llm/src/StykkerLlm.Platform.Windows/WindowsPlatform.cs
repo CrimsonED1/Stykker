@@ -1,5 +1,7 @@
 using System.Runtime.InteropServices;
 using System.Text;
+using Stykker.Shared.Disk;
+using Stykker.Shared.Windows;
 using StykkerLlm.Core;
 
 namespace StykkerLlm.Platform.Windows;
@@ -30,6 +32,8 @@ public sealed class WindowsPlatform : IPlatform
     private readonly ProcMem.GpuProcessQuery _gpuProcs = new();
     private readonly ProcMem.GpuUtilQuery _gpuUtil = new();
     private readonly object _gpuLock = new();
+    private readonly DiskCounters _disks = new();
+    private readonly object _diskLock = new();
     private bool _disposed;
 
     public int ProcessorCount => Environment.ProcessorCount;
@@ -299,12 +303,26 @@ public sealed class WindowsPlatform : IPlatform
         }
     }
 
+    // Laufwerke und Platten-E/A (Stykker.Shared): ein Schloss, weil der Takt und die Hintergrundabfrage der Prozesse dieselbe Instanz nutzen
+    public DiskSample? ReadDisks()
+    {
+        lock (_diskLock)
+            return _disposed ? null : _disks.ReadDisks();
+    }
+
+    public IReadOnlyList<ProcessIoRow>? ReadDiskProcesses(int count)
+    {
+        lock (_diskLock)
+            return _disposed ? null : _disks.ReadProcesses(count);
+    }
+
     public byte[]? ProtectForCurrentUser(byte[] data) => Dpapi.Protect(data);
     public byte[]? UnprotectForCurrentUser(byte[] data) => Dpapi.Unprotect(data);
 
     public void Dispose()
     {
         lock (_gpuLock) { _disposed = true; _gpuProcs.Dispose(); _gpuUtil.Dispose(); }
+        lock (_diskLock) _disks.Dispose();
         _nvml.Dispose();
     }
 }

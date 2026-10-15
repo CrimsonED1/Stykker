@@ -752,3 +752,25 @@ html:root details.menu>div,html:root .cmdk,html:root .toast{background:linear-gr
 /* Handy (bis 640 px): zuerst, was läuft, dann die letzten Anfragen, dann der Proxy, Saved, Hardware und der Verlauf.
    Breiter (641–1100 px) bleibt es bei der Reihenfolge von docs/ui.md darüber. */
 @media(max-width:640px){.mon-run{order:1}.mon-rec{order:2}.mon-proxy{order:3}.mon-saved{order:4}.mon-hw{order:5}.mon-hist{order:6}}
+
+/* Laufwerke: die Karte „Disks“ im Monitor und die Seite /disks (Zahlen in der Schrift der Karten, nie breiter als die Karte) */
+.dsk-list{display:grid;gap:8px}
+.dsk,.dsk-vol{background:rgb(var(--ink-rgb)/.03);border:1px solid rgb(var(--ink-rgb)/.06);border-radius:10px;padding:8px 10px;min-width:0}
+.dsk-vol{margin-bottom:10px}
+.dsk-top{display:flex;align-items:baseline;gap:8px;min-width:0;flex-wrap:wrap}
+.dsk-letter{font:600 15px var(--font-num);color:var(--ink)}
+.dsk-kind{font:500 10px var(--font-num);letter-spacing:.06em;text-transform:uppercase;border:1px solid var(--line);border-radius:5px;padding:0 5px;color:var(--muted);line-height:16px}
+.dsk-kind[data-k=Nvme],.dsk-kind[data-k=Ssd]{color:var(--acc);border-color:rgb(var(--acc-rgb)/.5)}
+.dsk-kind[data-k=Hdd]{color:var(--warn);border-color:rgb(var(--warn-rgb)/.5)}
+.dsk-free{margin-left:auto;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;max-width:100%}
+.dsk .bar{margin:6px 0}
+.dsk-io{display:flex;flex-wrap:wrap;gap:2px 12px;font:11px var(--font-num);color:var(--muted)}
+.dsk-io b{color:var(--ink);font-weight:500}
+.dsk-hint{font-size:12px;margin-top:8px;color:var(--warn);overflow-wrap:anywhere}
+.dsk-sparks{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.dsk-sp{min-width:0}
+.dsk-sp .muted{font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dsk-sp .spark{height:56px}
+.dsk-table{table-layout:fixed;width:100%}
+.dsk-table td,.dsk-table th{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media(max-width:640px){.dsk-sparks{grid-template-columns:1fr}.dsk-table th:nth-child(3),.dsk-table td:nth-child(3){width:auto}}

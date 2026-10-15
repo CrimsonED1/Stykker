@@ -1,3 +1,5 @@
+using Stykker.Shared.Disk;
+
 namespace StykkerLlm.Core;
 
 // ── Datentypen der Plattformschicht ──
@@ -96,6 +98,10 @@ public interface IPlatform : IDisposable
     IReadOnlyList<(string Name, double Gb)>? ReadRamTop(int count) => null;
     // GPU-Auslastung je Prozess in Prozent (über alle Engines summiert), größte zuerst. Standard: nicht verfügbar.
     IReadOnlyList<(string Name, double Percent)> ReadGpuUtilTop(int count) => Array.Empty<(string, double)>();
+    // Laufwerke: Volumes und physische Laufwerke mit Lesen, Schreiben und Auslastung (Stykker.Shared/Disk). null = nicht verfügbar.
+    DiskSample? ReadDisks() => null;
+    // Prozesse mit dem meisten Platten-E/A (Lesen und Schreiben je Sekunde), größte zuerst. Standard: nicht verfügbar.
+    IReadOnlyList<ProcessIoRow>? ReadDiskProcesses(int count) => null;
     // Daten an den aktuellen Benutzer binden (Windows: DPAPI CurrentUser). null = nicht möglich (Standard, z. B. Linux/Simulator):
     // der Aufrufer speichert dann nichts dauerhaft.
     byte[]? ProtectForCurrentUser(byte[] data) => null;

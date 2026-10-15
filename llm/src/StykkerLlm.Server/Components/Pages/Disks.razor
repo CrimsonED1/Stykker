@@ -1,0 +1,145 @@
+@page "/disks"
+@implements IDisposable
+@inject EngineHost Host
+@using Stykker.Shared.Disk
+
+@* Laufwerke wie im Fenster (Karte „Disks" im Monitor): je Volume Belegung und der Verlauf der letzten fünf Minuten für
+   Lesen, Schreiben und Auslastung, dann die physischen Laufwerke und die Programme mit dem meisten Platten-E/A. Ein Takt
+   je Sekunde; nicht gemessene Werte stehen als „–". *@
+
+@{ var e = Host.Engine; var dk = e.Disks; }
+
+<div class="row" style="margin-bottom:12px">
+    <b style="font-size:17px">@Strings.DisksPageTitle</b>
+    <span style="margin-left:auto"><a href="">@Strings.BackToMonitor</a></span>
+</div>
+
+@if (dk == null)
+{
+    <div class="card"><span class="muted small">@Strings.DisksNoData</span></div>
+}
+else
+{
+    <div class="card">
+        <p class="muted small">@Strings.DisksDetailsHint</p>
+        <h2>@Strings.DisksVolumes</h2>
+        @if (dk.Volumes.Count == 0)
+        {
+            <span class="muted small">@Strings.DisksNoData</span>
+        }
+        @foreach (var v in dk.Volumes)
+        {
+            var points = e.DiskHistory.Of(v.Letter);
+            double used = v.TotalBytes > 0 ? Math.Clamp(v.UsedBytes / v.TotalBytes, 0, 1) : 0;
+            var reads = points.Select(p => p.Read).ToList();
+            var writes = points.Select(p => p.Write).ToList();
+            var busy = points.Select(p => p.Busy).ToList();
+            // Die Skala: der größte Wert des Verlaufs, mindestens 1 MB/s – so steht die Beschriftung für die volle Höhe
+            double readTop = Sparkline.Scale(reads, 1024 * 1024), writeTop = Sparkline.Scale(writes, 1024 * 1024);
+            <div class="dsk dsk-vol">
+                <div class="dsk-top">
+                    <b class="dsk-letter">@v.Letter:</b>
+                    <span class="dsk-kind" data-k="@v.Kind">@DiskKinds.Label(v.Kind)</span>
+                    <span class="muted small">@v.Label @v.FileSystem</span>
+                    <span class="dsk-free muted">@DiskFormat.Size(v.UsedBytes) @Strings.DisksUsed · @DiskFormat.Size(v.FreeBytes) @Strings.DisksFree · @DiskFormat.Size(v.TotalBytes)</span>
+                </div>
+                <div class="bar"><div style="width:@((int)(used * 100))%"></div></div>
+                <div class="dsk-io">
+                    <span>@Strings.DisksRead <b>@Rate(v.ReadBytesPerSec)</b></span>
+                    <span>@Strings.DisksWrite <b>@Rate(v.WriteBytesPerSec)</b></span>
+                    <span>@Strings.DisksBusy <b>@Pct(v.BusyPercent)</b></span>
+                    <span>@Strings.DisksQueue <b>@(v.QueueLength is double q ? q.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture) : "–")</b></span>
+                </div>
+                <div class="subh">@Strings.DisksHistory</div>
+                @if (points.Count < 2)
+                {
+                    <div class="muted small">@Strings.DisksNoHistory</div>
+                }
+                else
+                {
+                    <div class="dsk-sparks">
+                        <div class="dsk-sp">
+                            <div class="muted small">@Strings.DisksRead · max @Rate(readTop)</div>
+                            <svg class="spark" viewBox="0 0 300 70" preserveAspectRatio="none"><polyline class="line" fill="none" points="@Spark(reads, readTop)" /></svg>
+                        </div>
+                        <div class="dsk-sp">
+                            <div class="muted small">@Strings.DisksWrite · max @Rate(writeTop)</div>
+                            <svg class="spark" viewBox="0 0 300 70" preserveAspectRatio="none"><polyline class="line" fill="none" points="@Spark(writes, writeTop)" /></svg>
+                        </div>
+                        <div class="dsk-sp">
+                            <div class="muted small">@Strings.DisksBusy · max 100 %</div>
+                            <svg class="spark" viewBox="0 0 300 70" preserveAspectRatio="none"><polyline class="line" fill="none" points="@Spark(busy, 100)" /></svg>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+    </div>
+
+    <div class="card">
+        <h2>@Strings.DisksPhysical</h2>
+        @if (dk.Disks.Count == 0)
+        {
+            <span class="muted small">@Strings.DisksNoData</span>
+        }
+        else
+        {
+            <table class="dsk-table">
+                <tr><th>#</th><th>@Strings.DisksType</th><th>@Strings.DisksModel</th><th class="num">@Strings.DisksRead</th><th class="num">@Strings.DisksWrite</th><th class="num">@Strings.DisksBusy</th><th class="num">@Strings.DisksQueue</th></tr>
+                @foreach (var p in dk.Disks)
+                {
+                    <tr>
+                        <td>@p.Number</td>
+                        <td>@DiskKinds.Label(p.Kind)</td>
+                        <td class="muted" title="@p.Model">@p.Model</td>
+                        <td class="num">@Rate(p.ReadBytesPerSec)</td>
+                        <td class="num">@Rate(p.WriteBytesPerSec)</td>
+                        <td class="num">@Pct(p.BusyPercent)</td>
+                        <td class="num">@(p.QueueLength is double q ? q.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture) : "–")</td>
+                    </tr>
+                }
+            </table>
+        }
+    </div>
+
+    <div class="card">
+        <h2>@Strings.DisksPrograms</h2>
+        <p class="muted small">@Strings.DisksProgramsHint</p>
+        @if (e.DiskProcesses.Count == 0)
+        {
+            <span class="muted small">@Strings.DisksProgramsNone</span>
+        }
+        else
+        {
+            <table class="dsk-table">
+                <tr><th>@Strings.ColProcess</th><th class="num">PID</th><th class="num">@Strings.DisksRead</th><th class="num">@Strings.DisksWrite</th></tr>
+                @foreach (var p in e.DiskProcesses)
+                {
+                    <tr>
+                        <td title="@p.Name">@p.Name</td>
+                        <td class="num muted">@p.Pid</td>
+                        <td class="num">@DiskFormat.Rate(p.ReadBytesPerSec)</td>
+                        <td class="num">@DiskFormat.Rate(p.WriteBytesPerSec)</td>
+                    </tr>
+                }
+            </table>
+        }
+    </div>
+}
+
+@code {
+    private Timer? _t;
+
+    protected override void OnInitialized()
+    {
+        _t = new Timer(_ => InvokeAsync(StateHasChanged), null, 1000, 1000);
+    }
+
+    public void Dispose() => _t?.Dispose();
+
+    private static string Rate(double? bytesPerSec) => bytesPerSec is double b ? DiskFormat.Rate(b) : "–";
+
+    private static string Pct(double? pct) => pct is double p ? p.ToString("0", System.Globalization.CultureInfo.InvariantCulture) + " %" : "–";
+
+    private static string Spark(IReadOnlyList<double?> values, double max) => Sparkline.Points(values, max);
+}

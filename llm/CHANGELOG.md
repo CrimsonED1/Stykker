@@ -7,6 +7,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## Unreleased
 
 ### Added
+- **Disks.** The monitor's Hardware area gets a card **Disks**: one row per drive with its letter, type (NVMe, SSD,
+  HDD, USB or unknown), used and free space, read and write per second and busy percentage. When a model server reads
+  more than 200 MB/s, a line says so ("<server> reads 1.2 GB/s from C:"); the drive comes from the model's path. The
+  details are on `/disks`: the history of the last five minutes per drive, the physical disks and the programs with the
+  most disk traffic. The figures come from the Windows counters (`shared/`, `Stykker.Shared.Disk`); the state JSON has a
+  `disks` block (additive). The simulator has an NVMe and an HDD in Debug builds.
 - **Route of every proxy request.** Each request through the proxy records the way it went: `named` (model asked for by
   name), `classifier` (Claude Code's safety check, auto mode), `vision` (request with an image) or `default`. `proxy.csv`
   gets a `Route` column at the end; an existing file with the old header is kept and the new rows go to `proxy.v2.csv`.
