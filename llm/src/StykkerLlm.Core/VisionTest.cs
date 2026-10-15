@@ -44,7 +44,6 @@ public sealed class VisionTest
     private readonly List<VisionResult> _results = new();
     private volatile bool _running;
     private volatile int _done, _total;
-    private volatile string _current = "";
     private volatile string _error = "";
 
     // offered: die beim Anbieter angehakten Modelle (sie laufen zuerst); deadPath: Datei der nicht verfügbaren Modelle (dieselbe wie
@@ -64,19 +63,40 @@ public sealed class VisionTest
         _timeout = timeout ?? ClassifierTest.DefaultTimeout;
         _pause = pause ?? ClassifierTest.DefaultPause;
         _retryWait = retryWait ?? ClassifierTest.DefaultRetryWait;
+        Status = new TestRunStatus(_now);
     }
 
     public string ProviderUrl => _url;
     public bool Running => _running;
     public int Done => _done;
     public int Total => _total;
+    // Phase, Modell und Zeiten des Laufs für die Live-Zeile
+    public TestRunStatus Status { get; }
+    // Die Zeitgrenze je Anfrage in Sekunden (für die Live-Zeile und die Notiz „slower than …“)
+    public double TimeoutSeconds => _timeout.TotalSeconds;
     // Das Modell, das gerade dran ist („" wenn keins)
-    public string Current => _current;
+    public string Current => Status.Model;
     // Warum nichts lief (z. B. kein Schlüssel); sonst leer
     public string Error => _error;
 
     // Die bisherigen Ergebnisse in der Reihenfolge des Laufs (eine Kopie, sicher aus der Oberfläche zu lesen)
     public IReadOnlyList<VisionResult> Results { get { lock (_gate) return _results.ToList(); } }
+
+    // Zähler für die Live-Zeile: ok = richtig beschrieben, skipped = nicht gefragt, failed = gefragt, aber nicht richtig
+    public (int Ok, int Failed, int Skipped) Counts
+    {
+        get
+        {
+            var rows = Results;
+            int ok = rows.Count(r => r.Ok);
+            int skipped = rows.Count(r => r.Status == Strings.ClassifierStatusSkipped);
+            return (ok, rows.Count - ok - skipped, skipped);
+        }
+    }
+
+    // Grobe Restzeit in Sekunden (null, solange noch keine Anfrage gemessen ist)
+    public double? RemainingSec() => Status.RemainingSec(
+        Results.Where(r => r.Status != Strings.ClassifierStatusSkipped).Select(r => r.TotalSec), _pause.TotalSeconds);
 
     // Die Tabelle: brauchbare zuerst (schnellste oben), dann der Rest, übersprungene ganz unten
     public static IReadOnlyList<VisionResult> Sorted(IEnumerable<VisionResult> rows) =>
@@ -106,21 +126,24 @@ public sealed class VisionTest
             if (string.IsNullOrEmpty(key)) { _error = Strings.ProxyProviderKeyMissingShort; return; }
             // Was beim letzten Lauf mit 404 abgelehnt wurde, wird übersprungen – außer bei „Retry unavailable“
             var unavailable = _retryUnavailable ? new HashSet<string>(StringComparer.Ordinal) : ClassifierTest.DeadModels(_deadPath, _url);
+            Status.Begin(_models.Count(m => ClassifierTest.SkipWord(m) == null && !unavailable.Contains(m)));
             bool sent = false;
             foreach (var model in _models)
             {
                 ct.ThrowIfCancellationRequested();
-                _current = model;
+                Status.Next(model);
                 if (ClassifierTest.SkipWord(model) is { } word)
                     Add(new VisionResult(_now(), model, Strings.ClassifierStatusSkipped, null, false, Strings.ClassifierNoteSkipped(word)));
                 else if (unavailable.Contains(model))
                     Add(new VisionResult(_now(), model, Strings.ClassifierStatusSkipped, null, false, Strings.ClassifierNoteUnavailableLast));
                 else
                 {
-                    if (sent) await Task.Delay(_pause, ct).ConfigureAwait(false);
+                    if (sent) { Status.Enter(TestPhase.Pause); await Task.Delay(_pause, ct).ConfigureAwait(false); }
                     sent = true;
+                    Status.Sent();
                     var row = await MeasureAsync(model, key, ct).ConfigureAwait(false);
                     Add(row);
+                    Status.Enter(TestPhase.Idle);
                     if (ClassifierTest.IsGone(row.Status, row.Note)) ClassifierTest.MarkDead(_deadPath, _url, model);
                 }
                 _done++;
@@ -129,7 +152,7 @@ public sealed class VisionTest
         catch (OperationCanceledException) { /* abgebrochen: was gemessen ist, bleibt */ }
         finally
         {
-            _current = "";
+            Status.End();
             _running = false;
         }
     }
@@ -139,6 +162,7 @@ public sealed class VisionTest
     {
         var first = await SendAsync(model, key, ct).ConfigureAwait(false);
         if (first.Status != "429") return first;
+        Status.Enter(TestPhase.RateLimitWait, _retryWait.TotalSeconds);
         await Task.Delay(_retryWait, ct).ConfigureAwait(false);
         var again = await SendAsync(model, key, ct).ConfigureAwait(false);
         var note = Strings.ClassifierNoteRetried(_retryWait.TotalSeconds.ToString("0.#", CultureInfo.InvariantCulture));
@@ -156,9 +180,12 @@ public sealed class VisionTest
         var clock = Stopwatch.StartNew();
         using var limit = CancellationTokenSource.CreateLinkedTokenSource(ct);
         limit.CancelAfter(_timeout);
+        Status.Enter(TestPhase.Sending);
         try
         {
+            Status.Enter(TestPhase.WaitingFirstByte);
             using var resp = await _http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, limit.Token).ConfigureAwait(false);
+            Status.Enter(TestPhase.Receiving);
             var text = await resp.Content.ReadAsStringAsync(limit.Token).ConfigureAwait(false);
             double total = clock.Elapsed.TotalSeconds;
             string status = ((int)resp.StatusCode).ToString(CultureInfo.InvariantCulture);
