@@ -33,6 +33,8 @@ public sealed class MonitorEngine : IDisposable
     // Alle Proxy-Clients (Kopfleiste, Client-Dialog, Aktionen client.*); heute nur Claude (Clients/ProxyClients.cs)
     public ProxyClients Clients { get; }
     public RequestLog Csv { get; }
+    // Jede Anfrage über den Proxy mit dem gewünschten Modellnamen und dem Ziel (proxy.csv neben requests.csv)
+    public ProxyLog ProxyCsv { get; }
     // Hinweis für die Oberfläche, wenn der Pfad des Anfrageprotokolls außerhalb des Protokoll- und Datenordners lag und ersetzt wurde; sonst null
     public string? CsvLogNote { get; }
 
@@ -126,6 +128,7 @@ public sealed class MonitorEngine : IDisposable
         // Ungültigen Pfad einmal bereinigen (Standard = Datenordner), sonst erscheint der Hinweis bei jedem Start
         if (csvNote != null && !readOnly) { settings.CsvLog = null; try { settings.Save(); } catch { } }
         Csv = new RequestLog(readOnly ? null : csvPath) { MaxBytes = limits.MaxCsvBytes };
+        ProxyCsv = new ProxyLog(readOnly ? null : Path.Combine(paths.LogsDir, "proxy.csv")) { MaxBytes = limits.MaxCsvBytes };
         Proxies = new ProxyManager(() => Registry.Servers, settings, OnProxyRecord, factory: proxyFactory, http: _http,
             keys: readOnly ? null : new ProviderKeys(paths.Root, platform));
         Claude = new ClaudeDesktop(platform, () => Proxies.Port, paths.Root);
@@ -167,6 +170,7 @@ public sealed class MonitorEngine : IDisposable
         // Beobachtung des Proxys an alle laufenden Aufnahmen (Sitzungen sperren intern, der Aufruf kommt von einem Hintergrund-Thread)
         var w = Registry.Servers.FirstOrDefault(x => x.Key == px.ServerKey);
         Recorder.OnProxyRecord(px, w?.Name ?? Proxies.DisplayName(px.ServerKey), w?.Model ?? "");
+        if (px.Path != "/v1/models" && px.Path != "/models") ProxyCsv.Append(px, Proxies.DisplayName(px.ServerKey));
     }
 
     private void OnRequestFinished(FinishedRequest f)

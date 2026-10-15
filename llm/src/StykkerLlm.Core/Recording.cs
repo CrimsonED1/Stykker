@@ -117,7 +117,8 @@ public sealed class RequestEvent
 
 // Beobachtung des Proxys zu einer Anfrage (nur Zahlen und Namen)
 public sealed record ProxyRecord(string ServerKey, string Path, DateTime Start, DateTime End, DateTime? FirstTokenAt, DateTime? FirstContentAt,
-    int ReasoningTokens, int ContentTokens, string[] Tools, string? FinishReason, string UserAgent, bool Stream, int HttpStatus, bool ClientAborted);
+    int ReasoningTokens, int ContentTokens, string[] Tools, string? FinishReason, string UserAgent, bool Stream, int HttpStatus, bool ClientAborted,
+    string? RequestedModel = null);
 
 public sealed class RecordingData
 {

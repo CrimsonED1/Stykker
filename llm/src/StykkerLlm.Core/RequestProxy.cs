@@ -549,7 +549,8 @@ public class RequestProxy : IDisposable
                 bool known = stream || tap.Stream || reasoning + content > 0;
                 int q2 = req.Target.IndexOf('?');
                 var rec = new ProxyRecord(route?.ServerKey ?? ServerKey, q2 >= 0 ? req.Target[..q2] : req.Target, start, end, tap.FirstToken, tap.FirstContent,
-                    known ? reasoning : -1, known ? content : -1, tap.Tools.ToArray(), tap.FinishReason, ua, stream || tap.Stream, status, aborted);
+                    known ? reasoning : -1, known ? content : -1, tap.Tools.ToArray(), tap.FinishReason, ua, stream || tap.Stream, status, aborted,
+                    RouterProxy.ReadModel(req.Body));
                 try { Recorded?.Invoke(rec); } catch { }
             }
         }
