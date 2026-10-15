@@ -201,6 +201,20 @@ public class RouterProxy : RequestProxy
         }
     }
 
+    // Die stop_sequences einer Anthropic-Anfrage (leer, wenn keine)
+    internal static IReadOnlyList<string> StopsOf(byte[]? body)
+    {
+        if (body == null || body.Length == 0) return Array.Empty<string>();
+        try
+        {
+            using var doc = JsonDocument.Parse(body);
+            if (doc.RootElement.ValueKind != JsonValueKind.Object || !doc.RootElement.TryGetProperty("stop_sequences", out var a) || a.ValueKind != JsonValueKind.Array)
+                return Array.Empty<string>();
+            return a.EnumerateArray().Where(e => e.ValueKind == JsonValueKind.String).Select(e => e.GetString()!).ToList();
+        }
+        catch (JsonException) { return Array.Empty<string>(); }
+    }
+
     // Will der Client einen Strom („stream": true)? Ohne Angabe nicht – wie bei der Anthropic-API
     internal static bool WantsStream(byte[]? body)
     {
@@ -401,7 +415,7 @@ public class RouterProxy : RequestProxy
         if (_imageLimits.TryGetValue(t.Key, out var known)) openAi = TrimImages(openAi, known);
         var targetKey = t.Key;
         return new ProxyRoute("", t.RouteKey, null,
-            LocalStream: (net, tap, token) => BridgeAsync(net, url, send, openAi, requested, own, via, tap, token, targetKey, clientStream: WantsStream(body)), Route: route);
+            LocalStream: (net, tap, token) => BridgeAsync(net, url, send, openAi, requested, own, via, tap, token, targetKey, clientStream: WantsStream(body), stops: StopsOf(body)), Route: route);
     }
 
     private static ProxyRoute AnthropicError(int status, string message)
@@ -411,7 +425,7 @@ public class RouterProxy : RequestProxy
     // Schreibt Kopfzeilen und Rumpf selbst; die Bytes des Ziels bekommt der Mitschreiber, damit die Anfrage gezählt wird.
     private async Task<int> BridgeAsync(Stream net, string url, IReadOnlyList<(string Name, string Value)> headers, byte[] body,
         string model, IReadOnlyList<(string Name, string Value)>? own, HttpClient? client, ProxyTap tap, CancellationToken ct,
-        string targetKey = "", bool retried = false, bool clientStream = true)
+        string targetKey = "", bool retried = false, bool clientStream = true, IReadOnlyList<string>? stops = null)
     {
         using var req = new HttpRequestMessage(HttpMethod.Post, url) { Content = new ByteArrayContent(body) };
         foreach (var (name, value) in headers)
@@ -455,7 +469,7 @@ public class RouterProxy : RequestProxy
                     AppLog.Write($"proxy: {model} takes at most {limit} image(s) per request; older images are left out from now on");
                     var trimmed = TrimImages(body, limit);
                     if (!trimmed.AsSpan().SequenceEqual(body))
-                        return await BridgeAsync(net, url, headers, trimmed, model, own, client, tap, ct, targetKey, retried: true, clientStream: clientStream).ConfigureAwait(false);
+                        return await BridgeAsync(net, url, headers, trimmed, model, own, client, tap, ct, targetKey, retried: true, clientStream: clientStream, stops: stops).ConfigureAwait(false);
                 }
                 int code = status is 400 or 401 or 403 or 404 or 413 or 429 or 529 ? status : 502;
                 string message = ErrorMessage(text) ?? resp.ReasonPhrase ?? "error";
@@ -472,7 +486,7 @@ public class RouterProxy : RequestProxy
                 // Der Client wollte keinen Strom (z. B. die Sicherheitsprüfung von Claude Code): eine fertige Nachricht als JSON
                 if (!clientStream)
                 {
-                    await WriteJsonAsync(net, 200, AnthropicBridge.ToAnthropic(json, model), ct).ConfigureAwait(false);
+                    await WriteJsonAsync(net, 200, AnthropicBridge.ToAnthropic(json, model, stops), ct).ConfigureAwait(false);
                     return 200;
                 }
                 string events = AnthropicBridge.MessageAsStream(AnthropicBridge.ToAnthropic(json, model));

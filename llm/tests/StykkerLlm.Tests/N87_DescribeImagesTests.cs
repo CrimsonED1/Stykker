@@ -45,3 +45,22 @@ public class N87_StreamFlagTests
         Assert.IsFalse(RouterProxy.WantsStream(null));
     }
 }
+
+// Stoppzeichen: OpenAI meldet nur „stop"; endet der Text auf das Stoppzeichen (oder dessen Anfang), meldet die Brücke es wie Anthropic
+[TestClass]
+public class N87_StopSequenceTests
+{
+    [TestMethod]
+    public void A_cut_stop_sequence_is_reported()
+    {
+        var oai = Encoding.UTF8.GetBytes("{\"choices\":[{\"message\":{\"content\":\"<block>yes</block\"},\"finish_reason\":\"stop\"}]}");
+        var json = Encoding.UTF8.GetString(AnthropicBridge.ToAnthropic(oai, "m", new[] { "</block>" }));
+        StringAssert.Contains(json, "\"text\":\"<block>yes\"");
+        StringAssert.Contains(json, "\"stop_reason\":\"stop_sequence\"");
+        StringAssert.Contains(json, "\"stop_sequence\":\"</block>\"");
+
+        var plain = Encoding.UTF8.GetString(AnthropicBridge.ToAnthropic(
+            Encoding.UTF8.GetBytes("{\"choices\":[{\"message\":{\"content\":\"hello\"},\"finish_reason\":\"stop\"}]}"), "m", new[] { "</block>" }));
+        StringAssert.Contains(plain, "\"stop_reason\":\"end_turn\"");
+    }
+}

@@ -196,7 +196,9 @@ public static class AnthropicBridge
 
     // ── Antwort ohne Stream: OpenAI → Anthropic ──
 
-    public static byte[] ToAnthropic(byte[] openAiBody, string model)
+    // stops: die stop_sequences der Anfrage. OpenAI sagt nicht, ob ein Stoppzeichen griff; endet der Text (ganz oder
+    // teilweise) auf eines, wird es abgeschnitten und wie bei Anthropic als stop_reason „stop_sequence" gemeldet.
+    public static byte[] ToAnthropic(byte[] openAiBody, string model, IReadOnlyList<string>? stops = null)
     {
         JsonObject? r = null;
         try { r = JsonNode.Parse(openAiBody.AsSpan()) as JsonObject; } catch { }
@@ -212,6 +214,9 @@ public static class AnthropicBridge
 
         string text = StrOf(msg?["content"]);
         if (text.Length == 0) text = TextOf(msg?["content"]);
+        string? matched = null;
+        if (stops is { Count: > 0 } && StrOf(choice?["finish_reason"]) == "stop")
+            (text, matched) = CutStop(text, stops);
         if (text.Length > 0) content.Add(new JsonObject { ["type"] = "text", ["text"] = text });
 
         if (msg?["tool_calls"] is JsonArray tcs)
@@ -238,11 +243,21 @@ public static class AnthropicBridge
             ["role"] = "assistant",
             ["model"] = model,
             ["content"] = content,
-            ["stop_reason"] = StopReason(StrOf(choice?["finish_reason"])),
-            ["stop_sequence"] = null,
+            ["stop_reason"] = matched != null ? "stop_sequence" : StopReason(StrOf(choice?["finish_reason"])),
+            ["stop_sequence"] = matched,
             ["usage"] = UsageOf(r["usage"] as JsonObject),
         };
         return Encoding.UTF8.GetBytes(message.ToJsonString(Json));
+    }
+
+    // Endet der Text auf ein Stoppzeichen oder dessen Anfang (mind. 2 Zeichen, z. B. „</block" statt „</block>"): abschneiden
+    internal static (string Text, string? Matched) CutStop(string text, IReadOnlyList<string> stops)
+    {
+        var trimmed = text.TrimEnd();
+        foreach (var s in stops.Where(x => !string.IsNullOrEmpty(x)))
+            for (int k = s.Length; k >= Math.Min(2, s.Length); k--)
+                if (trimmed.EndsWith(s[..k], StringComparison.Ordinal)) return (trimmed[..^k], s);
+        return (text, null);
     }
 
     // Eine fertige Anthropic-Nachricht als Ereignisfolge ausgeben. Nötig, wenn ein Ziel trotz „stream": true mit einem
