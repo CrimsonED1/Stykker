@@ -11,6 +11,8 @@ The rule for what belongs here: code that two tools use, or that would otherwise
 | `Gpu/` | `GpuRows.cs`: the rows of a GPU reading, per-process values and engine percentages. | StykkerHUD, StykkerSYS |
 | `Windows/Pdh.cs` | A thin wrapper over `pdh.dll`: open, collect and read counters, and split instance names into PID and engine. | StykkerHUD, StykkerSYS |
 | `Windows/GpuCounters.cs` | `GpuUtilQuery` (utilisation per engine and per process) and `GpuProcessMemoryQuery` (graphics memory per process). | StykkerHUD, StykkerSYS |
+| `Disk/` | `DiskRows.cs`: the records of the drives (physical disks with type NVMe, SSD, HDD, USB or unknown; volumes; programs with disk traffic; a sample). `DiskMath.cs`: the conversion and the mapping of the raw counter values, without Windows. | StykkerLLM, StykkerSYS |
+| `Windows/DiskCounters.cs` | Drives and disk traffic from Windows: volumes (`DriveInfo`), counters (PDH `PhysicalDisk`, `LogicalDisk`, `Process`), type and model per disk and the volume-to-disk mapping (`DeviceIoControl`). Read only, no administrator rights; a missing value stays `null`. | StykkerLLM, StykkerSYS |
 | `Windows/TrayIcon.cs` | Tray icon with a context menu, on a message-only window in its own thread. | StykkerHUD, StykkerSYS |
 | `Web/DesignSystemHost.cs` | Serves the design system under `/ds` from a folder: `--design-system`, the environment variable, or the default `shared/design-system`. | StykkerHUD, StykkerSYS |
 | `Web/LocalRequests.cs` | Guard for local actions: same-origin check (403), failed action (409), done (200). | StykkerSYS |
@@ -53,7 +55,7 @@ The PDH and tray parts only work on Windows. `Stykker.Shared` targets `net10.0` 
 
 `tests/Stykker.Pairing.LockProbe` is a helper program, not a test project: the pairing tests start it several times at once to write the same file.
 
-Last run on 2026-10-15: 283 of 283 tests passed in `Stykker.Shared.Tests` and 109 of 109 in `Stykker.Pairing.Tests`, the build shows no warnings.
+Last run on 2026-10-15: 319 of 319 tests passed in `Stykker.Shared.Tests` and 109 of 109 in `Stykker.Pairing.Tests`, the build shows no warnings.
 
 ## Using it from a tool
 
