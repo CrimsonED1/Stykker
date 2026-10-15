@@ -15,6 +15,7 @@ namespace StykkerStarter.App;
 internal sealed class Shell : IDisposable
 {
     private const int MenuFirstDynamic = 100;
+    private const string IconFile = "StykkerStarter.ico";
 
     private readonly DataLayout _layout;
     private readonly StarterLog _log;
@@ -98,6 +99,9 @@ internal sealed class Shell : IDisposable
                 .SetSize(new Size(1080, 780))
                 .Center()
                 .SetTemporaryFilesPath(Path.Combine(_layout.Root, "web-shell"));
+            // Das Symbol des Fensters (Titelleiste, Taskleiste); die Datei liegt neben der Exe
+            var icon = Path.Combine(AppContext.BaseDirectory, IconFile);
+            if (File.Exists(icon)) _window.SetIconFile(icon);
             _window.RegisterWebMessageReceivedHandler(OnMessage);
             // Photino verlangt eine Startseite vor WaitForClose; die Seite ist eingebettet (siehe WebContent)
             _window.LoadRawString(WebContent.Page(_gpu));

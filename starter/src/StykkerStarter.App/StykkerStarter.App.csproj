@@ -10,6 +10,8 @@
     <AssemblyName>StykkerStarter</AssemblyName>
     <RootNamespace>StykkerStarter.App</RootNamespace>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <!-- Das Symbol der Exe; es zeigen Exe, Fenster und Tray (der Tray liest es aus der Exe). -->
+    <ApplicationIcon>StykkerStarter.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>
@@ -32,6 +34,11 @@
   <!-- Die eigene Seite (Web\...): ein Name je Datei, relativ zu Web\ -->
   <ItemGroup>
     <EmbeddedResource Include="Web\**\*" LogicalName="web/%(RecursiveDir)%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <!-- Dieselbe Datei neben der Exe: das Fenster (Photino SetIconFile) braucht sie als Datei auf der Platte -->
+  <ItemGroup>
+    <Content Include="StykkerStarter.ico" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>
