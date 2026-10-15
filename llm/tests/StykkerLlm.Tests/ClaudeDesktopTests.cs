@@ -36,10 +36,10 @@ public class ClaudeDesktopTests
         var entry = Directory.GetFiles(LibDir(layer), "*.json").Single(f => !f.EndsWith("_meta.json", StringComparison.Ordinal));
         var node = JsonNode.Parse(File.ReadAllText(entry))!;
         Assert.AreEqual("gateway", (string?)node["inferenceProvider"]);
-        Assert.AreEqual("http://127.0.0.1:17500", (string?)node["inferenceGatewayBaseUrl"]);
+        Assert.AreEqual("http://127.0.0.1:17500/v1/messages", (string?)node["inferenceGatewayBaseUrl"]);
         Assert.AreEqual("static", (string?)node["inferenceCredentialKind"]);
         Assert.AreEqual("bearer", (string?)node["inferenceGatewayAuthScheme"]);
-        Assert.AreEqual(ClaudeDesktop.ModelAlias, (string?)((JsonArray)node["inferenceModels"]!)[0]);
+        Assert.AreEqual(ClaudeDesktop.ModelAlias, (string?)((JsonArray)node["inferenceModels"]!)[0]!["name"]);
         Assert.AreEqual("stykker", (string?)node["inferenceGatewayApiKey"]);
 
         var meta = JsonNode.Parse(File.ReadAllText(Path.Combine(LibDir(layer), "_meta.json")))!;
@@ -133,6 +133,55 @@ public class ClaudeDesktopTests
         Assert.IsNull(meta["appliedId"]);
         Assert.AreEqual(0, ((JsonArray)meta["entries"]!).Count);
         Assert.AreEqual(0, Directory.GetFiles(LibDir(layer), "*.json").Count(f => !f.EndsWith("_meta.json", StringComparison.Ordinal)));
+    }
+
+    // Ein von Hand angelegtes Gateway auf diesem Rechner (wie „Strata“), so wie die App es selbst schreibt
+    private static string WriteLocalGateway(string layer, string name, bool applied)
+    {
+        Directory.CreateDirectory(LibDir(layer));
+        var id = Guid.NewGuid().ToString();
+        File.WriteAllText(Path.Combine(LibDir(layer), id + ".json"),
+            "{\"inferenceGatewayBaseUrl\":\"http://127.0.0.1:8082/v1/messages\",\"inferenceModels\":[{\"name\":\"claude-stykker\"}],\"inferenceProvider\":\"gateway\",\"inferenceCredentialKind\":\"static\"}");
+        var appliedPart = applied ? ",\"appliedId\":\"" + id + "\"" : "";
+        File.WriteAllText(Path.Combine(LibDir(layer), "_meta.json"),
+            "{\"entries\":[{\"id\":\"" + id + "\",\"name\":\"" + name + "\"}]" + appliedPart + "}");
+        return id;
+    }
+
+    [TestMethod]
+    public void A_manual_local_gateway_counts_as_on_and_switching_off_unapplies_it()
+    {
+        var data = TempDir();
+        var layer = TempDir();
+        var strata = WriteLocalGateway(layer, "Strata", applied: true);
+
+        var cd = new ClaudeDesktop(new FakePlatform(), () => 17500, data, layer);
+        Assert.IsTrue(cd.Enabled, "ein lokales Gateway gilt als eingeschaltet");
+        cd.Disable(out var error);
+
+        Assert.IsNull(error, error);
+        Assert.IsFalse(cd.Enabled);
+        var meta = JsonNode.Parse(File.ReadAllText(Path.Combine(LibDir(layer), "_meta.json")))!;
+        Assert.IsNull(meta["appliedId"], "zurück auf Anthropic");
+        Assert.IsTrue(File.Exists(Path.Combine(LibDir(layer), strata + ".json")), "der Eintrag bleibt, er wird nur nicht angewendet");
+    }
+
+    [TestMethod]
+    public void Switching_off_never_restores_a_local_gateway_as_the_previous_target()
+    {
+        var data = TempDir();
+        var layer = TempDir();
+        WriteLocalGateway(layer, "Strata", applied: true);
+
+        var cd = new ClaudeDesktop(new FakePlatform(), () => 17500, data, layer);
+        cd.Enable(out var error);
+        Assert.IsNull(error, error);
+        cd.Disable(out error);
+
+        Assert.IsNull(error, error);
+        var meta = JsonNode.Parse(File.ReadAllText(Path.Combine(LibDir(layer), "_meta.json")))!;
+        Assert.IsNull(meta["appliedId"]);
+        Assert.IsFalse(cd.Enabled);
     }
 
     [TestMethod]

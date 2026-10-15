@@ -67,7 +67,7 @@ public sealed class ClaudeDesktop
         {
             var meta = ReadMeta();
             sb.Append(" | appliedId=").Append(meta["appliedId"]?.GetValue<string>() ?? "(none)");
-            sb.Append(" entries=[").Append(string.Join(", ", Entries(meta).Select(e => $"{IdOf(e)}:{NameOf(e)}{(File.Exists(EntryPath(IdOf(e))) ? "" : "(file missing)")}"))).Append(']');
+            sb.Append(" entries=[").Append(string.Join(", ", Entries(meta).Select(e => $"{IdOf(e)}:{NameOf(e)}:{(File.Exists(EntryPath(IdOf(e))) ? TargetOf(IdOf(e)) : "(file missing)")}"))).Append(']');
             sb.Append(" otherKeys=[").Append(string.Join(",", meta.Select(kv => kv.Key).Where(k => k is not "appliedId" and not "entries"))).Append(']');
         }
         else sb.Append(" | no _meta.json");
@@ -146,7 +146,7 @@ public sealed class ClaudeDesktop
             // Das bisher angewendete Ziel merken (für das Zurückschalten). Gilt unser Eintrag schon, bleibt das gemerkte Ziel.
             string? previous = prev is { Enabled: true } && prev.PreviousAppliedId != null
                 ? prev.PreviousAppliedId
-                : meta["appliedId"]?.GetValue<string>() is { Length: > 0 } cur && cur != id ? cur : prev?.PreviousAppliedId;
+                : meta["appliedId"]?.GetValue<string>() is { Length: > 0 } cur && cur != id && !IsLocalGateway(cur) ? cur : prev?.PreviousAppliedId;
             meta["appliedId"] = id;
             AtomicFile.WriteAllText(MetaPath, meta.ToJsonString(Pretty));
             WriteState(new JsonObject { ["enabled"] = true, ["entryId"] = id, ["previousAppliedId"] = previous, ["createdMeta"] = createdMeta });
@@ -176,9 +176,12 @@ public sealed class ClaudeDesktop
                 var ours = new HashSet<string>(entries.Where(e => IsOurs(e, st)).Select(IdOf));
                 for (int i = entries.Count - 1; i >= 0; i--) if (ours.Contains(IdOf(entries[i]))) entries.RemoveAt(i);
                 string applied = meta["appliedId"]?.GetValue<string>() ?? "";
-                if (applied.Length == 0 || ours.Contains(applied))
+                // Angewendet ist unser Eintrag, ein anderes Gateway auf diesem Rechner (von Hand angelegt, z. B. „Strata“)
+                // oder nichts: zurück auf das Ziel von vorher, sonst auf Anthropic. Fremde lokale Einträge bleiben in der
+                // Bibliothek, sie werden nur nicht mehr angewendet.
+                if (applied.Length == 0 || ours.Contains(applied) || IsLocalGateway(applied))
                 {
-                    if (st?.PreviousAppliedId is { Length: > 0 } p && HasEntry(entries, p)) meta["appliedId"] = p;
+                    if (st?.PreviousAppliedId is { Length: > 0 } p && HasEntry(entries, p) && !IsLocalGateway(p)) meta["appliedId"] = p;
                     else meta.Remove("appliedId");
                 }
                 foreach (var id in ours)
@@ -202,6 +205,31 @@ public sealed class ClaudeDesktop
     // Ein Eintrag von uns: der aus der Merkdatei, oder einer mit unserem Namen (ohne Merkdatei)
     private static bool IsOurs(JsonNode? entry, State? st) =>
         st is { EntryId.Length: > 0 } ? IdOf(entry) == st.EntryId || NameOf(entry) == EntryName : NameOf(entry) == EntryName;
+
+    // Ein Eintrag, der Claude an ein Gateway auf diesem Rechner schickt (127.0.0.1, localhost, ::1)
+    private bool IsLocalGateway(string id)
+    {
+        try
+        {
+            if (id.Length == 0 || !File.Exists(EntryPath(id)) || JsonNode.Parse(File.ReadAllText(EntryPath(id))) is not JsonObject o) return false;
+            if ((string?)o["inferenceProvider"] != "gateway") return false;
+            return Uri.TryCreate((string?)o["inferenceGatewayBaseUrl"], UriKind.Absolute, out var u) && u.IsLoopback;
+        }
+        catch { return false; }
+    }
+
+    // Für das Log: Anbieter und Ziel eines Eintrags, nie Schlüssel
+    private string TargetOf(string id)
+    {
+        try
+        {
+            if (!File.Exists(EntryPath(id)) || JsonNode.Parse(File.ReadAllText(EntryPath(id))) is not JsonObject o) return "?";
+            var url = (string?)o["inferenceGatewayBaseUrl"];
+            var shown = Uri.TryCreate(url, UriKind.Absolute, out var u) ? u.GetLeftPart(UriPartial.Path) : "";
+            return (string?)o["inferenceProvider"] + (shown.Length > 0 ? " " + shown : "");
+        }
+        catch { return "?"; }
+    }
 
     private static string NameOf(JsonNode? n) => n is JsonObject o ? o["name"]?.GetValue<string>() ?? "" : "";
 
@@ -241,11 +269,13 @@ public sealed class ClaudeDesktop
         var o = new JsonObject
         {
             ["inferenceProvider"] = "gateway",
-            ["inferenceGatewayBaseUrl"] = BaseUrl,
+            // Die App will die volle Adresse des Endpunkts (so schreibt es auch ihre eigene Oberfläche)
+            ["inferenceGatewayBaseUrl"] = BaseUrl + AnthropicBridge.Path,
             ["inferenceCredentialKind"] = "static",
             ["inferenceGatewayApiKey"] = ApiKey,
             ["inferenceGatewayAuthScheme"] = "bearer",
-            ["inferenceModels"] = new JsonArray(ModelAlias),
+            // Modelle als Objekte mit "name", wie die App sie selbst anlegt; eine Liste reiner Namen erkennt sie nicht
+            ["inferenceModels"] = new JsonArray(new JsonObject { ["name"] = ModelAlias }),
         };
         return o.ToJsonString(Pretty);
     }
@@ -257,9 +287,9 @@ public sealed class ClaudeDesktop
         var applied = meta["appliedId"]?.GetValue<string>() ?? "";
         if (applied.Length == 0) return false;
         var st = ReadState();
-        if (st is { Enabled: true } && st.EntryId.Length > 0) return applied == st.EntryId;
-        // Ohne Merkdatei: angewendet ist ein Eintrag mit unserem Namen
-        return Entries(meta).Any(e => IdOf(e) == applied && NameOf(e) == EntryName);
+        if (st is { Enabled: true } && st.EntryId.Length > 0 && applied == st.EntryId) return true;
+        // Ohne Merkdatei: ein Eintrag mit unserem Namen, oder ein anderes Gateway auf diesem Rechner (von Hand angelegt)
+        return Entries(meta).Any(e => IdOf(e) == applied && NameOf(e) == EntryName) || IsLocalGateway(applied);
     }
 
     private JsonObject ReadMeta()
