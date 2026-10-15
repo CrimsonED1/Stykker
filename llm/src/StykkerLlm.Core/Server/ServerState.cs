@@ -605,6 +605,7 @@ public static class StateJson
             w.WriteString("status", f.Status.ToString().ToLowerInvariant());
             w.WriteString("client", f.Client);
             w.WriteNumber("promptTotal", f.PromptTotal);
+            w.WriteNumber("promptReused", f.PromptReused);
             w.WriteEndObject();
         }
         w.WriteEndArray();
@@ -615,6 +616,19 @@ public static class StateJson
             w.WriteEndArray();
             w.WriteStartArray("promptFlags");
             for (int k = 0; k < s.HistoryCount; k++) w.WriteBooleanValue(s.PromptAt(k));
+            w.WriteEndArray();
+            // Lesephasen (Bereiche der Kurve, Indizes wie history)
+            w.WriteStartArray("readPhases");
+            foreach (var ph in s.ReadPhases())
+            {
+                w.WriteStartObject();
+                w.WriteNumber("from", ph.From);
+                w.WriteNumber("to", ph.To);
+                w.WriteNumber("tokens", ph.Tokens);
+                w.WriteNumber("reused", ph.Reused);
+                Num(w, "seconds", R2(ph.Seconds));
+                w.WriteEndObject();
+            }
             w.WriteEndArray();
         }
         w.WriteEndObject();
@@ -1226,7 +1240,7 @@ public sealed class StateSnapshot
                 J.Int(f, "task"), J.Int(f, "slot"), J.Int(f, "promptTokens"), J.Dbl(f, "promptTps"), J.Dbl(f, "genTps"),
                 J.Int(f, "genTokens"), J.Dbl(f, "seconds"), J.TimeOrNull(f, "seen"),
                 Enum.TryParse<ReqStatus>(J.Str(f, "status"), true, out var st) ? st : ReqStatus.Done,
-                J.Str(f, "client") ?? "", J.Int(f, "promptTotal"), J.Str(f, "serverKey") ?? ""));
+                J.Str(f, "client") ?? "", J.Int(f, "promptTotal"), J.Str(f, "serverKey") ?? "", J.Int(f, "promptReused", -1)));
         var history = new double[ServerWatcher.HistoryLength];
         int n = 0;
         foreach (var t in arr(e, "history")) if (n < history.Length) history[n++] = t.GetDouble();
@@ -1236,6 +1250,8 @@ public sealed class StateSnapshot
         n = 0;
         foreach (var t in arr(e, "promptFlags")) if (n < prompts.Length) prompts[n++] = t.ValueKind == JsonValueKind.True;
         s.PromptFlags = prompts;
+        foreach (var ph in arr(e, "readPhases"))
+            s.ReadPhases.Add(new ReadPhase(J.Int(ph, "from", -1), J.Int(ph, "to", -1), J.Int(ph, "tokens"), J.Int(ph, "reused", -1), J.Dbl(ph, "seconds")));
         return s;
     }
 }
@@ -1731,6 +1747,7 @@ public sealed class RemoteServer
     public double[] History { get; set; } = new double[ServerWatcher.HistoryLength];
     public int HistoryCount { get; set; }
     public bool[] PromptFlags { get; set; } = new bool[ServerWatcher.HistoryLength];
+    public List<ReadPhase> ReadPhases { get; } = new();   // Lesephasen der letzten Anfragen (Indizes wie History)
 
     public double HistoryAt(int i) => i >= 0 && i < HistoryCount ? History[i] : 0;
     public bool PromptAt(int i) => i >= 0 && i < HistoryCount && PromptFlags[i];

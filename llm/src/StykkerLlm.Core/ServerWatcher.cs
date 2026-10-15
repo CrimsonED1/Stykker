@@ -12,8 +12,18 @@ public sealed record SlotView(int Id, bool Busy, bool ReadingPrompt, double Tps,
 public enum ReqStatus { Done, Truncated, Cancelled }
 
 // Seen = null: Eintrag stammt aus dem beim Start eingelesenen alten Log (Uhrzeit unbekannt).
+// PromptTokens = die gelesenen Token (ohne die aus dem Cache wiederverwendeten), PromptTotal = der ganze Prompt, wenn bekannt.
+// PromptReused = wiederverwendete Token (aus dem Prompt-Cache), -1 = unbekannt.
 public sealed record FinishedRequest(int Seq, string Server, string Model, int Task, int Slot, int PromptTokens, double PromptTps,
-    double GenTps, int GenTokens, double Seconds, DateTime? Seen, ReqStatus Status, string Client = "", int PromptTotal = 0, string ServerKey = "");
+    double GenTps, int GenTokens, double Seconds, DateTime? Seen, ReqStatus Status, string Client = "", int PromptTotal = 0, string ServerKey = "",
+    int PromptReused = -1)
+{
+    // Lesedauer in Sekunden: gelesene Token durch Lesegeschwindigkeit (llama: „prompt eval time“, Strata: „prompt_ms“)
+    public double PromptSec => PromptTps > 0 && PromptTokens > 0 ? PromptTokens / PromptTps : 0;
+}
+
+// Lesephase einer Anfrage als Bereich der Kurve: From/To sind Indizes wie ServerWatcher.HistoryAt (0 = älteste Probe)
+public sealed record ReadPhase(int From, int To, int Tokens, int Reused, double Seconds);
 
 // Fragt einen llama-server ab (/slots, /v1/models, /props) und liest dessen Log inkrementell mit.
 // Schlüssel im ServerRegistry ist Host:Port. Nach Dispose() wird nichts mehr abgefragt und alles freigegeben.
@@ -49,6 +59,7 @@ public sealed class ServerWatcher : IDisposable
     public IReadOnlyList<SlotView> Slots { get; private set; } = Array.Empty<SlotView>();
     public double[] History { get; } = new double[HistoryLength];   // Ringpuffer Gesamt-Token/s
     private readonly bool[] _promptFlags = new bool[HistoryLength];   // in diesem Schritt las irgendein Slot den Prompt
+    private readonly DateTime[] _histAt = new DateTime[HistoryLength];   // Zeitpunkt je Probe (für die Lesephasen in der Kurve)
     public int HistoryCount { get; private set; }
     private int _historyHead;
     public double Current { get; private set; }
@@ -477,6 +488,63 @@ public sealed class ServerWatcher : IDisposable
         catch { }
     }
 
+    // Protokoll des Strata-Servers: nur wenn StykkerLLM ihn gestartet hat, das Plan-Log (ServerLauncher.BuildPlan).
+    // Ein von Hand gestarteter Server hat keins; sein Prompt-Cache bleibt dann unbekannt.
+    private volatile string? _planLog;
+    public string? PlanLog => _planLog;
+    internal void UsePlanLog(string? path) => _planLog = path;
+    private string? StrataLogPath => Info.LogFile ?? _planLog;
+    private long _strataLogPos = -1;
+    private readonly List<StrataApi.PromptLine> _strataPrompts = new();   // Prompt-Zeilen des Logs, die noch keiner Anfrage zugeordnet sind (älteste zuerst)
+
+    // Neue, vollständige Zeilen des Strata-Protokolls lesen (beim ersten Mal die letzten 256 KB, wie ReadLog)
+    private void ReadStrataLog()
+    {
+        var path = StrataLogPath;
+        if (string.IsNullOrEmpty(path) || !File.Exists(path)) return;
+        try
+        {
+            using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            long len = fs.Length;
+            bool initial = _strataLogPos < 0;
+            long pos = initial ? Math.Max(0, len - 256 * 1024) : _strataLogPos;
+            bool skipPartial = initial && pos > 0;           // mitten in einer Zeile eingestiegen: die angeschnittene verwerfen
+            if (len < pos) pos = 0;                          // Log neu angelegt
+            const long max = 4L * 1024 * 1024;
+            if (len - pos > max) { pos = len - max; skipPartial = true; }
+            if (len <= pos) { _strataLogPos = pos; return; }
+            var buf = new byte[len - pos];
+            fs.Seek(pos, SeekOrigin.Begin);
+            int got = 0;
+            while (got < buf.Length) { int r = fs.Read(buf, got, buf.Length - got); if (r <= 0) break; got += r; }
+            int last = got > 0 ? Array.LastIndexOf(buf, (byte)'\n', got - 1) : -1;
+            if (last < 0) return;                            // noch keine vollständige Zeile: beim nächsten Mal weiter
+            int from = 0;
+            if (skipPartial) { int nl = Array.IndexOf(buf, (byte)'\n', 0, last + 1); from = nl < 0 ? last + 1 : nl + 1; }
+            _strataLogPos = pos + last + 1;
+            if (from > last) return;
+            var text = Encoding.UTF8.GetString(buf, from, last + 1 - from);
+            foreach (var line in text.Split('\n'))
+                if (StrataApi.ParsePromptLine(line) is { } p)
+                {
+                    _strataPrompts.Add(p);
+                    if (_strataPrompts.Count > 64) _strataPrompts.RemoveAt(0);
+                }
+        }
+        catch { /* gesperrt oder weg: beim nächsten Takt wieder */ }
+    }
+
+    // Zu einer Anfrage (ihr Prompt in Token) die Zeile aus dem Log suchen: (gelesen, wiederverwendet); unbekannt = (total, -1).
+    // Die Zeilen kommen in Reihenfolge, darum fliegt alles bis zum Treffer weg.
+    private (int Read, int Reused) StrataPromptOf(int total)
+    {
+        int idx = _strataPrompts.FindIndex(p => p.Total == total);
+        if (idx < 0) return (total, -1);
+        var p = _strataPrompts[idx];
+        _strataPrompts.RemoveRange(0, idx + 1);
+        return (p.Read, p.Reused);
+    }
+
     // true = Werte gesetzt; false = /metrics unbrauchbar, dann gilt die normale /slots-Auswertung
     private async Task<bool> PollStrataAsync(JsonDocument slotsDoc, DateTime now)
     {
@@ -484,13 +552,16 @@ public sealed class ServerWatcher : IDisposable
         try { m = StrataApi.Parse(await GetStringAsync("/metrics")); } catch { m = null; }
         if (m == null) return false;
         slotsDoc.Dispose();
+        ReadStrataLog();   // nach /metrics: die Zeile einer eben beendeten Anfrage steht dann meist schon im Log
 
         bool initial = _strataLast < 0;
         foreach (var r in m.Requests.Where(r => r.Time > _strataLast).OrderBy(r => r.Time).TakeLast(12))
         {
-            var f = new FinishedRequest(++_seqCounter, Name, Model, 0, 0, r.PromptTokens,
-                r.PromptMs > 0 ? r.PromptTokens * 1000.0 / r.PromptMs : 0, r.DecodeTps, r.OutputTokens, r.Seconds,
-                initial ? null : DateTime.Now, StrataApi.Status(r.Finish), initial ? "" : string.Join(" + ", Clients), r.PromptTokens, Key);
+            // Strata meldet den ganzen Prompt (prompt_tokens); gelesen werden davon nur die nicht wiederverwendeten Token
+            var (read, reused) = StrataPromptOf(r.PromptTokens);
+            var f = new FinishedRequest(++_seqCounter, Name, Model, 0, 0, read,
+                r.PromptMs > 0 ? read * 1000.0 / r.PromptMs : 0, r.DecodeTps, r.OutputTokens, r.Seconds,
+                initial ? null : DateTime.Now, StrataApi.Status(r.Finish), initial ? "" : string.Join(" + ", Clients), r.PromptTokens, Key, reused);
             AddFinished(f);
             if (!initial) { _generatedDone += r.OutputTokens; RequestFinished?.Invoke(f); }
         }
@@ -656,8 +727,32 @@ public sealed class ServerWatcher : IDisposable
     {
         History[_historyHead] = v;
         _promptFlags[_historyHead] = readingPrompt;
+        _histAt[_historyHead] = DateTime.Now;
         _historyHead = (_historyHead + 1) % HistoryLength;
         if (HistoryCount < HistoryLength) HistoryCount++;
+    }
+
+    // Lesephasen der letzten Anfragen (neueste zuerst) als Bereiche der Kurve. Ohne Lesezeit, ohne Uhrzeit oder ohne
+    // Probe innerhalb der Lesezeit fehlt eine Anfrage (eine Lesephase, die zwischen zwei Proben liegt, ist nicht sichtbar).
+    public IReadOnlyList<ReadPhase> ReadPhases()
+    {
+        var list = new List<ReadPhase>();
+        foreach (var f in Finished)
+        {
+            if (f.Seen is not DateTime seen || f.PromptSec <= 0) continue;
+            var start = seen.AddSeconds(-f.Seconds);
+            var end = start.AddSeconds(f.PromptSec);
+            int from = -1, to = -1;
+            for (int i = 0; i < HistoryCount; i++)
+            {
+                var at = _histAt[(_historyHead - HistoryCount + i + HistoryLength) % HistoryLength];
+                if (at < start || at > end) continue;
+                if (from < 0) from = i;
+                to = i;
+            }
+            if (from >= 0) list.Add(new ReadPhase(from, to, f.PromptTokens, f.PromptReused, f.PromptSec));
+        }
+        return list;
     }
 
     // Liest nur neue, vollständige Zeilen (bis zum letzten Zeilenumbruch) per Byte-Offset.
@@ -792,8 +887,11 @@ public sealed class ServerWatcher : IDisposable
         _maxTok.Remove(task);
         if (_maxTok.Count > 64) _maxTok.Clear();
         var status = cancelled ? ReqStatus.Cancelled : truncated || atLimit ? ReqStatus.Truncated : ReqStatus.Done;
+        // Wiederverwendet = ganzer Prompt (aus /slots) minus die gelesenen Token (aus dem Log); ohne Prompt-Länge unbekannt
+        int total = _promptTotal.Remove(task, out var pt) ? pt : 0;
+        int reused = total > 0 && total >= r.PromptTok ? total - r.PromptTok : -1;
         var f = new FinishedRequest(++_seqCounter, Name, Model, task, slot, r.PromptTok, r.PromptTps, r.GenTps, gen, r.TotalSec,
-            fromLog ? null : DateTime.Now, status, fromLog ? "" : string.Join(" + ", Clients), _promptTotal.Remove(task, out var pt) ? pt : 0, Key);
+            fromLog ? null : DateTime.Now, status, fromLog ? "" : string.Join(" + ", Clients), total, Key, fromLog ? -1 : reused);
         AddFinished(f);
         if (_doneTasks.Add(task)) { _doneOrder.Enqueue(task); if (_doneOrder.Count > 256) _doneTasks.Remove(_doneOrder.Dequeue()); }
         if (!fromLog) { _generatedDone += gen; RequestFinished?.Invoke(f); }

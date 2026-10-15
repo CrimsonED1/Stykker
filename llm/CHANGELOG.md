@@ -34,6 +34,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   Tailscale name (plain DNS names only).
 - `--pairing-file <file>` for the server, to use another pairing file (tests, test runs).
 - The hub shows the LLM role of each device and changes it.
+- **Prompt cache in the monitor.** Recent requests get a `cache` column: how much of the prompt was reused (`44.9k ↺`),
+  `—` when the whole prompt was read, empty when unknown. The server card's curve marks the read phase of each request in
+  a second colour; hover shows the read tokens, the seconds and the reused tokens. llama.cpp reports the reuse through the
+  prompt length from `/slots`; Strata through its log line (only for a server StykkerLLM started itself).
+- `requests.csv` has a `PromptReused` column at the end (-1 = unknown). The header differs from the existing file, so on an
+  existing install the rows go to `requests.v2.csv`; the old file stays as it is.
 
 ## 0.4.0
 

@@ -68,6 +68,13 @@ public static partial class Strings
     public const string ReqNoProxy = "only known for requests through the Stykker-Proxy";
     public static string ReqToolsTip(int n) => n == 1 ? "1 tool call" : $"{n} tool calls";
     public static string ReqThinkTip(int n) => n == 0 ? "no thinking tokens" : $"{n:N0} thinking tokens";
+    // Spalte „cache“: wie viel des Prompts aus dem Prompt-Cache kam (Wiederverwendung spart die Lesezeit)
+    public const string ReqCache = "cache", ReqCacheNone = "whole prompt read, nothing reused", ReqCacheUnknown = "not known for this request";
+    public static string ReqCacheTip(int reused, int read) => reused < 0 ? ReqCacheUnknown : reused == 0 ? ReqCacheNone
+        : $"{Math.Round(100.0 * reused / Math.Max(1, reused + read))}% of the prompt reused: {reused:N0} tokens, {read:N0} read";
+    // Lesephase in der Kurve der Serverkarte (Tooltip des farbigen Abschnitts)
+    public static string ReadPhaseTip(int tokens, double seconds, int reused) =>
+        reused < 0 ? $"read {tokens:N0} tokens in {seconds:0.0} s" : $"read {tokens:N0} tokens in {seconds:0.0} s ({reused:N0} reused)";
     public static string ReqResultText(string r) => r switch
     {
         "full" => "stopped at the length or context limit", "abort" => "cancelled by the client", "err" => "error answer", _ => "done",

@@ -98,7 +98,7 @@
     else
     {
         <div class="reqs">
-            <div class="req head" aria-hidden="true"><span></span><span>@Strings.ReqModel</span><span>@Strings.ReqHost</span><span>@Strings.ReqTime</span><span class="r">@Strings.ReqPrompt</span><span class="r">t/s</span><span class="r">@Strings.ReqTokens</span><span class="c">@Strings.ReqTools</span><span class="c">@Strings.ReqThink</span><span class="c">@Strings.ReqResult</span><span class="r">@Strings.ReqAgo</span></div>
+            <div class="req head" aria-hidden="true"><span></span><span>@Strings.ReqModel</span><span>@Strings.ReqHost</span><span>@Strings.ReqTime</span><span class="r">@Strings.ReqPrompt</span><span class="r">@Strings.ReqCache</span><span class="r">t/s</span><span class="r">@Strings.ReqTokens</span><span class="c">@Strings.ReqTools</span><span class="c">@Strings.ReqThink</span><span class="c">@Strings.ReqResult</span><span class="r">@Strings.ReqAgo</span></div>
             @foreach (var r in reqs)
             {
                 var kind = r.Host == null ? e.Registry.Servers.FirstOrDefault(x => x.Key == r.ServerKey)?.Kind ?? BackendKind.LlamaCpp : BackendKind.LlamaCpp;
@@ -108,6 +108,7 @@
                     <span class="hostc">@if (r.Host != null) { <span class="chipi host"><Icon Name="host" />@r.Host</span> } else { <span class="muted small">@Strings.CardLocal</span> }</span>
                     <span class="dur" title="@r.Seconds.ToString("0.0", CultureInfo.InvariantCulture) s"><span class="dbar"><i style="width:@((int)(100 * r.Seconds / maxSec))%"></i></span><small>@(r.Seconds > 0 ? r.Seconds.ToString("0", CultureInfo.InvariantCulture) + "s" : "–")</small></span>
                     <span class="r muted">@(r.PromptTps > 0 ? r.PromptTps.ToString("0", CultureInfo.InvariantCulture) : "–")</span>
+                    <span class="r cache @(r.PromptReused == 0 ? "miss" : "")" title="@RequestRows.CacheTip(r.PromptReused, r.PromptRead)">@RequestRows.CacheText(r.PromptReused)</span>
                     <span class="r spd sp@(RequestRows.SpeedLevel(r.GenTps))">@r.GenTps.ToString("0.0", CultureInfo.InvariantCulture)</span>
                     <span class="r">@r.GenTokens.ToString("N0", CultureInfo.InvariantCulture)</span>
                     <span class="c ex @(r.Tools is > 0 ? "" : "na")" title="@(r.Tools == null ? Strings.ReqNoProxy : Strings.ReqToolsTip(r.Tools.Value))"><Icon Name="x-tool" />@(r.Tools is int t && t > 0 ? t.ToString(CultureInfo.InvariantCulture) : "–")</span>

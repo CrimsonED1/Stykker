@@ -192,6 +192,11 @@ public sealed class ServerRegistry : IDisposable
             w.Dispose();
             changed = true;
         }
+        // Vom Monitor gestartete Server: ihr Plan-Log (Ausgabe des Programms) kennt der Beobachter, bevor der Eintrag verschwindet.
+        // Strata schreibt seine Prompt-Zeilen dort hinein (ServerWatcher.ReadStrataLog); ein --log-file hat Vorrang.
+        foreach (var l in _launches)
+            foreach (var w in _byKey.Values)
+                if (w.Info.Port == l.Port && w.Info.LogFile == null) w.UsePlanLog(l.LogFile);
         // Gestartete Server, die jetzt lauschen, sind keine "starting"-Einträge mehr
         foreach (var l in _launches.Where(l => (l.State == LaunchState.Starting || l.StillRunning) && merged.Values.Any(s => s.Pid == l.Pid)).ToList())
         {

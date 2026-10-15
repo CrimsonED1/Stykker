@@ -22,6 +22,9 @@ internal static partial class LogPatterns
     public static partial Regex Unified();
     [GeneratedRegex(@"cancel task, id_task = (\d+)")]
     public static partial Regex Cancel();
+    // Strata: „strata serve: prompt 8067 tokens = 0 reused + 8067 read in 4123 ms (…)“ (gesamt, wiederverwendet, gelesen, Lesezeit)
+    [GeneratedRegex(@"strata serve: prompt (\d+) tokens = (\d+) reused \+ (\d+) read in ([\d.]+) ms")]
+    public static partial Regex StrataPrompt();
 
     public static int I(Match m, int g) => int.TryParse(m.Groups[g].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var v) ? v : 0;
     public static double D(Match m, int g) => double.TryParse(m.Groups[g].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var v) ? v : 0;

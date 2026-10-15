@@ -56,6 +56,17 @@ public static class StrataApi
         catch { return null; }
     }
 
+    // Eine Prompt-Zeile aus dem Protokoll: Total = ganzer Prompt, Reused = aus dem Cache, Read = gelesen, Ms = Lesezeit
+    public sealed record PromptLine(int Total, int Reused, int Read, double Ms);
+
+    // null = keine Prompt-Zeile (z. B. eine Zeile über Modellstart oder Werkzeugaufrufe)
+    public static PromptLine? ParsePromptLine(string? line)
+    {
+        if (string.IsNullOrEmpty(line)) return null;
+        var m = LogPatterns.StrataPrompt().Match(line);
+        return m.Success ? new PromptLine(LogPatterns.I(m, 1), LogPatterns.I(m, 2), LogPatterns.I(m, 3), LogPatterns.D(m, 4)) : null;
+    }
+
     public static ReqStatus Status(string finish) => finish switch
     {
         "length" => ReqStatus.Truncated,

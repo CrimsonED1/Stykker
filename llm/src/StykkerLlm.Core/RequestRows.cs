@@ -6,7 +6,7 @@ namespace StykkerLlm.Core;
 public sealed record RequestRow(
     string Server, string ServerKey, string? Host, string Model, DateTime? Seen, double Seconds,
     double PromptTps, double GenTps, int GenTokens, string Client, string ClientKind,
-    int? Tools, int? ThinkTokens, string Result);
+    int? Tools, int? ThinkTokens, string Result, int PromptRead = 0, int PromptReused = -1);
 
 public static class RequestRows
 {
@@ -27,7 +27,7 @@ public static class RequestRows
             var client = px != null ? ClientFromAgent(px.UserAgent) : f.Client;
             rows.Add(new RequestRow(f.Server, f.ServerKey, host, f.Model, f.Seen, f.Seconds, f.PromptTps, f.GenTps, f.GenTokens,
                 client, ClientKind(client), px?.Tools.Length, px is { ReasoningTokens: > 0 } ? px.ReasoningTokens : px != null ? 0 : null,
-                Result(f, px)));
+                Result(f, px), f.PromptTokens, f.PromptReused));
         }
         return rows;
     }
@@ -63,6 +63,16 @@ public static class RequestRows
         var slash = first.IndexOf('/');
         return slash > 0 ? first[..slash] : first;
     }
+
+    // Spalte „cache“: "44.9k ↺" bei Wiederverwendung, "—" wenn der ganze Prompt neu gelesen wurde, leer wenn unbekannt
+    public static string CacheText(int reused) => reused < 0 ? "" : reused == 0 ? "—" : Short(reused) + " ↺";
+
+    public static string CacheTip(int reused, int read) => Strings.ReqCacheTip(reused, read);
+
+    private static string Short(int n) =>
+        n >= 1_000_000 ? (n / 1_000_000.0).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + "M"
+        : n >= 1000 ? (n / 1000.0).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + "k"
+        : n.ToString(System.Globalization.CultureInfo.InvariantCulture);
 
     // Farbstufe für tokens/s (1 langsam … 4 schnell)
     public static int SpeedLevel(double tps) => tps < 10 ? 1 : tps < 25 ? 2 : tps < 60 ? 3 : 4;

@@ -21,6 +21,8 @@ public sealed class SimWorld
         public bool Busy, Prompting, Cancelled;
         public long Task;
         public int PromptTokens, GenTarget, ReasoningTokens, MaxTokens;   // MaxTokens: Grenze des Clients (max_tokens); GenTarget: wo die Antwort von selbst endet
+        public int Reused;   // aus dem Prompt-Cache wiederverwendete Token (nur llama.cpp); gelesen wird der Rest
+        public int Read => PromptTokens - Reused;
         public double PromptDone, Gen, Tps, PromptTps, CancelAt;
         public bool Truncate;
         public string[] Tools = Array.Empty<string>();
@@ -241,8 +243,8 @@ public sealed class SimWorld
             s.LastActivity = now;
             if (sl.Prompting)
             {
-                sl.PromptDone = Math.Min(sl.PromptTokens, sl.PromptDone + sl.PromptTps * dt);
-                double frac = sl.PromptTokens > 0 ? sl.PromptDone / sl.PromptTokens : 1;
+                sl.PromptDone = Math.Min(sl.Read, sl.PromptDone + sl.PromptTps * dt);
+                double frac = sl.Read > 0 ? sl.PromptDone / sl.Read : 1;
                 if (frac < 1 && frac - sl.PromptLogged >= 0.25)
                 {
                     sl.PromptLogged = frac;
@@ -251,10 +253,10 @@ public sealed class SimWorld
                 }
                 if (frac >= 1)
                 {
-                    double ms = sl.PromptTokens / Math.Max(1, sl.PromptTps) * 1000;
+                    double ms = sl.Read / Math.Max(1, sl.PromptTps) * 1000;
                     log.Append("slot print_timing: id ").Append(sl.Id.ToString(Inv).PadLeft(2)).Append(" | task ").Append(sl.Task.ToString(Inv))
-                       .Append(" |  prompt eval time = ").Append(ms.ToString("0.00", Inv)).Append(" ms / ").Append(sl.PromptTokens.ToString(Inv).PadLeft(5))
-                       .Append(" tokens (").Append((ms / Math.Max(1, sl.PromptTokens)).ToString("0.00", Inv)).Append(" ms per token, ")
+                       .Append(" |  prompt eval time = ").Append(ms.ToString("0.00", Inv)).Append(" ms / ").Append(sl.Read.ToString(Inv).PadLeft(5))
+                       .Append(" tokens (").Append((ms / Math.Max(1, sl.Read)).ToString("0.00", Inv)).Append(" ms per token, ")
                        .Append(sl.PromptTps.ToString("0.00", Inv)).AppendLine(" tokens per second)");
                     sl.Prompting = false; sl.GenStart = now; sl.NextLog = now;
                 }
@@ -292,6 +294,8 @@ public sealed class SimWorld
         sl.Task = ++s.TaskCounter * 3 + 1;
         sl.Start = now; sl.PromptDone = 0; sl.PromptLogged = 0; sl.Gen = 0;
         sl.PromptTokens = (int)Math.Clamp(LogNormal(700, 0.9), 30, Math.Max(40, ctx * 0.6));
+        // Jede zweite Anfrage llama.cpp: ein Teil des Prompts kommt aus dem Cache (Strata und die anderen Backends nicht)
+        sl.Reused = spec.Kind == BackendKind.LlamaCpp && !spec.Strata && _rng.NextDouble() < 0.5 ? (int)(sl.PromptTokens * Uniform(0.4, 0.9)) : 0;
         int room = Math.Max(30, ctx - sl.PromptTokens - 16);
         sl.GenTarget = (int)Math.Clamp(LogNormal(320, 0.8), 20, Math.Min(room, 4000));
         sl.Truncate = _rng.NextDouble() < 0.04;
@@ -314,7 +318,7 @@ public sealed class SimWorld
     {
         int gen = Math.Max(1, (int)Math.Min(sl.Gen, sl.GenTarget));
         double genMs = gen / Math.Max(0.1, sl.Tps) * 1000;
-        double promptMs = sl.PromptTokens / Math.Max(1, sl.PromptTps) * 1000;
+        double promptMs = sl.Read / Math.Max(1, sl.PromptTps) * 1000;
         string id = sl.Id.ToString(Inv).PadLeft(2), task = sl.Task.ToString(Inv);
         log.Append("slot print_timing: id ").Append(id).Append(" | task ").Append(task).Append(" |        eval time = ").Append(genMs.ToString("0.00", Inv))
            .Append(" ms / ").Append(gen.ToString(Inv).PadLeft(5)).Append(" tokens (").Append((genMs / gen).ToString("0.00", Inv)).Append(" ms per token, ")

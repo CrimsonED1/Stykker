@@ -8,6 +8,9 @@ namespace StykkerLlm.Server.Components;
 // Karte zeigt dann ein gedämpftes „–“ an seinem festen Platz.
 public sealed record CardSlot(int Id, string State, double Frac, double Tps, long Generated, int CtxUsed, int CtxMax, bool Full = false);
 
+// Ein Abschnitt der Lesephase in der Kurve: X und Breite (SVG-Einheiten) und der Tooltip
+public sealed record ReadBand(string X, string W, string Tip);
+
 public sealed class ServerCardModel
 {
     public string Key { get; init; } = "";
@@ -36,6 +39,7 @@ public sealed class ServerCardModel
     public IReadOnlyList<CardSlot> Slots { get; init; } = Array.Empty<CardSlot>();
     public IReadOnlyList<LoadedModel> Models { get; init; } = Array.Empty<LoadedModel>();
     public double[] History { get; init; } = Array.Empty<double>();   // tokens/s, älteste zuerst
+    public IReadOnlyList<ReadPhase> ReadPhases { get; init; } = Array.Empty<ReadPhase>();   // Lesephasen (Indizes wie History)
     public bool Recording { get; init; }
     public DateTime? RecordingSince { get; init; }
     public double? SpillGb { get; init; }
@@ -78,6 +82,7 @@ public sealed class ServerCardModel
             CtxPerSlot = s.Slots.Count > 0 ? s.Slots.Max(v => v.CtxMax) : s.Props?.NCtx,
             Queue = s.QueueCount, DraftRate = s.SpecActive ? (double)s.Spec.Accepted / Math.Max(1, s.Spec.Drafted) : null,
             Clients = s.Clients, Slots = slots, Models = s.Models.ToList(), History = hist,
+            ReadPhases = s.ReadPhases(),
             Recording = rec != null, RecordingSince = rec?.Started,
             SpillGb = ServerWatcher.SpillGb(s.Models, s.SharedGb),
             SlowerPct = usual == null ? null : SpeedHint.SlowerPercent(s.AverageActive(), hist.Count(v => v > 0), usual.MeanTps, usual.TpsCount),
@@ -99,6 +104,7 @@ public sealed class ServerCardModel
             Queue = rs.QueueCount,
             DraftRate = rs.SpecDrafted is int d && d > 0 && rs.SpecAccepted is int a ? (double)a / d : null,
             Clients = rs.Clients, Slots = slots, Models = rs.Models.ToList(), History = rs.History.Take(n).ToArray(),
+            ReadPhases = rs.ReadPhases,
             Recording = rs.Recording,
         };
     }
@@ -131,6 +137,21 @@ public sealed class ServerCardModel
         }
         return sb.ToString();
     }
+
+    // Lesephasen als farbige Bänder hinter der Kurve: Position und Breite im 300er-Rahmen, Tooltip je Band
+    public IEnumerable<ReadBand> ReadBands()
+    {
+        int n = History.Length;
+        if (n < 2) yield break;
+        foreach (var p in ReadPhases)
+        {
+            if (p.From < 0 || p.To >= n || p.From > p.To) continue;
+            double x0 = XAt(p.From, n), x1 = XAt(p.To, n);
+            yield return new ReadBand(F(x0), F(Math.Max(2, x1 - x0 + 1.5)), Strings.ReadPhaseTip(p.Tokens, p.Seconds, p.Reused));
+        }
+    }
+
+    private static double XAt(int i, int n) => 300.0 * (ServerWatcher.HistoryLength - n + i) / (ServerWatcher.HistoryLength - 1);
 
     public string SparkArea()
     {
