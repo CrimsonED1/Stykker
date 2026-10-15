@@ -350,7 +350,28 @@ public static class ServerLauncher
             args.Add("--log-file"); args.Add(log);
         }
         PruneLogs(logsDir, limits.MaxLogBytes, new[] { log }, limits.MaxLogFiles);
-        return new LaunchPlan(spec.Name, spec.Program, args, spec.WorkingDir, port, host, ResolveModel(parsed.Model, spec.WorkingDir), log, spec.ProfileId, spec.Env);
+        return new LaunchPlan(spec.Name, VenvPython(spec.Program, spec.WorkingDir), args, spec.WorkingDir, port, host, ResolveModel(parsed.Model, spec.WorkingDir), log, spec.ProfileId, spec.Env);
+    }
+
+    // Ein Python-Server aus einem venv läuft als Kind des Basis-Pythons (der Starter in .venv\Scripts startet es). Erkannt wird
+    // darum das Basis-Python – ohne die Pakete des venv („No module named …“). Liegt im Arbeitsordner ein venv mit
+    // demselben Programm, startet dessen python.exe.
+    internal static string VenvPython(string program, string? workDir)
+    {
+        if (string.IsNullOrEmpty(program) || string.IsNullOrEmpty(workDir)) return program;
+        var name = Path.GetFileName(program);
+        if (!name.StartsWith("python", StringComparison.OrdinalIgnoreCase)) return program;
+        try
+        {
+            if (Path.GetDirectoryName(Path.GetDirectoryName(program)) is { } up && File.Exists(Path.Combine(up, "pyvenv.cfg"))) return program;   // schon ein venv
+            foreach (var venv in new[] { ".venv", "venv", "env" })
+            {
+                var candidate = Path.Combine(workDir, venv, "Scripts", name);
+                if (File.Exists(candidate)) return candidate;
+            }
+        }
+        catch (ArgumentException) { }
+        return program;
     }
 
     public static string SafeName(string name)
