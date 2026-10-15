@@ -27,6 +27,9 @@ public class N77_VenvPythonTests
             var exe = Path.Combine(root, "llama-server.exe");
             Assert.AreEqual(exe, ServerLauncher.VenvPython(exe, work), "nur Python");
 
+            var script = Path.Combine(work, "serve", "server.py");
+            Assert.AreEqual(venvPy, ServerLauncher.VenvPython(basePy, null, new[] { script, "--port", "8082" }), "ohne Arbeitsordner: neben dem Skript");
+
             var plan = ServerLauncher.BuildPlan(new LaunchSpec("s", basePy, new[] { "server.py", "--port", "8082" }, work, null, null, null), Path.Combine(root, "logs"));
             Assert.AreEqual(venvPy, plan.Program);
         }

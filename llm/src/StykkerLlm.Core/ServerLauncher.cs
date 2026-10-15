@@ -350,25 +350,31 @@ public static class ServerLauncher
             args.Add("--log-file"); args.Add(log);
         }
         PruneLogs(logsDir, limits.MaxLogBytes, new[] { log }, limits.MaxLogFiles);
-        return new LaunchPlan(spec.Name, VenvPython(spec.Program, spec.WorkingDir), args, spec.WorkingDir, port, host, ResolveModel(parsed.Model, spec.WorkingDir), log, spec.ProfileId, spec.Env);
+        return new LaunchPlan(spec.Name, VenvPython(spec.Program, spec.WorkingDir, spec.Args), args, spec.WorkingDir, port, host, ResolveModel(parsed.Model, spec.WorkingDir), log, spec.ProfileId, spec.Env);
     }
 
     // Ein Python-Server aus einem venv läuft als Kind des Basis-Pythons (der Starter in .venv\Scripts startet es). Erkannt wird
     // darum das Basis-Python – ohne die Pakete des venv („No module named …“). Liegt im Arbeitsordner ein venv mit
     // demselben Programm, startet dessen python.exe.
-    internal static string VenvPython(string program, string? workDir)
+    // Gesucht wird im Arbeitsordner und – falls der fehlt – neben dem Skript (erstes *.py-Argument) und zwei Ordner darüber.
+    internal static string VenvPython(string program, string? workDir, IReadOnlyList<string>? args = null)
     {
-        if (string.IsNullOrEmpty(program) || string.IsNullOrEmpty(workDir)) return program;
+        if (string.IsNullOrEmpty(program)) return program;
         var name = Path.GetFileName(program);
         if (!name.StartsWith("python", StringComparison.OrdinalIgnoreCase)) return program;
         try
         {
             if (Path.GetDirectoryName(Path.GetDirectoryName(program)) is { } up && File.Exists(Path.Combine(up, "pyvenv.cfg"))) return program;   // schon ein venv
-            foreach (var venv in new[] { ".venv", "venv", "env" })
-            {
-                var candidate = Path.Combine(workDir, venv, "Scripts", name);
-                if (File.Exists(candidate)) return candidate;
-            }
+            var dirs = new List<string>();
+            if (!string.IsNullOrEmpty(workDir)) dirs.Add(workDir);
+            if (args?.FirstOrDefault(a => a.EndsWith(".py", StringComparison.OrdinalIgnoreCase)) is { } script && Path.IsPathRooted(script))
+                for (var d = Path.GetDirectoryName(script); d != null && dirs.Count < 4; d = Path.GetDirectoryName(d)) dirs.Add(d);
+            foreach (var dir in dirs)
+                foreach (var venv in new[] { ".venv", "venv", "env" })
+                {
+                    var candidate = Path.Combine(dir, venv, "Scripts", name);
+                    if (File.Exists(candidate)) return candidate;
+                }
         }
         catch (ArgumentException) { }
         return program;
@@ -460,7 +466,7 @@ public static class ServerLauncher
             if (own != null) lock (own) { try { own.Dispose(); } catch { } }
         };
         p.Start();
-        AppLog.Write($"launch {plan.Name}: {Path.GetFileName(plan.Program)} started, pid {p.Id}, port {plan.Port}");
+        AppLog.Write($"launch {plan.Name}: {plan.Program} started in {psi.WorkingDirectory}, pid {p.Id}, port {plan.Port}");
         p.BeginOutputReadLine();
         p.BeginErrorReadLine();
         ls.Proc = p;
