@@ -10,7 +10,10 @@ The rule for what belongs here: code that two tools use, or that would otherwise
 |---|---|---|
 | `Gpu/` | `GpuRows.cs`: the rows of a GPU reading, per-process values and engine percentages. | StykkerHUD, StykkerSYS |
 | `Windows/Pdh.cs` | A thin wrapper over `pdh.dll`: open, collect and read counters, and split instance names into PID and engine. | StykkerHUD, StykkerSYS |
-| `Windows/GpuCounters.cs` | `GpuUtilQuery` (utilisation per engine and per process) and `GpuProcessMemoryQuery` (graphics memory per process). | StykkerHUD, StykkerSYS |
+| `Windows/GpuCounters.cs` | `GpuUtilQuery` (utilisation per engine and per process), `GpuProcessMemoryQuery` (graphics memory per process) and `GpuPidMemoryQuery` (dedicated and shared graphics memory of one PID). | StykkerHUD, StykkerSYS, StykkerLLM |
+| `Windows/SystemCounters.cs` | `SystemCounters`: whole-machine processor load (and per core), RAM and commit, and the largest programs by working set. `SystemLoad` is the record. Read only. | StykkerLLM |
+| `Windows/ProcessNames.cs` | PID to program name, with a cache that forgets after five minutes (PIDs are reused). | StykkerLLM |
+| `Hardware/SystemMath.cs` | The arithmetic of processor load, per-core load and the top list of programs, without Windows. | StykkerLLM |
 | `Disk/` | `DiskRows.cs`: the records of the drives (physical disks with type NVMe, SSD, HDD, USB or unknown; volumes; programs with disk traffic; a sample). `DiskMath.cs`: the conversion and the mapping of the raw counter values, without Windows. | StykkerLLM, StykkerSYS |
 | `Windows/DiskCounters.cs` | Drives and disk traffic from Windows: volumes (`DriveInfo`), counters (PDH `PhysicalDisk`, `LogicalDisk`, `Process`), type and model per disk and the volume-to-disk mapping (`DeviceIoControl`). Read only, no administrator rights; a missing value stays `null`. | StykkerLLM, StykkerSYS |
 | `Windows/TrayIcon.cs` | Tray icon with a context menu, on a message-only window in its own thread. | StykkerHUD, StykkerSYS |

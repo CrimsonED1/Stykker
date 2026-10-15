@@ -6,7 +6,8 @@ using StykkerLlm.Core;
 
 namespace StykkerLlm.Platform.Windows;
 
-// Windows-Umsetzung von IPlatform: TCP-Tabellen, Prozessdaten aus dem PEB, PDH, NVML, GlobalMemoryStatusEx.
+// Windows-Umsetzung von IPlatform: TCP-Tabellen, Prozessdaten aus dem PEB, NVML. Die Leistungsindikatoren (GPU je Prozess,
+// Arbeitsspeicher, Prozessor, Laufwerke) kommen aus Stykker.Shared – dieselben Zähler wie in StykkerSYS.
 public sealed class WindowsPlatform : IPlatform
 {
     [DllImport("kernel32.dll", SetLastError = true)] private static extern IntPtr OpenProcess(uint access, bool inherit, int pid);
@@ -28,10 +29,12 @@ public sealed class WindowsPlatform : IPlatform
     private const int MaxEnvBytes = 1 << 20;
 
     private readonly Nvml _nvml = new();
-    private readonly SysInfo _sys = new();
-    private readonly ProcMem.GpuProcessQuery _gpuProcs = new();
-    private readonly ProcMem.GpuUtilQuery _gpuUtil = new();
+    private readonly SystemCounters _sys = new();
+    private readonly GpuProcessMemoryQuery _gpuProcs = new();
+    private readonly GpuUtilQuery _gpuUtil = new();
+    private readonly ProcessNames _procNames = new();
     private readonly object _gpuLock = new();
+    private readonly object _sysLock = new();
     private readonly DiskCounters _disks = new();
     private readonly object _diskLock = new();
     private bool _disposed;
@@ -217,24 +220,10 @@ public sealed class WindowsPlatform : IPlatform
         catch { return null; }
     }
 
-    public IGpuMemoryQuery? OpenGpuMemory(int pid) => new ProcMem.GpuMemQuery(pid);
+    public IGpuMemoryQuery? OpenGpuMemory(int pid) => new GpuMemoryAdapter(pid);
 
-    // Working Set aller Prozesse aus der System-Prozessliste (ein Aufruf, öffnet keine Prozess-Handles), je Programmname summiert
-    public IReadOnlyList<(string Name, double Gb)>? ReadRamTop(int count)
-    {
-        try
-        {
-            var sums = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
-            foreach (var p in System.Diagnostics.Process.GetProcesses())
-            {
-                try { if (p.Id > 4) sums[p.ProcessName] = sums.GetValueOrDefault(p.ProcessName) + p.WorkingSet64; }
-                catch { }
-                finally { p.Dispose(); }
-            }
-            return sums.OrderByDescending(kv => kv.Value).Take(count).Select(kv => (kv.Key, kv.Value / 1073741824.0)).ToList();
-        }
-        catch { return null; }
-    }
+    // Working Set aller Prozesse, je Programmname summiert (Stykker.Shared)
+    public IReadOnlyList<(string Name, double Gb)>? ReadRamTop(int count) => SystemCounters.TopPrograms(count);
 
     // Kindprozesse über einen Toolhelp-Schnappschuss (liest keinen fremden Speicher)
     [DllImport("kernel32.dll", SetLastError = true)] private static extern IntPtr CreateToolhelp32Snapshot(uint flags, uint pid);
@@ -285,21 +274,40 @@ public sealed class WindowsPlatform : IPlatform
 
     public string? GpuDriver => _nvml.DriverVersion;
 
-    public SystemSample? ReadSystem() => _sys.Read();
+    public SystemSample? ReadSystem()
+    {
+        lock (_sysLock)   // die Prozessorauslastung ist eine Differenz zum letzten Takt: nur einer je Takt
+        {
+            var s = _sys.Read();
+            return s == null ? null : new SystemSample(s.CpuPercent, s.Cores, s.RamUsedGb, s.RamTotalGb, s.CommitUsedGb, s.CommitLimitGb, s.CoreLoads);
+        }
+    }
+
     public MemoryInfo? ReadMemoryInfo() => SysInfo.ReadMemory();
 
+    // Die größten Grafikspeicher-Belegungen je Prozess (MB im Zähler, GB hier)
     public IReadOnlyList<(string Name, double Gb)>? ReadGpuTop(int count)
     {
         lock (_gpuLock)
-            return _disposed ? null : _gpuProcs.ReadTop(count);
+        {
+            if (_disposed) return null;
+            var rows = _gpuProcs.Read();
+            if (rows == null) return null;
+            return rows.Where(r => r.Value > 0).OrderByDescending(r => r.Value).Take(count)
+                       .Select(r => (_procNames.NameOf(r.Pid), r.Value / 1024.0)).ToList();
+        }
     }
 
+    // GPU-Auslastung je Prozess in Prozent, über alle Engines summiert
     public IReadOnlyList<(string Name, double Percent)> ReadGpuUtilTop(int count)
     {
         lock (_gpuLock)
         {
             if (_disposed) return Array.Empty<(string, double)>();
-            return _gpuUtil.ReadTop(count) ?? new List<(string Name, double Percent)>();
+            var sample = _gpuUtil.Read();
+            if (sample == null) return new List<(string Name, double Percent)>();
+            return sample.Processes.OrderByDescending(r => r.Value).Take(count)
+                         .Select(r => (_procNames.NameOf(r.Pid), r.Value)).ToList();
         }
     }
 
