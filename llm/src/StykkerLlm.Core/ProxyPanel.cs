@@ -21,7 +21,15 @@ public static class ProxyPanel
     public static string ClassifierLabel(string value, IEnumerable<ProxyChoice> choices)
     {
         if (value.Length == 0) return Strings.ClientAutoSame;
-        return choices.FirstOrDefault(c => c.Value == value)?.Display ?? value;
+        if (choices.FirstOrDefault(c => c.Value == value)?.Display is { } shown) return shown;
+        // Nicht (mehr) in der Auswahl, z. B. weil der Anbieter gerade nicht geladen ist: lesbar statt der rohen Kennung
+        if (ProxyTarget.IsCloudKey(value) && value.IndexOf('|') is int bar and > 0)
+        {
+            var url = value["provider:".Length..bar];
+            var host = Uri.TryCreate(url, UriKind.Absolute, out var u) ? u.Host : url;
+            return $"{host} · {value[(bar + 1)..]}";
+        }
+        return value;
     }
 
     // Der Anbieter, den ein Modelltest prüft: der gewählte (wenn es ihn noch gibt), sonst der erste mit Schlüssel, sonst der

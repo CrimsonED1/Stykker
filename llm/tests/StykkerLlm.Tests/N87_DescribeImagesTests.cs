@@ -31,3 +31,17 @@ public class N87_DescribeImagesTests
         Assert.AreSame(body, await RouterProxy.ReplaceImagesAsync(body, (u, k) => Task.FromResult("x")));
     }
 }
+
+// Ohne „stream": true bekommt ein Anthropic-Client eine fertige JSON-Nachricht (so fragt die Sicherheitsprüfung an)
+[TestClass]
+public class N87_StreamFlagTests
+{
+    [TestMethod]
+    public void Only_an_explicit_stream_true_means_streaming()
+    {
+        Assert.IsTrue(RouterProxy.WantsStream(Encoding.UTF8.GetBytes("{\"stream\":true}")));
+        Assert.IsFalse(RouterProxy.WantsStream(Encoding.UTF8.GetBytes("{\"stream\":false}")));
+        Assert.IsFalse(RouterProxy.WantsStream(Encoding.UTF8.GetBytes("{\"max_tokens\":2112}")));
+        Assert.IsFalse(RouterProxy.WantsStream(null));
+    }
+}

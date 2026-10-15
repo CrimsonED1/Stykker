@@ -64,9 +64,11 @@ public class R2_RouterTests
         Assert.AreEqual("alpha", seenByA);
         // unbekanntes Modell → Standardziel
         StringAssert.Contains(await Post(proxy.ListenPort, "/v1/chat/completions", "{\"model\":\"gibtsnicht\",\"messages\":[]}"), "\"A\"");
-        // Anthropic /v1/messages: nach Modell weiterleiten, aber als Anthropic-Ereignisse beantworten (R5)
+        // Anthropic /v1/messages: nach Modell weiterleiten, als Anthropic-Antwort (R5). Ohne „stream": true eine fertige
+        // Nachricht als JSON (wie die Anthropic-API), mit „stream": true Ereignisse
         var anthropic = await Post(proxy.ListenPort, "/v1/messages", "{\"model\":\"model-b\",\"messages\":[]}");
-        StringAssert.Contains(anthropic, "event: message_start");
+        StringAssert.Contains(anthropic, "\"type\":\"message\"");
+        Assert.IsFalse(anthropic.Contains("event: message_start"));
         Assert.AreEqual("model-b", seenByB);
     }
 
