@@ -2,10 +2,10 @@ using StykkerLlm.Core;
 
 namespace StykkerLlm.Tests;
 
-// N71 – Modus „auto“ von Claude Code: Anfragen an andere Claude-Namen (die Sicherheitsprüfung) gehen an das eingestellte
+// N72 – Modus „auto“ von Claude Code: Anfragen an andere Claude-Namen (die Sicherheitsprüfung) gehen an das eingestellte
 // Prüf-Ziel, claude-stykker und alles andere wie bisher an das Standardziel.
 [TestClass]
-public class N71_ClassifierTargetTests
+public class N72_ClassifierTargetTests
 {
     private static readonly ProxyTarget Main = new("main|m", "http://127.0.0.1:1", "main-model", BackendKind.LlamaCpp, true, false);
     private static readonly ProxyTarget Check = new("provider:https://cloud.example/v1|c", "https://cloud.example/v1", "c", BackendKind.LmStudio, true, false,
