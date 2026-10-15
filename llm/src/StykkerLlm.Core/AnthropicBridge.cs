@@ -20,7 +20,9 @@ public static class AnthropicBridge
     {
         int q = target.IndexOf('?');
         var path = q >= 0 ? target[..q] : target;
-        return path.Equals(Path, StringComparison.OrdinalIgnoreCase);
+        // Auch mit doppeltem Präfix: trägt jemand in der App die volle Adresse ein (.../v1/messages), hängt sie
+        // /v1/messages noch einmal an. Die Anfrage gilt trotzdem.
+        return path.Equals(Path, StringComparison.OrdinalIgnoreCase) || path.EndsWith(Path, StringComparison.OrdinalIgnoreCase);
     }
 
     // ── Anfrage: Anthropic → OpenAI ──

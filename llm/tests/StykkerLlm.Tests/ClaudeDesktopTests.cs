@@ -36,7 +36,7 @@ public class ClaudeDesktopTests
         var entry = Directory.GetFiles(LibDir(layer), "*.json").Single(f => !f.EndsWith("_meta.json", StringComparison.Ordinal));
         var node = JsonNode.Parse(File.ReadAllText(entry))!;
         Assert.AreEqual("gateway", (string?)node["inferenceProvider"]);
-        Assert.AreEqual("http://127.0.0.1:17500/v1/messages", (string?)node["inferenceGatewayBaseUrl"]);
+        Assert.AreEqual("http://127.0.0.1:17500", (string?)node["inferenceGatewayBaseUrl"], "die App hängt /v1/messages selbst an");
         Assert.AreEqual("static", (string?)node["inferenceCredentialKind"]);
         Assert.AreEqual("bearer", (string?)node["inferenceGatewayAuthScheme"]);
         Assert.AreEqual(ClaudeDesktop.ModelAlias, (string?)((JsonArray)node["inferenceModels"]!)[0]!["name"]);

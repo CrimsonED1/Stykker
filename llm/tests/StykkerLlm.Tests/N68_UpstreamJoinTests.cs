@@ -24,6 +24,15 @@ public class N68_UpstreamJoinTests
     }
 
     [TestMethod]
+    public void A_doubled_messages_path_still_counts_as_the_Anthropic_endpoint()
+    {
+        Assert.IsTrue(AnthropicBridge.IsMessagesPath("/v1/messages"));
+        Assert.IsTrue(AnthropicBridge.IsMessagesPath("/v1/messages/v1/messages"));
+        Assert.IsTrue(AnthropicBridge.IsMessagesPath("/v1/messages?beta=true"));
+        Assert.IsFalse(AnthropicBridge.IsMessagesPath("/v1/chat/completions"));
+    }
+
+    [TestMethod]
     public void A_path_without_v1_is_appended_as_it_is()
     {
         Assert.AreEqual("https://example.test/v1/chat/completions", NetAddr.JoinUpstream("https://example.test/v1", "/chat/completions"));

@@ -274,8 +274,9 @@ public sealed class ClaudeDesktop
         var o = new JsonObject
         {
             ["inferenceProvider"] = "gateway",
-            // Die App will die volle Adresse des Endpunkts (so schreibt es auch ihre eigene Oberfläche)
-            ["inferenceGatewayBaseUrl"] = BaseUrl + AnthropicBridge.Path,
+            // Nur die Basisadresse: die App hängt /v1/messages selbst an (mit der vollen Adresse fragte sie
+            // .../v1/messages/v1/messages an und meldete „Gateway rejected model“)
+            ["inferenceGatewayBaseUrl"] = BaseUrl,
             ["inferenceCredentialKind"] = "static",
             ["inferenceGatewayApiKey"] = ApiKey,
             ["inferenceGatewayAuthScheme"] = "bearer",
