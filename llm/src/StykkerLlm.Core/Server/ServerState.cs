@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Stykker.Shared.Disk;
 using StykkerLlm.Core.Eval;
 
 namespace StykkerLlm.Core;
@@ -72,6 +73,8 @@ public static class StateJson
                 w.WriteEndObject();
             }
             else w.WriteNull("system");
+
+            WriteDisks(w, e, withHistory);
 
             WriteTop(w, "vramTop", e.VramTop);
             WriteTop(w, "ramTop", e.RamTop);
@@ -462,6 +465,81 @@ public static class StateJson
         w.WriteEndArray();
     }
 
+    // Laufwerke (Karte „Disks“ und Seite /disks): die physischen Laufwerke, die Volumes, die Prozesse mit dem meisten
+    // Platten-E/A und – nur mit Verlauf – die Punkte je Volume. Felder nur hinzufügen. Nicht gemessen = null.
+    private static void WriteDisks(Utf8JsonWriter w, MonitorEngine e, bool withHistory)
+    {
+        var d = e.Disks;
+        if (d == null) { w.WriteNull("disks"); return; }
+        w.WriteStartObject("disks");
+        w.WriteStartArray("physical");
+        foreach (var p in d.Disks)
+        {
+            w.WriteStartObject();
+            w.WriteNumber("number", p.Number);
+            w.WriteString("kind", p.Kind.ToString());
+            w.WriteString("model", p.Model);
+            NumN(w, "read", p.ReadBytesPerSec);
+            NumN(w, "write", p.WriteBytesPerSec);
+            NumN(w, "busy", p.BusyPercent);
+            NumN(w, "queue", p.QueueLength);
+            w.WriteEndObject();
+        }
+        w.WriteEndArray();
+        w.WriteStartArray("volumes");
+        foreach (var v in d.Volumes)
+        {
+            w.WriteStartObject();
+            w.WriteString("letter", v.Letter);
+            w.WriteString("label", v.Label);
+            w.WriteString("fileSystem", v.FileSystem);
+            NumN(w, "totalBytes", v.TotalBytes);
+            NumN(w, "freeBytes", v.FreeBytes);
+            if (v.DiskNumber is int dn) w.WriteNumber("diskNumber", dn); else w.WriteNull("diskNumber");
+            w.WriteString("kind", v.Kind.ToString());
+            NumN(w, "read", v.ReadBytesPerSec);
+            NumN(w, "write", v.WriteBytesPerSec);
+            NumN(w, "busy", v.BusyPercent);
+            NumN(w, "queue", v.QueueLength);
+            w.WriteEndObject();
+        }
+        w.WriteEndArray();
+        w.WriteStartArray("processes");
+        foreach (var p in e.DiskProcesses)
+        {
+            w.WriteStartObject();
+            w.WriteNumber("pid", p.Pid);
+            w.WriteString("name", p.Name);
+            NumN(w, "read", p.ReadBytesPerSec);
+            NumN(w, "write", p.WriteBytesPerSec);
+            w.WriteEndObject();
+        }
+        w.WriteEndArray();
+        if (withHistory)
+        {
+            w.WriteStartObject("history");
+            foreach (var letter in e.DiskHistory.Letters())
+            {
+                var points = e.DiskHistory.Of(letter);
+                w.WriteStartObject(letter);
+                NumArr(w, "read", points.Select(x => x.Read));
+                NumArr(w, "write", points.Select(x => x.Write));
+                NumArr(w, "busy", points.Select(x => x.Busy));
+                w.WriteEndObject();
+            }
+            w.WriteEndObject();
+        }
+        w.WriteEndObject();
+    }
+
+    private static void NumArr(Utf8JsonWriter w, string name, IEnumerable<double?> values)
+    {
+        w.WriteStartArray(name);
+        foreach (var v in values)
+            if (v is double x && double.IsFinite(x)) w.WriteNumberValue(Math.Round(x, 2)); else w.WriteNullValue();
+        w.WriteEndArray();
+    }
+
     // GPU-Auslastung je Prozess (für die Liste in den GPU-Details; ohne Wert 0)
     private static void WriteUtilTop(Utf8JsonWriter w, IReadOnlyList<(string Name, double Percent)> top)
     {
@@ -605,6 +683,8 @@ public static class StateJson
             w.WriteString("status", f.Status.ToString().ToLowerInvariant());
             w.WriteString("client", f.Client);
             w.WriteNumber("promptTotal", f.PromptTotal);
+            w.WriteNumber("promptReused", f.PromptReused);
+            w.WriteBoolean("promptReusedEst", f.PromptReusedEstimated);
             w.WriteEndObject();
         }
         w.WriteEndArray();
@@ -615,6 +695,19 @@ public static class StateJson
             w.WriteEndArray();
             w.WriteStartArray("promptFlags");
             for (int k = 0; k < s.HistoryCount; k++) w.WriteBooleanValue(s.PromptAt(k));
+            w.WriteEndArray();
+            // Lesephasen (Bereiche der Kurve, Indizes wie history)
+            w.WriteStartArray("readPhases");
+            foreach (var ph in s.ReadPhases())
+            {
+                w.WriteStartObject();
+                w.WriteNumber("from", ph.From);
+                w.WriteNumber("to", ph.To);
+                w.WriteNumber("tokens", ph.Tokens);
+                w.WriteNumber("reused", ph.Reused);
+                Num(w, "seconds", R2(ph.Seconds));
+                w.WriteEndObject();
+            }
             w.WriteEndArray();
         }
         w.WriteEndObject();
@@ -707,6 +800,10 @@ public sealed class StateSnapshot
     public List<(string Name, double Gb)> VramTop { get; init; } = new();
     public List<(string Name, double Gb)> RamTop { get; init; } = new();
     public List<(string Name, double Percent)> GpuUtilTop { get; init; } = new();
+    // Laufwerke (wie in StateJson.WriteDisks); null, wenn der Server keine lesen kann. Die Verlaufspunkte nur mit Verlauf.
+    public DiskSample? Disks { get; set; }
+    public List<ProcessIoRow> DiskProcesses { get; set; } = new();
+    public Dictionary<string, List<DiskPoint>> DiskHistoryByLetter { get; set; } = new(StringComparer.Ordinal);
     public List<RemoteServer> Servers { get; init; } = new();
     public List<RemoteLaunch> Launches { get; init; } = new();
     public ProxyState Proxy { get; init; } = new();
@@ -756,6 +853,7 @@ public sealed class StateSnapshot
             Access = ReadAccess(J.Obj(r, "access")),
             Settings = ReadSettings(J.Obj(r, "settings")),
         };
+        if (J.Obj(r, "disks") is { } disks) ReadDisks(snap, disks);
         var servers = new List<RemoteServer>();
         if (r.TryGetProperty("servers", out var arr) && arr.ValueKind == JsonValueKind.Array)
             foreach (var e in arr.EnumerateArray()) servers.Add(ReadServer(e));
@@ -776,6 +874,40 @@ public sealed class StateSnapshot
         if (J.Obj(r, "notice") is { } note) snap.Notice = ReadNotice(note);
         return snap;
     }
+
+    // Das Gegenstück zu StateJson.WriteDisks: die Laufwerke, die Prozesse und der Verlauf (ein Eintrag je Volume)
+    private static void ReadDisks(StateSnapshot snap, JsonElement d)
+    {
+        var physical = J.Arr(d, "physical").Select(p => new PhysicalDiskRow(J.Int(p, "number"), ParseKind(J.Str(p, "kind")), J.Str(p, "model") ?? "",
+            J.DblOrNull(p, "read"), J.DblOrNull(p, "write"), J.DblOrNull(p, "busy"), J.DblOrNull(p, "queue"))).ToList();
+        var volumes = J.Arr(d, "volumes").Select(v => new VolumeRow(J.Str(v, "letter") ?? "", J.Str(v, "label") ?? "", J.Str(v, "fileSystem") ?? "",
+            J.DblOrNull(v, "totalBytes") ?? 0, J.DblOrNull(v, "freeBytes") ?? 0, J.IntOrNull(v, "diskNumber"), ParseKind(J.Str(v, "kind")),
+            J.DblOrNull(v, "read"), J.DblOrNull(v, "write"), J.DblOrNull(v, "busy"), J.DblOrNull(v, "queue"))).ToList();
+        snap.Disks = new DiskSample(snap.Time, physical, volumes);
+        snap.DiskProcesses = J.Arr(d, "processes").Select(p => new ProcessIoRow(J.Int(p, "pid"), J.Str(p, "name") ?? "",
+            J.DblOrNull(p, "read") ?? 0, J.DblOrNull(p, "write") ?? 0)).ToList();
+        if (J.Obj(d, "history") is { } history)
+            foreach (var letter in history.EnumerateObject())
+                snap.DiskHistoryByLetter[letter.Name] = ReadPoints(letter.Value);
+    }
+
+    private static DiskKind ParseKind(string? name) => Enum.TryParse<DiskKind>(name, out var kind) ? kind : DiskKind.Unknown;
+
+    private static List<DiskPoint> ReadPoints(JsonElement h)
+    {
+        var reads = Nums(h, "read");
+        var writes = Nums(h, "write");
+        var busy = Nums(h, "busy");
+        int n = Math.Min(reads.Count, Math.Min(writes.Count, busy.Count));
+        var list = new List<DiskPoint>(n);
+        for (int i = 0; i < n; i++) list.Add(new DiskPoint(reads[i], writes[i], busy[i]));
+        return list;
+    }
+
+    private static List<double?> Nums(JsonElement o, string name) =>
+        o.ValueKind == JsonValueKind.Object && o.TryGetProperty(name, out var a) && a.ValueKind == JsonValueKind.Array
+            ? a.EnumerateArray().Select(x => x.ValueKind == JsonValueKind.Number && x.TryGetDouble(out var d) ? (double?)d : null).ToList()
+            : new List<double?>();
 
     private static NoticeState? ReadNotice(JsonElement e)
     {
@@ -1226,7 +1358,7 @@ public sealed class StateSnapshot
                 J.Int(f, "task"), J.Int(f, "slot"), J.Int(f, "promptTokens"), J.Dbl(f, "promptTps"), J.Dbl(f, "genTps"),
                 J.Int(f, "genTokens"), J.Dbl(f, "seconds"), J.TimeOrNull(f, "seen"),
                 Enum.TryParse<ReqStatus>(J.Str(f, "status"), true, out var st) ? st : ReqStatus.Done,
-                J.Str(f, "client") ?? "", J.Int(f, "promptTotal"), J.Str(f, "serverKey") ?? ""));
+                J.Str(f, "client") ?? "", J.Int(f, "promptTotal"), J.Str(f, "serverKey") ?? "", J.Int(f, "promptReused", -1), J.Bool(f, "promptReusedEst")));
         var history = new double[ServerWatcher.HistoryLength];
         int n = 0;
         foreach (var t in arr(e, "history")) if (n < history.Length) history[n++] = t.GetDouble();
@@ -1236,6 +1368,8 @@ public sealed class StateSnapshot
         n = 0;
         foreach (var t in arr(e, "promptFlags")) if (n < prompts.Length) prompts[n++] = t.ValueKind == JsonValueKind.True;
         s.PromptFlags = prompts;
+        foreach (var ph in arr(e, "readPhases"))
+            s.ReadPhases.Add(new ReadPhase(J.Int(ph, "from", -1), J.Int(ph, "to", -1), J.Int(ph, "tokens"), J.Int(ph, "reused", -1), J.Dbl(ph, "seconds")));
         return s;
     }
 }
@@ -1731,6 +1865,7 @@ public sealed class RemoteServer
     public double[] History { get; set; } = new double[ServerWatcher.HistoryLength];
     public int HistoryCount { get; set; }
     public bool[] PromptFlags { get; set; } = new bool[ServerWatcher.HistoryLength];
+    public List<ReadPhase> ReadPhases { get; } = new();   // Lesephasen der letzten Anfragen (Indizes wie History)
 
     public double HistoryAt(int i) => i >= 0 && i < HistoryCount ? History[i] : 0;
     public bool PromptAt(int i) => i >= 0 && i < HistoryCount && PromptFlags[i];

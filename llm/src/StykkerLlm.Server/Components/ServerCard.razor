@@ -109,7 +109,7 @@
     {
         <div class="body2">
             <div class="spark-wrap">
-                <svg class="spark" viewBox="0 0 300 70" preserveAspectRatio="none"><polygon class="area" points="@m.SparkArea()" /><polyline class="glow1" points="@m.SparkPoints()" /><polyline class="glow2" points="@m.SparkPoints()" /><polyline class="line" fill="none" points="@m.SparkPoints()" /></svg>
+                <svg class="spark" viewBox="0 0 300 70" preserveAspectRatio="none"><polygon class="area" points="@m.SparkArea()" />@foreach (var b in m.ReadBands()) { <rect class="readband" x="@b.X" y="0" width="@b.W" height="70"><title>@b.Tip</title></rect> }<polyline class="glow1" points="@m.SparkPoints()" /><polyline class="glow2" points="@m.SparkPoints()" /><polyline class="line" fill="none" points="@m.SparkPoints()" /></svg>
                 @if (m.Current > 0 && m.SparkTipTop() is { } tip) { <span class="spark-tip" style="top:@(tip)%"></span> }
                 <span class="lbl tl">@m.SparkMax.ToString("0", CultureInfo.InvariantCulture)</span>
                 <span class="lbl bl">@SparkAgo</span>

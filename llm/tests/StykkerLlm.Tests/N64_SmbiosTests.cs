@@ -81,7 +81,7 @@ public class N64_SmbiosWindowsTests
         if (m == null) { Assert.Inconclusive("keine SMBIOS-Speichertabelle (VM?)"); return; }
         Assert.IsTrue(m.Modules >= 1 && m.TotalGb > 0, m.ToString());
         Console.WriteLine($"{m.Short} · {m.Modules} modules · {m.TotalGb} GB · ≈{m.BandwidthGbs:0} GB/s");
-        var sys = new StykkerLlm.Platform.Windows.SysInfo();
+        var sys = new Stykker.Shared.Windows.SystemCounters();
         sys.Read(); Thread.Sleep(300);
         var s = sys.Read()!;
         Assert.AreEqual(Environment.ProcessorCount, s.CoreLoads?.Length, "eine Auslastung je logischem Kern");

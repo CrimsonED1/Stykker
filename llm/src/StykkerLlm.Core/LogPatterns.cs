@@ -22,7 +22,21 @@ internal static partial class LogPatterns
     public static partial Regex Unified();
     [GeneratedRegex(@"cancel task, id_task = (\d+)")]
     public static partial Regex Cancel();
+    // Strata: „strata serve: prompt 8067 tokens = 0 reused + 8067 read in 4123 ms (…)“ (gesamt, wiederverwendet, gelesen, Lesezeit)
+    [GeneratedRegex(@"strata serve: prompt (\d+) tokens = (\d+) reused \+ (\d+) read in ([\d.]+) ms")]
+    public static partial Regex StrataPrompt();
+    // Strata, Fortschrittszeilen (ohne Wiederverwendung): „reading the prompt: 49 of 54 tokens, 3 s so far“ bzw. „… 49,161 tokens, 10 s so far“
+    [GeneratedRegex(@"\[strata\] reading the prompt: (?:([\d,]+) of )?([\d,]+) tokens, ([\d.]+) s so far")]
+    public static partial Regex StrataReading();
+    // Beginn der Antwort: „answering: …“, „thinking: …“ oder „writing a tool call: …“
+    [GeneratedRegex(@"\[strata\] (?:answering|thinking|writing)\b")]
+    public static partial Regex StrataPhase();
+    // Ende einer Anfrage: „done: 109 tokens in 35 s (37.9 tok/s) (stop, cancel=False), …“
+    [GeneratedRegex(@"\[strata\] done: ([\d,]+) tokens in ([\d.]+) s \(([\d.]+) tok/s\)")]
+    public static partial Regex StrataDone();
 
     public static int I(Match m, int g) => int.TryParse(m.Groups[g].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var v) ? v : 0;
     public static double D(Match m, int g) => double.TryParse(m.Groups[g].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var v) ? v : 0;
+    // Zählwert mit Tausendertrennzeichen („49,161“)
+    public static int Count(string text) => int.TryParse(text.Replace(",", ""), NumberStyles.Integer, CultureInfo.InvariantCulture, out var v) ? v : 0;
 }

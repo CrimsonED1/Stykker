@@ -9,6 +9,7 @@
 @inject Toasts Toast
 @inject ClientDialogs Dialogs
 @inject ProxyDialogs ProxyDlg
+@using Stykker.Shared.Disk
 
 @* Monitor wie im Fenster (docs/ui.md, Bereiche 2–8): Proxy, Saved, Running, GPU, System, Recent requests, History *@
 
@@ -88,7 +89,7 @@
     var finished = e.Registry.Servers.SelectMany(x => x.Finished.Select(f => (F: f, Host: (string?)null)))
         .Concat(Host.Hosts.List().Where(h => h.Connected && h.State != null)
             .SelectMany(h => h.State!.Servers.SelectMany(rs => rs.Finished.Select(f => (F: f, Host: (string?)(h.Name.Length > 0 ? h.Name : h.Entry.Name))))));
-    var reqs = RequestRows.Build(finished, e.RecentProxy());
+    var reqs = RequestRows.Build(finished, e.RecentProxy(), nameOf: e.Proxies.DisplayName);
     double maxSec = reqs.Count > 0 ? Math.Max(1, reqs.Max(r => r.Seconds)) : 1;
 }
 <div class="card">
@@ -98,17 +99,18 @@
     else
     {
         <div class="reqs">
-            <div class="req head" aria-hidden="true"><span></span><span>@Strings.ReqModel</span><span>@Strings.ReqHost</span><span>@Strings.ReqTime</span><span class="r">@Strings.ReqPrompt</span><span class="r">t/s</span><span class="r">@Strings.ReqTokens</span><span class="c">@Strings.ReqTools</span><span class="c">@Strings.ReqThink</span><span class="c">@Strings.ReqResult</span><span class="r">@Strings.ReqAgo</span></div>
+            <div class="req head" aria-hidden="true"><span></span><span>@Strings.ReqModel</span><span>@Strings.ReqHost</span><span>@Strings.ReqTime</span><span class="r">@Strings.ReqPrompt</span><span class="r">@Strings.ReqCache</span><span class="r">t/s</span><span class="r">@Strings.ReqTokens</span><span class="c">@Strings.ReqTools</span><span class="c">@Strings.ReqThink</span><span class="c">@Strings.ReqResult</span><span class="r">@Strings.ReqAgo</span></div>
             @foreach (var r in reqs)
             {
                 var kind = r.Host == null ? e.Registry.Servers.FirstOrDefault(x => x.Key == r.ServerKey)?.Kind ?? BackendKind.LlamaCpp : BackendKind.LlamaCpp;
                 <div class="req">
                     <span class="cl" title="@(r.Client.Length > 0 ? r.Client : Strings.ReqClientUnknown)"><Icon Name="@("c-" + r.ClientKind)" Title="@(r.Client.Length > 0 ? r.Client : Strings.ReqClientUnknown)" /></span>
-                    <span class="mdl" title="@r.Model"><i style="background:var(@BackendColor(kind))"></i>@r.Server</span>
+                    <span class="mdl" title="@r.Model"><i style="background:var(@BackendColor(kind))"></i><span class="mname">@r.Server</span>@if (ProxyRoutes.Label(r.Route).Length > 0) { <span class="rtag" title="@ProxyRoutes.Tip(r.Route)">@ProxyRoutes.Label(r.Route)</span> }</span>
                     <span class="hostc">@if (r.Host != null) { <span class="chipi host"><Icon Name="host" />@r.Host</span> } else { <span class="muted small">@Strings.CardLocal</span> }</span>
                     <span class="dur" title="@r.Seconds.ToString("0.0", CultureInfo.InvariantCulture) s"><span class="dbar"><i style="width:@((int)(100 * r.Seconds / maxSec))%"></i></span><small>@(r.Seconds > 0 ? r.Seconds.ToString("0", CultureInfo.InvariantCulture) + "s" : "–")</small></span>
                     <span class="r muted">@(r.PromptTps > 0 ? r.PromptTps.ToString("0", CultureInfo.InvariantCulture) : "–")</span>
-                    <span class="r spd sp@(RequestRows.SpeedLevel(r.GenTps))">@r.GenTps.ToString("0.0", CultureInfo.InvariantCulture)</span>
+                    <span class="r cache @(r.PromptReused == 0 ? "miss" : "")" title="@RequestRows.CacheTip(r.PromptReused, r.PromptRead, r.PromptReusedEstimated)">@RequestRows.CacheText(r.PromptReused)</span>
+                    <span class="r spd sp@(RequestRows.SpeedLevel(r.GenTps))">@(r.GenTps > 0 ? r.GenTps.ToString("0.0", CultureInfo.InvariantCulture) : "–")</span>
                     <span class="r">@r.GenTokens.ToString("N0", CultureInfo.InvariantCulture)</span>
                     <span class="c ex @(r.Tools is > 0 ? "" : "na")" title="@(r.Tools == null ? Strings.ReqNoProxy : Strings.ReqToolsTip(r.Tools.Value))"><Icon Name="x-tool" />@(r.Tools is int t && t > 0 ? t.ToString(CultureInfo.InvariantCulture) : "–")</span>
                     <span class="c ex @(r.ThinkTokens is > 0 ? "" : "na")" title="@(r.ThinkTokens == null ? Strings.ReqNoProxy : Strings.ReqThinkTip(r.ThinkTokens.Value))"><Icon Name="x-think" />@(r.ThinkTokens is int k && k > 0 ? (k >= 1000 ? (k / 1000.0).ToString("0.0", CultureInfo.InvariantCulture) + "k" : k.ToString(CultureInfo.InvariantCulture)) : "–")</span>
@@ -125,9 +127,13 @@
 @* History (U8): nach Tagen gruppiert, je Lauf Laufzeit, Ø/Spitze t/s, Tokens des letzten Laufs und wie er endete;
    Suche (/ springt hinein), Filter, Aktionen als Symbole, Vergessen mit Rückgängig *@
 @{
-    var runningKeys = e.Registry.Servers.Where(x => !string.IsNullOrEmpty(x.Info.Program) && x.Info.Args != null).Select(x => Library.MakeKey(x.Info.Program!, x.Info.Args!)).ToHashSet();
+    // Ein Verlaufseintrag gilt als laufend bzw. gemerkt, wenn der Vergleichsschlüssel (Library.CompareKey) passt – für Profil,
+    // Verlauf und Start dieselbe Regel
+    Func<HistoryEntry, string> histKey = h => Library.CompareKey(h.Program, h.Args, h.WorkingDir);
+    var runningKeys = e.Registry.Servers.Where(x => !string.IsNullOrEmpty(x.Info.Program) && x.Info.Args != null).Select(x => Library.CompareKey(x.Info.Program!, x.Info.Args!, x.Info.WorkingDir)).ToHashSet();
+    var savedKeys = e.Library.Profiles.Select(p => Library.CompareKey(p.Program, p.Args, p.WorkingDir)).ToHashSet();
     var hlist = e.Library.History.Where(Match).Where(h => !_forgetting.Contains(h.Key))
-        .Where(h => _hfilter == "all" || (_hfilter == "crashed" && h.LastEnd == "crashed") || (_hfilter == "running" && runningKeys.Contains(h.Key)))
+        .Where(h => _hfilter == "all" || (_hfilter == "crashed" && h.LastEnd == "crashed") || (_hfilter == "running" && runningKeys.Contains(histKey(h))))
         .OrderByDescending(h => h.LastSeen).Take(40).ToList();
     double maxRun = hlist.Count > 0 ? Math.Max(1, hlist.Max(h => h.Runs > 0 ? h.TotalSeconds / h.Runs : 0)) : 1;
 }
@@ -154,7 +160,8 @@
             @foreach (var h in grp)
             {
                 var hh = h;
-                bool live = runningKeys.Contains(h.Key);
+                bool live = runningKeys.Contains(histKey(h));
+                bool saved = savedKeys.Contains(histKey(h));
                 double avgRun = h.Runs > 0 ? h.TotalSeconds / h.Runs : 0;
                 var endState = live ? "live" : h.LastEnd;
                 <div class="hr">
@@ -170,7 +177,8 @@
                     <span class="hend end-@(endState.Length > 0 ? endState : "none")" title="@Strings.HistEndText(endState, h.LastEndAt)"><Icon Name="@EndIcon(endState)" Title="@Strings.HistEndText(endState, h.LastEndAt)" /></span>
                     <span class="hacts">
                         <button class="ib quiet" disabled="@(ro || !CanWrite || live)" title="@(CanWrite ? Strings.BtnStartAgain : WriteReason)" aria-label="@Strings.BtnStartAgain" @onclick="() => StartHistory(hh)"><Icon Name="play" /></button>
-                        <button class="ib quiet" disabled="@(ro || !CanWrite)" title="@(CanWrite ? Strings.CardSave : WriteReason)" aria-label="@Strings.CardSave" @onclick='() => Act("profile.add-history", hh.Key, hh.Name)'><Icon Name="save" /></button>
+                        @* Gemerkt: der Knopf zeigt es an und ist gesperrt (ein zweites Merken würde nur ein Duplikat anlegen) *@
+                        <button class="ib quiet @(saved ? "saved" : "")" disabled="@(ro || !CanWrite || saved)" title="@(saved ? Strings.BtnSaved : CanWrite ? Strings.CardSave : WriteReason)" aria-label="@(saved ? Strings.BtnSaved : Strings.CardSave)" @onclick='() => Act("profile.add-history", hh.Key, hh.Name)'><Icon Name="save" /></button>
                         <button class="ib quiet" title="@Strings.BtnDetails" aria-label="@Strings.BtnDetails" @onclick="() => OpenDetails(hh)"><Icon Name="info" /></button>
                         <button class="ib quiet danger" disabled="@(ro || !CanWrite)" title="@(CanWrite ? Strings.BtnForget : WriteReason)" aria-label="@Strings.BtnForget" @onclick="() => Forget(hh)"><Icon Name="trash" /></button>
                     </span>
@@ -182,43 +190,77 @@
 </div>
 </div>
 <aside class="mon-side">
-@* Hardware (U5): GPU und System in einer Karte, je Programm als gestapelter Balken mit Legende; Details auf /gpu *@
-@if (e.Gpu != null || e.Sys != null)
+@* Hardware (U5): GPU und System in einer Karte, je Programm als gestapelter Balken mit Legende; Details auf /gpu.
+   Aussehen und Markup: die Hardware-Bausteine des Design-Systems (hw-*), dieselben wie in StykkerSYS. *@
+@if (e.Gpu != null || e.Sys != null || e.Disks != null)
 {
     <div class="mon-area mon-hw">
     <h3 class="sec">@Strings.SectionHardware</h3>
-    <div class="card hw">
+    <section class="hw-card">
         @if (e.Gpu is { } g)
         {
-            <h2>@Strings.Gpu <small class="muted">@g.Name · @g.MemTotalGb.ToString("0", CultureInfo.InvariantCulture) GB</small><a class="more" href="gpu" title="@Strings.GpuDetails">@Strings.HwDetails <Icon Name="open" /></a></h2>
-            <div class="meters">
-                @Meter(Strings.GpuLoad, g.Util.ToString("0", CultureInfo.InvariantCulture), "%", g.Util / 100, null)
-                @Meter(Strings.GpuVram, g.MemUsedGb.ToString("0.0", CultureInfo.InvariantCulture), "/ " + g.MemTotalGb.ToString("0", CultureInfo.InvariantCulture) + " GB", g.MemUsedGb / Math.Max(1, g.MemTotalGb), Strings.HwFree(Math.Max(0, g.MemTotalGb - g.MemUsedGb)))
-                @Meter(Strings.GpuPower, g.PowerW.ToString("0", CultureInfo.InvariantCulture), "/ " + g.PowerLimitW.ToString("0", CultureInfo.InvariantCulture) + " W", g.PowerW / Math.Max(1, g.PowerLimitW), null)
-                @Meter(Strings.GpuTemp, g.TempC.ToString("0", CultureInfo.InvariantCulture), "°C", Math.Clamp(g.TempC / 90.0, 0, 1), g.Throttled ? g.ThrottleText() : Strings.GpuClocksFree, warnNote: g.Throttled)
+            <div class="hw-head">@Strings.Gpu <span class="hw-sub">@g.Name · @g.MemTotalGb.ToString("0", CultureInfo.InvariantCulture) GB</span><a class="hw-more" href="gpu" title="@Strings.GpuDetails">@Strings.HwDetails <Icon Name="open" /></a></div>
+            <div class="hw-meters">
+                <HwMeter Label="@Strings.GpuLoad" Value="@g.Util.ToString("0", CultureInfo.InvariantCulture)" Unit="%" Fraction="@(g.Util / 100)" />
+                <HwMeter Label="@Strings.GpuVram" Value="@g.MemUsedGb.ToString("0.0", CultureInfo.InvariantCulture)" Unit="@("/ " + g.MemTotalGb.ToString("0", CultureInfo.InvariantCulture) + " GB")" Fraction="@(g.MemUsedGb / Math.Max(1, g.MemTotalGb))" Note="@Strings.HwFree(Math.Max(0, g.MemTotalGb - g.MemUsedGb))" />
+                <HwMeter Label="@Strings.GpuPower" Value="@g.PowerW.ToString("0", CultureInfo.InvariantCulture)" Unit="@("/ " + g.PowerLimitW.ToString("0", CultureInfo.InvariantCulture) + " W")" Fraction="@(g.PowerW / Math.Max(1, g.PowerLimitW))" />
+                <HwMeter Label="@Strings.GpuTemp" Value="@g.TempC.ToString("0", CultureInfo.InvariantCulture)" Unit="°C" Fraction="@Math.Clamp(g.TempC / 90.0, 0, 1)" Note="@(g.Throttled ? g.ThrottleText() : Strings.GpuClocksFree)" NoteWarn="@g.Throttled" />
             </div>
-            <div class="subh">@Strings.GpuConsumers</div>
-            <StackBar Items="e.VramTop" UsedGb="g.MemUsedGb" TotalGb="g.MemTotalGb" MoreHref="gpu" />
+            <div class="hw-subh">@Strings.GpuConsumers</div>
+            <HwStack Items="e.VramTop" UsedGb="g.MemUsedGb" TotalGb="g.MemTotalGb" MoreHref="gpu" />
         }
         @if (e.Sys is { } sy)
         {
-            <h2 class="@(e.Gpu != null ? "hw-sep" : "")">@Strings.SystemCard
+            <div class="hw-head @(e.Gpu != null ? "hw-sep" : "")">@Strings.SystemCard
                 @if (e.Memory is { } mem)
                 {
-                    <small class="muted" title="@Strings.HwMemTip(mem.Modules, mem.TotalGb, mem.Channels)">@mem.Short · @mem.Modules×@((mem.TotalGb / Math.Max(1, mem.Modules)).ToString("0", CultureInfo.InvariantCulture)) GB · ≈@mem.BandwidthGbs.ToString("0", CultureInfo.InvariantCulture) GB/s</small>
+                    <span class="hw-sub" title="@Strings.HwMemTip(mem.Modules, mem.TotalGb, mem.Channels)">@mem.Short · @mem.Modules×@((mem.TotalGb / Math.Max(1, mem.Modules)).ToString("0", CultureInfo.InvariantCulture)) GB · ≈@mem.BandwidthGbs.ToString("0", CultureInfo.InvariantCulture) GB/s</span>
                 }
-            </h2>
-            <div class="meters">
-                @Meter(Strings.CpuLoad, sy.CpuPercent.ToString("0", CultureInfo.InvariantCulture), "%", sy.CpuPercent / 100, Strings.LogicalCores(sy.Cores), tip: CoreTip(sy))
-                @Meter(Strings.Memory, sy.RamUsedGb.ToString("0.0", CultureInfo.InvariantCulture), "/ " + sy.RamTotalGb.ToString("0", CultureInfo.InvariantCulture) + " GB", sy.RamFrac, Strings.HwFree(Math.Max(0, sy.RamTotalGb - sy.RamUsedGb)))
             </div>
+            <div class="hw-meters">
+                <HwMeter Label="@Strings.CpuLoad" Value="@sy.CpuPercent.ToString("0", CultureInfo.InvariantCulture)" Unit="%" Fraction="@(sy.CpuPercent / 100)" Note="@Strings.LogicalCores(sy.Cores)" Tip="@CoreTip(sy)" />
+                <HwMeter Label="@Strings.Memory" Value="@sy.RamUsedGb.ToString("0.0", CultureInfo.InvariantCulture)" Unit="@("/ " + sy.RamTotalGb.ToString("0", CultureInfo.InvariantCulture) + " GB")" Fraction="@sy.RamFrac" Note="@Strings.HwFree(Math.Max(0, sy.RamTotalGb - sy.RamUsedGb))" />
+            </div>
+            @if (sy.CoreLoads is { Length: > 0 } cores)
+            {
+                <div class="hw-cores" title="@CoreTip(sy)">@foreach (var c in cores) { <i style="--h:@Math.Max(2, c).ToString("0.#", CultureInfo.InvariantCulture)%"></i> }</div>
+            }
             @if (e.RamTop.Count > 0)
             {
-                <div class="subh">@Strings.RamConsumers</div>
-                <StackBar Items="e.RamTop" UsedGb="sy.RamUsedGb" TotalGb="sy.RamTotalGb" />
+                <div class="hw-subh">@Strings.RamConsumers</div>
+                <HwStack Items="e.RamTop" UsedGb="sy.RamUsedGb" TotalGb="sy.RamTotalGb" />
             }
         }
-    </div>
+    </section>
+    @* Laufwerke (Stykker.Shared/Disk): je Volume Belegung, Lesen, Schreiben, Auslastung; Hinweis, wenn ein Modellserver stark liest *@
+    @if (e.Disks is { } dk && dk.Volumes.Count > 0)
+    {
+        var hints = DiskHints.Lines(DiskHints.ServersOf(e.Servers), e.DiskProcesses, dk.Volumes);
+        <section class="hw-card">
+            <div class="hw-head">@Strings.DisksCard <span class="hw-sub">@dk.Volumes.Count @Strings.DisksVolumes</span><a class="hw-more" href="disks" title="@Strings.DisksPageTitle">@Strings.DisksDetails <Icon Name="open" /></a></div>
+            @foreach (var v in dk.Volumes)
+            {
+                double used = v.TotalBytes > 0 ? Math.Clamp(v.UsedBytes / v.TotalBytes, 0, 1) : 0;
+                <div class="hw-vol">
+                    <div class="hw-vol-top">
+                        <span class="hw-letter">@v.Letter:</span>
+                        <span class="hw-kind" data-k="@v.Kind" title="@DiskKinds.Label(v.Kind)">@DiskKinds.Label(v.Kind)</span>
+                        <span class="hw-free" title="@v.Label">@DiskFormat.Size(v.FreeBytes) @Strings.DisksFree · @DiskFormat.Size(v.TotalBytes)</span>
+                    </div>
+                    <div class="hw-bar"><i style="--w:@((int)(used * 100))%"></i></div>
+                    <div class="hw-io">
+                        <span>@Strings.DisksRead <b>@DiskRate(v.ReadBytesPerSec)</b></span>
+                        <span>@Strings.DisksWrite <b>@DiskRate(v.WriteBytesPerSec)</b></span>
+                        <span>@Strings.DisksBusy <b>@DiskPercent(v.BusyPercent)</b></span>
+                    </div>
+                </div>
+            }
+            @foreach (var line in hints)
+            {
+                <div class="hw-hint">@line</div>
+            }
+        </section>
+    }
     </div>
 }
 
@@ -234,7 +276,7 @@
             var pr = p;
             var a = LlamaServerArgs.Parse(p.Args);
             var running = Launcher.RunningFor(p); var starting = Launcher.StartingFor(p);
-            var hist = e.Library.FindHistory(p.Key);
+            var hist = e.Library.HistoryOf(p);
             var need = VramNeed(p, hist);
             double? free = e.Gpu is { } fg && fg.MemTotalGb > 0 ? Math.Max(0, fg.MemTotalGb - fg.MemUsedGb) : null;
             bool tight = running == null && need is double nd && free is double fr && nd > fr;
@@ -341,7 +383,7 @@
 <div id="proxy" class="mon-proxy">
 @* Proxy-Karte (nur Information): an/aus, Adresse zum Kopieren, Ziel, Port, LAN, Quellen, Prüfmodell. Eingaben und Schalter
    stehen im Proxy-Dialog – über das Zahnrad hier oder einen Klick auf den Proxy-Chip in der Kopfleiste. *@
-@{ var models = px.Choices(); var baseUrl = ProxyPanel.BaseUrl(px); var cd = e.Claude; int machines = px.RemoteStates().Count, clouds = px.ProviderStates().Count; }
+@{ var models = px.Choices(); var baseUrl = ProxyPanel.BaseUrl(px); var cd = e.Claude; int machines = px.RemoteStates().Count, clouds = px.ProviderStates().Count; var routes = e.RouteCounts.Snapshot(); }
 <h3 class="sec">@Strings.PxTitle</h3>
 <div class="card pxp @(px.Running ? "on" : "")">
     <div class="pxp-hd">
@@ -358,7 +400,7 @@
             <code class="pxp-url" title="@baseUrl · @Strings.ProxyBar(px.Running, px.Port, px.TargetName(), px.BindLan)">@baseUrl.Replace("http://", "")</code>
             <button class="ib quiet" title="@Strings.PxCopy" aria-label="@Strings.PxCopy" @onclick="() => Copy(baseUrl)"><Icon Name="@(_copied ? "r-ok" : "file")" /></button>
         }
-        <button class="ib quiet pxp-gear" title="@Strings.PxSettings" aria-label="@Strings.PxSettings" aria-haspopup="dialog" @onclick="() => ProxyDlg.Open()"><Icon Name="gear" /></button>
+        <button class="ib quiet pxp-gear" title="@Strings.PxSettings" aria-label="@Strings.PxSettings" aria-haspopup="dialog" @onclick="() => ProxyDlg.Open()"><Icon Name="wrench" /></button>
     </div>
     @if (_flash.Length > 0) { <div class="small pxp-flash">@_flash</div> }
 
@@ -381,6 +423,14 @@
     <div class="pxp-row">
         <span class="pxp-l">@Strings.PxClassifier</span>
         <span class="pxp-v">@ProxyPanel.ClassifierLabel(px.ClassifierValue(), models)</span>
+    </div>
+    <div class="pxp-row">
+        <span class="pxp-l">@Strings.ProxyVisionLabel</span>
+        <span class="pxp-v">@ProxyPanel.ClassifierLabel(px.VisionValue(), models)</span>
+    </div>
+    <div class="pxp-row" title="@Strings.PxRoutedTip">
+        <span class="pxp-l">@Strings.PxRouted</span>
+        <span class="pxp-v">@Strings.PxRoutedText(routes.Auto, routes.Image, routes.Cloud)</span>
     </div>
 </div>
 </div>
@@ -407,7 +457,7 @@
         if (_startTips.TryGetValue(p.Key, out var cached) && (DateTime.Now - cached.At).TotalSeconds < 10) return cached.Text;
         if (_startTipBusy.Add(p.Key))
         {
-            var hist = Host.Engine.Library.FindHistory(p.Key);
+            var hist = Host.Engine.Library.HistoryOf(p);
             var spec = new LaunchSpec(p.Name, p.Program, p.Args, p.WorkingDir, p.Id, hist is { MaxVramGb: > 0 } ? hist.MaxVramGb : null, p.Env);
             var running = Host.Engine.Registry.Servers.Select(s => s.Info).ToList();
             var gpu = Host.Engine.Gpu;
@@ -456,16 +506,11 @@
         if (!r.Ok) await Prompt.InformAsync(Strings.ActionFailed, r.Message, warning: true);
     }
 
-    // Eine Messanzeige der Hardware-Karte: Name, rechts eine Notiz (frei, Drosselung), großer Wert, Balken
-    private static RenderFragment Meter(string label, string value, string unit, double frac, string? note, bool warnNote = false, string? tip = null) => __builder =>
-    {
-        frac = Math.Clamp(frac, 0, 1);
-        <div class="meter @(frac > .92 ? "hot" : "")" title="@tip">
-            <div class="l"><span>@label</span>@if (note != null) { <span class="@(warnNote ? "warnc" : "")" title="@note">@note</span> }</div>
-            <div class="v"><b>@value</b> <small>@unit</small></div>
-            <div class="bar"><div style="width:@((int)(frac * 100))%"></div></div>
-        </div>
-    };
+    // Laufwerkswerte für die Karte: „–", wenn nicht gemessen (nie eine erfundene 0)
+    private static string DiskRate(double? bytesPerSec) => bytesPerSec is double b ? DiskFormat.Rate(b) : "–";
+    private static string DiskPercent(double? pct) => pct is double p ? p.ToString("0", CultureInfo.InvariantCulture) + " %" : "–";
+
+    // (Die Messanzeigen der Hardware-Karte sind die Bausteine HwMeter und HwStack.)
 
     // VRAM-Vorhersage eines Profils (U6): gemessen beim letzten Lauf, sonst aus dem GGUF-Kopf geschätzt (einmal je
     // Profil im Hintergrund gelesen und gemerkt), sonst null
@@ -534,7 +579,7 @@
 
     // Verlauf desselben Servers (gleiche Befehlszeile) für „langsamer als sonst“
     private HistoryEntry? UsualFor(ServerWatcher s) =>
-        string.IsNullOrEmpty(s.Info.Program) || s.Info.Args == null ? null : Host.Engine.Library.FindHistory(Library.MakeKey(s.Info.Program, s.Info.Args));
+        string.IsNullOrEmpty(s.Info.Program) || s.Info.Args == null ? null : Host.Engine.Library.HistoryFor(s.Info.Program, s.Info.Args, s.Info.WorkingDir);
 
     private async Task ActArg2(string action, string arg, string arg2)
     {

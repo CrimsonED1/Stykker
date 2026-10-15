@@ -31,7 +31,8 @@ if (args.Contains("--help") || args.Contains("-h"))
                             the hub's port (default 17400): only the hub may show this page in a frame
           --help            this text
 
-        Endpoints: / (web interface), /api/snapshot (the process list as JSON), and the local-only
+        Endpoints: / (web interface), /disks (the drives and the disk traffic per program),
+        /api/snapshot (the process list as JSON), /api/disks (the drives as JSON), and the local-only
         POST /api/process/end, /api/process/priority, /api/process/open.
 
         The server binds the port immediately and reads nothing until a viewer appears: the list starts
@@ -69,6 +70,9 @@ builder.Logging.SetMinimumLevel(LogLevel.Warning);
 builder.Services.AddSingleton<IProcessProbe>(_ => CreateProbe(basic));
 builder.Services.AddSingleton(sp => new ProcessSampler(sp.GetRequiredService<IProcessProbe>()));
 builder.Services.AddSingleton<SysService>();
+builder.Services.AddSingleton<IDiskProbe>(_ => CreateDiskProbe(basic));
+builder.Services.AddSingleton(sp => new DiskSampler(sp.GetRequiredService<IDiskProbe>()));
+builder.Services.AddSingleton<DiskService>();
 builder.Services.AddRazorComponents();
 // Alle Zahlen der Antworten auf eine Nachkommastelle (siehe OneDecimalJson).
 builder.Services.ConfigureHttpJsonOptions(options => options.SerializerOptions.Converters.Add(new OneDecimalJson()));
@@ -89,6 +93,8 @@ DesignSystemHost.Map(app, DesignSystemHost.Resolve(args, "STYKKERSYS_DESIGN_SYST
 // Die Seiten der Razor-Komponenten tragen Anti-Fälschungs-Metadaten: ohne diese Middleware antwortet "/" mit 500.
 app.UseAntiforgery();
 app.MapGet("/api/snapshot", (SysService service) => Results.Json(service.Snapshot()));
+// Die Laufwerke (Seite /disks): dieselbe Schleife wie bei den Prozessen, nur sichtbar, solange jemand die Seite ansieht
+app.MapGet("/api/disks", (DiskService service) => Results.Json(service.Snapshot()));
 
 // ── Aktionen ──
 // Drei Türen, alle nur für diese Maschine und nur für die eigene Seite: der Rumpf muss JSON sein (ein fremdes
@@ -153,6 +159,14 @@ static IProcessProbe CreateProbe(bool basic)
     if (basic) return new BasicProcessProbe();
     if (!OperatingSystem.IsWindows()) return new BasicProcessProbe();
     return new WindowsProcessProbe();
+}
+
+// Dieselbe Regel für die Laufwerke: ohne Windows oder mit --basic keine Zahlen, sondern „–"
+static IDiskProbe CreateDiskProbe(bool basic)
+{
+    if (basic) return new BasicDiskProbe();
+    if (!OperatingSystem.IsWindows()) return new BasicDiskProbe();
+    return new WindowsDiskProbe();
 }
 
 internal sealed record ProcessEndRequest(int Pid, bool Tree);

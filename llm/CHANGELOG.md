@@ -6,7 +6,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Unreleased
 
+### Added
+- **Live status of the model tests.** While the classifier or the vision test runs, the proxy dialog shows a live line
+  above the table: the model being asked, its phase (sending, waiting for the first byte, receiving, pause, rate-limit
+  wait), the seconds with a bar up to the 60 s limit, the counts (done, ok, failed, skipped) and a rough time left. The
+  running model sits at the top of the table with a spinner. Known errors read short in the table ("no image input",
+  "provider busy (limit)", "not available for this account", "slower than 60 s"); the original message stays in the
+  tooltip and in the CSV.
+- **Disks.** The monitor's Hardware area gets a card **Disks**: one row per drive with its letter, type (NVMe, SSD,
+  HDD, USB or unknown), used and free space, read and write per second and busy percentage. When a model server reads
+  more than 200 MB/s, a line says so ("<server> reads 1.2 GB/s from C:"); the drive comes from the model's path. The
+  details are on `/disks`: the history of the last five minutes per drive, the physical disks and the programs with the
+  most disk traffic. The figures come from the Windows counters (`shared/`, `Stykker.Shared.Disk`); the state JSON has a
+  `disks` block (additive). The simulator has an NVMe and an HDD in Debug builds.
+- **Route of every proxy request.** Each request through the proxy records the way it went: `named` (model asked for by
+  name), `classifier` (Claude Code's safety check, auto mode), `vision` (request with an image) or `default`. `proxy.csv`
+  gets a `Route` column at the end; an existing file with the old header is kept and the new rows go to `proxy.v2.csv`.
+  In "Recent requests" a small `auto` or `image` tag marks the row, and requests to cloud targets get their own rows
+  (name of the target, host `cloud`), which the monitor did not list before.
+
 ### Changed
+- **Benchmark page.** A result shows **Read t/s** and **Write t/s** (were "Best prompt t/s" and "Chat t/s"; the Markdown and
+  CSV exports use the same names, the CSV columns are now `ReadTokensPerSec` and `WriteTokensPerSec`). A column **vs last**
+  compares each test with the last earlier run of the same target: green from +5 %, red from -5 %, grey otherwise. While a
+  run goes, "about N min left" estimates the rest from the speeds so far. The parallel box is disabled with a hint when the
+  server has one slot and shows no hint when it has several. The line under "Run benchmark" names the time and the result
+  ("last run 20:42 · ok") instead of the model name again.
 - **Ports in one block.** The suite moves to 17400–17499, below the LLM proxy (17500): the hub (StykkerHUD) listens on
   **17400** (was 8079), StykkerLLM's web and API on **17401** (was 8078), StykkerSYS on **17402** (was 8077). Foreign
   services start at 17450. The window, `--port`, the `--hub-port` default and the search answer (UDP 17501) follow; the
@@ -34,6 +59,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   Tailscale name (plain DNS names only).
 - `--pairing-file <file>` for the server, to use another pairing file (tests, test runs).
 - The hub shows the LLM role of each device and changes it.
+- **Prompt cache in the monitor.** Recent requests get a `cache` column: how much of the prompt was reused (`44.9k ↺`),
+  `—` when the whole prompt was read, empty when unknown. The server card's curve marks the read phase of each request in
+  a second colour; hover shows the read tokens, the seconds and the reused tokens. llama.cpp reports the reuse through the
+  prompt length from `/slots`; Strata through its log line (only for a server StykkerLLM started itself).
+- `requests.csv` has a `PromptReused` column at the end (-1 = unknown). The header differs from the existing file, so on an
+  existing install the rows go to `requests.v2.csv`; the old file stays as it is.
 
 ## 0.4.0
 

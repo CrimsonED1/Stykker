@@ -194,6 +194,10 @@ public sealed class AppSettings
     // Ziel für die Sicherheitsprüfung von Claude Code im Modus „auto“ (Anfragen an claude-… außer claude-stykker):
     // „<Server-Key>|<Modell>“ oder eine Cloud-Zielkennung; leer = wie das Standardziel
     public string ProxyClassifier { get; set; } = "";
+    // Ziel für Anfragen mit Bildern (das Standardziel kann oft keine Bilder lesen): Wert wie ProxyClassifier, leer = Standardziel
+    public string ProxyVision { get; set; } = "";
+    // true: das Vision-Modell beschreibt nur die Bilder, das Gespräch bleibt beim Standardziel; false: Anfragen mit Bild gehen ganz an das Vision-Modell
+    public bool ProxyVisionDescribe { get; set; } = true;
     // Zur Fehlersuche: den vollen Text jeder Proxy-Anfrage nach logs\proxy-debug schreiben (die letzten 100 Dateien)
     public bool ProxyDebug { get; set; }
     // Andere Rechner mit Stykker: ihre Proxy-Modelle werden mit eingesammelt
@@ -261,6 +265,7 @@ public sealed class AppSettings
         if (portMoved) s.ProxyPort = 17500;
         s.ProxyTarget ??= "";
         s.ProxyClassifier ??= "";
+        s.ProxyVision ??= "";
         if (s.GpuTopCount <= 0) s.GpuTopCount = 8;
         // Nur noch Dark, Spacepunk Titan und System: ein früheres Thema (Deep Sea, Obsidian …) wird zu Dark
         s.Theme = ThemeCatalog.Normalize(s.Theme);

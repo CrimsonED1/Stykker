@@ -21,6 +21,19 @@ public sealed record ProxyTarget(string Key, string Url, string? Model, BackendK
     public static bool IsCloudKey(string key) => key.StartsWith("provider:", StringComparison.Ordinal);
 }
 
+// Der Weg, auf dem eine Anfrage an ihr Ziel kam (ProxyRecord.Route, proxy.csv, Liste „Letzte Anfragen“)
+public static class ProxyRoutes
+{
+    public const string Default = "default";        // Standardziel (auch „stykker“, leer, unbekannt)
+    public const string Classifier = "classifier";  // Sicherheitsprüfung von Claude Code (Modus „auto“)
+    public const string Vision = "vision";          // Anfrage mit Bild
+    public const string Named = "named";            // ausdrücklich angefragter Modellname
+
+    // Kennzeichen in der Liste: nur für die beiden Sonderwege, Standard und ausdrücklicher Name bekommen keins
+    public static string Label(string? route) => route switch { Classifier => Strings.ReqRouteAuto, Vision => Strings.ReqRouteImage, _ => "" };
+    public static string Tip(string? route) => route switch { Classifier => Strings.ReqRouteAutoTip, Vision => Strings.ReqRouteImageTip, _ => "" };
+}
+
 // Der „Stykker-Proxy": genau ein Proxy auf einem festen Port. Er beantwortet /v1/models selbst (alle Backends zusammen plus den
 // virtuellen Eintrag „stykker") und leitet Generierungs-Anfragen nach dem Feld „model" an das passende Backend weiter. „stykker",
 // ein leeres oder unbekanntes Modell geht an das Standardziel. Ist das Ziel offline, kommt 503 mit JSON-Fehler; lädt das Ziel
@@ -32,6 +45,7 @@ public class RouterProxy : RequestProxy
     private volatile ProxyTarget[] _targets = Array.Empty<ProxyTarget>();
     private volatile string? _defaultKey;
     private volatile string? _classifierKey;
+    private volatile string? _visionKey;
 
     // So lange auf ein noch ladendes Ziel warten, statt sofort 503 zu antworten
     public TimeSpan LoadingWait { get; set; } = TimeSpan.FromSeconds(120);
@@ -52,11 +66,195 @@ public class RouterProxy : RequestProxy
 
     // Wird im Takt der Oberfläche neu gesetzt (Server können kommen und gehen)
     // classifierKey: Ziel für die Sicherheitsprüfung von Claude Code (Modus „auto“), null = wie das Standardziel
-    public void SetTargets(IReadOnlyList<ProxyTarget> targets, string? defaultKey, string? classifierKey = null)
+    // visionKey: Ziel für Anfragen mit Bildern, null = wie das Standardziel
+    public void SetTargets(IReadOnlyList<ProxyTarget> targets, string? defaultKey, string? classifierKey = null, string? visionKey = null)
     {
         _targets = targets.ToArray();
         _defaultKey = defaultKey;
         _classifierKey = classifierKey;
+        _visionKey = visionKey;
+    }
+
+    // Das Ziel für eine Anfrage mit Bild, oder null (kein Bild, nicht gesetzt oder Ziel nicht da)
+    internal ProxyTarget? VisionTarget(IReadOnlyList<ProxyTarget> targets, byte[]? body)
+    {
+        var key = _visionKey;
+        if (string.IsNullOrEmpty(key) || !HasImage(body)) return null;
+        return targets.FirstOrDefault(x => x.Key == key);
+    }
+
+    // Enthält eine Nachricht ein Bild? Anthropic: Block „type: image“; OpenAI: „type: image_url“. Nur die Typen werden gelesen.
+    internal static bool HasImage(byte[]? body)
+    {
+        if (body == null || body.Length == 0) return false;
+        try
+        {
+            using var doc = JsonDocument.Parse(body);
+            if (doc.RootElement.ValueKind != JsonValueKind.Object || !doc.RootElement.TryGetProperty("messages", out var msgs) || msgs.ValueKind != JsonValueKind.Array) return false;
+            foreach (var m in msgs.EnumerateArray())
+                if (m.ValueKind == JsonValueKind.Object && m.TryGetProperty("content", out var c) && ContainsImage(c)) return true;
+            return false;
+        }
+        catch (JsonException) { return false; }
+    }
+
+    // Bilder stecken auch in Werkzeugergebnissen (tool_result → content); darum rekursiv über Blocklisten
+    private static bool ContainsImage(JsonElement content)
+    {
+        if (content.ValueKind != JsonValueKind.Array) return false;
+        foreach (var b in content.EnumerateArray())
+        {
+            if (b.ValueKind != JsonValueKind.Object) continue;
+            if (b.TryGetProperty("type", out var t) && t.ValueKind == JsonValueKind.String && t.GetString() is "image" or "image_url") return true;
+            if (b.TryGetProperty("content", out var inner) && ContainsImage(inner)) return true;
+        }
+        return false;
+    }
+
+    // Bilder als Text: das Vision-Modell beschreibt jedes Bild einmal (gemerkt nach Inhalt), das Gespräch geht ohne Bilder weiter
+    public bool VisionDescribe { get; set; } = true;
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> _imageText = new();
+    public TimeSpan DescribeTimeout { get; set; } = TimeSpan.FromSeconds(90);
+
+    public const string DescribePrompt = "Describe this image for an assistant that cannot see it. Copy all visible text exactly "
+        + "(code, error messages, labels, numbers). Then describe layout, UI elements, charts and anything unusual. Be complete but concise.";
+
+    // Jeden Bild-Block (Anthropic „image“, auch in Werkzeugergebnissen) durch „[Image: …]“ ersetzen. describe bekommt die
+    // Bild-Adresse (data:-URL oder http-URL) und einen Schlüssel (Hash des Inhalts) und liefert den Text.
+    internal static async Task<byte[]> ReplaceImagesAsync(byte[] body, Func<string, string, Task<string>> describe)
+    {
+        JsonObject? root;
+        try { root = JsonNode.Parse(body) as JsonObject; } catch (JsonException) { return body; }
+        if (root?["messages"] is not JsonArray msgs) return body;
+        bool changed = false;
+        async Task Walk(JsonArray content)
+        {
+            for (int i = 0; i < content.Count; i++)
+            {
+                if (content[i] is not JsonObject b) continue;
+                string type = b["type"]?.GetValue<string>() ?? "";
+                if (type == "image" && b["source"] is JsonObject src)
+                {
+                    string srcType = src["type"]?.GetValue<string>() ?? "";
+                    string url = srcType == "url" ? src["url"]?.GetValue<string>() ?? ""
+                        : $"data:{src["media_type"]?.GetValue<string>() ?? "image/png"};base64,{src["data"]?.GetValue<string>() ?? ""}";
+                    string key = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(url)));
+                    string text = await describe(url, key).ConfigureAwait(false);
+                    content[i] = new JsonObject { ["type"] = "text", ["text"] = "[Image: " + text + "]" };
+                    changed = true;
+                }
+                else if (b["content"] is JsonArray inner) await Walk(inner).ConfigureAwait(false);
+            }
+        }
+        foreach (var m in msgs)
+            if (m?["content"] is JsonArray c) await Walk(c).ConfigureAwait(false);
+        return changed ? Encoding.UTF8.GetBytes(root.ToJsonString()) : body;
+    }
+
+    // Ein Bild vom Vision-Ziel beschreiben lassen (OpenAI-Form, ein Bild je Anfrage); gemerkt nach Inhalt
+    private async Task<string> DescribeImageAsync(ProxyTarget vt, string url, string key, CancellationToken ct)
+    {
+        if (_imageText.TryGetValue(key, out var known)) return known;
+        var req = new JsonObject
+        {
+            ["model"] = vt.Model ?? "",
+            ["max_tokens"] = 1024,
+            ["messages"] = new JsonArray(new JsonObject
+            {
+                ["role"] = "user",
+                ["content"] = new JsonArray(
+                    new JsonObject { ["type"] = "text", ["text"] = DescribePrompt },
+                    new JsonObject { ["type"] = "image_url", ["image_url"] = new JsonObject { ["url"] = url } }),
+            }),
+        };
+        var started = DateTime.Now;
+        try
+        {
+            using var msg = new HttpRequestMessage(HttpMethod.Post, NetAddr.JoinUpstream(vt.Url, "/v1/chat/completions"))
+            {
+                Content = new StringContent(req.ToJsonString(), Encoding.UTF8, "application/json"),
+            };
+            if (vt.Cloud && AuthFor?.Invoke(vt) is { Length: > 0 } k) msg.Headers.TryAddWithoutValidation("Authorization", "Bearer " + k);
+            var client = vt.HostId.Length > 0 ? HostClient?.Invoke(vt.HostId) ?? UpstreamClient : UpstreamClient;
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            cts.CancelAfter(DescribeTimeout);
+            using var resp = await client.SendAsync(msg, cts.Token).ConfigureAwait(false);
+            string json = await resp.Content.ReadAsStringAsync(cts.Token).ConfigureAwait(false);
+            if (!resp.IsSuccessStatusCode)
+            {
+                AppLog.Write($"proxy: image description by {vt.Model} failed: {(int)resp.StatusCode}");
+                return $"an image (it could not be described: the vision model answered {(int)resp.StatusCode})";
+            }
+            string text = "";
+            try { text = JsonNode.Parse(json)?["choices"]?[0]?["message"]?["content"]?.GetValue<string>() ?? ""; } catch (Exception) { }
+            if (text.Trim().Length == 0) return "an image (the vision model returned no description)";
+            text = text.Trim();
+            _imageText[key] = text;
+            AppLog.Write($"proxy: image described by {vt.Model} in {(DateTime.Now - started).TotalSeconds:0.0} s ({text.Length} chars)");
+            return text;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or IOException)
+        {
+            if (ct.IsCancellationRequested) throw;
+            AppLog.Write($"proxy: image description by {vt.Model} failed: {ex.GetType().Name}");
+            return "an image (it could not be described: the vision model did not answer)";
+        }
+    }
+
+    // Die stop_sequences einer Anthropic-Anfrage (leer, wenn keine)
+    internal static IReadOnlyList<string> StopsOf(byte[]? body)
+    {
+        if (body == null || body.Length == 0) return Array.Empty<string>();
+        try
+        {
+            using var doc = JsonDocument.Parse(body);
+            if (doc.RootElement.ValueKind != JsonValueKind.Object || !doc.RootElement.TryGetProperty("stop_sequences", out var a) || a.ValueKind != JsonValueKind.Array)
+                return Array.Empty<string>();
+            return a.EnumerateArray().Where(e => e.ValueKind == JsonValueKind.String).Select(e => e.GetString()!).ToList();
+        }
+        catch (JsonException) { return Array.Empty<string>(); }
+    }
+
+    // Will der Client einen Strom („stream": true)? Ohne Angabe nicht – wie bei der Anthropic-API
+    internal static bool WantsStream(byte[]? body)
+    {
+        if (body == null || body.Length == 0) return false;
+        try
+        {
+            using var doc = JsonDocument.Parse(body);
+            return doc.RootElement.ValueKind == JsonValueKind.Object && doc.RootElement.TryGetProperty("stream", out var v) && v.ValueKind == JsonValueKind.True;
+        }
+        catch (JsonException) { return false; }
+    }
+
+    // Gelernte Bildgrenzen je Ziel (aus der Fehlermeldung des Anbieters), bis zum Neustart
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, int> _imageLimits = new();
+
+    private static readonly System.Text.RegularExpressions.Regex ImageLimitPattern =
+        new(@"at most (\d+) image", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+    // Die Bildgrenze aus einer Fehlermeldung („At most 1 image(s) may be provided in one prompt“), sonst null
+    internal static int? ImageLimit(string? errorText) =>
+        errorText != null && ImageLimitPattern.Match(errorText) is { Success: true } m && int.TryParse(m.Groups[1].Value, out var n) && n >= 0 ? n : null;
+
+    // Nur die letzten max Bilder (OpenAI-Teile „image_url“) behalten; ältere werden zu einem kurzen Text, damit das Modell
+    // weiß, dass dort ein Bild war. Unverändert, wenn es nicht mehr Bilder sind oder der Text kein JSON ist.
+    internal static byte[] TrimImages(byte[] openAiBody, int max)
+    {
+        try
+        {
+            if (JsonNode.Parse(openAiBody) is not JsonObject root || root["messages"] is not JsonArray msgs) return openAiBody;
+            var parts = new List<(JsonArray Content, int Index)>();
+            foreach (var m in msgs)
+                if (m?["content"] is JsonArray content)
+                    for (int i = 0; i < content.Count; i++)
+                        if (content[i]?["type"]?.GetValue<string>() == "image_url") parts.Add((content, i));
+            if (parts.Count <= max) return openAiBody;
+            foreach (var (content, index) in parts.Take(parts.Count - max))
+                content[index] = new JsonObject { ["type"] = "text", ["text"] = "[an earlier image was left out]" };
+            return Encoding.UTF8.GetBytes(root.ToJsonString());
+        }
+        catch (JsonException) { return openAiBody; }
     }
 
     // Ein Claude-Modellname, der nicht claude-stykker ist (claude-sonnet-…, claude-haiku-…): so fragt Claude Code im Modus
@@ -115,46 +313,66 @@ public class RouterProxy : RequestProxy
         if (method == "POST" && AnthropicBridge.IsMessagesPath(path))
             return await RouteAnthropicAsync(targets, headers, body, ct).ConfigureAwait(false);
 
-        var (t, error, errorStatus) = await ResolveAsync(targets, body, ct).ConfigureAwait(false);
+        var (t, error, errorStatus, route) = await ResolveAsync(targets, body, ct).ConfigureAwait(false);
         if (t == null) return Local(errorStatus, ErrorJson(error!));
 
         // model auf den Namen setzen, den das Ziel erwartet (bei „stykker" → Modell des Ziels)
         var rewritten = t.Model != null ? RewriteModel(body, t.Model) : body;
         var own = t.Cloud && AuthFor?.Invoke(t) is { Length: > 0 } key
             ? new[] { ("Authorization", "Bearer " + key) } : null;
-        if (t.HostId.Length == 0) return new ProxyRoute(t.Url, t.RouteKey, rewritten, Headers: own);
+        if (t.HostId.Length == 0) return new ProxyRoute(t.Url, t.RouteKey, rewritten, Headers: own, Route: route);
         var via = HostClient?.Invoke(t.HostId);
-        return via == null ? Local(503, ErrorJson(Strings.HostNotConnected)) : new ProxyRoute(t.Url, t.RouteKey, rewritten, Headers: own, Client: via);
+        return via == null ? Local(503, ErrorJson(Strings.HostNotConnected)) : new ProxyRoute(t.Url, t.RouteKey, rewritten, Headers: own, Client: via, Route: route);
+    }
+
+    // Der Weg einer Anfrage ohne Zustandsprüfung: ausdrücklich genannter Modellname, dann Sicherheitsprüfung, dann Bild.
+    // Ohne Treffer: null und „default“ (das Standardziel wählt ResolveAsync).
+    internal (ProxyTarget? Target, string Route) Pick(IReadOnlyList<ProxyTarget> targets, byte[]? body)
+    {
+        string? wanted = ReadModel(body);
+        if (!string.IsNullOrWhiteSpace(wanted) && !wanted.Equals(VirtualModel, StringComparison.OrdinalIgnoreCase))
+        {
+            var named = targets.FirstOrDefault(x => Matches(x, wanted));
+            if (named != null) return (named, ProxyRoutes.Named);
+        }
+        var classifier = ClassifierTarget(targets, wanted, body);
+        if (classifier != null) return (classifier, ProxyRoutes.Classifier);
+        var vision = VisionTarget(targets, body);
+        if (vision != null) return (vision, ProxyRoutes.Vision);
+        return (null, ProxyRoutes.Default);
     }
 
     // Das Ziel einer Anfrage bestimmen: nach model, sonst das Standardziel, dazu die Zustandsprüfungen.
     // Bei einem Fehler kommt statt des Ziels die Meldung (und der Status) für die Antwort des Proxys zurück.
-    private async Task<(ProxyTarget? Target, string? Error, int Status)> ResolveAsync(ProxyTarget[] targets, byte[]? body, CancellationToken ct)
+    // Der Weg (route) gehört zum Ziel; er wird für die Aufzeichnung der Anfrage mitgegeben.
+    private async Task<(ProxyTarget? Target, string? Error, int Status, string Route)> ResolveAsync(ProxyTarget[] targets, byte[]? body, CancellationToken ct)
     {
         string? wanted = ReadModel(body);
-        ProxyTarget? t = null;
-        if (!string.IsNullOrWhiteSpace(wanted) && !wanted.Equals(VirtualModel, StringComparison.OrdinalIgnoreCase))
-            t = targets.FirstOrDefault(x => Matches(x, wanted));
-        t ??= ClassifierTarget(targets, wanted, body);
+        var (t, route) = Pick(targets, body);
         if (t == null && HostStart != null && !string.IsNullOrWhiteSpace(wanted) && !wanted.Equals(VirtualModel, StringComparison.OrdinalIgnoreCase))
         {
             // Läuft nirgends: auf einem Host mit der Datei und genug Grafikspeicher starten und warten, bis es bereit ist
             var choice = await HostStart(wanted, ct).ConfigureAwait(false);
-            if (choice.Error != null) return (null, choice.Error, 503);
+            if (choice.Error != null) return (null, choice.Error, 503, route);
             if (choice.Ok)
             {
                 t = await WaitForModelAsync(wanted, ct).ConfigureAwait(false);
-                if (t == null) return (null, Strings.HostStartTimeout(choice.File.Name, choice.HostName), 503);
+                if (t == null) return (null, Strings.HostStartTimeout(choice.File.Name, choice.HostName), 503, route);
+                route = ProxyRoutes.Named;   // ausdrücklich angefragt, nur eben erst gestartet
             }
         }
-        t ??= DefaultTarget(targets);   // stykker, leer, unbekannt oder nicht gefunden → Standardziel
+        if (t == null)
+        {
+            t = DefaultTarget(targets);   // stykker, leer, unbekannt oder nicht gefunden → Standardziel
+            route = ProxyRoutes.Default;
+        }
 
-        if (t == null) return (null, Strings.ProxyNoTarget, 503);
-        if (t.Cloud && AuthFor?.Invoke(t) is not { Length: > 0 }) return (null, Strings.ProxyProviderNoKey, 503);
+        if (t == null) return (null, Strings.ProxyNoTarget, 503, route);
+        if (t.Cloud && AuthFor?.Invoke(t) is not { Length: > 0 }) return (null, Strings.ProxyProviderNoKey, 503, route);
         if (t.Loading) t = await WaitForReadyAsync(t.Key, t, ct).ConfigureAwait(false);
-        if (t == null || !t.Ready) return (null, t != null && t.Cloud ? Strings.ProxyProviderOfflineProxy : Strings.ProxyTargetOffline, 503);
-        if (t.Loading) return (null, Strings.ProxyTargetLoading, 503);   // immer noch am Laden (Zeit abgelaufen)
-        return (t, null, 200);
+        if (t == null || !t.Ready) return (null, t != null && t.Cloud ? Strings.ProxyProviderOfflineProxy : Strings.ProxyTargetOffline, 503, route);
+        if (t.Loading) return (null, Strings.ProxyTargetLoading, 503, route);   // immer noch am Laden (Zeit abgelaufen)
+        return (t, null, 200, route);
     }
 
     // ── Anthropic-Brücke (die Claude-App) ──
@@ -165,10 +383,15 @@ public class RouterProxy : RequestProxy
     private async Task<ProxyRoute> RouteAnthropicAsync(ProxyTarget[] targets, IReadOnlyList<(string Name, string Value)> headers, byte[]? body, CancellationToken ct)
     {
         string requested = ReadModel(body) ?? VirtualModel;
-        var (t, error, status) = await ResolveAsync(targets, body, ct).ConfigureAwait(false);
+        // Bilder beschreiben lassen statt das ganze Gespräch an das Vision-Modell zu geben: das Vision-Modell sagt nur, was
+        // auf dem Bild ist; das Gespräch beantwortet das Standardziel (ein kleines Vision-Modell lehnt Agent-Aufgaben oft ab)
+        if (VisionDescribe && body != null && _visionKey is { Length: > 0 } vk && HasImage(body)
+            && targets.FirstOrDefault(x => x.Key == vk) is { Ready: true } vt)
+            body = await ReplaceImagesAsync(body, (url, k) => DescribeImageAsync(vt, url, k, ct)).ConfigureAwait(false);
+        var (t, error, status, route) = await ResolveAsync(targets, body, ct).ConfigureAwait(false);
         if (t == null) return AnthropicError(status, error!);
 
-        var openAi = AnthropicBridge.ToOpenAi(body ?? Array.Empty<byte>(), t.Model ?? "");
+        var openAi = AnthropicBridge.ToOpenAi(body ?? Array.Empty<byte>(), t.Model ?? "", noThinking: IsSafetyCheck(body));
         var own = t.Cloud && AuthFor?.Invoke(t) is { Length: > 0 } key ? new[] { ("Authorization", "Bearer " + key) } : null;
         HttpClient? via = null;
         if (t.HostId.Length > 0)
@@ -188,8 +411,11 @@ public class RouterProxy : RequestProxy
         }
 
         string url = NetAddr.JoinUpstream(t.Url, "/v1/chat/completions");
+        // Kennt der Proxy schon eine Bildgrenze dieses Ziels, gleich nur die letzten Bilder schicken
+        if (_imageLimits.TryGetValue(t.Key, out var known)) openAi = TrimImages(openAi, known);
+        var targetKey = t.Key;
         return new ProxyRoute("", t.RouteKey, null,
-            LocalStream: (net, tap, token) => BridgeAsync(net, url, send, openAi, requested, own, via, tap, token));
+            LocalStream: (net, tap, token) => BridgeAsync(net, url, send, openAi, requested, own, via, tap, token, targetKey, clientStream: WantsStream(body), stops: StopsOf(body)), Route: route);
     }
 
     private static ProxyRoute AnthropicError(int status, string message)
@@ -198,7 +424,8 @@ public class RouterProxy : RequestProxy
     // Weiterleiten und umformen: Anthropic-Bytes an das Ziel, die Antwort als Anthropic-Ereignisse an den Client.
     // Schreibt Kopfzeilen und Rumpf selbst; die Bytes des Ziels bekommt der Mitschreiber, damit die Anfrage gezählt wird.
     private async Task<int> BridgeAsync(Stream net, string url, IReadOnlyList<(string Name, string Value)> headers, byte[] body,
-        string model, IReadOnlyList<(string Name, string Value)>? own, HttpClient? client, ProxyTap tap, CancellationToken ct)
+        string model, IReadOnlyList<(string Name, string Value)>? own, HttpClient? client, ProxyTap tap, CancellationToken ct,
+        string targetKey = "", bool retried = false, bool clientStream = true, IReadOnlyList<string>? stops = null)
     {
         using var req = new HttpRequestMessage(HttpMethod.Post, url) { Content = new ByteArrayContent(body) };
         foreach (var (name, value) in headers)
@@ -235,6 +462,15 @@ public class RouterProxy : RequestProxy
             {
                 // Fehler unverändert weiterreichen: die App erkennt daran z. B. einen zu kleinen Kontext und verdichtet
                 string text = await ReadStartAsync(resp, 8192, ct).ConfigureAwait(false);
+                // „At most 1 image(s) may be provided in one prompt“: Grenze merken und einmal mit den letzten Bildern wiederholen
+                if (status == 400 && !retried && ImageLimit(text) is int limit && targetKey.Length > 0)
+                {
+                    _imageLimits[targetKey] = limit;
+                    AppLog.Write($"proxy: {model} takes at most {limit} image(s) per request; older images are left out from now on");
+                    var trimmed = TrimImages(body, limit);
+                    if (!trimmed.AsSpan().SequenceEqual(body))
+                        return await BridgeAsync(net, url, headers, trimmed, model, own, client, tap, ct, targetKey, retried: true, clientStream: clientStream, stops: stops).ConfigureAwait(false);
+                }
                 int code = status is 400 or 401 or 403 or 404 or 413 or 429 or 529 ? status : 502;
                 string message = ErrorMessage(text) ?? resp.ReasonPhrase ?? "error";
                 await WriteJsonAsync(net, code, AnthropicBridge.ErrorJson(code, message), ct).ConfigureAwait(false);
@@ -247,6 +483,12 @@ public class RouterProxy : RequestProxy
                 // Ziel streamt nicht: das ganze JSON einmal übersetzen und als Ereignisfolge ausgeben
                 var json = await resp.Content.ReadAsByteArrayAsync(ct).ConfigureAwait(false);
                 if (json.Length > 0) tap.Feed(json, DateTime.Now);
+                // Der Client wollte keinen Strom (z. B. die Sicherheitsprüfung von Claude Code): eine fertige Nachricht als JSON
+                if (!clientStream)
+                {
+                    await WriteJsonAsync(net, 200, AnthropicBridge.ToAnthropic(json, model, stops), ct).ConfigureAwait(false);
+                    return 200;
+                }
                 string events = AnthropicBridge.MessageAsStream(AnthropicBridge.ToAnthropic(json, model));
                 if (events.Length == 0)
                 {

@@ -12,6 +12,11 @@ internal sealed class FakePlatform : IPlatform
     public int ReadProcessCalls;
 
     public int ProcessorCount => 8;
+    // Laufwerke und Platten-E/A: was die Tests vorgeben (null = nicht verfügbar)
+    public Stykker.Shared.Disk.DiskSample? Disks { get; set; }
+    public List<Stykker.Shared.Disk.ProcessIoRow>? DiskProcs { get; set; }
+    public Stykker.Shared.Disk.DiskSample? ReadDisks() => Disks;
+    public IReadOnlyList<Stykker.Shared.Disk.ProcessIoRow>? ReadDiskProcesses(int count) => DiskProcs?.Take(count).ToList();
     public IReadOnlyList<ListenerInfo> ReadListeners() => Listeners.ToList();
     public IReadOnlyList<ConnectionInfo> ReadConnections() => Connections.ToList();
     public long? ProcessStartTicks(int pid) => Processes.TryGetValue(pid, out var d) ? d.StartTicks : null;

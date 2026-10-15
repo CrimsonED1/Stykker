@@ -63,3 +63,32 @@ public sealed class GpuProcessMemoryQuery : IDisposable
 
     public void Dispose() => Pdh.Close(_query);
 }
+
+// Grafikspeicher eines einzelnen Prozesses in GB: dediziert und geteilt (über die Instanz "pid_<PID>_…"). Für die
+// Zeilen der Server in StykkerLLM. null, wenn der Zähler fehlt.
+public sealed class GpuPidMemoryQuery : IDisposable
+{
+    private const double Gib = 1073741824.0;
+    private readonly IntPtr _query, _dedicated, _shared;
+    private readonly bool _ok;
+
+    public GpuPidMemoryQuery(int pid)
+    {
+        _ok = Pdh.Open(new[]
+        {
+            $@"\GPU Process Memory(pid_{pid}_*)\Dedicated Usage",
+            $@"\GPU Process Memory(pid_{pid}_*)\Shared Usage",
+        }, out _query, out var counters);
+        if (counters.Length == 2) { _dedicated = counters[0]; _shared = counters[1]; }
+    }
+
+    public (double DedicatedGb, double SharedGb)? Read()
+    {
+        if (!_ok || !Pdh.Collect(_query)) return null;
+        return (Sum(_dedicated) / Gib, Sum(_shared) / Gib);
+    }
+
+    private static double Sum(IntPtr counter) => Pdh.Values(counter, Pdh.FmtLarge).Sum(v => v.Value);
+
+    public void Dispose() => Pdh.Close(_query);
+}

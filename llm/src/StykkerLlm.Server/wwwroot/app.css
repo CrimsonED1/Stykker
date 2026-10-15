@@ -69,6 +69,9 @@ th,td{padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
 .ok{color:var(--good);border-color:rgb(var(--good-rgb)/.5)}.run{color:var(--acc);border-color:rgb(var(--acc-rgb)/.5)}.wait{color:var(--muted)}.fail{color:var(--bad);border-color:rgb(var(--bad-rgb)/.5)}.half{color:var(--warn);border-color:rgb(var(--warn-rgb)/.5)}
 .bar{height:8px;background:var(--track);border-radius:4px;overflow:hidden;min-width:80px}.bar>div{height:8px;background:linear-gradient(90deg,rgb(var(--acc-rgb)/.66),var(--acc))}
 .muted{color:var(--muted)}.small{font-size:12px}
+.delta-up{color:var(--good)}.delta-down{color:var(--bad)}
+label.chk{display:inline-flex;align-items:center;gap:6px;margin:0;color:inherit;font-size:inherit}
+.tbl-wrap{overflow-x:auto;max-width:100%}
 .kpi .good{color:var(--good)}.kpi .warn{color:var(--warn)}p.warn{color:var(--warn)}
 td.actions{text-align:right;white-space:nowrap}td.actions button+button{margin-left:6px}
 .qr.off{opacity:.3;filter:grayscale(1)}
@@ -249,6 +252,7 @@ nav a.active{text-shadow:0 0 10px rgb(var(--acc-rgb)/calc(1.2*var(--glow)))}
 .spark polyline.line{vector-effect:non-scaling-stroke;stroke-width:1.8px}
 .spark polyline{filter:none;stroke:var(--acc)}
 .spark .area{fill:rgb(var(--acc-rgb)/.14)}
+.spark .readband{fill:rgb(var(--warn-rgb)/.2);stroke:none}   /* Lesephase einer Anfrage: andere Farbe als die Kurve */
 .spark-tip{position:absolute;right:-3px;width:8px;height:8px;margin-top:-4px;border-radius:50%;background:var(--acc);
   box-shadow:0 0 0 3px rgb(var(--acc-rgb)/calc(.25*var(--glow))),0 0 10px 3px rgb(var(--acc-rgb)/calc(.45*var(--glow)));pointer-events:none}
 .spark-tip::after{content:"";position:absolute;left:2.5px;top:2.5px;width:3px;height:3px;border-radius:50%;background:rgb(255 255 255/.8)}
@@ -393,7 +397,7 @@ html.shell .hchip .mini i{transition:none;box-shadow:none}
 .acts3{display:flex;gap:4px;margin-left:auto;align-items:center}
 .ib{display:inline-flex;align-items:center;justify-content:center;gap:5px;min-width:30px;height:28px;padding:0 7px;border-radius:8px}
 .ib.txt{padding:0 11px}.ib.quiet{background:transparent;border-color:transparent}
-.ib.danger{color:var(--bad);border-color:rgb(var(--bad-rgb)/.5)}.ib.rec.on{color:var(--bad);border-color:rgb(var(--bad-rgb)/.6)}
+.ib.danger{color:var(--bad);border-color:rgb(var(--bad-rgb)/.5)}.ib.saved{color:var(--good);border-color:rgb(var(--good-rgb)/.5)}.ib.rec.on{color:var(--bad);border-color:rgb(var(--bad-rgb)/.6)}
 .tps{display:flex;align-items:baseline;gap:5px;margin-left:6px;min-width:96px;justify-content:flex-end}
 .tps b{font:600 28px/1 var(--font-num);font-variant-numeric:tabular-nums;color:color-mix(in srgb,var(--ink) 88%,white);transition:color .4s;
   text-shadow:0 0 4px color-mix(in srgb,var(--b) calc(var(--glow)*90%),transparent),0 0 14px color-mix(in srgb,var(--b) calc(var(--glow)*55%),transparent),0 0 32px color-mix(in srgb,var(--b) calc(var(--glow)*28%),transparent)}
@@ -598,7 +602,7 @@ html[data-theme=titan] .pxs-form{border-radius:0;border-color:var(--card-border)
 .sp1{--spc:var(--bad)}.sp2{--spc:var(--warn)}.sp3{--spc:var(--good)}.sp4{--spc:var(--acc)}
 .spdscale i.sp1,.spdscale i.sp2,.spdscale i.sp3,.spdscale i.sp4{background:var(--spc)}
 .reqs{display:flex;flex-direction:column;margin-top:8px}
-.req{display:grid;grid-template-columns:22px minmax(0,1.4fr) minmax(64px,.8fr) 92px 52px 56px 56px 44px 52px 34px 40px;gap:8px;align-items:center;padding:5px 4px;border-bottom:1px solid color-mix(in srgb,var(--line) 60%,transparent);font-size:13px;transition:background .15s}
+.req{display:grid;grid-template-columns:22px minmax(0,1.4fr) minmax(64px,.8fr) 92px 52px 50px 56px 56px 44px 52px 34px 40px;gap:8px;align-items:center;padding:5px 4px;border-bottom:1px solid color-mix(in srgb,var(--line) 60%,transparent);font-size:13px;transition:background .15s}
 .req:not(.head):hover{background:rgb(var(--acc-rgb)/.05)}
 .req.head{font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);border-bottom-color:var(--line)}
 .req .r{text-align:right;font-family:var(--font-num);font-variant-numeric:tabular-nums}.req .c{text-align:center;justify-content:center}
@@ -611,8 +615,11 @@ html[data-theme=titan] .pxs-form{border-radius:0;border-color:var(--card-border)
 .req .spd{color:var(--spc);font-weight:600;text-shadow:0 0 8px color-mix(in srgb,var(--spc) calc(var(--glow)*45%),transparent)}
 .req .ex{display:inline-flex;align-items:center;gap:3px;font:12px var(--font-num)}.req .ex .ic{width:14px;height:14px;color:var(--muted)}
 .req .ex.na{color:color-mix(in srgb,var(--muted) 70%,transparent)}
+.req .cache{font-size:12px}.req .cache.miss{color:var(--warn);font-weight:600}
+.req .mdl .mname{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.req .rtag{flex:none;display:inline-flex;align-items:center;height:16px;padding:0 5px;border-radius:4px;border:1px solid var(--line);color:var(--muted);font:600 10px var(--font-num);letter-spacing:.03em}
 .req .res{display:inline-flex}.res-ok{color:var(--good)}.res-full{color:var(--warn)}.res-abort{color:var(--muted)}.res-err{color:var(--bad)}
-@media(max-width:900px){.req{grid-template-columns:22px minmax(0,1fr) 56px 56px 34px 40px}.req>:nth-child(3),.req>:nth-child(4),.req>:nth-child(5),.req>:nth-child(8),.req>:nth-child(9){display:none}}
+@media(max-width:900px){.req{grid-template-columns:22px minmax(0,1fr) 56px 56px 34px 40px}.req>:nth-child(3),.req>:nth-child(4),.req>:nth-child(5),.req>:nth-child(6),.req>:nth-child(9),.req>:nth-child(10){display:none}}
 html[data-theme=titan] .req .spd{text-shadow:none!important}
 html[data-theme=titan] .dbar,html[data-theme=titan] .dbar i,html[data-theme=titan] .spdscale i{border-radius:0}
 html[data-theme=titan] .dbar{background:var(--disp)}html[data-theme=titan] .dbar i{background:var(--disp-ink)}
@@ -680,7 +687,7 @@ html[data-theme=titan] .pf.tight{background-image:repeating-linear-gradient(-45d
 /* Übrige Seiten (U12): Kopf bleibt einzeilig, ruhiges Logo, Themenwahl als Umschalter */
 html[data-theme=titan] nav a{font-family:var(--font);letter-spacing:.02em}
 .brand .logo{animation:none}
-.top{flex-wrap:nowrap}.top nav{flex:none}.top .status{min-width:0;flex-wrap:nowrap}.top .status button,.top .status a{white-space:nowrap}
+.top{flex-wrap:wrap}.top nav{flex:none}.top .status{min-width:0;flex-wrap:wrap}.top .status button,.top .status a{white-space:nowrap}
 @media(max-width:1400px){.top{flex-wrap:wrap}.top .status{flex-wrap:wrap;overflow:visible;margin-left:0}}
 html.shell .top{flex-wrap:wrap}html.shell .top .status{flex-wrap:wrap}   /* Fenster: Zurück/Vor brauchen zusätzlich Platz */
 [data-view=small] .top{flex-wrap:wrap}[data-view=small] .top .status{flex-wrap:wrap;overflow:visible}
@@ -700,11 +707,41 @@ html[data-theme=titan] .sp4{--spc:var(--st-read)}   /* schnellste Stufe blau: Or
 .pxchip:hover{color:var(--ink);border-color:rgb(var(--acc-rgb)/.5)}
 .pxchip-open{all:unset;display:inline-flex;align-items:center;gap:6px;cursor:pointer;color:inherit}
 .pxchip-open:focus-visible{outline:2px solid var(--acc);outline-offset:2px;border-radius:4px}
+/* Schraubenschlüssel in den Chips: „hier öffnen sich die Einstellungen“; er hellt sich auf, wenn der Chip darunter liegt */
+.hchip .ic.wr{opacity:.55;transition:opacity .2s,color .2s}
+button.hchip:hover .ic.wr,.pxchip:hover .ic.wr,.pxchip-open:focus-visible .ic.wr{opacity:1;color:var(--acc)}
+/* Handybreite: Prompt nur als Symbol; die Hauptpunkte rücken enger und dürfen umbrechen, statt die Seite waagerecht zu dehnen */
+@media(max-width:640px){.top nav{flex:0 1 auto;max-width:100%;flex-wrap:wrap;gap:2px}.top nav a{padding:5px 6px}.top nav .navtxt{display:none}}
 /* Proxy-Karte (nur Information): Werte in einer Zeile, lange Ziele brechen um; Zahnrad am Kopf */
 .pxp-v{flex:1;min-width:0;overflow-wrap:anywhere}
 .pxp-gear{flex:none}
 /* Proxy-Dialog: breiter als die anderen Dialoge, scrollt innen bei wenig Höhe */
 .modal.pxd{max-width:720px;max-height:calc(100vh - 32px);overflow-y:auto}
+/* Modelltest der Sicherheitsprüfung: die Tabelle scrollt innen, die Seite nie waagerecht */
+.pxp-hint{margin-top:6px}
+.ctt-scroll{overflow-x:auto;max-width:100%;margin-top:6px}
+.ctt{font-size:12px;min-width:480px}
+.ctt th,.ctt td{padding:4px 6px;white-space:nowrap;vertical-align:top}
+.ctt .ctt-note{white-space:normal;min-width:160px}
+/* Live-Zeile des Modelltests: laufendes Modell, Phase, Sekunden, Balken bis zur Zeitgrenze, Zähler und Restzeit; die laufende Zeile oben in der Tabelle */
+.ctt-live{margin-top:8px;display:grid;gap:4px;font-size:12px}
+.ctt-live-head{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;min-width:0}
+.ctt-live-head b{overflow-wrap:anywhere}
+.ctt-live-sec{margin-left:auto;font-variant-numeric:tabular-nums}
+.ctt-run td{color:var(--acc)}
+/* Modelltests (beide): brauchbare Zeilen oben grün hervorgehoben mit Badge „ok · Zeit“, übersprungene gedämpft; Knöpfe mit Symbol,
+   Text erst ab Tablet-Breite; „auto ✓“ und „vision ✓“ markieren das gesetzte Modell; Zeile „results from …“ bei gespeicherten Läufen */
+.ctt tr.ctt-good td{background:rgb(var(--good-rgb)/.07)}
+.ctt tr.ctt-good td:first-child{box-shadow:inset 3px 0 0 var(--good)}
+.ctt tr.ctt-dim td{color:var(--muted)}
+.ctt-ok{color:var(--good);border:1px solid rgb(var(--good-rgb)/.5);border-radius:6px;padding:0 5px;font-variant-numeric:tabular-nums}
+.ctt-mark{display:inline-block;margin-left:4px;padding:0 5px;border-radius:6px;font-size:11px;color:var(--acc);border:1px solid rgb(var(--acc-rgb)/.5)}
+.ctt-acts{white-space:nowrap}
+.ctt-btn{display:inline-flex;align-items:center;gap:4px;padding:2px 6px;font-size:12px}
+.ctt-btn .ic{width:12px;height:12px;flex:none}
+.ctt-btn+.ctt-btn{margin-left:4px}
+.ctt-when{margin-top:2px}
+@media(max-width:640px){.ctt-lbl{display:none}}
 html[data-theme=titan] .slot.hot{box-shadow:inset 0 0 0 2px var(--bad)}
 
 /* Nach der Endprüfung (Verifier): Kopf klebt auf schmalen Geräten nicht (nahm fast die halbe Höhe ein); ohne GPU keine
@@ -721,3 +758,41 @@ html.shell .big,html.shell .kpi,html.shell .kpi>div,html.shell .brand .logo,html
 html:root .modal.modal{background:linear-gradient(180deg,var(--card-top),var(--card-bottom)),var(--bg)}
 html:root[data-theme=titan] .modal.modal{background:linear-gradient(var(--card),var(--card)),var(--bg)}
 html:root details.menu>div,html:root .cmdk,html:root .toast{background:linear-gradient(var(--card),var(--card)),var(--bg)}
+
+/* Kopfleiste (Feinschliff): die Chips verdichten sich stufenweise, die Leiste läuft nie über den Rand. Bis 1700 px fallen die
+   Beschriftungen „GB free“, „/24 GB“ und die Namen der Clients weg (.hlbl). Bis 1500 px und auf dem Handy auch „Proxy“, der
+   Suchtext und „Free VRAM“ (.hlbl2): dann bleiben Symbol und Zahl, der volle Text steht im Tooltip. Umbrechen ist die letzte
+   Stufe, die Statusleiste geht dann in eine zweite Zeile. Auf dem Handy bleibt sie in einer Zeile und scrollt innerhalb der
+   Leiste; die Seite selbst scrollt nie waagerecht. */
+@media(max-width:1700px){.top .hlbl{display:none}}
+@media(max-width:1560px){.top .hsearch .hlbl2{display:none}}
+@media(max-width:1500px){.top .hlbl2,.top .hsearch .kbd{display:none}.top .hsearch{padding:5px 10px}}
+[data-view=small] .top .hlbl,[data-view=small] .top .hlbl2,[data-view=small] .top .hsearch .kbd{display:none}
+[data-view=small] .top .hsearch{padding:5px 10px}
+@media(max-width:640px){html[data-view] .top .status{width:100%;flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;padding-bottom:2px}}
+
+/* Handy (bis 640 px): zuerst, was läuft, dann die letzten Anfragen, dann der Proxy, Saved, Hardware und der Verlauf.
+   Breiter (641–1100 px) bleibt es bei der Reihenfolge von docs/ui.md darüber. */
+@media(max-width:640px){.mon-run{order:1}.mon-rec{order:2}.mon-proxy{order:3}.mon-saved{order:4}.mon-hw{order:5}.mon-hist{order:6}}
+
+/* Laufwerke: die Karte „Disks“ im Monitor und die Seite /disks (Zahlen in der Schrift der Karten, nie breiter als die Karte) */
+.dsk-list{display:grid;gap:8px}
+.dsk,.dsk-vol{background:rgb(var(--ink-rgb)/.03);border:1px solid rgb(var(--ink-rgb)/.06);border-radius:10px;padding:8px 10px;min-width:0}
+.dsk-vol{margin-bottom:10px}
+.dsk-top{display:flex;align-items:baseline;gap:8px;min-width:0;flex-wrap:wrap}
+.dsk-letter{font:600 15px var(--font-num);color:var(--ink)}
+.dsk-kind{font:500 10px var(--font-num);letter-spacing:.06em;text-transform:uppercase;border:1px solid var(--line);border-radius:5px;padding:0 5px;color:var(--muted);line-height:16px}
+.dsk-kind[data-k=Nvme],.dsk-kind[data-k=Ssd]{color:var(--acc);border-color:rgb(var(--acc-rgb)/.5)}
+.dsk-kind[data-k=Hdd]{color:var(--warn);border-color:rgb(var(--warn-rgb)/.5)}
+.dsk-free{margin-left:auto;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;max-width:100%}
+.dsk .bar{margin:6px 0}
+.dsk-io{display:flex;flex-wrap:wrap;gap:2px 12px;font:11px var(--font-num);color:var(--muted)}
+.dsk-io b{color:var(--ink);font-weight:500}
+.dsk-hint{font-size:12px;margin-top:8px;color:var(--warn);overflow-wrap:anywhere}
+.dsk-sparks{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.dsk-sp{min-width:0}
+.dsk-sp .muted{font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dsk-sp .spark{height:56px}
+.dsk-table{table-layout:fixed;width:100%}
+.dsk-table td,.dsk-table th{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media(max-width:640px){.dsk-sparks{grid-template-columns:1fr}.dsk-table th:nth-child(3),.dsk-table td:nth-child(3){width:auto}}

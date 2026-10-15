@@ -350,7 +350,34 @@ public static class ServerLauncher
             args.Add("--log-file"); args.Add(log);
         }
         PruneLogs(logsDir, limits.MaxLogBytes, new[] { log }, limits.MaxLogFiles);
-        return new LaunchPlan(spec.Name, spec.Program, args, spec.WorkingDir, port, host, ResolveModel(parsed.Model, spec.WorkingDir), log, spec.ProfileId, spec.Env);
+        return new LaunchPlan(spec.Name, VenvPython(spec.Program, spec.WorkingDir, spec.Args), args, spec.WorkingDir, port, host, ResolveModel(parsed.Model, spec.WorkingDir), log, spec.ProfileId, spec.Env);
+    }
+
+    // Ein Python-Server aus einem venv läuft als Kind des Basis-Pythons (der Starter in .venv\Scripts startet es). Erkannt wird
+    // darum das Basis-Python – ohne die Pakete des venv („No module named …“). Liegt im Arbeitsordner ein venv mit
+    // demselben Programm, startet dessen python.exe.
+    // Gesucht wird im Arbeitsordner und – falls der fehlt – neben dem Skript (erstes *.py-Argument) und zwei Ordner darüber.
+    internal static string VenvPython(string program, string? workDir, IReadOnlyList<string>? args = null)
+    {
+        if (string.IsNullOrEmpty(program)) return program;
+        var name = Path.GetFileName(program);
+        if (!name.StartsWith("python", StringComparison.OrdinalIgnoreCase)) return program;
+        try
+        {
+            if (Path.GetDirectoryName(Path.GetDirectoryName(program)) is { } up && File.Exists(Path.Combine(up, "pyvenv.cfg"))) return program;   // schon ein venv
+            var dirs = new List<string>();
+            if (!string.IsNullOrEmpty(workDir)) dirs.Add(workDir);
+            if (args?.FirstOrDefault(a => a.EndsWith(".py", StringComparison.OrdinalIgnoreCase)) is { } script && Path.IsPathRooted(script))
+                for (var d = Path.GetDirectoryName(script); d != null && dirs.Count < 4; d = Path.GetDirectoryName(d)) dirs.Add(d);
+            foreach (var dir in dirs)
+                foreach (var venv in new[] { ".venv", "venv", "env" })
+                {
+                    var candidate = Path.Combine(dir, venv, "Scripts", name);
+                    if (File.Exists(candidate)) return candidate;
+                }
+        }
+        catch (ArgumentException) { }
+        return program;
     }
 
     public static string SafeName(string name)
@@ -416,8 +443,18 @@ public static class ServerLauncher
             LogFile = plan.LogFile, ProfileId = plan.ProfileId,
         };
         var p = new Process { StartInfo = psi, EnableRaisingEvents = true };
-        p.OutputDataReceived += (_, e) => ls.Output.Add(e.Data);
-        p.ErrorDataReceived += (_, e) => ls.Output.Add(e.Data);
+        // Ein anderes Programm als llama-server schreibt kein eigenes Log (--log-file): seine Ausgabe kommt in die Logdatei des Plans
+        StreamWriter? own = null;
+        if (!IsLlamaServer(plan.Program, plan.Args))
+            try { own = new StreamWriter(new FileStream(plan.LogFile, FileMode.Append, FileAccess.Write, FileShare.ReadWrite), new UTF8Encoding(false)) { AutoFlush = true }; }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+        void Line(string? text)
+        {
+            ls.Output.Add(text);
+            if (own != null && text != null) lock (own) { try { own.WriteLine(text); } catch (Exception ex) when (ex is IOException or ObjectDisposedException) { } }
+        }
+        p.OutputDataReceived += (_, e) => Line(e.Data);
+        p.ErrorDataReceived += (_, e) => Line(e.Data);
         p.Exited += (_, _) =>
         {
             // Die letzten Ausgabezeilen eintreffen lassen, bevor der Fehlertext zusammengestellt wird
@@ -425,8 +462,11 @@ public static class ServerLauncher
             int? code = null;
             try { code = p.ExitCode; } catch { }
             ls.MarkExited(code);
+            AppLog.Write($"launch {plan.Name}: exited, code {code?.ToString() ?? "?"}");
+            if (own != null) lock (own) { try { own.Dispose(); } catch { } }
         };
         p.Start();
+        AppLog.Write($"launch {plan.Name}: {plan.Program} started in {psi.WorkingDirectory}, pid {p.Id}, port {plan.Port}");
         p.BeginOutputReadLine();
         p.BeginErrorReadLine();
         ls.Proc = p;

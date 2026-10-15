@@ -34,7 +34,14 @@ public static partial class Strings
         (need > free ? " – it may not fit, or spill into shared RAM." : ".");
     // Proxy-Panel (U9)
     public const string PxTitle = "Stykker-Proxy", PxOn = "on", PxOff = "off", PxCopy = "Copy address", PxCopied = "Copied";
-    public const string PxAnswers = "Answers as \"stykker\"", PxLan = "Reachable in the network", PxLanOn = "LAN", PxLanOff = "this PC only";
+    public const string PxDefault = "Default model", PxDefaultTip = "Requests without a known model name, and those for \"stykker\" or \"claude-stykker\", go to this model.",
+        PxLan = "Reachable in the network", PxLanOn = "LAN", PxLanOff = "this PC only";
+    // Reiter des Proxy-Dialogs (Sources heißt wie der Abschnitt PxSources)
+    public const string PxTabGeneral = "General", PxTabRouting = "Routing", PxTabTests = "Tests", PxStartTest = "Start test";
+    // Zeile „Routed“ der Proxy-Karte: Zähler seit Serverstart je Weg
+    public const string PxRouted = "Routed", PxRoutedTip = "Requests since the server started, by route. auto: safety check of Claude Code, image: request with an image, cloud: sent to a cloud provider. A safety check sent to the cloud counts twice.";
+    public static string PxRoutedText(int auto, int image, int cloud) =>
+        $"{ReqRouteAuto} {auto.ToString(Inv)} · {ReqRouteImage} {image.ToString(Inv)} · {ReqCloud} {cloud.ToString(Inv)}";
     public const string PxSources = "Sources", PxThisPc = "This PC", PxMachines = "Other Stykker machines", PxCloud = "Cloud providers";
     public static string PxModels(int n) => n == 1 ? "1 model" : $"{n} models";
     public const string PxAdd = "Add", PxCancel = "Cancel", PxSetKey = "Set key", PxRemove = "Remove", PxKeyStored = "key stored", PxKeyMissing = "no key";
@@ -68,10 +75,21 @@ public static partial class Strings
     public const string ReqNoProxy = "only known for requests through the Stykker-Proxy";
     public static string ReqToolsTip(int n) => n == 1 ? "1 tool call" : $"{n} tool calls";
     public static string ReqThinkTip(int n) => n == 0 ? "no thinking tokens" : $"{n:N0} thinking tokens";
+    // Spalte „cache“: wie viel des Prompts aus dem Prompt-Cache kam (Wiederverwendung spart die Lesezeit)
+    public const string ReqCache = "cache", ReqCacheNone = "whole prompt read, nothing reused", ReqCacheUnknown = "not known for this request";
+    public const string ReqCacheEstimated = "estimated from Strata's progress lines";
+    public static string ReqCacheTip(int reused, int read) => reused < 0 ? ReqCacheUnknown : reused == 0 ? ReqCacheNone
+        : $"{Math.Round(100.0 * reused / Math.Max(1, reused + read))}% of the prompt reused: {reused:N0} tokens, {read:N0} read";
+    // Lesephase in der Kurve der Serverkarte (Tooltip des farbigen Abschnitts)
+    public static string ReadPhaseTip(int tokens, double seconds, int reused) =>
+        reused < 0 ? $"read {tokens:N0} tokens in {seconds:0.0} s" : $"read {tokens:N0} tokens in {seconds:0.0} s ({reused:N0} reused)";
     public static string ReqResultText(string r) => r switch
     {
         "full" => "stopped at the length or context limit", "abort" => "cancelled by the client", "err" => "error answer", _ => "done",
     };
+    // Weg der Anfrage (ProxyRoutes): Etikett neben dem Modellnamen, Host einer Cloud-Anfrage
+    public const string ReqRouteAuto = "auto", ReqRouteImage = "image", ReqCloud = "cloud";
+    public const string ReqRouteAutoTip = "Claude Code's safety check (auto mode)", ReqRouteImageTip = "request with an image";
     // History (U8)
     public const string HistFilter = "Filter", HistAll = "All", HistRunning = "running", HistCrashed = "crashed";
     public const string HistToday = "Today", HistYesterday = "Yesterday", HistOlder = "Older";

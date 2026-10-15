@@ -9,7 +9,7 @@ namespace StykkerLlm.Core;
 // "<name>.v2.csv" geschrieben, damit nichts vermischt wird.
 public sealed class RequestLog
 {
-    internal const string Header = "Time,Server,Model,Client,PromptTokens,PromptTokensPerSec,ReplyTokens,ReplyTokensPerSec,Seconds,Status";
+    internal const string Header = "Time,Server,Model,Client,PromptTokens,PromptTokensPerSec,ReplyTokens,ReplyTokensPerSec,Seconds,Status,PromptReused";
     private const int MaxQueued = 5000;
     private static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
     private string? _path;
@@ -42,7 +42,7 @@ public sealed class RequestLog
         var line = string.Join(',',
             f.Seen.Value.ToString("yyyy-MM-dd HH:mm:ss", Inv), Q(f.Server), Q(f.Model), Q(f.Client),
             f.PromptTokens.ToString(Inv), f.PromptTps.ToString("0.0", Inv),
-            f.GenTokens.ToString(Inv), f.GenTps.ToString("0.0", Inv), f.Seconds.ToString("0.0", Inv), StatusText(f.Status));
+            f.GenTokens.ToString(Inv), f.GenTps.ToString("0.0", Inv), f.Seconds.ToString("0.0", Inv), StatusText(f.Status), f.PromptReused.ToString(Inv));
         lock (_pending)
         {
             if (_pending.Count >= MaxQueued) _pending.Dequeue();   // nur bei dauerhaft gesperrter Datei

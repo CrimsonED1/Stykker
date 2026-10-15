@@ -21,6 +21,8 @@ public sealed class SimWorld
         public bool Busy, Prompting, Cancelled;
         public long Task;
         public int PromptTokens, GenTarget, ReasoningTokens, MaxTokens;   // MaxTokens: Grenze des Clients (max_tokens); GenTarget: wo die Antwort von selbst endet
+        public int Reused;   // aus dem Prompt-Cache wiederverwendete Token (nur llama.cpp); gelesen wird der Rest
+        public int Read => PromptTokens - Reused;
         public double PromptDone, Gen, Tps, PromptTps, CancelAt;
         public bool Truncate;
         public string[] Tools = Array.Empty<string>();
@@ -103,6 +105,9 @@ public sealed class SimWorld
     public event Action? Changed;
     // Eine Anfrage ist zu Ende: so hätte sie der Aufnahme-Proxy gesehen (Serverschlüssel, Beobachtung). Der Host reicht sie nur an einen laufenden Proxy weiter.
     public event Action<string, ProxyRecord>? Observed;
+    // Zählt die abgeschlossenen Anfragen: jede neunte (bzw. dreizehnte) bekommt den Weg auto (bzw. image), jede sechste
+    // eine Anfrage an ein simuliertes Cloud-Ziel. Ein Zähler statt Zufall, damit die übrige Simulation gleich bleibt.
+    private int _proxySeq;
 
     public SimWorld(int? seed = null) => _rng = seed is int s ? new Random(s) : new Random();
 
@@ -241,8 +246,8 @@ public sealed class SimWorld
             s.LastActivity = now;
             if (sl.Prompting)
             {
-                sl.PromptDone = Math.Min(sl.PromptTokens, sl.PromptDone + sl.PromptTps * dt);
-                double frac = sl.PromptTokens > 0 ? sl.PromptDone / sl.PromptTokens : 1;
+                sl.PromptDone = Math.Min(sl.Read, sl.PromptDone + sl.PromptTps * dt);
+                double frac = sl.Read > 0 ? sl.PromptDone / sl.Read : 1;
                 if (frac < 1 && frac - sl.PromptLogged >= 0.25)
                 {
                     sl.PromptLogged = frac;
@@ -251,10 +256,10 @@ public sealed class SimWorld
                 }
                 if (frac >= 1)
                 {
-                    double ms = sl.PromptTokens / Math.Max(1, sl.PromptTps) * 1000;
+                    double ms = sl.Read / Math.Max(1, sl.PromptTps) * 1000;
                     log.Append("slot print_timing: id ").Append(sl.Id.ToString(Inv).PadLeft(2)).Append(" | task ").Append(sl.Task.ToString(Inv))
-                       .Append(" |  prompt eval time = ").Append(ms.ToString("0.00", Inv)).Append(" ms / ").Append(sl.PromptTokens.ToString(Inv).PadLeft(5))
-                       .Append(" tokens (").Append((ms / Math.Max(1, sl.PromptTokens)).ToString("0.00", Inv)).Append(" ms per token, ")
+                       .Append(" |  prompt eval time = ").Append(ms.ToString("0.00", Inv)).Append(" ms / ").Append(sl.Read.ToString(Inv).PadLeft(5))
+                       .Append(" tokens (").Append((ms / Math.Max(1, sl.Read)).ToString("0.00", Inv)).Append(" ms per token, ")
                        .Append(sl.PromptTps.ToString("0.00", Inv)).AppendLine(" tokens per second)");
                     sl.Prompting = false; sl.GenStart = now; sl.NextLog = now;
                 }
@@ -292,6 +297,8 @@ public sealed class SimWorld
         sl.Task = ++s.TaskCounter * 3 + 1;
         sl.Start = now; sl.PromptDone = 0; sl.PromptLogged = 0; sl.Gen = 0;
         sl.PromptTokens = (int)Math.Clamp(LogNormal(700, 0.9), 30, Math.Max(40, ctx * 0.6));
+        // Jede zweite Anfrage llama.cpp: ein Teil des Prompts kommt aus dem Cache (Strata und die anderen Backends nicht)
+        sl.Reused = spec.Kind == BackendKind.LlamaCpp && !spec.Strata && _rng.NextDouble() < 0.5 ? (int)(sl.PromptTokens * Uniform(0.4, 0.9)) : 0;
         int room = Math.Max(30, ctx - sl.PromptTokens - 16);
         sl.GenTarget = (int)Math.Clamp(LogNormal(320, 0.8), 20, Math.Min(room, 4000));
         sl.Truncate = _rng.NextDouble() < 0.04;
@@ -314,7 +321,7 @@ public sealed class SimWorld
     {
         int gen = Math.Max(1, (int)Math.Min(sl.Gen, sl.GenTarget));
         double genMs = gen / Math.Max(0.1, sl.Tps) * 1000;
-        double promptMs = sl.PromptTokens / Math.Max(1, sl.PromptTps) * 1000;
+        double promptMs = sl.Read / Math.Max(1, sl.PromptTps) * 1000;
         string id = sl.Id.ToString(Inv).PadLeft(2), task = sl.Task.ToString(Inv);
         log.Append("slot print_timing: id ").Append(id).Append(" | task ").Append(task).Append(" |        eval time = ").Append(genMs.ToString("0.00", Inv))
            .Append(" ms / ").Append(gen.ToString(Inv).PadLeft(5)).Append(" tokens (").Append((genMs / gen).ToString("0.00", Inv)).Append(" ms per token, ")
@@ -330,14 +337,26 @@ public sealed class SimWorld
         var first = sl.Start.AddSeconds(ttft);
         var firstContent = reasoning > 0 ? first.AddSeconds(reasoning / Math.Max(0.1, sl.Tps)) : first;
         string finish = cancelled ? "" : truncated ? "length" : sl.Tools.Length > 0 ? "tool_calls" : "stop";
+        int seq = ++_proxySeq;
+        string route = seq % 9 == 0 ? ProxyRoutes.Classifier : seq % 13 == 0 ? ProxyRoutes.Vision : ProxyRoutes.Default;
         var rec = new ProxyRecord(s.Key, "/v1/chat/completions", sl.Start, now, first, firstContent, reasoning, gen - reasoning, sl.Tools,
-            cancelled ? null : finish, sl.Agent, true, 200, cancelled);
+            cancelled ? null : finish, sl.Agent, true, 200, cancelled, Route: route);
         sl.Busy = false; sl.Prompting = false;
         if (s.Spec.Strata)
             RememberStrata(s, new StrataDone((now - DateTime.UnixEpoch).TotalSeconds, sl.PromptTokens, promptMs, gen, sl.Tps,
                 (now - sl.Start).TotalSeconds, cancelled ? "cancelled" : truncated ? "length" : "stop"));
         var handler = Observed;
         if (handler != null) { try { handler(s.Key, rec); } catch { } }
+        if (handler != null && seq % 6 == 0)
+        {
+            // Anfrage an ein simuliertes Cloud-Ziel: kein lokaler Slot, nur die Beobachtung des Proxys
+            bool vision = seq % 12 == 0;
+            var start = now.AddSeconds(-3.0);
+            var cloud = new ProxyRecord(ProxyTarget.CloudKey("https://cloud.example/v1", "sim-cloud-model"), "/v1/chat/completions", start, now,
+                start.AddSeconds(0.6), start.AddSeconds(0.6), 0, 40 + seq % 50, Array.Empty<string>(), "stop", "claude-cli/2", true, 200, false,
+                vision ? "claude-stykker" : "claude-haiku-5-5", null, vision ? ProxyRoutes.Vision : ProxyRoutes.Classifier);
+            try { handler(s.Key, cloud); } catch { }
+        }
     }
 
     private void Append(Server s, string text)

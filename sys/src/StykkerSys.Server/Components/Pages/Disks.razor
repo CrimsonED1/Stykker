@@ -1,0 +1,43 @@
+@page "/disks"
+@using Stykker.Pairing
+@* Die Laufwerke: statisch gerendert, die Zeilen holt disks.js im Sekundentakt aus /api/disks. Kein Wert steht als Zahl im
+   Markup: fehlt eine Messung, zeigt die Seite „–" (nie eine erfundene Zahl). Die Seite zeigt nur, sie ändert nichts –
+   Prozesse beendet man in der Prozessliste. Aussehen wie in StykkerLLM: die Bausteine hw-* des Design-Systems. *@
+
+<div class="top">
+    <div class="brand"><span class="logo">◆</span> STYKKER <span class="acc">SYS</span></div>
+    <nav>
+        <a href="/">Processes</a>
+        <a class="active" href="/disks">Disks</a>
+        <a href="http://127.0.0.1:@(StykkerPorts.Hub)/" title="StykkerHUD: CPU, memory, GPU, storage and network">Overview</a>
+    </nav>
+    <div class="strip">
+        <span class="stat" title="Volumes with a drive letter">Drives <b id="v-drives">–</b></span>
+        <div class="seg" role="group" aria-label="Theme">
+            <button type="button" data-theme-choice="dark" class="on">Dark</button>
+            <button type="button" data-theme-choice="titan">Titan</button>
+        </div>
+    </div>
+</div>
+
+<main>
+    <div id="disk-notes"></div>
+
+    <section class="hw-card">
+        <div class="hw-head">Drives<span class="hw-sub" id="v-disk-time">–</span></div>
+        <div id="disk-volumes"></div>
+    </section>
+
+    <section class="hw-card">
+        <div class="hw-head">Physical disks</div>
+        <div class="hw-scroll" id="disk-physical"></div>
+    </section>
+
+    <section class="hw-card">
+        <div class="hw-head">Programs with the most disk traffic</div>
+        <p class="hw-sub hw-hint-line">Read and write of a program count all its input and output, not only the disk. Refreshes every second while this page is open.</p>
+        <div class="hw-scroll" id="disk-procs"></div>
+    </section>
+
+    <div id="toast"></div>
+</main>

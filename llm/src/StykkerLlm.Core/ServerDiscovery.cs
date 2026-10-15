@@ -359,9 +359,11 @@ public sealed class ServerDiscovery
         var args = tokens.Count > 1 ? tokens.Skip(1).ToList() : new List<string>();
         var (redArgs, hadArg) = CmdLine.Redact(args);
         var (env, hadEnv) = CmdLine.FilterEnvironment(d?.Environment ?? new Dictionary<string, string>());
-        bool llama = c.Kind == BackendKind.LlamaCpp;
-        var parsed = readable && llama ? LlamaServerArgs.Parse(redArgs, env) : null;
         string? program = !string.IsNullOrEmpty(d?.ImagePath) ? d!.ImagePath : tokens.Count > 0 ? tokens[0] : null;
+        // Spricht die llama.cpp-API, ist aber ein anderes Programm (z. B. „python server.py“ von Strata): dessen Kommandozeile
+        // hat keine llama-Optionen – ohne -m wäre es sonst „Router-Modus“ und ließe sich nicht speichern.
+        bool llama = c.Kind == BackendKind.LlamaCpp && ServerLauncher.IsLlamaServer(program, redArgs);
+        var parsed = readable && llama ? LlamaServerArgs.Parse(redArgs, env) : null;
         var mode = parsed?.Mode ?? (c.Props?.Role == "router" ? ServerMode.Router : ServerMode.Normal);
         return new ServerInfo
         {

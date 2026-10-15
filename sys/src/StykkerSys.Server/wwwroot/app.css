@@ -21,5 +21,7 @@
 #procs .req.child .cl{margin-left:14px}
 #procs .req.child .mdl{opacity:.9}
 
+/* Die Laufwerkseite (/disks) hat das Aussehen der Hardware-Bausteine (hw-*, components/hardware.css); hier steht nichts mehr. */
+
 /* In der Zentrale (Frame, ?embed=1): die Marke und die Themenwahl stehen schon in deren Leiste. */
 .embed .top .brand,.embed .top .seg[aria-label="Theme"]{display:none}

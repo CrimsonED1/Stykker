@@ -2,62 +2,124 @@
 @implements IDisposable
 @inject EngineHost Host
 
-@* GPU-Details wie im Fenster (docs/ui.md, Bereich 5): Auslastung, Takte, VRAM je Prozess. *@
+@* GPU-Details (docs/ui.md, Bereich 5): Auslastung, Takte, Engines, Programme mit VRAM und Auslastung, Verlauf.
+   Aussehen und Markup: die Hardware-Bausteine des Design-Systems (hw-*), dieselben wie in StykkerSYS. *@
 
 @{ var e = Host.Engine; var g = e.Gpu; }
 
-<div class="row" style="margin-bottom:12px">
-    <b style="font-size:17px">@Strings.GpuDetails</b>
-    <span style="margin-left:auto"><a href="">@Strings.BackToMonitor</a></span>
+<div class="hw-head">
+    <span>@Strings.GpuDetails</span>
+    <a class="hw-more" href="">@Strings.BackToMonitor</a>
 </div>
 
 @if (g == null)
 {
-    <div class="card"><span class="muted small">@Strings.NvmlMissing</span></div>
+    <section class="hw-card"><span class="hw-sub">@Strings.NvmlMissing</span></section>
 }
 else
 {
-    <div class="card">
-        <h2>@g.Name</h2>
-        <div class="kpis">
-            <div class="kpi"><div class="muted">@Strings.GpuLoad</div>@g.Util.ToString("0") %<div class="bar"><div style="width:@((int)g.Util)%"></div></div></div>
-            <div class="kpi"><div class="muted">@Strings.GpuVram</div>@g.MemUsedGb.ToString("0.0", CultureInfo.InvariantCulture) / @g.MemTotalGb.ToString("0") GB<div class="bar"><div style="width:@((int)(100 * g.MemUsedGb / Math.Max(1, g.MemTotalGb)))%"></div></div></div>
-            <div class="kpi"><div class="muted">@Strings.GpuPower</div>@g.PowerW.ToString("0") / @g.PowerLimitW.ToString("0") W<div class="bar"><div style="width:@((int)(100 * g.PowerW / Math.Max(1, g.PowerLimitW)))%"></div></div></div>
-            <div class="kpi"><div class="muted">@Strings.GpuTemp</div>@g.TempC.ToString("0") °C<div class="small @(g.Throttled ? "warn" : "good")" title="@g.ThrottleText()">@(g.Throttled ? Strings.GpuClocksLimited + ": " + g.ThrottleText() : Strings.GpuClocksFree)</div></div>
+    <section class="hw-card">
+        <div class="hw-head">@g.Name <span class="hw-sub">@g.MemTotalGb.ToString("0", CultureInfo.InvariantCulture) GB</span></div>
+        <div class="hw-meters">
+            <HwMeter Label="@Strings.GpuLoad" Value="@g.Util.ToString("0", CultureInfo.InvariantCulture)" Unit="%" Fraction="@(g.Util / 100)" />
+            <HwMeter Label="@Strings.GpuVram" Value="@g.MemUsedGb.ToString("0.0", CultureInfo.InvariantCulture)" Unit="@("/ " + g.MemTotalGb.ToString("0", CultureInfo.InvariantCulture) + " GB")" Fraction="@(g.MemUsedGb / Math.Max(1, g.MemTotalGb))" Note="@Strings.HwFree(Math.Max(0, g.MemFreeGb))" />
+            <HwMeter Label="@Strings.GpuPower" Value="@g.PowerW.ToString("0", CultureInfo.InvariantCulture)" Unit="@("/ " + g.PowerLimitW.ToString("0", CultureInfo.InvariantCulture) + " W")" Fraction="@(g.PowerW / Math.Max(1, g.PowerLimitW))" />
+            <HwMeter Label="@Strings.GpuTemp" Value="@g.TempC.ToString("0", CultureInfo.InvariantCulture)" Unit="°C" Fraction="@Math.Clamp(g.TempC / 90.0, 0, 1)" Note="@(g.Throttled ? Strings.GpuClocksLimited + ": " + g.ThrottleText() : Strings.GpuClocksFree)" NoteWarn="@g.Throttled" Tip="@g.ThrottleText()" />
         </div>
-        <table style="margin-top:12px">
-            <tr><td>@Strings.ColProperty</td><td class="num muted">@Strings.ColValue</td></tr>
-            <tr><td>@Strings.GpuGfxClock</td><td class="num muted">@Mhz(g.GfxMhz) / @Mhz(g.GfxMaxMhz)</td></tr>
-            <tr><td>@Strings.GpuMemClock</td><td class="num muted">@Mhz(g.MemMhz) / @Mhz(g.MemMaxMhz)</td></tr>
-            <tr><td>@Strings.GpuVram</td><td class="num muted">@g.MemUtil.ToString("0") % · @Strings.VramFree @g.MemFreeGb.ToString("0.0", CultureInfo.InvariantCulture) GB</td></tr>
-            <tr><td>@Strings.GpuThrottling</td><td class="num muted">@g.ThrottleText()</td></tr>
-        </table>
-    </div>
+        <div class="hw-scroll">
+            <table class="hw-table">
+                <tr><th>@Strings.ColProperty</th><th class="num">@Strings.ColValue</th></tr>
+                <tr><td>@Strings.GpuGfxClock</td><td class="num">@Mhz(g.GfxMhz) / @Mhz(g.GfxMaxMhz)</td></tr>
+                <tr><td>@Strings.GpuMemClock</td><td class="num">@Mhz(g.MemMhz) / @Mhz(g.MemMaxMhz)</td></tr>
+                <tr><td>@Strings.GpuVram</td><td class="num">@g.MemUtil.ToString("0", CultureInfo.InvariantCulture) % · @Strings.VramFree @g.MemFreeGb.ToString("0.0", CultureInfo.InvariantCulture) GB</td></tr>
+                <tr><td>@Strings.GpuThrottling</td><td class="num">@g.ThrottleText()</td></tr>
+            </table>
+        </div>
+    </section>
 
-    <div class="card">
-        <h2>@Strings.GpuConsumers</h2>
-        <p class="muted small">@Strings.GpuDetailsHint</p>
-        @if (_rows.Count == 0) { <span class="muted small">@Strings.GpuDetailsNoData</span> }
+    <section class="hw-card">
+        <div class="hw-head">@Strings.GpuEngines</div>
+        <p class="hw-sub hw-hint-line">@Strings.GpuEnginesHint</p>
+        @if (_engines.Count == 0)
+        {
+            <span class="hw-sub">@Strings.GpuEnginesNone</span>
+        }
         else
         {
-            <table>
-                <tr><th>@Strings.ColProcess</th><th class="num">@Strings.ColGpuUtil</th><th class="num">@Strings.ColVramUsed</th></tr>
-                @foreach (var (name, gb, pct) in _rows)
+            <div class="hw-meters">
+                @foreach (var (engine, pct) in _engines)
                 {
-                    <tr>
-                        <td>@name</td>
-                        <td class="num @(pct >= 50 ? "good-text" : "muted")">@(pct > 0 ? pct.ToString("0", CultureInfo.InvariantCulture) + " %" : "–")</td>
-                        <td class="num">@gb.ToString("0.0", CultureInfo.InvariantCulture) GB</td>
-                    </tr>
+                    <HwMeter Label="@engine" Value="@pct.ToString("0", CultureInfo.InvariantCulture)" Unit="%" Fraction="@(pct / 100)" />
                 }
-            </table>
+            </div>
         }
-    </div>
+    </section>
+
+    <section class="hw-card">
+        <div class="hw-head">@Strings.GpuConsumers</div>
+        <p class="hw-sub hw-hint-line">@Strings.GpuDetailsHint</p>
+        @if (_rows.Count == 0)
+        {
+            <span class="hw-sub">@Strings.GpuDetailsNoData</span>
+        }
+        else
+        {
+            <div class="hw-scroll">
+                <table class="hw-table">
+                    <tr><th>@Strings.ColProcess</th><th class="num">@Strings.ColGpuUtil</th><th class="num">@Strings.ColVramUsed</th></tr>
+                    @foreach (var (name, gb, pct) in _rows)
+                    {
+                        <tr>
+                            <td class="hw-name" title="@name">@name</td>
+                            <td class="num @(pct >= 50 ? "good-text" : "")">@(pct > 0 ? pct.ToString("0", CultureInfo.InvariantCulture) + " %" : "–")</td>
+                            <td class="num">@gb.ToString("0.0", CultureInfo.InvariantCulture) GB</td>
+                        </tr>
+                    }
+                </table>
+            </div>
+        }
+    </section>
+
+    <section class="hw-card">
+        <div class="hw-head">@Strings.GpuHistoryTitle</div>
+        <p class="hw-sub hw-hint-line">@Strings.GpuHistoryHint</p>
+        @{ var points = e.GpuHistory.Points(); }
+        @if (points.Count < 2)
+        {
+            <span class="hw-sub">@Strings.GpuHistoryNone</span>
+        }
+        else
+        {
+            var util = points.Select(p => (double?)p.Util).ToList();
+            var vram = points.Select(p => (double?)p.MemUsedGb).ToList();
+            var power = points.Select(p => (double?)p.PowerW).ToList();
+            var temp = points.Select(p => (double?)p.TempC).ToList();
+            <div class="hw-sparks">
+                <div>
+                    <div class="hw-spark-hd">@Strings.GpuSparkUtil · max 100 %</div>
+                    <svg class="hw-spark" viewBox="0 0 300 70" preserveAspectRatio="none"><polyline class="line" fill="none" points="@Sparkline.Points(util, 100)" /></svg>
+                </div>
+                <div>
+                    <div class="hw-spark-hd">@Strings.GpuSparkVram · max @g.MemTotalGb.ToString("0", CultureInfo.InvariantCulture) GB</div>
+                    <svg class="hw-spark" viewBox="0 0 300 70" preserveAspectRatio="none"><polyline class="line second" fill="none" points="@Sparkline.Points(vram, Math.Max(1, g.MemTotalGb))" /></svg>
+                </div>
+                <div>
+                    <div class="hw-spark-hd">@Strings.GpuSparkPower · max @g.PowerLimitW.ToString("0", CultureInfo.InvariantCulture) W</div>
+                    <svg class="hw-spark" viewBox="0 0 300 70" preserveAspectRatio="none"><polyline class="line" fill="none" points="@Sparkline.Points(power, Math.Max(1, g.PowerLimitW))" /></svg>
+                </div>
+                <div>
+                    <div class="hw-spark-hd">@Strings.GpuSparkTemp · max 90 °C</div>
+                    <svg class="hw-spark" viewBox="0 0 300 70" preserveAspectRatio="none"><polyline class="line warn" fill="none" points="@Sparkline.Points(temp, 90)" /></svg>
+                </div>
+            </div>
+        }
+    </section>
 }
 
 @code {
     private Timer? _t;
     private List<(string Name, double Gb, double Pct)> _rows = new();
+    private List<(string Engine, double Percent)> _engines = new();
 
     protected override void OnInitialized()
     {
@@ -70,14 +132,17 @@ else
     // Alle Programme, nicht nur die gemessenen Server (wie im Fenster)
     private void Read()
     {
-        var mem = Host.Engine.Platform.ReadGpuTop(64) ?? Array.Empty<(string Name, double Gb)>();
+        var platform = Host.Engine.Platform;
+        var mem = platform.ReadGpuTop(64) ?? Array.Empty<(string Name, double Gb)>();
+        var reading = platform.ReadGpuUtil();
         var util = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
-        foreach (var (n, pct) in Host.Engine.Platform.ReadGpuUtilTop(64)) util[n] = pct;
+        foreach (var (n, pct) in reading?.Processes ?? Array.Empty<(string Name, double Percent)>()) util[n] = pct;
         var byName = new Dictionary<string, (double Gb, double Pct)>(StringComparer.OrdinalIgnoreCase);
         foreach (var (n, gb) in mem) byName[n] = (gb, util.TryGetValue(n, out var p) ? p : 0);
         foreach (var (n, pct) in util) if (!byName.ContainsKey(n)) byName[n] = (0, pct);
         _rows = byName.Select(kv => (kv.Key, kv.Value.Gb, kv.Value.Pct))
                       .OrderByDescending(x => x.Gb).ThenByDescending(x => x.Pct).ToList();
+        _engines = reading?.Engines.ToList() ?? new();
     }
 
     private static string Mhz(double mhz) => mhz > 0 ? mhz.ToString("N0", CultureInfo.InvariantCulture) + " MHz" : "–";

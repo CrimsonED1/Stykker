@@ -99,6 +99,11 @@ public static partial class Strings
     public const string GpuDetailsHint = "What uses the GPU right now: every program (games, browsers, LLMs), not only monitored servers. Refreshes every second.";
     public const string GpuDetailsNoData = "No GPU process data available (NVML/PDH not present).";
     public const string ColProcess = "Process", ColGpuUtil = "GPU", ColVramUsed = "VRAM";
+    // Gerätedetails: Engines und Verlauf (Bausteine hw-*)
+    public const string GpuEngines = "Engines", GpuEnginesHint = "Share of each engine of the GPU over all programs. Several engines can run together, so the sum may pass 100 %.",
+        GpuEnginesNone = "No engine counters on this system.", GpuHistoryTitle = "History",
+        GpuHistoryHint = "The last readings. One point per reading: about every two seconds when idle, every second while recording.",
+        GpuHistoryNone = "Not enough readings yet.", GpuSparkUtil = "Load", GpuSparkVram = "VRAM used", GpuSparkPower = "Power", GpuSparkTemp = "Temperature";
     public const string SystemCard = "System", NotAvailable = "not available", CpuLoad = "CPU load", Ram = "RAM", Commit = "Commit", Memory = "Memory";
     public static string CommitLow(double usedGb, double limitGb) =>
         $"Memory reserve low: {N1(usedGb)} of {N1(limitGb)} GB committed – programs may crash. Tip: start servers with a smaller prompt cache (--cache-ram) or enlarge the page file.";

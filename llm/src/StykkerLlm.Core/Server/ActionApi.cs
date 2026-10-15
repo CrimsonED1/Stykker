@@ -264,9 +264,28 @@ public static class ActionApi
                     e.Proxies.SetChoiceValue(req.Arg ?? "");
                     e.Settings.Save();
                     return Ok(e.Proxies.TargetName());
+                case "proxy.vision.describe":
+                    e.Proxies.SetVisionDescribe(req.Flag);
+                    return Ok(req.Flag ? Strings.ProxyVisionDescribeOn : Strings.ProxyVisionDescribeOff);
+                case "proxy.vision":
+                    e.Proxies.SetVisionValue(req.Arg ?? "");
+                    return Ok(e.Proxies.VisionValue().Length == 0 ? Strings.ClientAutoSame : Strings.ProxyVisionSet);
                 case "proxy.classifier":
                     e.Proxies.SetClassifierValue(req.Arg ?? "");
                     return Ok(e.Proxies.ClassifierValue().Length == 0 ? Strings.ClientAutoSame : Strings.ClientAutoSet);
+                // Modelltest der Sicherheitsprüfung: Arg = Basis-URL eines eingetragenen Anbieters, Flag = „Retry unavailable“
+                case "classifier.test.start":
+                    return e.StartClassifierTest(req.Arg ?? "", req.Flag, out var cterr)
+                        ? Ok(Strings.ClassifierTestStarted)
+                        : ActionResult.Fail(cterr ?? Strings.ClassifierTestFailed);
+                case "classifier.test.stop":
+                    return e.StopClassifierTest() ? Ok(Strings.ClassifierTestStopping) : Ok(Strings.ClassifierTestNotRunning);
+                // Bildtest („Test vision models“): Arg = Basis-URL eines eingetragenen Anbieters, Flag = „Retry unavailable“.
+                // Abbrechen geht über classifier.test.stop – es läuft ohnehin nur ein Modelltest zur Zeit.
+                case "vision.test.start":
+                    return e.StartVisionTest(req.Arg ?? "", req.Flag, out var vterr)
+                        ? Ok(Strings.VisionTestStarted)
+                        : ActionResult.Fail(vterr ?? Strings.ClassifierTestFailed);
                 case "proxy.debug":
                     e.Settings.ProxyDebug = req.Flag;
                     e.Settings.Save();

@@ -1,3 +1,5 @@
+using Stykker.Shared.Disk;
+
 namespace StykkerLlm.Core;
 
 // Anhaltender Hinweis für die Oberfläche (z. B. „Ziel-Kontext zu klein"): bleibt sichtbar, bis der Nutzer ihn bestätigt.
@@ -28,6 +30,8 @@ public sealed class MonitorEngine : IDisposable
     public ServerRegistry Registry { get; }
     public RecordingManager Recorder { get; }
     public ProxyManager Proxies { get; }
+    // Zähler der Wege des Proxys seit Serverstart (Zeile „Routed“ in der Proxy-Karte)
+    public ProxyRouteCounts RouteCounts { get; } = new();
     // Schalter „Claude Desktop auf den Stykker-Proxy" (3P-Ablage der App)
     public ClaudeDesktop Claude { get; }
     // Alle Proxy-Clients (Kopfleiste, Client-Dialog, Aktionen client.*); heute nur Claude (Clients/ProxyClients.cs)
@@ -51,6 +55,14 @@ public sealed class MonitorEngine : IDisposable
     // GPU-Auslastung je Prozess in Prozent (alle 5 s, Hintergrund-Task) – für die Liste in den GPU-Details
     private volatile List<(string Name, double Percent)> _gpuUtilTop = new();
     public IReadOnlyList<(string Name, double Percent)> GpuUtilTop => _gpuUtilTop;
+    // Laufwerke (jede Sekunde; die Raten brauchen zwei Abtastungen) und die Prozesse mit dem meisten Platten-E/A (alle 5 s)
+    public DiskSample? Disks { get; private set; }
+    private DateTime _lastDiskRead = DateTime.MinValue;
+    private volatile List<ProcessIoRow> _diskProcs = new();
+    public IReadOnlyList<ProcessIoRow> DiskProcesses => _diskProcs;
+    public DiskHistory DiskHistory { get; } = new();
+    public GpuHistory GpuHistory { get; } = new();
+    private const int DiskProcessCount = 12;
     public int Ticks { get; private set; }
     // Ausnahme des letzten Takts (der nächste Takt versucht es neu); null = alles gut
     public Exception? LastError { get; private set; }
@@ -93,8 +105,8 @@ public sealed class MonitorEngine : IDisposable
     {
         if (s.Info.Program is { Length: > 0 } program)
         {
-            var key = Library.MakeKey(program, s.Info.Args);
-            var byKey = Library.Profiles.FirstOrDefault(p => p.Key == key);
+            var key = Library.CompareKey(program, s.Info.Args, s.Info.WorkingDir);
+            var byKey = Library.Profiles.FirstOrDefault(p => Library.CompareKey(p.Program, p.Args, p.WorkingDir) == key);
             if (byKey != null) return byKey;
         }
         return s.Info.Port is int port ? Library.Profiles.FirstOrDefault(p => p.Port == port) : null;
@@ -129,8 +141,9 @@ public sealed class MonitorEngine : IDisposable
         if (csvNote != null && !readOnly) { settings.CsvLog = null; try { settings.Save(); } catch { } }
         Csv = new RequestLog(readOnly ? null : csvPath) { MaxBytes = limits.MaxCsvBytes };
         ProxyCsv = new ProxyLog(readOnly ? null : Path.Combine(paths.LogsDir, "proxy.csv")) { MaxBytes = limits.MaxCsvBytes };
+        _providerKeys = readOnly ? null : new ProviderKeys(paths.Root, platform);
         Proxies = new ProxyManager(() => Registry.Servers, settings, OnProxyRecord, factory: proxyFactory, http: _http,
-            keys: readOnly ? null : new ProviderKeys(paths.Root, platform));
+            keys: _providerKeys);
         Claude = new ClaudeDesktop(platform, () => Proxies.Port, paths.Root);
         if (!readOnly)
         {
@@ -161,6 +174,159 @@ public sealed class MonitorEngine : IDisposable
         });
     }
 
+    // ── Modelltest der Sicherheitsprüfung (ClassifierTest): je Cloud-Anbieter, ein Lauf je Engine ──
+
+    private readonly ProviderKeys? _providerKeys;
+    // Ein Modelltest zur Zeit – Sicherheitsprüfung oder Bilder –, beide gehen an dieselben Anbieter. Stoppen gilt für den laufenden.
+    private readonly object _classifierGate = new();
+    private bool _classifierBusy;
+    private CancellationTokenSource? _classifierCts;
+    // Der letzte Bildtest („Test vision models“); null = noch keiner gestartet
+    public VisionTest? VisionRun { get; private set; }
+    // Der HttpClient des Bildtests (Tests setzen einen Fake); sonst ein eigener ohne Zeitgrenze, die Klasse begrenzt je Anfrage
+    public Func<HttpClient>? VisionClient { get; set; }
+    // Der letzte Modelltest (läuft er gerade, ist Running gesetzt); null = noch keiner gestartet
+    public ClassifierTest? ClassifierRun { get; private set; }
+    // Der HttpClient des Modelltests (Tests setzen einen Fake); sonst ein eigener ohne Zeitgrenze, die Klasse begrenzt je Anfrage
+    public Func<HttpClient>? ClassifierClient { get; set; }
+
+    // Startet den Modelltest für einen eingetragenen Anbieter. Ohne Schlüssel oder ohne gelistete Modelle geht nichts ins Netz.
+    // retryUnavailable: Modelle, die beim letzten Lauf 404 geantwortet haben, werden auch dieses Mal gefragt
+    public bool StartClassifierTest(string providerUrl, bool retryUnavailable, out string? error)
+    {
+        error = null;
+        if (ReadOnly || _providerKeys == null) { error = Strings.ReadOnlyEngine; return false; }
+        var url = ProviderKeys.Normalize(providerUrl);
+        if (!Proxies.Providers.Any(p => ProviderKeys.Normalize(p.BaseUrl).Equals(url, StringComparison.OrdinalIgnoreCase)))
+        { error = Strings.ProxyProviderUnknown; return false; }
+        if (!Proxies.HasProviderKey(url)) { error = Strings.ClassifierTestNoKey; return false; }
+        // Die Modelle holt ProviderModelLists (gedrosselt, im Hintergrund); beim ersten Mal kann die Liste noch leer sein
+        var listed = Proxies.ProviderModelLists(url).Listed;
+        if (listed.Length == 0) { error = Strings.ClassifierTestNoModels; return false; }
+
+        // Ein Lauf je Engine: der Schalter gilt schon ab hier, nicht erst wenn der Hintergrund-Task läuft
+        CancellationTokenSource cts;
+        lock (_classifierGate)
+        {
+            if (_classifierBusy) { error = Strings.ClassifierTestRunning; return false; }
+            _classifierBusy = true;
+            _classifierCts?.Dispose();
+            cts = _classifierCts = new CancellationTokenSource();
+        }
+        ClassifierTest run;
+        bool ownsHttp = ClassifierClient == null;
+        HttpClient http;
+        try
+        {
+            var request = ClassifierTest.PickRequest(Path.Combine(Paths.LogsDir, "proxy-debug"));
+            http = ClassifierClient?.Invoke() ?? new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
+            // Die angehakten Modelle des Anbieters laufen zuerst
+            var offered = Proxies.ProviderStates().Where(p => p.Url.Equals(url, StringComparison.OrdinalIgnoreCase)).SelectMany(p => p.Offered).ToArray();
+            run = new ClassifierTest(url, listed, request, _providerKeys, http, Path.Combine(Paths.LogsDir, ClassifierTest.CsvFile), _now,
+                offered: offered, deadPath: Path.Combine(Paths.LogsDir, ClassifierTest.DeadFile), retryUnavailable: retryUnavailable);
+        }
+        catch
+        {
+            lock (_classifierGate) _classifierBusy = false;   // nichts läuft: der Schalter darf nicht hängen bleiben
+            throw;
+        }
+        ClassifierRun = run;
+        _ = Task.Run(async () =>
+        {
+            try { await run.RunAsync(cts.Token).ConfigureAwait(false); }
+            catch (Exception) { }
+            finally
+            {
+                if (ownsHttp) http.Dispose();
+                lock (_classifierGate) _classifierBusy = false;
+            }
+        });
+        return true;
+    }
+
+    // Bricht einen laufenden Modelltest ab (Sicherheitsprüfung oder Bilder); die bis dahin gemessenen Zeilen bleiben stehen
+    public bool StopClassifierTest()
+    {
+        lock (_classifierGate)
+        {
+            if (!_classifierBusy || _classifierCts == null) return false;
+            _classifierCts.Cancel();
+        }
+        return true;
+    }
+
+    // Startet den Bildtest für einen eingetragenen Anbieter: dieselben Prüfungen wie beim Modelltest der Sicherheitsprüfung,
+    // eigene Datei vision-test.csv, dieselbe Liste der nicht verfügbaren Modelle
+    public bool StartVisionTest(string providerUrl, bool retryUnavailable, out string? error)
+    {
+        error = null;
+        if (ReadOnly || _providerKeys == null) { error = Strings.ReadOnlyEngine; return false; }
+        var url = ProviderKeys.Normalize(providerUrl);
+        if (!Proxies.Providers.Any(p => ProviderKeys.Normalize(p.BaseUrl).Equals(url, StringComparison.OrdinalIgnoreCase)))
+        { error = Strings.ProxyProviderUnknown; return false; }
+        if (!Proxies.HasProviderKey(url)) { error = Strings.ClassifierTestNoKey; return false; }
+        var listed = Proxies.ProviderModelLists(url).Listed;
+        if (listed.Length == 0) { error = Strings.ClassifierTestNoModels; return false; }
+
+        CancellationTokenSource cts;
+        lock (_classifierGate)
+        {
+            if (_classifierBusy) { error = Strings.VisionTestRunning; return false; }
+            _classifierBusy = true;
+            _classifierCts?.Dispose();
+            cts = _classifierCts = new CancellationTokenSource();
+        }
+        VisionTest run;
+        bool ownsHttp = VisionClient == null;
+        HttpClient http;
+        try
+        {
+            http = VisionClient?.Invoke() ?? new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
+            var offered = Proxies.ProviderStates().Where(p => p.Url.Equals(url, StringComparison.OrdinalIgnoreCase)).SelectMany(p => p.Offered).ToArray();
+            run = new VisionTest(url, listed, _providerKeys, http, Path.Combine(Paths.LogsDir, VisionTest.CsvFile), _now,
+                offered: offered, deadPath: Path.Combine(Paths.LogsDir, ClassifierTest.DeadFile), retryUnavailable: retryUnavailable);
+        }
+        catch
+        {
+            lock (_classifierGate) _classifierBusy = false;   // nichts läuft: der Schalter darf nicht hängen bleiben
+            throw;
+        }
+        VisionRun = run;
+        _ = Task.Run(async () =>
+        {
+            try { await run.RunAsync(cts.Token).ConfigureAwait(false); }
+            catch (Exception) { }
+            finally
+            {
+                if (ownsHttp) http.Dispose();
+                lock (_classifierGate) _classifierBusy = false;
+            }
+        });
+        return true;
+    }
+
+    // Welche Testanfrage der nächste Test nähme (für den Hinweis im Dialog): die letzte echte Prüfung oder das Beispiel
+    public ClassifierRequest ClassifierSample() => ClassifierTest.PickRequest(Path.Combine(Paths.LogsDir, "proxy-debug"));
+
+    // Die Zeilen der Sicherheitsprüfung für einen Anbieter: der letzte Lauf je Modell aus classifier-test.csv (auch nach einem
+    // Neustart), darüber die Zeilen des laufenden oder letzten Laufs dieses Anbieters (auch wenn die CSV nicht schreiben konnte)
+    public IReadOnlyList<ClassifierResult> ClassifierRows(string providerUrl)
+    {
+        var url = ProviderKeys.Normalize(providerUrl);
+        var run = ClassifierRun;
+        var current = run != null && run.ProviderUrl.Equals(url, StringComparison.OrdinalIgnoreCase) ? run.Results : Array.Empty<ClassifierResult>();
+        return ModelTestTable.Overlay(ModelTestTable.LastClassifier(Path.Combine(Paths.LogsDir, ClassifierTest.CsvFile), url), current, r => r.Model);
+    }
+
+    // Dasselbe für den Bildtest (vision-test.csv und der letzte Bildtest)
+    public IReadOnlyList<VisionResult> VisionRows(string providerUrl)
+    {
+        var url = ProviderKeys.Normalize(providerUrl);
+        var run = VisionRun;
+        var current = run != null && run.ProviderUrl.Equals(url, StringComparison.OrdinalIgnoreCase) ? run.Results : Array.Empty<VisionResult>();
+        return ModelTestTable.Overlay(ModelTestTable.LastVision(Path.Combine(Paths.LogsDir, VisionTest.CsvFile), url), current, r => r.Model);
+    }
+
     // Die letzten Beobachtungen des Proxys (für die Liste „Letzte Anfragen“: Werkzeuge, Denken, Client), neueste zuletzt
     private readonly Queue<ProxyRecord> _recentProxy = new();
     public IReadOnlyList<ProxyRecord> RecentProxy() { lock (_recentProxy) return _recentProxy.ToList(); }
@@ -172,6 +338,7 @@ public sealed class MonitorEngine : IDisposable
             _recentProxy.Enqueue(px);
             while (_recentProxy.Count > 64) _recentProxy.Dequeue();
         }
+        RouteCounts.Add(px);
         // Beobachtung des Proxys an alle laufenden Aufnahmen (Sitzungen sperren intern, der Aufruf kommt von einem Hintergrund-Thread)
         var w = Registry.Servers.FirstOrDefault(x => x.Key == px.ServerKey);
         Recorder.OnProxyRecord(px, w?.Name ?? Proxies.DisplayName(px.ServerKey), w?.Model ?? "");
@@ -208,7 +375,19 @@ public sealed class MonitorEngine : IDisposable
             if (!ReadOnly) Proxies.Maintain();
             if (!ReadOnly) Claude.Maintain(now);
             // NVML-Aufrufe sind die teuersten Messungen: im Leerlauf nur alle 2 s (bei Aufnahme jede Sekunde)
-            if (Gpu == null || GpuEveryTick || (now - _lastGpuRead).TotalSeconds >= 1.9) { Gpu = Platform.ReadGpu(); _lastGpuRead = now; }
+            if (Gpu == null || GpuEveryTick || (now - _lastGpuRead).TotalSeconds >= 1.9)
+            {
+                Gpu = Platform.ReadGpu();
+                _lastGpuRead = now;
+                if (Gpu is { } gpuSample) GpuHistory.Add(gpuSample);
+            }
+            if ((now - _lastDiskRead).TotalSeconds >= 0.95)
+            {
+                _lastDiskRead = now;
+                try { Disks = Platform.ReadDisks(); }
+                catch { Disks = null; }   // ein Zählerfehler lässt die Karte leer, der Takt läuft weiter
+                if (Disks is { } disks) DiskHistory.Add(disks);
+            }
             Sys = Platform.ReadSystem();
             if (Recorder.Active)
                 foreach (var s in Recorder.Tick(servers, Gpu, Sys)) _ = StopRecordingAsync(s, limitReached: true);
@@ -223,6 +402,8 @@ public sealed class MonitorEngine : IDisposable
                     try { _gpuUtilTop = Platform.ReadGpuUtilTop(64)?.ToList() ?? new(); }
                     catch { }
                     try { _ramTop = Platform.ReadRamTop(12)?.ToList() ?? new(); }
+                    catch { }
+                    try { _diskProcs = Platform.ReadDiskProcesses(DiskProcessCount)?.ToList() ?? new(); }
                     catch { }
                     finally { _procBusy = false; }
                 });
@@ -331,6 +512,7 @@ public sealed class MonitorEngine : IDisposable
     {
         if (_disposed) return;
         _disposed = true;
+        StopClassifierTest();
         Csv.Flush();
         Recorder.Dispose();
         Proxies.Dispose();

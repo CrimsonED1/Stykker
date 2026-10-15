@@ -14,7 +14,7 @@ public sealed class LaunchCoordinator
     }
 
     public ServerWatcher? RunningFor(Profile p) =>
-        _engine.Servers.FirstOrDefault(s => s.Info.Program != null && Library.MakeKey(s.Info.Program, s.Info.Args) == p.Key);
+        _engine.Servers.FirstOrDefault(s => s.Info.Program != null && Library.CompareKey(s.Info.Program, s.Info.Args, s.Info.WorkingDir) == Library.CompareKey(p.Program, p.Args, p.WorkingDir));
 
     public LaunchedServer? StartingFor(Profile p) =>
         _engine.Registry.Launches.FirstOrDefault(l => l.ProfileId == p.Id && l.State == LaunchState.Starting);
@@ -23,7 +23,7 @@ public sealed class LaunchCoordinator
 
     public Task<bool> StartProfileAsync(Profile p)
     {
-        var hist = _engine.Library.FindHistory(p.Key);
+        var hist = _engine.Library.HistoryOf(p);
         return StartSpecAsync(new LaunchSpec(p.Name, p.Program, p.Args, p.WorkingDir, p.Id, hist is { MaxVramGb: > 0 } ? hist.MaxVramGb : null, p.Env));
     }
 

@@ -75,18 +75,23 @@ else
                 }
                 else
                 {
-                    <button class="good" disabled="@(Server == null || _input.Trim().Length == 0)" @onclick="Send">@Strings.BtnSend</button>
+                    <button class="good" disabled="@(!CanSend || _input.Trim().Length == 0)" @onclick="Send">@Strings.BtnSend</button>
                 }
                 <button disabled="@_session.Busy" @onclick="Clear">@Strings.BtnClear</button>
             </div>
+            @if (_proxyMsg.Length > 0) { <p class="small warn">@_proxyMsg</p> }
         </div>
 
         <div class="card opts">
             <label>@Strings.ColServer</label>
             <select @bind="ServerKey">
                 @foreach (var s in Servers) { <option value="@s.Key">@s.Name · @s.Url.Replace("http://", "")</option> }
+                <optgroup label="@Strings.PromptViaGroup">
+                    @foreach (var o in ProxyOptions) { <option value="@o.Value">@o.Label</option> }
+                </optgroup>
             </select>
-            @if (Servers.Count == 0) { <p class="small warn">@Strings.PromptNoServer</p> }
+            @if (IsVia) { <p class="muted small">@Strings.PromptViaHint</p> }
+            @if (Servers.Count == 0 && !IsVia) { <p class="small warn">@Strings.PromptNoServer</p> }
             <label>@Strings.PromptModel</label>
             <input @bind="_session.Options.Model" />
             <label>@Strings.PromptSystem</label>
@@ -95,8 +100,11 @@ else
                 <label style="margin:0">@Strings.PromptTemperature</label><input type="number" step="0.1" min="0" max="2" style="width:80px" @bind="_session.Options.Temperature" />
                 <label style="margin:0">@Strings.PromptMaxTokens</label><input type="number" min="1" max="32768" style="width:90px" @bind="_session.Options.MaxTokens" />
             </div>
-            <label>@Strings.PromptApiKey</label>
-            <input type="password" autocomplete="off" @bind="_session.Options.ApiKey" />
+            @if (!IsVia)
+            {
+                <label>@Strings.PromptApiKey</label>
+                <input type="password" autocomplete="off" @bind="_session.Options.ApiKey" />
+            }
             <label style="color:var(--ink);margin-top:14px"><input type="checkbox" @bind="_tools" /> @Strings.PromptToolsOn</label>
             @if (_tools)
             {
@@ -117,7 +125,8 @@ else
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromMinutes(10) };
 
     private readonly PromptSession _session = new();
-    private string _input = "", _serverKey = "";
+    // Die Auswahl: ein laufender lokaler Server (sein Key) oder ein Eintrag „Via Stykker-Proxy“ (PromptTargets)
+    private string _input = "", _serverKey = "", _proxyMsg = "";
     private CancellationTokenSource? _cts;
     private DateTime _lastPaint;
     private bool _tools;
@@ -137,19 +146,37 @@ else
     private void Answer(bool ok) { _approval?.TrySetResult(ok); _approval = null; }
 
     private List<ServerWatcher> Servers => Host.Engine.Registry.Servers.Where(s => s.Online).ToList();
-    private ServerWatcher? Server => Servers.FirstOrDefault(s => s.Key == _serverKey) ?? Servers.FirstOrDefault();
+    private ServerWatcher? Server => IsVia ? null : Servers.FirstOrDefault(s => s.Key == _serverKey) ?? Servers.FirstOrDefault();
 
-    // Server wechseln heißt: sein Modell eintragen und neu anfangen (ein Gespräch mit zwei Modellen ergibt nichts)
+    private bool IsVia => PromptTargets.IsVia(_serverKey);
+    private IReadOnlyList<ProxyChoice> ProxyChoices => Host.Engine.Proxies.Choices();
+    private IReadOnlyList<(string Value, string Label)> ProxyOptions => PromptTargets.Options(ProxyChoices);
+    private bool CanSend => IsVia || Server != null;
+
+    // Auswahl wechseln heißt: das Modell eintragen und neu anfangen (ein Gespräch mit zwei Modellen ergibt nichts).
+    // Über den Proxy geht kein Schlüssel von dieser Seite hinaus; der Proxy setzt ihn selbst.
     private string ServerKey
     {
-        get => Server?.Key ?? "";
-        set { _serverKey = value; _session.Clear(); _session.Options.Model = Server is { } s ? PromptHarness.ModelFor(s) : ""; }
+        get => IsVia ? _serverKey : Server?.Key ?? "";
+        set
+        {
+            _serverKey = value;
+            _proxyMsg = "";
+            _session.Clear();
+            if (IsVia)
+            {
+                _session.Options.ApiKey = null;
+                _session.Options.Model = PromptTargets.ModelOf(value, ProxyChoices) ?? "";
+            }
+            else _session.Options.Model = Server is { } s ? PromptHarness.ModelFor(s) : "";
+        }
     }
 
     protected override void OnInitialized()
     {
         _serverKey = Initial ?? "";
-        if (Server is { } s) _session.Options.Model = PromptHarness.ModelFor(s);
+        if (IsVia) _session.Options.Model = PromptTargets.ModelOf(_serverKey, ProxyChoices) ?? "";
+        else if (Server is { } s) _session.Options.Model = PromptHarness.ModelFor(s);
     }
 
     private async Task Key(KeyboardEventArgs e)
@@ -159,8 +186,20 @@ else
 
     private async Task Send()
     {
-        if (Server is not { } s || _input.Trim().Length == 0 || _session.Busy) return;
+        if (!CanSend || _input.Trim().Length == 0 || _session.Busy) return;
         _toolMsg = "";
+        _proxyMsg = "";
+        // Adresse: für ein Cloud-Modell der lokale Proxy (er hat den Schlüssel), sonst der Server selbst
+        string baseUrl;
+        if (IsVia)
+        {
+            var (target, error) = PromptTargets.Resolve(_serverKey, ProxyChoices, Host.Engine.Proxies.Port, Host.Engine.Proxies.Running);
+            if (target == null) { _proxyMsg = error ?? ""; return; }
+            baseUrl = target.Url;
+            _session.Options.ApiKey = null;
+        }
+        else if (Server is { } s) baseUrl = s.Url;
+        else return;
         if (_tools)
         {
             if (!Directory.Exists(_workdir.Trim())) { _toolMsg = Strings.PromptNoWorkdir; return; }
@@ -170,7 +209,7 @@ else
         var text = _input.Trim();
         _input = "";
         _cts = new CancellationTokenSource();
-        var task = _session.SendAsync(Http, s.Url, text, () =>
+        var task = _session.SendAsync(Http, baseUrl, text, () =>
         {
             // höchstens zehnmal je Sekunde neu zeichnen, sonst kommt die Leitung zum Browser nicht nach
             if ((DateTime.Now - _lastPaint).TotalMilliseconds < 100) return;

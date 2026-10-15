@@ -119,6 +119,16 @@ public sealed class Library
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(text)))[..16].ToLowerInvariant();
     }
 
+    // Der Vergleichsschlüssel für „gehört zu diesem gemerkten Profil bzw. Verlaufseintrag“ – eine Regel für Profil, Verlauf und
+    // Start. Ein Python-Server aus einem venv läuft als Kind des Basis-Pythons: der Monitor erkennt das Basis-Python, gemerkt
+    // wird oft der venv-Starter. Darum wird das Programm wie beim Start angeglichen (VenvPython: Starter im Arbeitsordner oder
+    // neben dem Skript). Die gespeicherten Schlüssel (Key) bleiben unverändert; nur der Vergleich nutzt das hier.
+    public static string CompareKey(string program, IEnumerable<string> args, string? workDir)
+    {
+        var list = args.ToList();
+        return MakeKey(ServerLauncher.VenvPython(program, workDir, list), list);
+    }
+
     private static IEnumerable<string> WithoutLogFile(IEnumerable<string> args)
     {
         bool skipValue = false;
@@ -428,7 +438,8 @@ public sealed class Library
         lock (_lock)
         {
             // Dasselbe Programm mit denselben Argumenten nur einmal merken
-            var existing = _data.Profiles.FirstOrDefault(e => e.Key == p.Key);
+            var want = CompareKey(p.Program, p.Args, p.WorkingDir);
+            var existing = _data.Profiles.FirstOrDefault(e => CompareKey(e.Program, e.Args, e.WorkingDir) == want);
             if (existing != null) return existing;
             _data.Profiles.Add(p);
             _dirty = true;
@@ -439,8 +450,18 @@ public sealed class Library
     public Profile? FindProfile(ServerInfo info)
     {
         if (string.IsNullOrEmpty(info.Program)) return null;
-        var key = MakeKey(info.Program, info.Args);
-        lock (_lock) return _data.Profiles.FirstOrDefault(p => p.Key == key);
+        var key = CompareKey(info.Program, info.Args, info.WorkingDir);
+        lock (_lock) return _data.Profiles.FirstOrDefault(p => CompareKey(p.Program, p.Args, p.WorkingDir) == key);
+    }
+
+    // Der Verlaufseintrag zu einem gemerkten Profil (gleicher Vergleich wie FindProfile)
+    public HistoryEntry? HistoryOf(Profile p) => HistoryFor(p.Program, p.Args, p.WorkingDir);
+
+    // Der Verlaufseintrag zu einem Programm mit Argumenten (gleicher Vergleich wie FindProfile)
+    public HistoryEntry? HistoryFor(string program, IEnumerable<string> args, string? workDir)
+    {
+        var key = CompareKey(program, args, workDir);
+        lock (_lock) return _data.History.FirstOrDefault(h => CompareKey(h.Program, h.Args, h.WorkingDir) == key);
     }
 
     public bool RenameProfile(Guid id, string name)

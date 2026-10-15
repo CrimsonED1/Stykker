@@ -7,7 +7,10 @@ public sealed class BenchmarkService
     private CancellationTokenSource? _cts;
     public bool Running { get; private set; }
     public BenchResult? Current { get; private set; }
+    public BenchOptions? CurrentOptions { get; private set; }
     public string Status { get; private set; } = "";
+    // Restzeit des laufenden Ergebnisses in ganzen Minuten (null: noch keine Messung)
+    public int? MinutesLeft => Running && Current != null && CurrentOptions != null ? BenchmarkRunner.MinutesLeft(CurrentOptions, Current) : null;
     // (Meldung, abgeschlossener Schritt) – die Oberfläche malt beides
     public event Action<string, BenchStep?>? Progress;
     public event Action<BenchResult, BenchRegression?>? Finished;
@@ -25,6 +28,7 @@ public sealed class BenchmarkService
         if (Running) return null;
         if (!options.Chat && options.ContextSizes.Length == 0 && !options.Tool && !options.Parallel) return null;
         Running = true;
+        CurrentOptions = options;
         Status = "";
         _cts?.Dispose();
         _cts = CancellationTokenSource.CreateLinkedTokenSource(outer);
@@ -46,6 +50,8 @@ public sealed class BenchmarkService
                 options.ContextPerSlot = Math.Max(1, (server.Props?.NCtx ?? options.ContextPerSlot * options.Slots) / Math.Max(1, options.Slots));
                 options.Slots = Math.Max(1, server.Props?.TotalSlots ?? options.Slots);
             }
+            // Ein laufender Server meldet seine Slots in /props: die parallelen Anfragen richten sich danach (wie bei einem gestarteten Profil)
+            if (server.Props is { TotalSlots: > 0 } running) options.Slots = running.TotalSlots;
             // Kontext je Slot unbekannt (Seite ohne /props-Angabe): aus den Slots des Servers, sonst entfiele die Kontext-Leiter
             if (options.ContextPerSlot <= 0)
             {
@@ -102,6 +108,16 @@ public sealed class BenchmarkService
             // Scheitert der Lauf vor dem ersten Ergebnis, bleibt der Grund in Status stehen (sonst meldet die
             // Steuer-API nur "error:" ohne Text); der Lauf beginnt ohnehin mit leerem Status.
         }
+    }
+
+    // Slots des gewählten Ziels, soweit bekannt: laufender Server aus /props (sonst -np), gespeichertes Profil aus den Startargumenten
+    public static int? KnownSlots(MonitorEngine engine, string targetKey)
+    {
+        var server = engine.Servers.FirstOrDefault(s => s.Key == targetKey);
+        if (server != null)
+            return server.Props is { TotalSlots: > 0 } p ? p.TotalSlots : BenchmarkRunner.SlotsFromArgs(server.Info.Args);
+        var profile = FindProfile(engine.Library, targetKey);
+        return profile == null ? null : BenchmarkRunner.SlotsFromArgs(profile.Args);
     }
 
     private static Profile? FindProfile(Library lib, string idOrName)

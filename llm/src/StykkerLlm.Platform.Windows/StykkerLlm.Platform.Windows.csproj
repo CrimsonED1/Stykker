@@ -11,6 +11,8 @@
 
   <ItemGroup>
     <ProjectReference Include="../StykkerLlm.Core/StykkerLlm.Core.csproj" />
+    <!-- DiskCounters (Stykker.Shared/Windows): Laufwerke und Platten-E/A -->
+    <ProjectReference Include="../../../shared/src/Stykker.Shared/Stykker.Shared.csproj" />
   </ItemGroup>
 
 </Project>

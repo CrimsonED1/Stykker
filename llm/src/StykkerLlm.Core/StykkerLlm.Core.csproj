@@ -16,6 +16,8 @@
     <InternalsVisibleTo Include="StykkerLlm.Tests" />
     <!-- Kopplung für alle Module (Geräte, Rollen, Hosts), eine pairing.dat für HUD, SYS und LLM -->
     <ProjectReference Include="..\..\..\shared\src\Stykker.Pairing\Stykker.Pairing.csproj" />
+    <!-- Laufwerksdaten (Disk-Records) gemeinsam mit SYS: shared/src/Stykker.Shared/Disk -->
+    <ProjectReference Include="..\..\..\shared\src\Stykker.Shared\Stykker.Shared.csproj" />
     <!-- eingebaute Test-Suite für Modelle (Eval) -->
     <EmbeddedResource Include="Eval\suite-basic.json" LogicalName="StykkerLlm.Core.Eval.suite-basic.json" />
     <EmbeddedResource Include="Eval\suite-hard.json" LogicalName="StykkerLlm.Core.Eval.suite-hard.json" />

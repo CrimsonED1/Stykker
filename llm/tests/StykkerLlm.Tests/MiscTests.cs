@@ -122,7 +122,7 @@ public class RequestLogTests
             var lines = File.ReadAllLines(path);
             Assert.AreEqual(2, lines.Length);
             Assert.IsTrue(lines[0].TrimStart('\uFEFF').StartsWith("Time,Server"));
-            Assert.AreEqual("2026-01-01 01:02:03,\"s,1\",m,Aider,100,50.5,200,40.3,5.5,truncated", lines[1]);
+            Assert.AreEqual("2026-01-01 01:02:03,\"s,1\",m,Aider,100,50.5,200,40.3,5.5,truncated,-1", lines[1]);
         }
         finally { if (Directory.Exists(dir)) Directory.Delete(dir, true); }
     }

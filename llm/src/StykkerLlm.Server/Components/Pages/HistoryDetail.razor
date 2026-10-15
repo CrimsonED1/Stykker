@@ -23,8 +23,10 @@
 else
 {
     var name = h.Name.Length > 0 ? h.Name : h.ModelPath != null ? ServerInfo.ModelName(h.ModelPath) : "?";
-    var running = Host.Engine.Registry.Servers.Any(x => x.Info.Program != null && Library.MakeKey(x.Info.Program!, x.Info.Args) == h.Key);
-    var saved = Host.Engine.Library.Profiles.Any(p => p.Key == h.Key);
+    // Laufend und gemerkt: derselbe Vergleich wie auf der Liste (Library.CompareKey)
+    var hkey = Library.CompareKey(h.Program, h.Args, h.WorkingDir);
+    var running = Host.Engine.Registry.Servers.Any(x => x.Info.Program != null && Library.CompareKey(x.Info.Program!, x.Info.Args, x.Info.WorkingDir) == hkey);
+    var saved = Host.Engine.Library.Profiles.Any(p => Library.CompareKey(p.Program, p.Args, p.WorkingDir) == hkey);
     var modelPath = HistoryDetails.ModelPath(h);
     var parameters = HistoryDetails.Parameters(h);
     var runs = HistoryDetails.Runs(h);

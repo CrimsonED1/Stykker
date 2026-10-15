@@ -49,6 +49,16 @@ public class N72_ClassifierTargetTests
     }
 
     [TestMethod]
+    public void A_check_asks_the_target_not_to_think()
+    {
+        var body = "{\"model\":\"claude-stykker\",\"max_tokens\":2112,\"stop_sequences\":[\"</block>\"],\"messages\":[{\"role\":\"user\",\"content\":\"x\"}]}"u8.ToArray();
+        var off = System.Text.Encoding.UTF8.GetString(AnthropicBridge.ToOpenAi(body, "m", noThinking: true));
+        StringAssert.Contains(off, "\"enable_thinking\":false");
+        StringAssert.Contains(off, "</block>");
+        Assert.IsFalse(System.Text.Encoding.UTF8.GetString(AnthropicBridge.ToOpenAi(body, "m")).Contains("enable_thinking"));
+    }
+
+    [TestMethod]
     public void Without_a_check_target_nothing_changes()
     {
         var proxy = new RouterProxy(0);

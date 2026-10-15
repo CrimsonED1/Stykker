@@ -15,7 +15,7 @@ namespace StykkerLlm.Core;
 public sealed record ProxyRoute(string Upstream, string ServerKey, byte[]? Body,
     string? LocalContentType = null, byte[]? LocalBody = null, int LocalStatus = 200,
     IReadOnlyList<(string Name, string Value)>? Headers = null, HttpClient? Client = null,
-    Func<Stream, ProxyTap, CancellationToken, Task<int>>? LocalStream = null);
+    Func<Stream, ProxyTap, CancellationToken, Task<int>>? LocalStream = null, string? Route = null);
 
 // Kleiner lokaler Durchreich-Proxy (nur Loopback) vor einem llama-server. Reicht alle Anfragen unverändert weiter (auch Streaming/SSE),
 // liest bei Generierungs-Anfragen mit (ProxyTap) und meldet je Anfrage einen ProxyRecord. Aus: Server bleibt direkt erreichbar.
@@ -552,7 +552,7 @@ public class RequestProxy : IDisposable
                 int q2 = req.Target.IndexOf('?');
                 var rec = new ProxyRecord(route?.ServerKey ?? ServerKey, q2 >= 0 ? req.Target[..q2] : req.Target, start, end, tap.FirstToken, tap.FirstContent,
                     known ? reasoning : -1, known ? content : -1, tap.Tools.ToArray(), tap.FinishReason, ua, stream || tap.Stream, status, aborted,
-                    RouterProxy.ReadModel(req.Body), RequestShape.Read(req.Body));
+                    RouterProxy.ReadModel(req.Body), RequestShape.Read(req.Body), route?.Route);
                 try { Recorded?.Invoke(rec); } catch { }
                 if (req.Body is { Length: > 0 } dbgBody && DebugBody is { } dbg) { try { dbg(rec, dbgBody); } catch { } }
             }
