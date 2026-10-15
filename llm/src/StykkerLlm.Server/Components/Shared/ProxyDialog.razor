@@ -141,6 +141,74 @@
                 @foreach (var c in models) { <option value="@c.Value">@c.Display</option> }
             </select>
 
+            @* Modelltest: jedes Modell eines Anbieters bekommt eine Prüfung und zeigt, ob es schnell und im Format antwortet *@
+            @{
+                var tests = Host.Engine.ClassifierRun;
+                var running = tests is { Running: true };
+                var testUrl = TestUrl;
+            }
+            <div class="small muted pxp-hint">@(_realRequest ? Strings.ClassifierTestRealRequest : Strings.ClassifierTestExampleRequest)</div>
+            @if (Providers.Count == 0)
+            {
+                <div class="muted small">@Strings.ClassifierTestNoProvider</div>
+            }
+            else
+            {
+                <div class="pxp-row">
+                    <select class="ctt-prov" value="@testUrl" aria-label="@Strings.ClassifierTestProvider" title="@Strings.ClassifierTestProvider"
+                            disabled="@(!CanWrite || running)" @onchange="e => _testUrl = e.Value?.ToString()">
+                        @foreach (var pv in Providers) { <option value="@pv.Url">@pv.Name</option> }
+                    </select>
+                    @if (running)
+                    {
+                        <button class="ghost" @onclick="StopTest">@Strings.ClassifierTestStop</button>
+                    }
+                    else
+                    {
+                        <button class="primary" disabled="@(!CanWrite)" @onclick="StartTest">@Strings.ClassifierTestButton</button>
+                    }
+                </div>
+            }
+            @if (tests != null)
+            {
+                <div class="small muted pxp-hint">@Strings.ClassifierTestProgress(tests.Done, tests.Total)@(tests.Current.Length > 0 ? " · " + tests.Current : "")</div>
+                <div class="ctt-scroll">
+                    <table class="ctt">
+                        <thead><tr>
+                            <th>@Strings.ClassifierColModel</th><th>@Strings.ClassifierColFormat</th><th>@Strings.ClassifierColStatus</th>
+                            <th>@Strings.ClassifierColFirst</th><th>@Strings.ClassifierColTotal</th><th>@Strings.ClassifierColNote</th><th></th>
+                        </tr></thead>
+                        <tbody>
+                        @foreach (var row in ClassifierTest.Sorted(tests.Results))
+                        {
+                            var rr = row;
+                            <tr>
+                                <td title="@rr.Model">@rr.Model</td>
+                                <td>@(rr.FormatOk is true ? Strings.ClassifierFormatOk : rr.FormatOk is false ? Strings.ClassifierFormatNo : "–")</td>
+                                <td>@rr.Status</td>
+                                <td>@(rr.FirstByteSec is double fb ? fb.ToString("0.00", CultureInfo.InvariantCulture) : "–")</td>
+                                <td>@(rr.TotalSec is double tt ? tt.ToString("0.00", CultureInfo.InvariantCulture) : "–")</td>
+                                <td class="ctt-note">@rr.Note</td>
+                                <td>
+                                    @if (rr.FormatOk is true && !running)
+                                    {
+                                        @if (Offered(tests.ProviderUrl, rr.Model))
+                                        {
+                                            <button class="ghost" disabled="@(!CanWrite)" @onclick="() => UseClassifier(tests.ProviderUrl, rr.Model)">@Strings.ClassifierTestUse</button>
+                                        }
+                                        else
+                                        {
+                                            <span class="small muted">@Strings.ClassifierTestNotOffered</span>
+                                        }
+                                    }
+                                </td>
+                            </tr>
+                        }
+                        </tbody>
+                    </table>
+                </div>
+            }
+
             @if (models.Count > 0)
             {
                 <details class="pxp-models">
@@ -175,6 +243,9 @@
     private string? _add, _keyFor, _modelsFor;
     private string? _port;
     private bool _wasOpen, _focus;
+    // Modelltest: der gewählte Anbieter, und ob die Testanfrage die letzte echte Prüfung ist (sonst das Beispiel)
+    private string? _testUrl;
+    private bool _realRequest;
 
     private bool CanWrite => Web.CanWrite && !Host.ReadOnly;
 
@@ -193,6 +264,8 @@
             _flash = "";
             _port = null;
             _add = _keyFor = _modelsFor = null;
+            _testUrl = null;
+            _realRequest = Host.Engine.ClassifierSample().Real;
             _focus = true;
         }
         _wasOpen = Dialogs.IsOpen;
@@ -234,6 +307,42 @@
     {
         if (!CanWrite) return;
         var r = await Web.RunAsync(new ActionRequest { Action = "proxy.classifier", Arg = e.Value?.ToString() ?? "" });
+        if (r.Ok) { _flash = ""; Toast.Show(r.Message); } else _flash = r.Message;
+    }
+
+    // Der Anbieter, der getestet wird: der gewählte, sonst der erste mit Schlüssel, sonst der erste (leer = keiner)
+    private string TestUrl
+    {
+        get
+        {
+            var all = Providers;
+            if (_testUrl != null && all.Any(p => p.Url == _testUrl)) return _testUrl;
+            return all.FirstOrDefault(p => p.HasKey).Url ?? all.FirstOrDefault().Url ?? "";
+        }
+    }
+
+    private bool Offered(string url, string model)
+        => Providers.FirstOrDefault(p => p.Url == url).Offered is { } offered && Array.IndexOf(offered, model) >= 0;
+
+    private async Task StartTest()
+    {
+        if (!CanWrite || TestUrl is not { Length: > 0 } url) return;
+        var r = await Web.RunAsync(new ActionRequest { Action = "classifier.test.start", Arg = url });
+        if (r.Ok) { _flash = ""; Toast.Show(r.Message); } else _flash = r.Message;
+    }
+
+    private async Task StopTest()
+    {
+        if (!CanWrite) return;
+        var r = await Web.RunAsync(new ActionRequest { Action = "classifier.test.stop" });
+        if (r.Ok) { _flash = ""; Toast.Show(r.Message); } else _flash = r.Message;
+    }
+
+    // Das geprüfte Modell als Prüfmodell setzen: die Cloud-Zielkennung trägt Anbieter und Modell
+    private async Task UseClassifier(string url, string model)
+    {
+        if (!CanWrite) return;
+        var r = await Web.RunAsync(new ActionRequest { Action = "proxy.classifier", Arg = ProxyTarget.CloudKey(url, model) });
         if (r.Ok) { _flash = ""; Toast.Show(r.Message); } else _flash = r.Message;
     }
 
