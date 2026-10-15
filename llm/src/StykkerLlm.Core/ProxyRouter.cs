@@ -111,6 +111,36 @@ public class RouterProxy : RequestProxy
         return false;
     }
 
+    // Gelernte Bildgrenzen je Ziel (aus der Fehlermeldung des Anbieters), bis zum Neustart
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, int> _imageLimits = new();
+
+    private static readonly System.Text.RegularExpressions.Regex ImageLimitPattern =
+        new(@"at most (\d+) image", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+    // Die Bildgrenze aus einer Fehlermeldung („At most 1 image(s) may be provided in one prompt“), sonst null
+    internal static int? ImageLimit(string? errorText) =>
+        errorText != null && ImageLimitPattern.Match(errorText) is { Success: true } m && int.TryParse(m.Groups[1].Value, out var n) && n >= 0 ? n : null;
+
+    // Nur die letzten max Bilder (OpenAI-Teile „image_url“) behalten; ältere werden zu einem kurzen Text, damit das Modell
+    // weiß, dass dort ein Bild war. Unverändert, wenn es nicht mehr Bilder sind oder der Text kein JSON ist.
+    internal static byte[] TrimImages(byte[] openAiBody, int max)
+    {
+        try
+        {
+            if (JsonNode.Parse(openAiBody) is not JsonObject root || root["messages"] is not JsonArray msgs) return openAiBody;
+            var parts = new List<(JsonArray Content, int Index)>();
+            foreach (var m in msgs)
+                if (m?["content"] is JsonArray content)
+                    for (int i = 0; i < content.Count; i++)
+                        if (content[i]?["type"]?.GetValue<string>() == "image_url") parts.Add((content, i));
+            if (parts.Count <= max) return openAiBody;
+            foreach (var (content, index) in parts.Take(parts.Count - max))
+                content[index] = new JsonObject { ["type"] = "text", ["text"] = "[an earlier image was left out]" };
+            return Encoding.UTF8.GetBytes(root.ToJsonString());
+        }
+        catch (JsonException) { return openAiBody; }
+    }
+
     // Ein Claude-Modellname, der nicht claude-stykker ist (claude-sonnet-…, claude-haiku-…): so fragt Claude Code im Modus
     // „auto“ seine Sicherheitsprüfung an. Die Sitzung selbst läuft über claude-stykker.
     internal static bool IsOtherClaudeModel(string? model) =>
@@ -260,8 +290,11 @@ public class RouterProxy : RequestProxy
         }
 
         string url = NetAddr.JoinUpstream(t.Url, "/v1/chat/completions");
+        // Kennt der Proxy schon eine Bildgrenze dieses Ziels, gleich nur die letzten Bilder schicken
+        if (_imageLimits.TryGetValue(t.Key, out var known)) openAi = TrimImages(openAi, known);
+        var targetKey = t.Key;
         return new ProxyRoute("", t.RouteKey, null,
-            LocalStream: (net, tap, token) => BridgeAsync(net, url, send, openAi, requested, own, via, tap, token), Route: route);
+            LocalStream: (net, tap, token) => BridgeAsync(net, url, send, openAi, requested, own, via, tap, token, targetKey), Route: route);
     }
 
     private static ProxyRoute AnthropicError(int status, string message)
@@ -270,7 +303,8 @@ public class RouterProxy : RequestProxy
     // Weiterleiten und umformen: Anthropic-Bytes an das Ziel, die Antwort als Anthropic-Ereignisse an den Client.
     // Schreibt Kopfzeilen und Rumpf selbst; die Bytes des Ziels bekommt der Mitschreiber, damit die Anfrage gezählt wird.
     private async Task<int> BridgeAsync(Stream net, string url, IReadOnlyList<(string Name, string Value)> headers, byte[] body,
-        string model, IReadOnlyList<(string Name, string Value)>? own, HttpClient? client, ProxyTap tap, CancellationToken ct)
+        string model, IReadOnlyList<(string Name, string Value)>? own, HttpClient? client, ProxyTap tap, CancellationToken ct,
+        string targetKey = "", bool retried = false)
     {
         using var req = new HttpRequestMessage(HttpMethod.Post, url) { Content = new ByteArrayContent(body) };
         foreach (var (name, value) in headers)
@@ -307,6 +341,15 @@ public class RouterProxy : RequestProxy
             {
                 // Fehler unverändert weiterreichen: die App erkennt daran z. B. einen zu kleinen Kontext und verdichtet
                 string text = await ReadStartAsync(resp, 8192, ct).ConfigureAwait(false);
+                // „At most 1 image(s) may be provided in one prompt“: Grenze merken und einmal mit den letzten Bildern wiederholen
+                if (status == 400 && !retried && ImageLimit(text) is int limit && targetKey.Length > 0)
+                {
+                    _imageLimits[targetKey] = limit;
+                    AppLog.Write($"proxy: {model} takes at most {limit} image(s) per request; older images are left out from now on");
+                    var trimmed = TrimImages(body, limit);
+                    if (!trimmed.AsSpan().SequenceEqual(body))
+                        return await BridgeAsync(net, url, headers, trimmed, model, own, client, tap, ct, targetKey, retried: true).ConfigureAwait(false);
+                }
                 int code = status is 400 or 401 or 403 or 404 or 413 or 429 or 529 ? status : 502;
                 string message = ErrorMessage(text) ?? resp.ReasonPhrase ?? "error";
                 await WriteJsonAsync(net, code, AnthropicBridge.ErrorJson(code, message), ct).ConfigureAwait(false);
