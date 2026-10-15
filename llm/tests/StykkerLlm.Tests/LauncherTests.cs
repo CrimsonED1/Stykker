@@ -106,6 +106,23 @@ public class LauncherTests
     }
 
     [TestMethod]
+    public void Check_AnotherProgramStartsWithItsCommandLine()
+    {
+        var dir = TempDir();
+        try
+        {
+            var python = Path.Combine(dir, "python.exe"); File.WriteAllText(python, "x");
+            var spec = new LaunchSpec("strata", python, new[] { "server.py", "--engine", "strata", "--config", "c.json", "--port", "8082" }, dir);
+            var issues = ServerLauncher.Check(spec, new FakePlatform(), null, Array.Empty<ServerInfo>());
+            Assert.IsFalse(issues.Any(i => i.Severity == LaunchSeverity.Error), string.Join("; ", issues.Select(i => i.Message)));
+            var plan = ServerLauncher.BuildPlan(spec, Path.Combine(dir, "logs"));
+            CollectionAssert.DoesNotContain(plan.Args.ToList(), "--log-file", "ein fremdes Programm bekommt kein --log-file");
+            Assert.AreEqual(8082, plan.Port);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [TestMethod]
     public void Check_CleanSpecHasNoIssues()
     {
         var dir = TempDir();

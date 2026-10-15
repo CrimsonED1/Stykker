@@ -232,6 +232,14 @@ public static class ServerLauncher
 
     // ── Prüfen ──
 
+    // llama-server (auch Forks): am Namen oder an seinen Modell-Optionen erkannt. Nur dort gelten -m, --log-file und die
+    // Modellprüfungen; ein anderes Programm (z. B. python mit einem Server-Skript) startet mit seiner Kommandozeile.
+    private static readonly string[] LlamaModelOptions = { "-m", "--model", "-hf", "--hf-repo", "-mu", "--model-url", "--models-dir", "--models-preset" };
+
+    public static bool IsLlamaServer(string? program, IReadOnlyList<string>? args = null) =>
+        (!string.IsNullOrWhiteSpace(program) && Path.GetFileNameWithoutExtension(program.Trim()).Contains("llama", StringComparison.OrdinalIgnoreCase))
+        || (args != null && args.Any(a => LlamaModelOptions.Contains(a.Split('=')[0], StringComparer.Ordinal)));
+
     // Nur ein vollständiger, absoluter Pfad zu einer vorhandenen Datei wird gestartet: kein Suchen im PATH, kein relatives Auflösen
     public static bool IsStartableProgram(string? program) =>
         !string.IsNullOrWhiteSpace(program) && Path.IsPathFullyQualified(program) && File.Exists(program);
@@ -253,13 +261,16 @@ public static class ServerLauncher
         if (FindSecretSlots(spec.Args, spec.Env).Count > 0) Err("secret", "A secret value (API key or token) must be entered first.");
 
         var parsed = LlamaServerArgs.Parse(spec.Args);
-        if (parsed.Mode != ServerMode.Normal) Err("mode", "Only servers with a local model file (-m) can be started from here.");
+        // Ein anderes Programm (z. B. ein Python-Server wie Strata) startet mit seiner gespeicherten, bestätigten
+        // Kommandozeile; die Regeln für llama-server (Modelldatei per -m) gelten dort nicht.
+        bool llama = IsLlamaServer(spec.Program, spec.Args);
+        if (llama && parsed.Mode != ServerMode.Normal) Err("mode", "Only servers with a local model file (-m) can be started from here.");
 
-        var model = ResolveModel(parsed.Model, spec.WorkingDir);
-        if (parsed.Mode == ServerMode.Normal && (model == null || !File.Exists(model))) Err("model", $"Model file not found: {parsed.Model}");
+        var model = llama ? ResolveModel(parsed.Model, spec.WorkingDir) : null;
+        if (llama && parsed.Mode == ServerMode.Normal && (model == null || !File.Exists(model))) Err("model", $"Model file not found: {parsed.Model}");
 
-        int port = parsed.Port ?? DefaultPort;
-        var listener = platform.ReadListeners().FirstOrDefault(l => l.Port == port);
+        int? port = parsed.Port ?? (llama ? DefaultPort : null);
+        var listener = port is int pt ? platform.ReadListeners().FirstOrDefault(l => l.Port == pt) : null;
         if (listener != null) Err("port", $"Port {port} is already in use (PID {listener.Pid}).");
 
         if (model != null)
@@ -329,7 +340,9 @@ public static class ServerLauncher
         int port = parsed.Port ?? DefaultPort;
         string host = parsed.Host is { Length: > 0 } h && h != "0.0.0.0" && h != "::" ? h : "127.0.0.1";
         string log;
-        if (parsed.LogFile is { Length: > 0 } lf)
+        if (!IsLlamaServer(spec.Program, spec.Args))
+            log = Path.Combine(logsDir, SafeName(spec.Name) + "-" + port + ".log");   // ein fremdes Programm kennt --log-file nicht
+        else if (parsed.LogFile is { Length: > 0 } lf)
             log = Path.IsPathRooted(lf) || string.IsNullOrEmpty(spec.WorkingDir) ? lf : Path.GetFullPath(Path.Combine(spec.WorkingDir, lf));
         else
         {
