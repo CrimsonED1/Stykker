@@ -160,10 +160,22 @@ public sealed class ProxyManager : IDisposable
 
     public string ClassifierValue() => _settings.ProxyClassifier;
 
-    // Die Zielkennung der Sicherheitsprüfung, oder null (nicht gesetzt oder das Ziel läuft gerade nicht)
-    private string? ClassifierKey(IReadOnlyList<ProxyTarget> targets)
+    // Ziel für Anfragen mit Bildern setzen: derselbe Wert wie bei SetChoiceValue, leer = Standardziel
+    public void SetVisionValue(string value)
     {
-        var v = _settings.ProxyClassifier;
+        _settings.ProxyVision = (value ?? "").Trim();
+        _settings.Save();
+        PushTargets();
+    }
+
+    public string VisionValue() => _settings.ProxyVision;
+
+    // Die Zielkennung der Sicherheitsprüfung, oder null (nicht gesetzt oder das Ziel läuft gerade nicht)
+    private string? ClassifierKey(IReadOnlyList<ProxyTarget> targets) => KeyOf(_settings.ProxyClassifier, targets);
+
+    // Zielkennung zu einem Auswahlwert („<Server-Key>|<Modell>“ oder Cloud-Zielkennung), oder null
+    private static string? KeyOf(string? v, IReadOnlyList<ProxyTarget> targets)
+    {
         if (string.IsNullOrEmpty(v)) return null;
         if (targets.FirstOrDefault(t => t.Key == v) is { } exact) return exact.Key;
         int bar = v.IndexOf('|');
@@ -526,7 +538,7 @@ public sealed class ProxyManager : IDisposable
         var names = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var t in targets) names[t.Key] = t.DisplayName.Length > 0 ? t.DisplayName : t.Key;
         _names = names;
-        _proxy.SetTargets(targets, DefaultKey(targets), ClassifierKey(targets));
+        _proxy.SetTargets(targets, DefaultKey(targets), ClassifierKey(targets), KeyOf(_settings.ProxyVision, targets));
     }
 
     // Alle Ziele: je geladenes Modell eines lokalen Servers eines, dazu die Modelle der angehängten Rechner und der

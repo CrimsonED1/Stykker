@@ -32,6 +32,7 @@ public class RouterProxy : RequestProxy
     private volatile ProxyTarget[] _targets = Array.Empty<ProxyTarget>();
     private volatile string? _defaultKey;
     private volatile string? _classifierKey;
+    private volatile string? _visionKey;
 
     // So lange auf ein noch ladendes Ziel warten, statt sofort 503 zu antworten
     public TimeSpan LoadingWait { get; set; } = TimeSpan.FromSeconds(120);
@@ -52,11 +53,49 @@ public class RouterProxy : RequestProxy
 
     // Wird im Takt der Oberfläche neu gesetzt (Server können kommen und gehen)
     // classifierKey: Ziel für die Sicherheitsprüfung von Claude Code (Modus „auto“), null = wie das Standardziel
-    public void SetTargets(IReadOnlyList<ProxyTarget> targets, string? defaultKey, string? classifierKey = null)
+    // visionKey: Ziel für Anfragen mit Bildern, null = wie das Standardziel
+    public void SetTargets(IReadOnlyList<ProxyTarget> targets, string? defaultKey, string? classifierKey = null, string? visionKey = null)
     {
         _targets = targets.ToArray();
         _defaultKey = defaultKey;
         _classifierKey = classifierKey;
+        _visionKey = visionKey;
+    }
+
+    // Das Ziel für eine Anfrage mit Bild, oder null (kein Bild, nicht gesetzt oder Ziel nicht da)
+    internal ProxyTarget? VisionTarget(IReadOnlyList<ProxyTarget> targets, byte[]? body)
+    {
+        var key = _visionKey;
+        if (string.IsNullOrEmpty(key) || !HasImage(body)) return null;
+        return targets.FirstOrDefault(x => x.Key == key);
+    }
+
+    // Enthält eine Nachricht ein Bild? Anthropic: Block „type: image“; OpenAI: „type: image_url“. Nur die Typen werden gelesen.
+    internal static bool HasImage(byte[]? body)
+    {
+        if (body == null || body.Length == 0) return false;
+        try
+        {
+            using var doc = JsonDocument.Parse(body);
+            if (doc.RootElement.ValueKind != JsonValueKind.Object || !doc.RootElement.TryGetProperty("messages", out var msgs) || msgs.ValueKind != JsonValueKind.Array) return false;
+            foreach (var m in msgs.EnumerateArray())
+                if (m.ValueKind == JsonValueKind.Object && m.TryGetProperty("content", out var c) && ContainsImage(c)) return true;
+            return false;
+        }
+        catch (JsonException) { return false; }
+    }
+
+    // Bilder stecken auch in Werkzeugergebnissen (tool_result → content); darum rekursiv über Blocklisten
+    private static bool ContainsImage(JsonElement content)
+    {
+        if (content.ValueKind != JsonValueKind.Array) return false;
+        foreach (var b in content.EnumerateArray())
+        {
+            if (b.ValueKind != JsonValueKind.Object) continue;
+            if (b.TryGetProperty("type", out var t) && t.ValueKind == JsonValueKind.String && t.GetString() is "image" or "image_url") return true;
+            if (b.TryGetProperty("content", out var inner) && ContainsImage(inner)) return true;
+        }
+        return false;
     }
 
     // Ein Claude-Modellname, der nicht claude-stykker ist (claude-sonnet-…, claude-haiku-…): so fragt Claude Code im Modus
@@ -136,6 +175,7 @@ public class RouterProxy : RequestProxy
         if (!string.IsNullOrWhiteSpace(wanted) && !wanted.Equals(VirtualModel, StringComparison.OrdinalIgnoreCase))
             t = targets.FirstOrDefault(x => Matches(x, wanted));
         t ??= ClassifierTarget(targets, wanted, body);
+        t ??= VisionTarget(targets, body);
         if (t == null && HostStart != null && !string.IsNullOrWhiteSpace(wanted) && !wanted.Equals(VirtualModel, StringComparison.OrdinalIgnoreCase))
         {
             // Läuft nirgends: auf einem Host mit der Datei und genug Grafikspeicher starten und warten, bis es bereit ist

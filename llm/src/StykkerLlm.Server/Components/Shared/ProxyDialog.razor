@@ -141,6 +141,14 @@
                 @foreach (var c in models) { <option value="@c.Value">@c.Display</option> }
             </select>
 
+            <h3 class="sec">@Strings.ProxyVisionSection</h3>
+            <div class="small muted">@Strings.ProxyVisionHint</div>
+            <select class="cdlg-sel" aria-label="@Strings.ProxyVisionLabel" title="@Strings.ProxyVisionLabel" disabled="@(!CanWrite)"
+                    value="@px.VisionValue()" @onchange="OnVision">
+                <option value="">@Strings.ClientAutoSame</option>
+                @foreach (var c in models) { <option value="@c.Value">@c.Display</option> }
+            </select>
+
             @* Modelltest: jedes Modell eines Anbieters bekommt eine Prüfung und zeigt, ob es schnell und im Format antwortet *@
             @{
                 var tests = Host.Engine.ClassifierRun;
@@ -299,6 +307,13 @@
     private string ServeValue => Host.Engine.Proxies.ChoiceValue();
 
     private void OnServeChanged(ChangeEventArgs a) { if (CanWrite) Host.Engine.Proxies.SetChoiceValue(a.Value?.ToString() ?? ""); }
+
+    private async Task OnVision(ChangeEventArgs e)
+    {
+        if (!CanWrite) return;
+        var r = await Web.RunAsync(new ActionRequest { Action = "proxy.vision", Arg = e.Value?.ToString() ?? "" });
+        if (r.Ok) { _flash = ""; Toast.Show(r.Message); } else _flash = r.Message;
+    }
 
     private async Task OnClassifier(ChangeEventArgs e)
     {
