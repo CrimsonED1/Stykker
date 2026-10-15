@@ -1,0 +1,33 @@
+using System.Text;
+using StykkerLlm.Core;
+
+namespace StykkerLlm.Tests;
+
+// N87 – Bilder als Text: jedes Bild (auch in Werkzeugergebnissen) wird durch die Beschreibung des Vision-Modells ersetzt
+[TestClass]
+public class N87_DescribeImagesTests
+{
+    [TestMethod]
+    public async Task Images_become_text_and_the_rest_stays()
+    {
+        var body = Encoding.UTF8.GetBytes("{\"model\":\"claude-stykker\",\"messages\":[" +
+            "{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"look\"},{\"type\":\"image\",\"source\":{\"type\":\"base64\",\"media_type\":\"image/png\",\"data\":\"AAA\"}}]}," +
+            "{\"role\":\"user\",\"content\":[{\"type\":\"tool_result\",\"tool_use_id\":\"t1\",\"content\":[{\"type\":\"image\",\"source\":{\"type\":\"url\",\"url\":\"https://img.example/x.png\"}}]}]}]}");
+        var asked = new List<string>();
+        var result = await RouterProxy.ReplaceImagesAsync(body, (url, key) => { asked.Add(url); return Task.FromResult("a red square"); });
+        var json = Encoding.UTF8.GetString(result);
+
+        CollectionAssert.AreEqual(new[] { "data:image/png;base64,AAA", "https://img.example/x.png" }, asked);
+        Assert.AreEqual(2, json.Split("[Image: a red square]").Length - 1);
+        StringAssert.Contains(json, "\"text\":\"look\"");
+        StringAssert.Contains(json, "\"tool_use_id\":\"t1\"");
+        Assert.IsFalse(RouterProxy.HasImage(result), "danach kein Bild mehr – das Gespräch geht an das Standardziel");
+    }
+
+    [TestMethod]
+    public async Task Without_images_the_body_is_untouched()
+    {
+        var body = Encoding.UTF8.GetBytes("{\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}");
+        Assert.AreSame(body, await RouterProxy.ReplaceImagesAsync(body, (u, k) => Task.FromResult("x")));
+    }
+}

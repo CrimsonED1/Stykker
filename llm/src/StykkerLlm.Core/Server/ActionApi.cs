@@ -264,6 +264,9 @@ public static class ActionApi
                     e.Proxies.SetChoiceValue(req.Arg ?? "");
                     e.Settings.Save();
                     return Ok(e.Proxies.TargetName());
+                case "proxy.vision.describe":
+                    e.Proxies.SetVisionDescribe(req.Flag);
+                    return Ok(req.Flag ? Strings.ProxyVisionDescribeOn : Strings.ProxyVisionDescribeOff);
                 case "proxy.vision":
                     e.Proxies.SetVisionValue(req.Arg ?? "");
                     return Ok(e.Proxies.VisionValue().Length == 0 ? Strings.ClientAutoSame : Strings.ProxyVisionSet);

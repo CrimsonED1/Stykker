@@ -172,6 +172,7 @@
                     <option value="">@Strings.ClientAutoSame</option>
                     @foreach (var c in models) { <option value="@c.Value">@c.Display</option> }
                 </select>
+                <label class="cdlg-dbg small"><input type="checkbox" checked="@px.VisionDescribe" disabled="@(!CanWrite)" @onchange="OnVisionDescribe" /> @Strings.ProxyVisionDescribeLabel</label>
             }
 
             @* Modelltest der Sicherheitsprüfung: jedes Modell eines Anbieters bekommt eine Prüfung und zeigt, ob es schnell und
@@ -470,6 +471,13 @@
     private string ServeValue => Host.Engine.Proxies.ChoiceValue();
 
     private void OnServeChanged(ChangeEventArgs a) { if (CanWrite) Host.Engine.Proxies.SetChoiceValue(a.Value?.ToString() ?? ""); }
+
+    private async Task OnVisionDescribe(ChangeEventArgs e)
+    {
+        if (!CanWrite) return;
+        var r = await Web.RunAsync(new ActionRequest { Action = "proxy.vision.describe", Flag = e.Value is true });
+        if (r.Ok) { _flash = ""; Toast.Show(r.Message); } else _flash = r.Message;
+    }
 
     private async Task OnVision(ChangeEventArgs e)
     {

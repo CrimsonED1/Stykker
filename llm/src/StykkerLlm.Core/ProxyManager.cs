@@ -170,6 +170,15 @@ public sealed class ProxyManager : IDisposable
 
     public string VisionValue() => _settings.ProxyVision;
 
+    public bool VisionDescribe => _settings.ProxyVisionDescribe;
+
+    public void SetVisionDescribe(bool on)
+    {
+        _settings.ProxyVisionDescribe = on;
+        _settings.Save();
+        PushTargets();
+    }
+
     // Die Zielkennung der Sicherheitsprüfung, oder null (nicht gesetzt oder das Ziel läuft gerade nicht)
     private string? ClassifierKey(IReadOnlyList<ProxyTarget> targets) => KeyOf(_settings.ProxyClassifier, targets);
 
@@ -539,6 +548,7 @@ public sealed class ProxyManager : IDisposable
         foreach (var t in targets) names[t.Key] = t.DisplayName.Length > 0 ? t.DisplayName : t.Key;
         _names = names;
         _proxy.SetTargets(targets, DefaultKey(targets), ClassifierKey(targets), KeyOf(_settings.ProxyVision, targets));
+        _proxy.VisionDescribe = _settings.ProxyVisionDescribe;
     }
 
     // Alle Ziele: je geladenes Modell eines lokalen Servers eines, dazu die Modelle der angehängten Rechner und der

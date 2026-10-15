@@ -111,6 +111,96 @@ public class RouterProxy : RequestProxy
         return false;
     }
 
+    // Bilder als Text: das Vision-Modell beschreibt jedes Bild einmal (gemerkt nach Inhalt), das Gespräch geht ohne Bilder weiter
+    public bool VisionDescribe { get; set; } = true;
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> _imageText = new();
+    public TimeSpan DescribeTimeout { get; set; } = TimeSpan.FromSeconds(90);
+
+    public const string DescribePrompt = "Describe this image for an assistant that cannot see it. Copy all visible text exactly "
+        + "(code, error messages, labels, numbers). Then describe layout, UI elements, charts and anything unusual. Be complete but concise.";
+
+    // Jeden Bild-Block (Anthropic „image“, auch in Werkzeugergebnissen) durch „[Image: …]“ ersetzen. describe bekommt die
+    // Bild-Adresse (data:-URL oder http-URL) und einen Schlüssel (Hash des Inhalts) und liefert den Text.
+    internal static async Task<byte[]> ReplaceImagesAsync(byte[] body, Func<string, string, Task<string>> describe)
+    {
+        JsonObject? root;
+        try { root = JsonNode.Parse(body) as JsonObject; } catch (JsonException) { return body; }
+        if (root?["messages"] is not JsonArray msgs) return body;
+        bool changed = false;
+        async Task Walk(JsonArray content)
+        {
+            for (int i = 0; i < content.Count; i++)
+            {
+                if (content[i] is not JsonObject b) continue;
+                string type = b["type"]?.GetValue<string>() ?? "";
+                if (type == "image" && b["source"] is JsonObject src)
+                {
+                    string srcType = src["type"]?.GetValue<string>() ?? "";
+                    string url = srcType == "url" ? src["url"]?.GetValue<string>() ?? ""
+                        : $"data:{src["media_type"]?.GetValue<string>() ?? "image/png"};base64,{src["data"]?.GetValue<string>() ?? ""}";
+                    string key = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(url)));
+                    string text = await describe(url, key).ConfigureAwait(false);
+                    content[i] = new JsonObject { ["type"] = "text", ["text"] = "[Image: " + text + "]" };
+                    changed = true;
+                }
+                else if (b["content"] is JsonArray inner) await Walk(inner).ConfigureAwait(false);
+            }
+        }
+        foreach (var m in msgs)
+            if (m?["content"] is JsonArray c) await Walk(c).ConfigureAwait(false);
+        return changed ? Encoding.UTF8.GetBytes(root.ToJsonString()) : body;
+    }
+
+    // Ein Bild vom Vision-Ziel beschreiben lassen (OpenAI-Form, ein Bild je Anfrage); gemerkt nach Inhalt
+    private async Task<string> DescribeImageAsync(ProxyTarget vt, string url, string key, CancellationToken ct)
+    {
+        if (_imageText.TryGetValue(key, out var known)) return known;
+        var req = new JsonObject
+        {
+            ["model"] = vt.Model ?? "",
+            ["max_tokens"] = 1024,
+            ["messages"] = new JsonArray(new JsonObject
+            {
+                ["role"] = "user",
+                ["content"] = new JsonArray(
+                    new JsonObject { ["type"] = "text", ["text"] = DescribePrompt },
+                    new JsonObject { ["type"] = "image_url", ["image_url"] = new JsonObject { ["url"] = url } }),
+            }),
+        };
+        var started = DateTime.Now;
+        try
+        {
+            using var msg = new HttpRequestMessage(HttpMethod.Post, NetAddr.JoinUpstream(vt.Url, "/v1/chat/completions"))
+            {
+                Content = new StringContent(req.ToJsonString(), Encoding.UTF8, "application/json"),
+            };
+            if (vt.Cloud && AuthFor?.Invoke(vt) is { Length: > 0 } k) msg.Headers.TryAddWithoutValidation("Authorization", "Bearer " + k);
+            var client = vt.HostId.Length > 0 ? HostClient?.Invoke(vt.HostId) ?? UpstreamClient : UpstreamClient;
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            cts.CancelAfter(DescribeTimeout);
+            using var resp = await client.SendAsync(msg, cts.Token).ConfigureAwait(false);
+            string json = await resp.Content.ReadAsStringAsync(cts.Token).ConfigureAwait(false);
+            if (!resp.IsSuccessStatusCode)
+            {
+                AppLog.Write($"proxy: image description by {vt.Model} failed: {(int)resp.StatusCode}");
+                return $"an image (it could not be described: the vision model answered {(int)resp.StatusCode})";
+            }
+            string text = "";
+            try { text = JsonNode.Parse(json)?["choices"]?[0]?["message"]?["content"]?.GetValue<string>() ?? ""; } catch (Exception) { }
+            if (text.Trim().Length == 0) return "an image (the vision model returned no description)";
+            text = text.Trim();
+            _imageText[key] = text;
+            AppLog.Write($"proxy: image described by {vt.Model} in {(DateTime.Now - started).TotalSeconds:0.0} s ({text.Length} chars)");
+            return text;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or IOException)
+        {
+            if (ct.IsCancellationRequested) throw;
+            AppLog.Write($"proxy: image description by {vt.Model} failed: {ex.GetType().Name}");
+            return "an image (it could not be described: the vision model did not answer)";
+        }
+    }
+
     // Gelernte Bildgrenzen je Ziel (aus der Fehlermeldung des Anbieters), bis zum Neustart
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, int> _imageLimits = new();
 
@@ -267,6 +357,11 @@ public class RouterProxy : RequestProxy
     private async Task<ProxyRoute> RouteAnthropicAsync(ProxyTarget[] targets, IReadOnlyList<(string Name, string Value)> headers, byte[]? body, CancellationToken ct)
     {
         string requested = ReadModel(body) ?? VirtualModel;
+        // Bilder beschreiben lassen statt das ganze Gespräch an das Vision-Modell zu geben: das Vision-Modell sagt nur, was
+        // auf dem Bild ist; das Gespräch beantwortet das Standardziel (ein kleines Vision-Modell lehnt Agent-Aufgaben oft ab)
+        if (VisionDescribe && body != null && _visionKey is { Length: > 0 } vk && HasImage(body)
+            && targets.FirstOrDefault(x => x.Key == vk) is { Ready: true } vt)
+            body = await ReplaceImagesAsync(body, (url, k) => DescribeImageAsync(vt, url, k, ct)).ConfigureAwait(false);
         var (t, error, status, route) = await ResolveAsync(targets, body, ct).ConfigureAwait(false);
         if (t == null) return AnthropicError(status, error!);
 

@@ -11,6 +11,8 @@ public static partial class Strings
         ClientProxyOff = "Proxy is off – start it first",
         ClientAutoSection = "Auto security classifier", ClientAutoLabel = "Classifier model", ClientAutoSame = "Same as the proxy target",
         ClientAutoSet = "Safety check model set",
+        ProxyVisionDescribeLabel = "Describe images only (recommended): the vision model says what is on each image, your default model answers",
+        ProxyVisionDescribeOn = "Images are described as text for the default model", ProxyVisionDescribeOff = "Requests with images go to the vision model",
         ProxyVisionSection = "Images", ProxyVisionLabel = "Vision model", ProxyVisionSet = "Vision model set",
         ProxyVisionHint = "Requests that contain an image go to this model. Choose one that can read images, for example a cloud model; many local models cannot.",
         ProxyDebugLabel = "Debug: save the full text of every proxy request (logs\\proxy-debug, last 100)",

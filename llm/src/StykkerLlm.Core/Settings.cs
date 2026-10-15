@@ -196,6 +196,8 @@ public sealed class AppSettings
     public string ProxyClassifier { get; set; } = "";
     // Ziel für Anfragen mit Bildern (das Standardziel kann oft keine Bilder lesen): Wert wie ProxyClassifier, leer = Standardziel
     public string ProxyVision { get; set; } = "";
+    // true: das Vision-Modell beschreibt nur die Bilder, das Gespräch bleibt beim Standardziel; false: Anfragen mit Bild gehen ganz an das Vision-Modell
+    public bool ProxyVisionDescribe { get; set; } = true;
     // Zur Fehlersuche: den vollen Text jeder Proxy-Anfrage nach logs\proxy-debug schreiben (die letzten 100 Dateien)
     public bool ProxyDebug { get; set; }
     // Andere Rechner mit Stykker: ihre Proxy-Modelle werden mit eingesammelt
