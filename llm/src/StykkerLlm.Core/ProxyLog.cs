@@ -8,7 +8,7 @@ namespace StykkerLlm.Core;
 // Nur Name, Ziel, Zeiten und Zahlen; nie der Inhalt der Anfrage.
 public sealed class ProxyLog
 {
-    internal const string Header = "Time,Requested,Target,Path,Client,HttpStatus,Seconds,ReplyTokens,Aborted";
+    internal const string Header = "Time,Requested,Target,Path,Client,HttpStatus,Seconds,ReplyTokens,Aborted,MaxTokens,Messages,Tools";
     private static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
     private readonly object _gate = new();
     private readonly string? _path;
@@ -24,7 +24,8 @@ public sealed class ProxyLog
         int reply = r.ReasoningTokens < 0 ? -1 : r.ReasoningTokens + r.ContentTokens;
         var line = string.Join(",",
             r.Start.ToString("yyyy-MM-dd HH:mm:ss", Inv), Csv(r.RequestedModel ?? ""), Csv(target), Csv(r.Path), Csv(r.UserAgent),
-            r.HttpStatus.ToString(Inv), (r.End - r.Start).TotalSeconds.ToString("0.0", Inv), reply.ToString(Inv), r.ClientAborted ? "yes" : "no");
+            r.HttpStatus.ToString(Inv), (r.End - r.Start).TotalSeconds.ToString("0.0", Inv), reply.ToString(Inv), r.ClientAborted ? "yes" : "no",
+            (r.Shape ?? RequestShape.None).MaxTokens.ToString(Inv), (r.Shape ?? RequestShape.None).Messages.ToString(Inv), Csv((r.Shape ?? RequestShape.None).Tools));
         lock (_gate)
         {
             try
@@ -41,6 +42,23 @@ public sealed class ProxyLog
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { /* gesperrt: diese Zeile fällt weg */ }
         }
+    }
+
+    // Zur Fehlersuche: der volle Anfragetext als Datei „<Zeit>-<Modell>.json“; nur die letzten KeepDebug Dateien bleiben
+    public const int KeepDebug = 100;
+
+    public static void WriteDebug(string dir, ProxyRecord r, byte[] body)
+    {
+        try
+        {
+            Directory.CreateDirectory(dir);
+            var model = new string((r.RequestedModel ?? "none").Select(c => char.IsLetterOrDigit(c) || c is '-' or '.' ? c : '_').ToArray());
+            if (model.Length > 60) model = model[..60];
+            File.WriteAllBytes(System.IO.Path.Combine(dir, $"{r.Start:yyyyMMdd-HHmmss-fff}-{model}.json"), body);
+            var files = new DirectoryInfo(dir).GetFiles("*.json").OrderByDescending(f => f.Name, StringComparer.Ordinal).Skip(KeepDebug);
+            foreach (var f in files) f.Delete();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
     }
 
     private static string Csv(string v) =>

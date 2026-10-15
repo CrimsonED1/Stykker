@@ -194,6 +194,8 @@ public sealed class AppSettings
     // Ziel für die Sicherheitsprüfung von Claude Code im Modus „auto“ (Anfragen an claude-… außer claude-stykker):
     // „<Server-Key>|<Modell>“ oder eine Cloud-Zielkennung; leer = wie das Standardziel
     public string ProxyClassifier { get; set; } = "";
+    // Zur Fehlersuche: den vollen Text jeder Proxy-Anfrage nach logs\proxy-debug schreiben (die letzten 100 Dateien)
+    public bool ProxyDebug { get; set; }
     // Andere Rechner mit Stykker: ihre Proxy-Modelle werden mit eingesammelt
     public List<RemoteStykker> RemoteStykkers { get; set; } = new();
     // Cloud-Anbieter (OpenRouter, NVIDIA …): der Proxy holt ihre Modelle live und bietet sie als „<Anbieter>/<Modell>" an
