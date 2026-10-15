@@ -80,6 +80,9 @@ public static partial class Strings
     {
         "full" => "stopped at the length or context limit", "abort" => "cancelled by the client", "err" => "error answer", _ => "done",
     };
+    // Weg der Anfrage (ProxyRoutes): Etikett neben dem Modellnamen, Host einer Cloud-Anfrage
+    public const string ReqRouteAuto = "auto", ReqRouteImage = "image", ReqCloud = "cloud";
+    public const string ReqRouteAutoTip = "Claude Code's safety check (auto mode)", ReqRouteImageTip = "request with an image";
     // History (U8)
     public const string HistFilter = "Filter", HistAll = "All", HistRunning = "running", HistCrashed = "crashed";
     public const string HistToday = "Today", HistYesterday = "Yesterday", HistOlder = "Older";

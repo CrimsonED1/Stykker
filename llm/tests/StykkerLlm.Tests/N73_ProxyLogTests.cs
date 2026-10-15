@@ -18,10 +18,10 @@ public class N73_ProxyLogTests
                 "claude-cli/2", true, 200, false, "claude-sonnet-5"), "NVIDIA · glm, flash");
             var lines = File.ReadAllLines(Path.Combine(dir, "proxy.csv"));
             Assert.AreEqual(ProxyLog.Header, lines[0]);
-            Assert.AreEqual("2026-10-15 12:00:00,claude-sonnet-5,\"NVIDIA · glm, flash\",/v1/messages,claude-cli/2,200,2.5,42,no,-1,-1,", lines[1]);
+            Assert.AreEqual("2026-10-15 12:00:00,claude-sonnet-5,\"NVIDIA · glm, flash\",/v1/messages,claude-cli/2,200,2.5,42,no,-1,-1,,", lines[1]);
             log.Append(new ProxyRecord("k", "/v1/messages", t, t, null, null, 0, 1, Array.Empty<string>(), null, "c", false, 200, false,
                 "claude-stykker", RequestShape.Read("{\"max_tokens\":64,\"messages\":[{},{}],\"tools\":[{\"name\":\"verdict\"}]}"u8.ToArray())), "x");
-            StringAssert.EndsWith(File.ReadAllLines(Path.Combine(dir, "proxy.csv"))[2], ",64,2,verdict");
+            StringAssert.EndsWith(File.ReadAllLines(Path.Combine(dir, "proxy.csv"))[2], ",64,2,verdict,");
         }
         finally { try { Directory.Delete(dir, true); } catch { } }
     }

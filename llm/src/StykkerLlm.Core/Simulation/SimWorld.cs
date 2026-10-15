@@ -105,6 +105,9 @@ public sealed class SimWorld
     public event Action? Changed;
     // Eine Anfrage ist zu Ende: so hätte sie der Aufnahme-Proxy gesehen (Serverschlüssel, Beobachtung). Der Host reicht sie nur an einen laufenden Proxy weiter.
     public event Action<string, ProxyRecord>? Observed;
+    // Zählt die abgeschlossenen Anfragen: jede neunte (bzw. dreizehnte) bekommt den Weg auto (bzw. image), jede sechste
+    // eine Anfrage an ein simuliertes Cloud-Ziel. Ein Zähler statt Zufall, damit die übrige Simulation gleich bleibt.
+    private int _proxySeq;
 
     public SimWorld(int? seed = null) => _rng = seed is int s ? new Random(s) : new Random();
 
@@ -334,14 +337,26 @@ public sealed class SimWorld
         var first = sl.Start.AddSeconds(ttft);
         var firstContent = reasoning > 0 ? first.AddSeconds(reasoning / Math.Max(0.1, sl.Tps)) : first;
         string finish = cancelled ? "" : truncated ? "length" : sl.Tools.Length > 0 ? "tool_calls" : "stop";
+        int seq = ++_proxySeq;
+        string route = seq % 9 == 0 ? ProxyRoutes.Classifier : seq % 13 == 0 ? ProxyRoutes.Vision : ProxyRoutes.Default;
         var rec = new ProxyRecord(s.Key, "/v1/chat/completions", sl.Start, now, first, firstContent, reasoning, gen - reasoning, sl.Tools,
-            cancelled ? null : finish, sl.Agent, true, 200, cancelled);
+            cancelled ? null : finish, sl.Agent, true, 200, cancelled, Route: route);
         sl.Busy = false; sl.Prompting = false;
         if (s.Spec.Strata)
             RememberStrata(s, new StrataDone((now - DateTime.UnixEpoch).TotalSeconds, sl.PromptTokens, promptMs, gen, sl.Tps,
                 (now - sl.Start).TotalSeconds, cancelled ? "cancelled" : truncated ? "length" : "stop"));
         var handler = Observed;
         if (handler != null) { try { handler(s.Key, rec); } catch { } }
+        if (handler != null && seq % 6 == 0)
+        {
+            // Anfrage an ein simuliertes Cloud-Ziel: kein lokaler Slot, nur die Beobachtung des Proxys
+            bool vision = seq % 12 == 0;
+            var start = now.AddSeconds(-3.0);
+            var cloud = new ProxyRecord(ProxyTarget.CloudKey("https://cloud.example/v1", "sim-cloud-model"), "/v1/chat/completions", start, now,
+                start.AddSeconds(0.6), start.AddSeconds(0.6), 0, 40 + seq % 50, Array.Empty<string>(), "stop", "claude-cli/2", true, 200, false,
+                vision ? "claude-stykker" : "claude-haiku-5-5", null, vision ? ProxyRoutes.Vision : ProxyRoutes.Classifier);
+            try { handler(s.Key, cloud); } catch { }
+        }
     }
 
     private void Append(Server s, string text)

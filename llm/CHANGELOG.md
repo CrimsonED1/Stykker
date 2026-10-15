@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Unreleased
 
+### Added
+- **Route of every proxy request.** Each request through the proxy records the way it went: `named` (model asked for by
+  name), `classifier` (Claude Code's safety check, auto mode), `vision` (request with an image) or `default`. `proxy.csv`
+  gets a `Route` column at the end; an existing file with the old header is kept and the new rows go to `proxy.v2.csv`.
+  In "Recent requests" a small `auto` or `image` tag marks the row, and requests to cloud targets get their own rows
+  (name of the target, host `cloud`), which the monitor did not list before.
+
 ### Changed
 - **Ports in one block.** The suite moves to 17400–17499, below the LLM proxy (17500): the hub (StykkerHUD) listens on
   **17400** (was 8079), StykkerLLM's web and API on **17401** (was 8078), StykkerSYS on **17402** (was 8077). Foreign

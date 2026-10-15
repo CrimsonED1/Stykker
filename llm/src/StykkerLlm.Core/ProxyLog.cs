@@ -8,12 +8,23 @@ namespace StykkerLlm.Core;
 // Nur Name, Ziel, Zeiten und Zahlen; nie der Inhalt der Anfrage.
 public sealed class ProxyLog
 {
-    internal const string Header = "Time,Requested,Target,Path,Client,HttpStatus,Seconds,ReplyTokens,Aborted,MaxTokens,Messages,Tools";
+    internal const string Header = "Time,Requested,Target,Path,Client,HttpStatus,Seconds,ReplyTokens,Aborted,MaxTokens,Messages,Tools,Route";
     private static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
     private readonly object _gate = new();
     private readonly string? _path;
 
-    public ProxyLog(string? path) => _path = string.IsNullOrWhiteSpace(path) ? null : path;
+    public ProxyLog(string? path) => _path = string.IsNullOrWhiteSpace(path) ? null : CompatiblePath(path);
+
+    // Vorhandene Datei mit fremder Kopfzeile (etwa vor der Spalte Route) nicht erweitern, sondern eine Nachbardatei verwenden
+    internal static string CompatiblePath(string path)
+    {
+        if (!File.Exists(path) || new FileInfo(path).Length == 0) return path;
+        string first;
+        using (var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+        using (var r = new StreamReader(fs, Encoding.UTF8, true)) first = r.ReadLine() ?? "";
+        if (first.TrimStart('﻿') == Header) return path;
+        return System.IO.Path.ChangeExtension(path, ".v2.csv");
+    }
 
     public string? Path => _path;
     public long MaxBytes { get; set; } = 50L * 1024 * 1024;
@@ -25,7 +36,8 @@ public sealed class ProxyLog
         var line = string.Join(",",
             r.Start.ToString("yyyy-MM-dd HH:mm:ss", Inv), Csv(r.RequestedModel ?? ""), Csv(target), Csv(r.Path), Csv(r.UserAgent),
             r.HttpStatus.ToString(Inv), (r.End - r.Start).TotalSeconds.ToString("0.0", Inv), reply.ToString(Inv), r.ClientAborted ? "yes" : "no",
-            (r.Shape ?? RequestShape.None).MaxTokens.ToString(Inv), (r.Shape ?? RequestShape.None).Messages.ToString(Inv), Csv((r.Shape ?? RequestShape.None).Tools));
+            (r.Shape ?? RequestShape.None).MaxTokens.ToString(Inv), (r.Shape ?? RequestShape.None).Messages.ToString(Inv), Csv((r.Shape ?? RequestShape.None).Tools),
+            Csv(r.Route ?? ""));
         lock (_gate)
         {
             try

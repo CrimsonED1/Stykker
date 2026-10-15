@@ -88,7 +88,7 @@
     var finished = e.Registry.Servers.SelectMany(x => x.Finished.Select(f => (F: f, Host: (string?)null)))
         .Concat(Host.Hosts.List().Where(h => h.Connected && h.State != null)
             .SelectMany(h => h.State!.Servers.SelectMany(rs => rs.Finished.Select(f => (F: f, Host: (string?)(h.Name.Length > 0 ? h.Name : h.Entry.Name))))));
-    var reqs = RequestRows.Build(finished, e.RecentProxy());
+    var reqs = RequestRows.Build(finished, e.RecentProxy(), nameOf: e.Proxies.DisplayName);
     double maxSec = reqs.Count > 0 ? Math.Max(1, reqs.Max(r => r.Seconds)) : 1;
 }
 <div class="card">
@@ -104,12 +104,12 @@
                 var kind = r.Host == null ? e.Registry.Servers.FirstOrDefault(x => x.Key == r.ServerKey)?.Kind ?? BackendKind.LlamaCpp : BackendKind.LlamaCpp;
                 <div class="req">
                     <span class="cl" title="@(r.Client.Length > 0 ? r.Client : Strings.ReqClientUnknown)"><Icon Name="@("c-" + r.ClientKind)" Title="@(r.Client.Length > 0 ? r.Client : Strings.ReqClientUnknown)" /></span>
-                    <span class="mdl" title="@r.Model"><i style="background:var(@BackendColor(kind))"></i>@r.Server</span>
+                    <span class="mdl" title="@r.Model"><i style="background:var(@BackendColor(kind))"></i><span class="mname">@r.Server</span>@if (ProxyRoutes.Label(r.Route).Length > 0) { <span class="rtag" title="@ProxyRoutes.Tip(r.Route)">@ProxyRoutes.Label(r.Route)</span> }</span>
                     <span class="hostc">@if (r.Host != null) { <span class="chipi host"><Icon Name="host" />@r.Host</span> } else { <span class="muted small">@Strings.CardLocal</span> }</span>
                     <span class="dur" title="@r.Seconds.ToString("0.0", CultureInfo.InvariantCulture) s"><span class="dbar"><i style="width:@((int)(100 * r.Seconds / maxSec))%"></i></span><small>@(r.Seconds > 0 ? r.Seconds.ToString("0", CultureInfo.InvariantCulture) + "s" : "–")</small></span>
                     <span class="r muted">@(r.PromptTps > 0 ? r.PromptTps.ToString("0", CultureInfo.InvariantCulture) : "–")</span>
                     <span class="r cache @(r.PromptReused == 0 ? "miss" : "")" title="@RequestRows.CacheTip(r.PromptReused, r.PromptRead, r.PromptReusedEstimated)">@RequestRows.CacheText(r.PromptReused)</span>
-                    <span class="r spd sp@(RequestRows.SpeedLevel(r.GenTps))">@r.GenTps.ToString("0.0", CultureInfo.InvariantCulture)</span>
+                    <span class="r spd sp@(RequestRows.SpeedLevel(r.GenTps))">@(r.GenTps > 0 ? r.GenTps.ToString("0.0", CultureInfo.InvariantCulture) : "–")</span>
                     <span class="r">@r.GenTokens.ToString("N0", CultureInfo.InvariantCulture)</span>
                     <span class="c ex @(r.Tools is > 0 ? "" : "na")" title="@(r.Tools == null ? Strings.ReqNoProxy : Strings.ReqToolsTip(r.Tools.Value))"><Icon Name="x-tool" />@(r.Tools is int t && t > 0 ? t.ToString(CultureInfo.InvariantCulture) : "–")</span>
                     <span class="c ex @(r.ThinkTokens is > 0 ? "" : "na")" title="@(r.ThinkTokens == null ? Strings.ReqNoProxy : Strings.ReqThinkTip(r.ThinkTokens.Value))"><Icon Name="x-think" />@(r.ThinkTokens is int k && k > 0 ? (k >= 1000 ? (k / 1000.0).ToString("0.0", CultureInfo.InvariantCulture) + "k" : k.ToString(CultureInfo.InvariantCulture)) : "–")</span>

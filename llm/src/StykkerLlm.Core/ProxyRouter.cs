@@ -21,6 +21,19 @@ public sealed record ProxyTarget(string Key, string Url, string? Model, BackendK
     public static bool IsCloudKey(string key) => key.StartsWith("provider:", StringComparison.Ordinal);
 }
 
+// Der Weg, auf dem eine Anfrage an ihr Ziel kam (ProxyRecord.Route, proxy.csv, Liste „Letzte Anfragen“)
+public static class ProxyRoutes
+{
+    public const string Default = "default";        // Standardziel (auch „stykker“, leer, unbekannt)
+    public const string Classifier = "classifier";  // Sicherheitsprüfung von Claude Code (Modus „auto“)
+    public const string Vision = "vision";          // Anfrage mit Bild
+    public const string Named = "named";            // ausdrücklich angefragter Modellname
+
+    // Kennzeichen in der Liste: nur für die beiden Sonderwege, Standard und ausdrücklicher Name bekommen keins
+    public static string Label(string? route) => route switch { Classifier => Strings.ReqRouteAuto, Vision => Strings.ReqRouteImage, _ => "" };
+    public static string Tip(string? route) => route switch { Classifier => Strings.ReqRouteAutoTip, Vision => Strings.ReqRouteImageTip, _ => "" };
+}
+
 // Der „Stykker-Proxy": genau ein Proxy auf einem festen Port. Er beantwortet /v1/models selbst (alle Backends zusammen plus den
 // virtuellen Eintrag „stykker") und leitet Generierungs-Anfragen nach dem Feld „model" an das passende Backend weiter. „stykker",
 // ein leeres oder unbekanntes Modell geht an das Standardziel. Ist das Ziel offline, kommt 503 mit JSON-Fehler; lädt das Ziel
@@ -154,47 +167,66 @@ public class RouterProxy : RequestProxy
         if (method == "POST" && AnthropicBridge.IsMessagesPath(path))
             return await RouteAnthropicAsync(targets, headers, body, ct).ConfigureAwait(false);
 
-        var (t, error, errorStatus) = await ResolveAsync(targets, body, ct).ConfigureAwait(false);
+        var (t, error, errorStatus, route) = await ResolveAsync(targets, body, ct).ConfigureAwait(false);
         if (t == null) return Local(errorStatus, ErrorJson(error!));
 
         // model auf den Namen setzen, den das Ziel erwartet (bei „stykker" → Modell des Ziels)
         var rewritten = t.Model != null ? RewriteModel(body, t.Model) : body;
         var own = t.Cloud && AuthFor?.Invoke(t) is { Length: > 0 } key
             ? new[] { ("Authorization", "Bearer " + key) } : null;
-        if (t.HostId.Length == 0) return new ProxyRoute(t.Url, t.RouteKey, rewritten, Headers: own);
+        if (t.HostId.Length == 0) return new ProxyRoute(t.Url, t.RouteKey, rewritten, Headers: own, Route: route);
         var via = HostClient?.Invoke(t.HostId);
-        return via == null ? Local(503, ErrorJson(Strings.HostNotConnected)) : new ProxyRoute(t.Url, t.RouteKey, rewritten, Headers: own, Client: via);
+        return via == null ? Local(503, ErrorJson(Strings.HostNotConnected)) : new ProxyRoute(t.Url, t.RouteKey, rewritten, Headers: own, Client: via, Route: route);
+    }
+
+    // Der Weg einer Anfrage ohne Zustandsprüfung: ausdrücklich genannter Modellname, dann Sicherheitsprüfung, dann Bild.
+    // Ohne Treffer: null und „default“ (das Standardziel wählt ResolveAsync).
+    internal (ProxyTarget? Target, string Route) Pick(IReadOnlyList<ProxyTarget> targets, byte[]? body)
+    {
+        string? wanted = ReadModel(body);
+        if (!string.IsNullOrWhiteSpace(wanted) && !wanted.Equals(VirtualModel, StringComparison.OrdinalIgnoreCase))
+        {
+            var named = targets.FirstOrDefault(x => Matches(x, wanted));
+            if (named != null) return (named, ProxyRoutes.Named);
+        }
+        var classifier = ClassifierTarget(targets, wanted, body);
+        if (classifier != null) return (classifier, ProxyRoutes.Classifier);
+        var vision = VisionTarget(targets, body);
+        if (vision != null) return (vision, ProxyRoutes.Vision);
+        return (null, ProxyRoutes.Default);
     }
 
     // Das Ziel einer Anfrage bestimmen: nach model, sonst das Standardziel, dazu die Zustandsprüfungen.
     // Bei einem Fehler kommt statt des Ziels die Meldung (und der Status) für die Antwort des Proxys zurück.
-    private async Task<(ProxyTarget? Target, string? Error, int Status)> ResolveAsync(ProxyTarget[] targets, byte[]? body, CancellationToken ct)
+    // Der Weg (route) gehört zum Ziel; er wird für die Aufzeichnung der Anfrage mitgegeben.
+    private async Task<(ProxyTarget? Target, string? Error, int Status, string Route)> ResolveAsync(ProxyTarget[] targets, byte[]? body, CancellationToken ct)
     {
         string? wanted = ReadModel(body);
-        ProxyTarget? t = null;
-        if (!string.IsNullOrWhiteSpace(wanted) && !wanted.Equals(VirtualModel, StringComparison.OrdinalIgnoreCase))
-            t = targets.FirstOrDefault(x => Matches(x, wanted));
-        t ??= ClassifierTarget(targets, wanted, body);
-        t ??= VisionTarget(targets, body);
+        var (t, route) = Pick(targets, body);
         if (t == null && HostStart != null && !string.IsNullOrWhiteSpace(wanted) && !wanted.Equals(VirtualModel, StringComparison.OrdinalIgnoreCase))
         {
             // Läuft nirgends: auf einem Host mit der Datei und genug Grafikspeicher starten und warten, bis es bereit ist
             var choice = await HostStart(wanted, ct).ConfigureAwait(false);
-            if (choice.Error != null) return (null, choice.Error, 503);
+            if (choice.Error != null) return (null, choice.Error, 503, route);
             if (choice.Ok)
             {
                 t = await WaitForModelAsync(wanted, ct).ConfigureAwait(false);
-                if (t == null) return (null, Strings.HostStartTimeout(choice.File.Name, choice.HostName), 503);
+                if (t == null) return (null, Strings.HostStartTimeout(choice.File.Name, choice.HostName), 503, route);
+                route = ProxyRoutes.Named;   // ausdrücklich angefragt, nur eben erst gestartet
             }
         }
-        t ??= DefaultTarget(targets);   // stykker, leer, unbekannt oder nicht gefunden → Standardziel
+        if (t == null)
+        {
+            t = DefaultTarget(targets);   // stykker, leer, unbekannt oder nicht gefunden → Standardziel
+            route = ProxyRoutes.Default;
+        }
 
-        if (t == null) return (null, Strings.ProxyNoTarget, 503);
-        if (t.Cloud && AuthFor?.Invoke(t) is not { Length: > 0 }) return (null, Strings.ProxyProviderNoKey, 503);
+        if (t == null) return (null, Strings.ProxyNoTarget, 503, route);
+        if (t.Cloud && AuthFor?.Invoke(t) is not { Length: > 0 }) return (null, Strings.ProxyProviderNoKey, 503, route);
         if (t.Loading) t = await WaitForReadyAsync(t.Key, t, ct).ConfigureAwait(false);
-        if (t == null || !t.Ready) return (null, t != null && t.Cloud ? Strings.ProxyProviderOfflineProxy : Strings.ProxyTargetOffline, 503);
-        if (t.Loading) return (null, Strings.ProxyTargetLoading, 503);   // immer noch am Laden (Zeit abgelaufen)
-        return (t, null, 200);
+        if (t == null || !t.Ready) return (null, t != null && t.Cloud ? Strings.ProxyProviderOfflineProxy : Strings.ProxyTargetOffline, 503, route);
+        if (t.Loading) return (null, Strings.ProxyTargetLoading, 503, route);   // immer noch am Laden (Zeit abgelaufen)
+        return (t, null, 200, route);
     }
 
     // ── Anthropic-Brücke (die Claude-App) ──
@@ -205,7 +237,7 @@ public class RouterProxy : RequestProxy
     private async Task<ProxyRoute> RouteAnthropicAsync(ProxyTarget[] targets, IReadOnlyList<(string Name, string Value)> headers, byte[]? body, CancellationToken ct)
     {
         string requested = ReadModel(body) ?? VirtualModel;
-        var (t, error, status) = await ResolveAsync(targets, body, ct).ConfigureAwait(false);
+        var (t, error, status, route) = await ResolveAsync(targets, body, ct).ConfigureAwait(false);
         if (t == null) return AnthropicError(status, error!);
 
         var openAi = AnthropicBridge.ToOpenAi(body ?? Array.Empty<byte>(), t.Model ?? "", noThinking: IsSafetyCheck(body));
@@ -229,7 +261,7 @@ public class RouterProxy : RequestProxy
 
         string url = NetAddr.JoinUpstream(t.Url, "/v1/chat/completions");
         return new ProxyRoute("", t.RouteKey, null,
-            LocalStream: (net, tap, token) => BridgeAsync(net, url, send, openAi, requested, own, via, tap, token));
+            LocalStream: (net, tap, token) => BridgeAsync(net, url, send, openAi, requested, own, via, tap, token), Route: route);
     }
 
     private static ProxyRoute AnthropicError(int status, string message)

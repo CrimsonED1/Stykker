@@ -613,6 +613,8 @@ html[data-theme=titan] .pxs-form{border-radius:0;border-color:var(--card-border)
 .req .ex{display:inline-flex;align-items:center;gap:3px;font:12px var(--font-num)}.req .ex .ic{width:14px;height:14px;color:var(--muted)}
 .req .ex.na{color:color-mix(in srgb,var(--muted) 70%,transparent)}
 .req .cache{font-size:12px}.req .cache.miss{color:var(--warn);font-weight:600}
+.req .mdl .mname{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.req .rtag{flex:none;display:inline-flex;align-items:center;height:16px;padding:0 5px;border-radius:4px;border:1px solid var(--line);color:var(--muted);font:600 10px var(--font-num);letter-spacing:.03em}
 .req .res{display:inline-flex}.res-ok{color:var(--good)}.res-full{color:var(--warn)}.res-abort{color:var(--muted)}.res-err{color:var(--bad)}
 @media(max-width:900px){.req{grid-template-columns:22px minmax(0,1fr) 56px 56px 34px 40px}.req>:nth-child(3),.req>:nth-child(4),.req>:nth-child(5),.req>:nth-child(6),.req>:nth-child(9),.req>:nth-child(10){display:none}}
 html[data-theme=titan] .req .spd{text-shadow:none!important}
