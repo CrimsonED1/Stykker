@@ -277,7 +277,7 @@ public static class ServerLauncher
         if (spec.MeasuredRamGb is > 0 && platform.ReadSystem() is { } sysRam)
         {
             double freeRam = sysRam.RamTotalGb - sysRam.RamUsedGb;
-            if (spec.MeasuredRamGb.Value > freeRam + 1.0)
+            if (spec.MeasuredRamGb.Value + 1.0 > freeRam)   // 1 GB Puffer für das System
                 Warn("ram-measured", Strings.RamNeedWarn(spec.MeasuredRamGb.Value, freeRam));
         }
 

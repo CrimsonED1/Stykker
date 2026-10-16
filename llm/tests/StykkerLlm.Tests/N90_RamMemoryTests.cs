@@ -63,8 +63,10 @@ public class N90_RamMemoryTests
         StringAssert.Contains(w.Message, "17.5 GB RAM");
         StringAssert.Contains(w.Message, "9.1 GB free");
 
-        var small = ServerLauncher.Check(new LaunchSpec("n", "llama-server.exe", new[] { "-m", "m.gguf" }, null, null, null, null, 9.5), p, null, Array.Empty<ServerInfo>());
-        Assert.IsFalse(small.Any(i => i.Code == "ram-measured"), "9.5 GB passt in 9.1 GB + 1 GB Puffer");
+        var small = ServerLauncher.Check(new LaunchSpec("n", "llama-server.exe", new[] { "-m", "m.gguf" }, null, null, null, null, 8.0), p, null, Array.Empty<ServerInfo>());
+        Assert.IsFalse(small.Any(i => i.Code == "ram-measured"), "8 GB + 1 GB Puffer passen in 9.1 GB");
+        var tight = ServerLauncher.Check(new LaunchSpec("n", "llama-server.exe", new[] { "-m", "m.gguf" }, null, null, null, null, 8.5), p, null, Array.Empty<ServerInfo>());
+        Assert.IsTrue(tight.Any(i => i.Code == "ram-measured"), "8.5 GB + 1 GB Puffer passen nicht in 9.1 GB");
 
         var unknown = ServerLauncher.Check(new LaunchSpec("n", "llama-server.exe", new[] { "-m", "m.gguf" }, null, null, null, null, 99), new FakePlatform(), null, Array.Empty<ServerInfo>());
         Assert.IsFalse(unknown.Any(i => i.Code == "ram-measured"), "ohne Systemwerte keine Aussage");
