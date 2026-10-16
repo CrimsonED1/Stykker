@@ -177,6 +177,7 @@ public static class RecordingMetrics
         Num("Cache hits", a.CachePct, b.CachePct, "0", " %", true);
         Num("Model busy", a.BusyPct, b.BusyPct, "0", " %", true, false);
         Num("Max VRAM", a.MaxVramGb, b.MaxVramGb, "0.0", " GB", false);
+        Num("Max RAM", a.MaxRamGb, b.MaxRamGb, "0.0", " GB", false);
         Num("Energy", a.EnergyWh, b.EnergyWh, "0.00", " Wh", false, false);
         double ea = a.TokensOut > 0 ? a.EnergyWh * 1000 / a.TokensOut : 0, eb = b.TokensOut > 0 ? b.EnergyWh * 1000 / b.TokensOut : 0;
         if (ea > 0 || eb > 0) Num("Energy per 1k tokens out", ea, eb, "0.00", " Wh", false);

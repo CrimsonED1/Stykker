@@ -168,7 +168,7 @@
                     <i class="hdot @(live ? "on" : "")" style="--b:var(--b-llama)"></i>
                     <div class="hname">
                         <b title="@(h.ModelPath ?? h.Name)">@(h.Name.Length > 0 ? h.Name : h.ModelPath != null ? ServerInfo.ModelName(h.ModelPath) : "?")</b>
-                        <span class="muted small">@h.LastSeen.ToString(grp.Key == Strings.HistOlder ? "d.M. HH:mm" : "HH:mm", CultureInfo.InvariantCulture) · :@(h.Port?.ToString(CultureInfo.InvariantCulture) ?? "–") · @h.Runs×@(h.MaxVramGb > 0 ? " · " + h.MaxVramGb.ToString("0.0", CultureInfo.InvariantCulture) + " GB VRAM" : "")</span>
+                        <span class="muted small">@h.LastSeen.ToString(grp.Key == Strings.HistOlder ? "d.M. HH:mm" : "HH:mm", CultureInfo.InvariantCulture) · :@(h.Port?.ToString(CultureInfo.InvariantCulture) ?? "–") · @h.Runs×@(h.MaxVramGb > 0 ? " · " + h.MaxVramGb.ToString("0.0", CultureInfo.InvariantCulture) + " GB VRAM" : "")@(h.MaxRamGb > 0 ? " · " + Strings.HistRam(h.MaxRamGb) : "")</span>
                     </div>
                     <span class="mc @(h.Ctx == null ? "na" : "")" title="@Strings.CardCtx"><Icon Name="ctx" Title="@Strings.CardCtx" /><b>@(h.Ctx is int c ? (c / 1024).ToString(CultureInfo.InvariantCulture) : "–")</b>@if (h.Ctx != null) { <small>k</small> }</span>
                     <span class="hrun" title="@Strings.HistRunTip(avgRun, h.TotalSeconds)"><span class="dbar"><i style="width:@((int)(100 * avgRun / maxRun))%"></i></span><small>@Dur(avgRun)</small></span>
@@ -319,12 +319,23 @@
                         }
                     </div>
                 }
+                @* Zwei Balken: VRAM (Vorhersage gegen freien Grafikspeicher) und RAM (höchster gemerkter Bedarf mit Kindprozessen
+                   gegen freien RAM). „needs“ = höchster Wert aus früheren Läufen (sonst Schätzung), „free“ = jetzt frei; rot, wenn needs > free *@
                 @if (running == null && need is double needGb && free is double freeGb)
                 {
-                    <div class="pf-fc" title="@Strings.PfForecastTip(needGb, freeGb, hist is { MaxVramGb: > 0 })">
-                        <Icon Name="vram" />
+                    <div class="pf-fc @(needGb > freeGb ? "warn" : "")" title="@Strings.PfForecastTip(needGb, freeGb, hist is { MaxVramGb: > 0 })">
+                        <Icon Name="vram" Title="VRAM" />
                         <span class="fc-bar"><i class="free" style="width:@Pct(freeGb, Math.Max(needGb, freeGb))"></i><i class="need" style="width:@Pct(needGb, Math.Max(needGb, freeGb))"></i></span>
-                        <b>@needGb.ToString("0.0", CultureInfo.InvariantCulture)</b><small>/ @freeGb.ToString("0.0", CultureInfo.InvariantCulture) G</small>
+                        <span class="fc-txt">@Strings.PfNeedsFree(needGb, freeGb)</span>
+                    </div>
+                }
+                @if (running == null && hist is { MaxRamGb: > 0 } rh && e.Sys is { } ramSys)
+                {
+                    double ramNeed = rh.MaxRamGb, ramFree = Math.Max(0, ramSys.RamTotalGb - ramSys.RamUsedGb);
+                    <div class="pf-fc ram @(ramNeed > ramFree ? "warn" : "")" title="@Strings.PfRamForecastTip(ramNeed, ramFree)">
+                        <Icon Name="ram" Title="@Strings.RowRamMax" />
+                        <span class="fc-bar"><i class="free" style="width:@Pct(ramFree, Math.Max(ramNeed, ramFree))"></i><i class="need" style="width:@Pct(ramNeed, Math.Max(ramNeed, ramFree))"></i></span>
+                        <span class="fc-txt">@Strings.PfNeedsFree(ramNeed, ramFree)</span>
                     </div>
                 }
                 <div class="pf-act">
@@ -458,7 +469,8 @@
         if (_startTipBusy.Add(p.Key))
         {
             var hist = Host.Engine.Library.HistoryOf(p);
-            var spec = new LaunchSpec(p.Name, p.Program, p.Args, p.WorkingDir, p.Id, hist is { MaxVramGb: > 0 } ? hist.MaxVramGb : null, p.Env);
+            var spec = new LaunchSpec(p.Name, p.Program, p.Args, p.WorkingDir, p.Id, hist is { MaxVramGb: > 0 } ? hist.MaxVramGb : null, p.Env,
+                hist is { MaxRamGb: > 0 } ? hist.MaxRamGb : null);
             var running = Host.Engine.Registry.Servers.Select(s => s.Info).ToList();
             var gpu = Host.Engine.Gpu;
             _ = Task.Run(async () =>

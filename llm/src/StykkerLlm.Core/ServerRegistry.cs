@@ -237,7 +237,7 @@ public sealed class ServerRegistry : IDisposable
         foreach (var w in _servers)
         {
             if (w.Info.Pid == null || w.Kind != BackendKind.LlamaCpp) continue;
-            _library.Observe(w.Info, new Observation(w.Current, w.VramGb, w.ModelFileGb, w.Props?.NCtx, w.GeneratedTotal), now);
+            _library.Observe(w.Info, new Observation(w.Current, w.VramGb, w.ModelFileGb, w.Props?.NCtx, w.GeneratedTotal, w.RamGb), now);
         }
         _library.SaveIfDirty(TimeSpan.FromSeconds(30));
     }

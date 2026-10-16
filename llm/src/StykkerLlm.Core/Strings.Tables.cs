@@ -8,5 +8,5 @@ public static partial class Strings
 
     // Zeilen der Detailansicht (stykker show / /saved <name>)
     public const string RowFirstSeen = "First seen", RowRunningTime = "Running time", RowTpsBest = "Tokens/s best",
-        RowTpsAverage = "Tokens/s average", RowGpuMax = "GPU memory max", RowArgument = "(argument)";
+        RowTpsAverage = "Tokens/s average", RowGpuMax = "GPU memory max", RowRamMax = "RAM max", RowArgument = "(argument)";
 }

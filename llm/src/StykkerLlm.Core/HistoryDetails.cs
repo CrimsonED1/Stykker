@@ -14,14 +14,14 @@ public static class HistoryDetails
     // Das, was alle drei Oberflächen vom Verlaufseintrag brauchen (ohne Geheimnisse – die stehen in der Quelle als "***")
     public readonly record struct Row(string Key, string Program, IReadOnlyList<string> Args, IReadOnlyDictionary<string, string>? Env,
         string? WorkingDir, string? ModelPath, int? Port, int? Ctx, bool HasSecrets, DateTime FirstSeen, DateTime LastSeen,
-        int Runs, double TotalSeconds, double BestTps, double MeanTps, double MaxVramGb, double? ModelSizeGb)
+        int Runs, double TotalSeconds, double BestTps, double MeanTps, double MaxVramGb, double? ModelSizeGb, double MaxRamGb = 0)
     {
         public static Row Of(HistoryEntry h) => new(h.Key, h.Program, h.Args, h.Env, h.WorkingDir, h.ModelPath, h.Port, h.Ctx,
-            h.HasSecrets, h.FirstSeen, h.LastSeen, h.Runs, h.TotalSeconds, h.BestTps, h.MeanTps, h.MaxVramGb, h.ModelSizeGb);
+            h.HasSecrets, h.FirstSeen, h.LastSeen, h.Runs, h.TotalSeconds, h.BestTps, h.MeanTps, h.MaxVramGb, h.ModelSizeGb, h.MaxRamGb);
 
         public static Row Of(RemoteHistory h) => new(h.Key, h.Program, h.Args, h.Env, h.WorkingDir.Length == 0 ? null : h.WorkingDir,
             h.ModelPath.Length == 0 ? null : h.ModelPath, h.Port > 0 ? h.Port : null, h.Ctx > 0 ? h.Ctx : null,
-            h.HasSecrets, h.FirstSeen, h.LastSeen, h.Runs, h.TotalSeconds, h.BestTps, h.MeanTps, h.MaxVramGb, h.ModelSizeGb);
+            h.HasSecrets, h.FirstSeen, h.LastSeen, h.Runs, h.TotalSeconds, h.BestTps, h.MeanTps, h.MaxVramGb, h.ModelSizeGb, h.MaxRamGb);
 
         // Der Eintrag darf direkt übergeben werden (Server und Web nehmen HistoryEntry, Fenster und TUI RemoteHistory)
         public static implicit operator Row(HistoryEntry h) => Of(h);
@@ -55,6 +55,7 @@ public static class HistoryDetails
         Add(facts, Strings.RowTpsBest, h.BestTps > 0 ? Strings.N1(h.BestTps) : null);
         Add(facts, Strings.RowTpsAverage, h.MeanTps > 0 ? Strings.N1(h.MeanTps) : null);
         Add(facts, Strings.RowGpuMax, h.MaxVramGb > 0 ? Strings.N1(h.MaxVramGb) + " GB" : null);
+        Add(facts, Strings.RowRamMax, h.MaxRamGb > 0 ? Strings.N1(h.MaxRamGb) + " GB" : null);
         Add(facts, Strings.HistSecrets, h.HasSecrets ? Strings.SecretsNote : null);
         return facts;
     }

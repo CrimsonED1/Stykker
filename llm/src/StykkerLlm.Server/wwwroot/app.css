@@ -517,7 +517,8 @@ html[data-theme=titan] .hw h2.hw-sep{border-top-color:var(--border)}
 .fc-bar i{position:absolute;left:0;top:0;bottom:0;border-radius:3px}
 .fc-bar .free{background:rgb(var(--good-rgb)/.35)}
 .fc-bar .need{background:var(--acc);box-shadow:0 0 6px rgb(var(--acc-rgb)/calc(.6*var(--glow)))}
-.pf.tight .fc-bar .need{background:var(--warn)}.pf.tight .pf-fc b{color:var(--warn)}
+.pf.tight .pf-fc:not(.ram) .fc-bar .need{background:var(--warn)}.pf.tight .pf-fc:not(.ram) b{color:var(--warn)}
+.pf-fc .fc-txt{white-space:nowrap}.pf-fc.warn .fc-bar .need{background:var(--warn)}.pf-fc.warn .fc-txt{color:var(--warn)}
 .pf-act{display:flex;align-items:center;gap:6px;margin-top:8px;flex-wrap:wrap}
 .pf-cmd summary{cursor:pointer;font-size:11px;color:var(--muted);list-style:none}.pf-cmd summary::-webkit-details-marker{display:none}
 .pf-cmd[open]{flex-basis:100%;order:9}

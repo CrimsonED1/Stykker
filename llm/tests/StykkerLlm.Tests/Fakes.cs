@@ -39,12 +39,18 @@ internal sealed class FakePlatform : IPlatform
     // Alle bekannten Prozesse (PID, Name aus dem Bildpfad) – für die Suche nach der Claude-Desktop-App
     public IReadOnlyList<(int Pid, string Name)> AllProcesses() =>
         Processes.Where(p => p.Value.ImagePath != null).Select(p => (p.Key, ProcPath.Stem(p.Value.ImagePath))).ToList();
-    public ProcessUsage? ReadUsage(int pid) => null;
+    // Speicher je PID und Kindprozesse je PID (Prozessbaum), z. B. für den RAM mit Kindern (N90); leer = nicht lesbar
+    public Dictionary<int, ProcessUsage> Usage { get; } = new();
+    public Dictionary<int, List<(int Pid, string Name)>> Children { get; } = new();
+    public ProcessUsage? ReadUsage(int pid) => Usage.GetValueOrDefault(pid);
+    public IReadOnlyList<(int Pid, string Name)> ChildProcesses(int pid) =>
+        Children.TryGetValue(pid, out var kids) ? kids : Array.Empty<(int, string)>();
     // VRAM je PID (dediziert, geteilt), z. B. für LM-Studio-Kinder
     public Dictionary<int, (double Dedicated, double Shared)> GpuMem { get; } = new();
     public IGpuMemoryQuery? OpenGpuMemory(int pid) => GpuMem.TryGetValue(pid, out var m) ? new FakeGpuQuery(pid, m) : null;
     public GpuSample? ReadGpu() => null;
-    public SystemSample? ReadSystem() => null;
+    public SystemSample? SystemValues { get; set; }   // Systemwerte (RAM frei) für die Vorprüfung; null = nicht gemessen
+    public SystemSample? ReadSystem() => SystemValues;
     public IReadOnlyList<(string Name, double Gb)>? ReadGpuTop(int count) => null;
     // GPU-Auslastung je Prozess (S4: die Liste im GPU-Details kommt aus dem Zustand, nicht aus einer eigenen Messung)
     public IReadOnlyList<(string Name, double Percent)> GpuUtilTop { get; set; } = Array.Empty<(string, double)>();

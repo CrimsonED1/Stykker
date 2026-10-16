@@ -694,7 +694,10 @@ public sealed class ServerWatcher : IDisposable
                 usage = usage == null ? eu : new ProcessUsage(usage.WorkingSetGb + eu.WorkingSetGb, usage.PrivateGb + eu.PrivateGb, usage.CpuTime + eu.CpuTime);
             if (usage is { } u)
             {
-                ram = u.WorkingSetGb; commit = u.PrivateGb;
+                // RAM = Prozess plus alle Nachfahren (venv-Starter → Python → Engine); eigene Kindserver (LM Studio) zählen
+                // in WithChildren, deshalb hier ausgenommen
+                HashSet<int>? managed = info.Children.Count == 0 ? null : info.Children.Select(c => c.Pid).ToHashSet();
+                ram = ProcessTree.WorkingSetGb(_platform, pid, managed) ?? u.WorkingSetGb; commit = u.PrivateGb;
                 var at = DateTime.Now;
                 if (_cpuPrevPid == gpuPid && at > _cpuPrevAt && u.CpuTime >= _cpuPrev)
                     cpuPct = Math.Clamp(100.0 * (u.CpuTime - _cpuPrev).TotalSeconds / ((at - _cpuPrevAt).TotalSeconds * _platform.ProcessorCount), 0, 100);

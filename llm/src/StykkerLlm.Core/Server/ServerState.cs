@@ -225,6 +225,7 @@ public static class StateJson
                 Num(w, "bestTps", R2(h.BestTps));
                 Num(w, "meanTps", R2(h.MeanTps));
                 NumN(w, "maxVramGb", h.MaxVramGb);
+                NumN(w, "maxRamGb", h.MaxRamGb);
                 NumN(w, "modelSizeGb", h.ModelSizeGb);
                 w.WriteEndObject();
             }
@@ -757,6 +758,7 @@ public static class StateJson
         Num(w, "ttftP50", R2(r.TtftP50));
         Num(w, "ttftP95", R2(r.TtftP95));
         Num(w, "maxVramGb", R2(r.MaxVramGb));
+        Num(w, "maxRamGb", R2(r.MaxRamGb));
         Num(w, "energyWh", R2(r.EnergyWh));
         w.WriteNumber("toolCalls", r.ToolCalls);
         w.WriteNumber("truncated", r.Truncated);
@@ -1062,6 +1064,7 @@ public sealed class StateSnapshot
         TtftP50 = J.Dbl(e, "ttftP50"),
         TtftP95 = J.Dbl(e, "ttftP95"),
         MaxVramGb = J.Dbl(e, "maxVramGb"),
+        MaxRamGb = J.Dbl(e, "maxRamGb"),
         EnergyWh = J.Dbl(e, "energyWh"),
         ToolCalls = J.Int(e, "toolCalls"),
         Truncated = J.Int(e, "truncated"),
@@ -1107,6 +1110,7 @@ public sealed class StateSnapshot
         BestTps = J.Dbl(e, "bestTps"),
         MeanTps = J.Dbl(e, "meanTps"),
         MaxVramGb = J.Dbl(e, "maxVramGb"),
+        MaxRamGb = J.Dbl(e, "maxRamGb"),
         ModelSizeGb = J.Dbl(e, "modelSizeGb"),
     };
 
@@ -1530,6 +1534,7 @@ public sealed class RemoteRecording
     public double TtftP50 { get; init; }
     public double TtftP95 { get; init; }
     public double MaxVramGb { get; init; }
+    public double MaxRamGb { get; init; }
     public double EnergyWh { get; init; }
     public int ToolCalls { get; init; }
     public int Truncated { get; init; }
@@ -1578,9 +1583,9 @@ public sealed class RemoteProfile
     public bool CanStart => !string.IsNullOrWhiteSpace(Program);
 
     // Für die Vorprüfung des Startknopfes (Port, Modelldatei, VRAM, RAM): derselbe Startplan wie im Core
-    public LaunchSpec Spec(double? measuredVramGb = null) =>
+    public LaunchSpec Spec(double? measuredVramGb = null, double? measuredRamGb = null) =>
         new(Name, Program, Args, WorkingDir.Length == 0 ? null : WorkingDir,
-            Guid.TryParse(Id, out var id) ? id : null, measuredVramGb, Env);
+            Guid.TryParse(Id, out var id) ? id : null, measuredVramGb, Env, measuredRamGb);
 }
 
 public sealed class RemoteHistory
@@ -1602,6 +1607,7 @@ public sealed class RemoteHistory
     public double BestTps { get; init; }
     public double MeanTps { get; init; }
     public double MaxVramGb { get; init; }
+    public double MaxRamGb { get; init; }
     public double? ModelSizeGb { get; init; }
 }
 

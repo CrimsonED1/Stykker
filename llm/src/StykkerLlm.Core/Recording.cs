@@ -151,6 +151,7 @@ public sealed class RecordingSummary
     public double TtftP99 { get; set; }
     public int TtftSamples { get; set; }           // Anzahl Anfragen mit TTFT-Messung
     public double MaxVramGb { get; set; }
+    public double MaxRamGb { get; set; }           // höchster RAM eines Servers mit Kindprozessen (Working Set)
     public double EnergyWh { get; set; }
     public double PromptSec { get; set; }
     public double ThinkSec { get; set; }
@@ -281,7 +282,11 @@ public static class RecordingStore
         {
             double t = sm.TotalTps;
             if (t > 0) { tpsSum += t; tpsN++; s.PeakTps = Math.Max(s.PeakTps, t); }
-            foreach (var sv in sm.Servers) if (sv.VramGb is double v) s.MaxVramGb = Math.Max(s.MaxVramGb, v);
+            foreach (var sv in sm.Servers)
+            {
+                if (sv.VramGb is double v) s.MaxVramGb = Math.Max(s.MaxVramGb, v);
+                if (sv.RamGb is double rv) s.MaxRamGb = Math.Max(s.MaxRamGb, rv);
+            }
             if (sm.Gpu != null && s.MaxVramGb == 0) { }
         }
         s.AvgTps = tpsN > 0 ? tpsSum / tpsN : 0;

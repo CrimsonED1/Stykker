@@ -11,7 +11,7 @@ public sealed record LaunchIssue(LaunchSeverity Severity, string Code, string Me
 
 // Was gestartet werden soll. Args und Env enthalten nie Klartext-Geheimnisse; geschwärzte Werte ("***") müssen vorher ersetzt werden.
 public sealed record LaunchSpec(string Name, string Program, IReadOnlyList<string> Args, string? WorkingDir,
-    Guid? ProfileId = null, double? MeasuredVramGb = null, IReadOnlyDictionary<string, string>? Env = null);
+    Guid? ProfileId = null, double? MeasuredVramGb = null, IReadOnlyDictionary<string, string>? Env = null, double? MeasuredRamGb = null);
 
 // Ein geschwärzter Wert, der vor dem Start neu eingegeben werden muss: Option + Index in den Argumenten, bzw. EnvName bei einer Umgebungsvariable
 public sealed record SecretSlot(string Option, int Index, string? EnvName = null);
@@ -272,6 +272,14 @@ public static class ServerLauncher
         int? port = parsed.Port ?? (llama ? DefaultPort : null);
         var listener = port is int pt ? platform.ReadListeners().FirstOrDefault(l => l.Port == pt) : null;
         if (listener != null) Err("port", $"Port {port} is already in use (PID {listener.Pid}).");
+
+        // Gemerkter RAM-Bedarf (höchster Working Set mit Kindprozessen, letzter Lauf): nur eine Warnung, kein Fehler
+        if (spec.MeasuredRamGb is > 0 && platform.ReadSystem() is { } sysRam)
+        {
+            double freeRam = sysRam.RamTotalGb - sysRam.RamUsedGb;
+            if (spec.MeasuredRamGb.Value > freeRam + 1.0)
+                Warn("ram-measured", Strings.RamNeedWarn(spec.MeasuredRamGb.Value, freeRam));
+        }
 
         if (model != null)
         {

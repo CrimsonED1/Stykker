@@ -24,13 +24,15 @@ public sealed class LaunchCoordinator
     public Task<bool> StartProfileAsync(Profile p)
     {
         var hist = _engine.Library.HistoryOf(p);
-        return StartSpecAsync(new LaunchSpec(p.Name, p.Program, p.Args, p.WorkingDir, p.Id, hist is { MaxVramGb: > 0 } ? hist.MaxVramGb : null, p.Env));
+        return StartSpecAsync(new LaunchSpec(p.Name, p.Program, p.Args, p.WorkingDir, p.Id, hist is { MaxVramGb: > 0 } ? hist.MaxVramGb : null, p.Env,
+            hist is { MaxRamGb: > 0 } ? hist.MaxRamGb : null));
     }
 
     public Task<bool> StartHistoryAsync(HistoryEntry h)
     {
         var name = h.Name.Length > 0 ? h.Name : h.ModelPath != null ? ServerInfo.ModelName(h.ModelPath) : "server";
-        return StartSpecAsync(new LaunchSpec(name, h.Program, h.Args, h.WorkingDir, null, h.MaxVramGb > 0 ? h.MaxVramGb : null, h.Env));
+        return StartSpecAsync(new LaunchSpec(name, h.Program, h.Args, h.WorkingDir, null, h.MaxVramGb > 0 ? h.MaxVramGb : null, h.Env,
+            h.MaxRamGb > 0 ? h.MaxRamGb : null));
     }
 
     // Prüfen (Fehler/Warnungen), Kommandozeile bestätigen lassen (beim ersten Start und nach jeder Änderung), geschwärzte Werte erfragen,
