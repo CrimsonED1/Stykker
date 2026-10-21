@@ -196,13 +196,7 @@ public sealed class MonitorEngine : IDisposable
     {
         error = null;
         if (ReadOnly || _providerKeys == null) { error = Strings.ReadOnlyEngine; return false; }
-        var url = ProviderKeys.Normalize(providerUrl);
-        if (!Proxies.Providers.Any(p => ProviderKeys.Normalize(p.BaseUrl).Equals(url, StringComparison.OrdinalIgnoreCase)))
-        { error = Strings.ProxyProviderUnknown; return false; }
-        if (!Proxies.HasProviderKey(url)) { error = Strings.ClassifierTestNoKey; return false; }
-        // Die Modelle holt ProviderModelLists (gedrosselt, im Hintergrund); beim ersten Mal kann die Liste noch leer sein
-        var listed = Proxies.ProviderModelLists(url).Listed;
-        if (listed.Length == 0) { error = Strings.ClassifierTestNoModels; return false; }
+        if (!TestSource(providerUrl, out var url, out var listed, out var local, out error)) return false;
 
         // Ein Lauf je Engine: der Schalter gilt schon ab hier, nicht erst wenn der Hintergrund-Task läuft
         CancellationTokenSource cts;
@@ -223,7 +217,7 @@ public sealed class MonitorEngine : IDisposable
             // Die angehakten Modelle des Anbieters laufen zuerst
             var offered = Proxies.ProviderStates().Where(p => p.Url.Equals(url, StringComparison.OrdinalIgnoreCase)).SelectMany(p => p.Offered).ToArray();
             run = new ClassifierTest(url, listed, request, _providerKeys, http, Path.Combine(Paths.LogsDir, ClassifierTest.CsvFile), _now,
-                offered: offered, deadPath: Path.Combine(Paths.LogsDir, ClassifierTest.DeadFile), retryUnavailable: retryUnavailable);
+                offered: offered, deadPath: Path.Combine(Paths.LogsDir, ClassifierTest.DeadFile), retryUnavailable: retryUnavailable, local: local);
         }
         catch
         {
@@ -244,6 +238,31 @@ public sealed class MonitorEngine : IDisposable
         return true;
     }
 
+    // Was ein Modelltest prüft: ein eingetragener Anbieter (mit Schlüssel und gelisteten Modellen) oder dieser PC
+    // (ClassifierTest.LocalSource: die laufenden lokalen Server, ohne Schlüssel). local ist nur für diesen PC gesetzt.
+    private bool TestSource(string source, out string url, out string[] models, out IReadOnlyDictionary<string, LocalTestTarget>? local, out string? error)
+    {
+        url = ProviderKeys.Normalize(source);
+        models = Array.Empty<string>();
+        local = null;
+        error = null;
+        if (url == ClassifierTest.LocalSource)
+        {
+            local = Proxies.LocalTestTargets();
+            models = local.Keys.ToArray();
+            if (models.Length == 0) { error = Strings.TestNoLocalModels; return false; }
+            return true;
+        }
+        var u = url;
+        if (!Proxies.Providers.Any(p => ProviderKeys.Normalize(p.BaseUrl).Equals(u, StringComparison.OrdinalIgnoreCase)))
+        { error = Strings.ProxyProviderUnknown; return false; }
+        if (!Proxies.HasProviderKey(url)) { error = Strings.ClassifierTestNoKey; return false; }
+        // Die Modelle holt ProviderModelLists (gedrosselt, im Hintergrund); beim ersten Mal kann die Liste noch leer sein
+        models = Proxies.ProviderModelLists(url).Listed;
+        if (models.Length == 0) { error = Strings.ClassifierTestNoModels; return false; }
+        return true;
+    }
+
     // Bricht einen laufenden Modelltest ab (Sicherheitsprüfung oder Bilder); die bis dahin gemessenen Zeilen bleiben stehen
     public bool StopClassifierTest()
     {
@@ -261,12 +280,7 @@ public sealed class MonitorEngine : IDisposable
     {
         error = null;
         if (ReadOnly || _providerKeys == null) { error = Strings.ReadOnlyEngine; return false; }
-        var url = ProviderKeys.Normalize(providerUrl);
-        if (!Proxies.Providers.Any(p => ProviderKeys.Normalize(p.BaseUrl).Equals(url, StringComparison.OrdinalIgnoreCase)))
-        { error = Strings.ProxyProviderUnknown; return false; }
-        if (!Proxies.HasProviderKey(url)) { error = Strings.ClassifierTestNoKey; return false; }
-        var listed = Proxies.ProviderModelLists(url).Listed;
-        if (listed.Length == 0) { error = Strings.ClassifierTestNoModels; return false; }
+        if (!TestSource(providerUrl, out var url, out var listed, out var local, out error)) return false;
 
         CancellationTokenSource cts;
         lock (_classifierGate)
@@ -284,7 +298,7 @@ public sealed class MonitorEngine : IDisposable
             http = VisionClient?.Invoke() ?? new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
             var offered = Proxies.ProviderStates().Where(p => p.Url.Equals(url, StringComparison.OrdinalIgnoreCase)).SelectMany(p => p.Offered).ToArray();
             run = new VisionTest(url, listed, _providerKeys, http, Path.Combine(Paths.LogsDir, VisionTest.CsvFile), _now,
-                offered: offered, deadPath: Path.Combine(Paths.LogsDir, ClassifierTest.DeadFile), retryUnavailable: retryUnavailable);
+                offered: offered, deadPath: Path.Combine(Paths.LogsDir, ClassifierTest.DeadFile), retryUnavailable: retryUnavailable, local: local);
         }
         catch
         {
@@ -316,6 +330,22 @@ public sealed class MonitorEngine : IDisposable
         var run = ClassifierRun;
         var current = run != null && run.ProviderUrl.Equals(url, StringComparison.OrdinalIgnoreCase) ? run.Results : Array.Empty<ClassifierResult>();
         return ModelTestTable.Overlay(ModelTestTable.LastClassifier(Path.Combine(Paths.LogsDir, ClassifierTest.CsvFile), url), current, r => r.Model);
+    }
+
+    // Die Auswahlwerte aller Modelle, die ihren letzten Test bestanden haben (dieser PC und alle Anbieter): für die Markierung
+    // in den Auswahllisten des Routings. vision = Bildtest, sonst Sicherheitsprüfung.
+    public IReadOnlySet<string> PassedChoices(bool vision)
+    {
+        var set = new HashSet<string>(StringComparer.Ordinal);
+        var sources = Proxies.ProviderStates().Select(p => p.Url).Prepend(ClassifierTest.LocalSource);
+        foreach (var src in sources)
+        {
+            var models = vision
+                ? VisionRows(src).Where(r => ModelTestTable.AsVision(new[] { r }, r.Model) == ModelTestTable.UseState.Usable).Select(r => r.Model)
+                : ClassifierRows(src).Where(r => ModelTestTable.AsAuto(new[] { r }, r.Model) == ModelTestTable.UseState.Usable).Select(r => r.Model);
+            foreach (var m in models) set.Add(ProxyPanel.ChoiceValue(src, m));
+        }
+        return set;
     }
 
     // Dasselbe für den Bildtest (vision-test.csv und der letzte Bildtest)

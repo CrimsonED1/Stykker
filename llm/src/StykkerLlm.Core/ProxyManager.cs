@@ -711,6 +711,17 @@ public sealed class ProxyManager : IDisposable
             .ToList();
     }
 
+    // Die laufenden Modelle dieses PCs für die Modelltests: Auswahlwert (wie in Choices) → Adresse und Modellname des Servers.
+    // Nur bereite Ziele; Modelle anderer Rechner und der Cloud fehlen.
+    public IReadOnlyDictionary<string, LocalTestTarget> LocalTestTargets()
+    {
+        var d = new Dictionary<string, LocalTestTarget>(StringComparer.Ordinal);
+        foreach (var t in BuildTargets())
+            if (!t.Remote && !t.Cloud && t.Ready && !t.Loading && t.Model != null)
+                d.TryAdd(new ProxyChoice(t.ServerKey, t.Model, t.DisplayName, false).Value, new LocalTestTarget(t.Url, t.Model));
+        return d;
+    }
+
     // Bedient der Proxy gerade dieses Server-Modell als virtuelles „stykker"? (für den Karten-Chip)
     public bool IsServed(string serverKey)
     {

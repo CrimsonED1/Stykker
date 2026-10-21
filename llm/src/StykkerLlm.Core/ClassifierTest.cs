@@ -114,6 +114,9 @@ public static class TestNotes
 public sealed class ClassifierTest
 {
     public const string CsvFile = "classifier-test.csv";
+    // Die Quelle „dieser PC“: die laufenden lokalen Server statt eines Cloud-Anbieters. Steht in der CSV in der Spalte Provider;
+    // die Modellnamen sind dann die Auswahlwerte des Proxys („<Server-Key>|<Modell>“), Adresse und Modell je Ziel kommen mit.
+    public const string LocalSource = "local";
     // Modelle, die der Anbieter mit 404 abgelehnt hat: je Zeile „<Anbieter-URL>|<Modell>“, beim nächsten Lauf übersprungen
     public const string DeadFile = "classifier-dead.txt";
     // Kopfzeile der CSV (Datenformat, kein Anzeigetext)
@@ -141,6 +144,7 @@ public sealed class ClassifierTest
     private readonly byte[] _request;
     private readonly bool _real;
     private readonly ProviderKeys? _keys;
+    private readonly IReadOnlyDictionary<string, LocalTestTarget>? _local;
     private readonly HttpClient _http;
     private readonly string? _csvPath;
     private readonly string? _deadPath;
@@ -158,13 +162,15 @@ public sealed class ClassifierTest
     // retryUnavailable: die Liste für diesen Lauf ignorieren („Retry unavailable“)
     public ClassifierTest(string providerUrl, IEnumerable<string> models, ClassifierRequest request, ProviderKeys? keys, HttpClient http,
         string? csvPath = null, Func<DateTime>? now = null, TimeSpan? timeout = null, TimeSpan? pause = null, TimeSpan? retryWait = null,
-        IEnumerable<string>? offered = null, string? deadPath = null, bool retryUnavailable = false)
+        IEnumerable<string>? offered = null, string? deadPath = null, bool retryUnavailable = false,
+        IReadOnlyDictionary<string, LocalTestTarget>? local = null)
     {
         _url = ProviderKeys.Normalize(providerUrl);
         _models = RunOrder(models, offered ?? Array.Empty<string>());
         _request = request.Body;
         _real = request.Real;
         _keys = keys;
+        _local = local;
         _http = http;
         _csvPath = string.IsNullOrWhiteSpace(csvPath) ? null : csvPath;
         _deadPath = string.IsNullOrWhiteSpace(deadPath) ? null : deadPath;
@@ -253,8 +259,9 @@ public sealed class ClassifierTest
         _error = "";
         try
         {
-            var key = _keys?.Get(_url);
-            if (string.IsNullOrEmpty(key)) { _error = Strings.ProxyProviderKeyMissingShort; return; }
+            // Lokale Server brauchen keinen Schlüssel
+            var key = _local != null ? "" : _keys?.Get(_url);
+            if (key == null || (_local == null && key.Length == 0)) { _error = Strings.ProxyProviderKeyMissingShort; return; }
             // Was beim letzten Lauf mit 404 abgelehnt wurde, wird übersprungen – außer bei „Retry unavailable“
             var unavailable = _retryUnavailable ? new HashSet<string>(StringComparer.Ordinal) : DeadModels(_deadPath, _url);
             Status.Begin(_models.Count(m => SkipWord(m) == null && !unavailable.Contains(m)));
@@ -303,10 +310,11 @@ public sealed class ClassifierTest
     private async Task<ClassifierResult> SendAsync(string model, string key, CancellationToken ct)
     {
         // Wie Claude Code mit Denken aus: die Prüfung braucht nur ein kurzes Urteil
-        var body = AnthropicBridge.ToOpenAi(_request, model, includeUsage: false, noThinking: true);
-        using var req = new HttpRequestMessage(HttpMethod.Post, NetAddr.JoinUpstream(_url, "/v1/chat/completions")) { Content = new ByteArrayContent(body) };
+        var (url, name) = LocalTestTarget.Resolve(_local, _url, model);
+        var body = AnthropicBridge.ToOpenAi(_request, name, includeUsage: false, noThinking: true);
+        using var req = new HttpRequestMessage(HttpMethod.Post, NetAddr.JoinUpstream(url, "/v1/chat/completions")) { Content = new ByteArrayContent(body) };
         req.Content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
-        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", key);
+        if (key.Length > 0) req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", key);
 
         var when = _now();
         var clock = Stopwatch.StartNew();
@@ -513,4 +521,12 @@ public sealed class ClassifierTest
         };
         return Encoding.UTF8.GetBytes(body.ToJsonString());
     }
+}
+
+// Ein lokales Ziel eines Modelltests: Adresse des Servers und der Modellname, den er erwartet. Der Test kennt das Ziel unter dem
+// Auswahlwert des Proxys; Resolve gibt für Cloud-Anbieter (local == null) die Anbieter-URL und den Namen unverändert zurück.
+public sealed record LocalTestTarget(string Url, string Model)
+{
+    public static (string Url, string Model) Resolve(IReadOnlyDictionary<string, LocalTestTarget>? local, string providerUrl, string model) =>
+        local != null && local.TryGetValue(model, out var t) ? (t.Url, t.Model) : (providerUrl, model);
 }

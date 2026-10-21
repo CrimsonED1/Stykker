@@ -32,6 +32,7 @@ public sealed class VisionTest
     private readonly string _url;
     private readonly string[] _models;
     private readonly ProviderKeys? _keys;
+    private readonly IReadOnlyDictionary<string, LocalTestTarget>? _local;
     private readonly HttpClient _http;
     private readonly string? _csvPath;
     private readonly string? _deadPath;
@@ -50,11 +51,13 @@ public sealed class VisionTest
     // beim Klassifizierer); retryUnavailable: die Liste für diesen Lauf ignorieren („Retry unavailable“)
     public VisionTest(string providerUrl, IEnumerable<string> models, ProviderKeys? keys, HttpClient http,
         string? csvPath = null, Func<DateTime>? now = null, TimeSpan? timeout = null, TimeSpan? pause = null, TimeSpan? retryWait = null,
-        IEnumerable<string>? offered = null, string? deadPath = null, bool retryUnavailable = false)
+        IEnumerable<string>? offered = null, string? deadPath = null, bool retryUnavailable = false,
+        IReadOnlyDictionary<string, LocalTestTarget>? local = null)
     {
         _url = ProviderKeys.Normalize(providerUrl);
         _models = ClassifierTest.RunOrder(models, offered ?? Array.Empty<string>());
         _keys = keys;
+        _local = local;
         _http = http;
         _csvPath = string.IsNullOrWhiteSpace(csvPath) ? null : csvPath;
         _deadPath = string.IsNullOrWhiteSpace(deadPath) ? null : deadPath;
@@ -121,8 +124,9 @@ public sealed class VisionTest
         _error = "";
         try
         {
-            var key = _keys?.Get(_url);
-            if (string.IsNullOrEmpty(key)) { _error = Strings.ProxyProviderKeyMissingShort; return; }
+            // Lokale Server brauchen keinen Schlüssel
+            var key = _local != null ? "" : _keys?.Get(_url);
+            if (key == null || (_local == null && key.Length == 0)) { _error = Strings.ProxyProviderKeyMissingShort; return; }
             // Was beim letzten Lauf mit 404 abgelehnt wurde, wird übersprungen – außer bei „Retry unavailable“
             var unavailable = _retryUnavailable ? new HashSet<string>(StringComparer.Ordinal) : ClassifierTest.DeadModels(_deadPath, _url);
             Status.Begin(_models.Count(m => ClassifierTest.SkipWord(m) == null && !unavailable.Contains(m)));
@@ -170,10 +174,11 @@ public sealed class VisionTest
 
     private async Task<VisionResult> SendAsync(string model, string key, CancellationToken ct)
     {
-        var body = RequestBody(model, _png);
-        using var req = new HttpRequestMessage(HttpMethod.Post, NetAddr.JoinUpstream(_url, "/v1/chat/completions")) { Content = new ByteArrayContent(body) };
+        var (url, name) = LocalTestTarget.Resolve(_local, _url, model);
+        var body = RequestBody(name, _png);
+        using var req = new HttpRequestMessage(HttpMethod.Post, NetAddr.JoinUpstream(url, "/v1/chat/completions")) { Content = new ByteArrayContent(body) };
         req.Content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
-        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", key);
+        if (key.Length > 0) req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", key);
 
         var when = _now();
         var clock = Stopwatch.StartNew();
