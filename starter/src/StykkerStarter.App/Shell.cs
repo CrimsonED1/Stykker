@@ -205,6 +205,12 @@ internal sealed class Shell : IDisposable
                 case "openFolder":
                     Process.Start(new ProcessStartInfo("explorer.exe", "\"" + _layout.Root + "\"") { UseShellExecute = false });
                     break;
+                case "openProgramFolder":
+                    OpenProgramFolder(root.TryGetProperty("id", out var fid) && fid.ValueKind == JsonValueKind.String ? fid.GetString() : null);
+                    break;
+                case "showLog":
+                    OpenLog();
+                    break;
                 default:
                     _model?.Command(root.Clone());
                     break;
@@ -249,6 +255,31 @@ internal sealed class Shell : IDisposable
     }
 
     private static string AskJson(string what) => JsonSerializer.Serialize(new { type = "ask", what });
+
+    // Der Ordner der laufenden Kopie im Explorer; ohne Kopie der Quellordner. Fehlt der Ordner, steht es im Protokoll.
+    private void OpenProgramFolder(string? id)
+    {
+        var program = _model?.Programs.FirstOrDefault(p => p.Id == id);
+        var folder = program?.Folder ?? (program?.Source is { Length: > 0 } source ? Path.GetDirectoryName(source) : null);
+        if (folder == null || !Directory.Exists(folder))
+        {
+            _log.Write($"open folder: no folder for {id ?? "(none)"}");
+            return;
+        }
+        Process.Start(new ProcessStartInfo("explorer.exe", "\"" + folder + "\"") { UseShellExecute = false });
+    }
+
+    // Die Protokolldatei des Starters, in der Standard-App für Textdateien
+    private void OpenLog()
+    {
+        var file = _log.FilePath;
+        if (!File.Exists(file))
+        {
+            _log.Write("show log: the log file does not exist yet");
+            return;
+        }
+        Process.Start(new ProcessStartInfo(file) { UseShellExecute = true });
+    }
 
     // Der Dateidialog gehört zum Fenster; das Ergebnis geht zurück an die Seite
     private void Pick()
@@ -359,6 +390,8 @@ internal sealed class Shell : IDisposable
         _nextMenuId = MenuFirstDynamic;
         var items = new List<TrayIcon.Item> { new(0, "Stykker Starter", Disabled: true) };
         var programs = _model?.Programs ?? Array.Empty<ProgramView>();
+        if (programs.Count == 0) items.Add(new TrayIcon.Item(0, "No programs in the list", Disabled: true));
+        // Je Programm ein Untermenü: nur die Befehle, die gerade passen
         foreach (var p in programs)
         {
             if (p.Broken != null)
@@ -366,16 +399,20 @@ internal sealed class Shell : IDisposable
                 items.Add(new TrayIcon.Item(0, $"{(string.IsNullOrWhiteSpace(p.Name) ? "(no name)" : p.Name)} · broken entry", Disabled: true));
                 continue;
             }
-            var state = p.Running ? "running" : "stopped";
-            var where = p.CopyToLocal ? p.Local ?? "–" : "runs from source";
-            items.Add(new TrayIcon.Item(0, $"{p.Name} {where} · {state}", Disabled: true));
-        }
-        foreach (var p in programs.Where(p => p.UpdateVersion != null))
-        {
-            var id = _nextMenuId++;
             var programId = p.Id;
-            _menu[id] = () => _model?.RequestUpdate(programId);
-            items.Add(new TrayIcon.Item(id, $"Update {p.Name} to {p.UpdateVersion}"));
+            var children = new List<TrayIcon.Item>();
+            if (p.Running)
+            {
+                children.Add(Command("Restart", () => _model?.RequestRestart(programId)));
+                children.Add(Command("Stop", () => _model?.RequestStop(programId)));
+            }
+            else children.Add(Command("Start", () => _model?.RequestStart(programId)));
+            if (p.UpdateVersion != null)
+            {
+                children.Add(Command(p.UpdateIsNewBuild ? "Update (new build)" : $"Update to {p.UpdateVersion}", () => _model?.RequestUpdate(programId)));
+            }
+            var state = p.Busy ?? (p.Running ? "running" : "stopped");
+            items.Add(new TrayIcon.Item(0, $"{p.Name} · {state}", Children: children));
         }
         items.Add(new TrayIcon.Item(0, "", Separator: true));
         var check = _nextMenuId++;
@@ -389,6 +426,14 @@ internal sealed class Shell : IDisposable
         _menu[quit] = AskQuit;
         items.Add(new TrayIcon.Item(quit, "Quit the Starter"));
         return items;
+    }
+
+    // Ein Befehl im Tray-Menü: die Nummer zeigt auf die Aktion
+    private TrayIcon.Item Command(string text, Action action)
+    {
+        var id = _nextMenuId++;
+        _menu[id] = action;
+        return new TrayIcon.Item(id, text);
     }
 
     private void OnTrayMenu(int id)

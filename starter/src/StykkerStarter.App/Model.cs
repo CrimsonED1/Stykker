@@ -51,9 +51,12 @@ internal sealed class Model : IDisposable
     private StarterConfig _config = new();
     private CancellationTokenSource? _cancel;
     private CopyView? _copy;
-    private OpView? _last;
-    private int _opSeq;        // zählt die abgeschlossenen Vorgänge; die Seite erkennt daran das Ende
-    private string? _notice;
+    private readonly Dictionary<string, OpView> _ops = new();   // der letzte Vorgang je Programm (Ablauf in den Details)
+    private int _opSeq;        // zählt die abgeschlossenen Vorgänge
+    private string? _notice;   // die letzte Meldung (ein Toast unten rechts); _noticeSeq zählt sie
+    private bool _noticeBad;   // die Meldung ist ein Fehler (rot)
+    private int _noticeSeq;
+    private volatile bool _checking;   // eine Prüfung läuft (für den Knopf „Check now“)
     private DateTime? _lastChecked;
     private DateTime _nextCheck;
     private System.Threading.Timer? _timer;
@@ -152,7 +155,7 @@ internal sealed class Model : IDisposable
         if (_skipStartup)
         {
             _log.Write("start: programs not started (skipped)");
-            _notice = "Programs not started";
+            Notice("Programs not started");
             FinishStartup();
             return;
         }
@@ -188,7 +191,7 @@ internal sealed class Model : IDisposable
             StartAtStartup(program);
             Publish();
         }
-        if (_skipStartup) _notice = "Programs not started";
+        if (_skipStartup) Notice("Programs not started");
         FinishStartup();
     }
 
@@ -254,7 +257,7 @@ internal sealed class Model : IDisposable
         {
             _startupDone = true;
             _startupAt = null;
-            _notice = "Stopping the programs…";
+            Notice("Stopping the programs…");
             Publish();
             foreach (var program in _config.Programs.ToList())
             {
@@ -299,7 +302,7 @@ internal sealed class Model : IDisposable
             catch (Exception ex)
             {
                 _log.Write($"error: {ex.GetType().Name}: {ex.Message}");
-                _notice = "Something went wrong: " + ex.Message;
+                Notice("Something went wrong: " + ex.Message, bad: true);
                 Publish();
             }
         }
@@ -333,7 +336,7 @@ internal sealed class Model : IDisposable
         switch (cmd)
         {
             case "ready": Enqueue(Publish); break;
-            case "check": Enqueue(CheckAll); break;
+            case "check": ShowChecking(); Enqueue(CheckAll); break;
             case "startNow": StartupNow(); break;
             case "skipStartup": SkipStartup(); break;
             case "startAll": Enqueue(StartAll); break;
@@ -375,9 +378,17 @@ internal sealed class Model : IDisposable
 
     // ---------- Vorgänge (laufen auf dem Thread der Warteschlange) ----------
 
+    // Der Knopf „Check now“ dreht sich schon, bevor die Prüfung in der Warteschlange drankommt
+    private void ShowChecking()
+    {
+        _checking = true;
+        if (_state is { } state) Emit(state with { Checking = true });
+    }
+
     private void CheckAll()
     {
-        if (_stopping) return;
+        if (_stopping) { _checking = false; return; }
+        _checking = true;
         _lastChecked = DateTime.Now;
         bool changed = false;
         foreach (var program in _config.Programs.ToList())
@@ -392,6 +403,7 @@ internal sealed class Model : IDisposable
         }
         if (changed) SaveConfig();
         Reschedule();
+        _checking = false;
         Publish();
     }
 
@@ -402,7 +414,7 @@ internal sealed class Model : IDisposable
         CheckResult result;
         try
         {
-            result = _engine.Check(program, _config.Settings, new CopyProgressSink(p => ReportCopy(program.Name, p)), cts.Token, forceUpdate: true);
+            result = _engine.Check(program, _config.Settings, new CopyProgressSink(p => ReportCopy(program.Id, program.Name, p)), cts.Token, forceUpdate: true);
         }
         finally
         {
@@ -411,9 +423,10 @@ internal sealed class Model : IDisposable
         }
         _checks[program.Id] = result;
         if (result.Kind == CheckKind.Updated && program.CopyToLocal) _service.Cleanup(program, _config.Settings.VersionsKept);
-        _last = OpView.FromCheck($"Update {program.Name}", result);
+        var op = OpView.FromCheck($"Update {program.Name}", result);
+        _ops[program.Id] = op;
         _opSeq++;
-        _notice = result.Message;
+        Notice(result.Message, bad: op.Kind == "bad");
         SaveConfig();
     });
 
@@ -421,16 +434,16 @@ internal sealed class Model : IDisposable
     {
         var (ok, message) = StartOrInstall(program, manual: true);
         SaveConfig();
-        _notice = ok ? $"{program.Name} is running" : $"{program.Name} did not start: {message}";
+        Notice(ok ? $"{program.Name} is running" : $"{program.Name} did not start: {message}", bad: !ok);
     });
 
     private void StopProgram(string id) => Operate(id, "stopping", stops: true, program =>
     {
         var report = _service.Stop(program);
         int count = report.Closed.Count + report.Killed.Count;
-        _notice = report.AllGone
+        Notice(report.AllGone
             ? $"{program.Name} stopped{(count > 0 ? $" ({count} process{(count == 1 ? "" : "es")})" : "")}"
-            : $"{program.Name}: {report.Left.Count} process(es) still running";
+            : $"{program.Name}: {report.Left.Count} process(es) still running", bad: !report.AllGone);
     });
 
     private void RestartProgram(string id) => Operate(id, "restarting", stops: true, program =>
@@ -438,21 +451,22 @@ internal sealed class Model : IDisposable
         var report = _service.Stop(program);
         var outcome = report.AllGone ? StartNow(program, manual: true) : new StartOutcome(false, null, "the old version did not stop");
         SaveConfig();
-        _notice = outcome.Ok ? $"{program.Name} restarted" : $"{program.Name} did not restart: {outcome.Message}";
+        Notice(outcome.Ok ? $"{program.Name} restarted" : $"{program.Name} did not restart: {outcome.Message}", bad: !outcome.Ok);
     });
 
     private void RollbackProgram(string id) => Operate(id, "rollback", stops: true, program =>
     {
         if (!program.CopyToLocal)
         {
-            _notice = $"{program.Name} runs from its source folder; there is no earlier copy";
+            Notice($"{program.Name} runs from its source folder; there is no earlier copy", bad: true);
             return;
         }
         var outcome = _service.Rollback(program);
         if (outcome.Kind == UpdateKind.WentBack) NoteStarted(program, manual: true);
-        _last = OpView.FromRollback(program.Name, outcome);
+        _ops[program.Id] = OpView.FromRollback(program.Name, outcome);
         _opSeq++;
-        _notice = outcome.Kind == UpdateKind.WentBack ? $"{program.Name}: {outcome.Message}" : outcome.Message;
+        Notice(outcome.Kind == UpdateKind.WentBack ? $"{program.Name}: {outcome.Message}" : outcome.Message,
+            bad: outcome.Kind != UpdateKind.WentBack);
         SaveConfig();
     });
 
@@ -520,10 +534,11 @@ internal sealed class Model : IDisposable
         var cts = new CancellationTokenSource();
         _cancel = cts;
         _busy[program.Id] = new BusyState("copying", NowMs(), null);
+        Publish();   // die Zeile zeigt den Kopiervorgang schon, bevor er fertig ist
         UpdateOutcome outcome;
         try
         {
-            outcome = _engine.Install(program, new CopyProgressSink(p => ReportCopy(program.Name, p)), cts.Token);
+            outcome = _engine.Install(program, new CopyProgressSink(p => ReportCopy(program.Id, program.Name, p)), cts.Token);
         }
         catch (SourceUnreachableException ex)
         {
@@ -550,7 +565,7 @@ internal sealed class Model : IDisposable
         _cancel = cts;
         try
         {
-            return _engine.CopyOnly(program, new CopyProgressSink(p => ReportCopy(program.Name, p)), cts.Token);
+            return _engine.CopyOnly(program, new CopyProgressSink(p => ReportCopy(program.Id, program.Name, p)), cts.Token);
         }
         catch (SourceUnreachableException ex)
         {
@@ -595,7 +610,7 @@ internal sealed class Model : IDisposable
             });
         }
         SaveConfig();
-        _notice = started == 0 ? "Nothing to start" : $"Started {started} program(s)";
+        Notice(started == 0 ? "Nothing to start" : $"Started {started} program(s)");
         Publish();
     }
 
@@ -611,7 +626,7 @@ internal sealed class Model : IDisposable
                 if (_service.Stop(p).AllGone) stopped++;
             });
         }
-        _notice = stopped == 0 ? "No program was running" : $"Stopped {stopped} program(s)";
+        Notice(stopped == 0 ? "No program was running" : $"Stopped {stopped} program(s)");
         Publish();
     }
 
@@ -642,7 +657,7 @@ internal sealed class Model : IDisposable
 
         if (ProgramEdit.Problem(_config, program, changes) is { } problem)
         {
-            _notice = problem;
+            Notice(problem, bad: true);
             Publish();
             return;
         }
@@ -650,7 +665,7 @@ internal sealed class Model : IDisposable
         bool readyChanged = (changes.ReadyCheck ?? "").Trim() != program.ReadyCheck.Trim();
         if (copyChanged && _service.IsRunning(program))
         {
-            _notice = $"Stop {Label(program)} before changing its copy setting";
+            Notice($"Stop {Label(program)} before changing its copy setting", bad: true);
             Publish();
             return;
         }
@@ -667,7 +682,7 @@ internal sealed class Model : IDisposable
             SaveConfig();
         }
         if (readyChanged && _service.IsRunning(program)) NoteStarted(program, manual: false);
-        _notice = message;
+        Notice(message);
         Publish();
     }
 
@@ -677,7 +692,7 @@ internal sealed class Model : IDisposable
         if (program == null) return;
         if (_service.IsRunning(program))
         {
-            _notice = $"Stop {Label(program)} before removing it";
+            Notice($"Stop {Label(program)} before removing it", bad: true);
             Publish();
             return;
         }
@@ -685,9 +700,10 @@ internal sealed class Model : IDisposable
         if (_layout.TryProgramDir(program.Id) is { } dir) VersionCopier.DeleteTree(dir);
         _config.Programs.Remove(program);
         _checks.Remove(program.Id);
+        _ops.Remove(program.Id);
         _ready.Stopped(program.Id);
         SaveConfig();
-        _notice = $"{Label(program)} removed; its local copies are deleted";
+        Notice($"{Label(program)} removed; its local copies are deleted");
         Publish();
     }
 
@@ -697,7 +713,7 @@ internal sealed class Model : IDisposable
         foreach (var program in _config.Programs.Where(p => ProgramCheck.BrokenReason(p) == null))
             removed += _service.Cleanup(program, _config.Settings.VersionsKept).Removed.Count;
         SaveConfig();
-        _notice = removed == 0 ? "Nothing to remove" : $"Removed {removed} unused {(removed == 1 ? "copy" : "copies")}";
+        Notice(removed == 0 ? "Nothing to remove" : $"Removed {removed} unused {(removed == 1 ? "copy" : "copies")}");
         Publish();
     }
 
@@ -740,26 +756,26 @@ internal sealed class Model : IDisposable
         if (!IsProgramPath(input.Path) || !File.Exists(input.Path))
         {
             _log.Write("add: rejected, not an existing .exe file");
-            _notice = "Choose an existing .exe file";
+            Notice("Choose an existing .exe file", bad: true);
             Publish();
             return;
         }
         if (ProgramCheck.FindDuplicate(_config, input.Path, input.Args) is { } duplicate)
         {
             _log.Write($"add: rejected, already in the list as {duplicate.Id}");
-            _notice = $"{duplicate.Name} is already in the list";
+            Notice($"{duplicate.Name} is already in the list", bad: true);
             Publish();
             return;
         }
         if (ReadyRule.Problem(input.ReadyCheck) is { } readyProblem)
         {
-            _notice = "The ready check: " + readyProblem;
+            Notice("The ready check: " + readyProblem, bad: true);
             Publish();
             return;
         }
         if (input.StartDelaySeconds is < 0 or > ProgramEdit.MaxStartDelaySeconds)
         {
-            _notice = "The start delay must be 0 to 120 seconds";
+            Notice("The start delay must be 0 to 120 seconds", bad: true);
             Publish();
             return;
         }
@@ -788,9 +804,9 @@ internal sealed class Model : IDisposable
             // der Start scheitert; die Liste zeigt dann den Stand.
             var started = StartNow(program, manual: true);
             _log.Write($"add {program.Id}: runs from the source folder, {(started.Ok ? "started" : "not started")}: {started.Message}");
-            _last = OpView.FromInPlaceStart(name, started);
+            _ops[program.Id] = OpView.FromInPlaceStart(name, started);
             _opSeq++;
-            _notice = started.Ok ? $"{name} runs from the source folder" : started.Message;
+            Notice(started.Ok ? $"{name} runs from the source folder" : started.Message, bad: !started.Ok);
             SaveConfig();
             Publish();
             return;
@@ -799,9 +815,10 @@ internal sealed class Model : IDisposable
         var outcome = InstallNow(program, manual: true);
         if (program.Copies.Count == 0) _config.Programs.Remove(program);   // nichts kopiert: nichts aufnehmen
         _log.Write($"add {program.Id}: {outcome.Kind}, {outcome.Message}" + (program.Copies.Count == 0 ? " (nothing kept)" : ""));
-        _last = OpView.FromInstall(program.Name, outcome);
+        var installOp = OpView.FromInstall(program.Name, outcome);
+        _ops[program.Id] = installOp;
         _opSeq++;
-        _notice = outcome.Message;
+        Notice(outcome.Message, bad: installOp.Kind == "bad");
         SaveConfig();
         Publish();
     }
@@ -826,16 +843,16 @@ internal sealed class Model : IDisposable
             try
             {
                 Autostart.Set(s.StartWithWindows, _exe);
-                _notice = s.StartWithWindows ? "The Starter starts with Windows" : "The Starter does not start with Windows";
+                Notice(s.StartWithWindows ? "Settings saved; the Starter starts with Windows" : "Settings saved");
             }
             catch (Exception ex) when (ex is Win32Exception or UnauthorizedAccessException or IOException)
             {
-                _notice = "The autostart setting could not be written: " + ex.Message;
+                Notice("Settings saved, but the autostart could not be written: " + ex.Message, bad: true);
             }
         }
         else
         {
-            _notice = "Settings saved (autostart is not changed with a test data folder)";
+            Notice("Settings saved (autostart is not changed with a test data folder)");
         }
         Publish();
     }
@@ -923,9 +940,17 @@ internal sealed class Model : IDisposable
 
     // ---------- Zustand und Anzeige ----------
 
-    private void ReportCopy(string name, CopyProgress p)
+    // Meldung unten rechts: jede neue Meldung bekommt eine neue Nummer, damit die Seite sie nur einmal zeigt
+    private void Notice(string text, bool bad = false)
     {
-        _copy = new CopyView(name, p);
+        _notice = text;
+        _noticeBad = bad;
+        _noticeSeq++;
+    }
+
+    private void ReportCopy(string id, string name, CopyProgress p)
+    {
+        _copy = new CopyView(id, name, p);
         var now = DateTime.UtcNow;
         if ((now - _copyPublished).TotalMilliseconds < 150 && p.FilesDone < p.FilesTotal) return;
         _copyPublished = now;
@@ -951,9 +976,12 @@ internal sealed class Model : IDisposable
             LocalBytes: LocalBytes(),
             CleanupBytes: CleanupBytes(),
             Copy: _copy?.ToDto(),
-            Last: _last,
+            Ops: new Dictionary<string, OpView>(_ops),
             OpSeq: _opSeq,
+            Checking: _checking,
             Notice: _notice,
+            NoticeBad: _noticeBad,
+            NoticeSeq: _noticeSeq,
             StartupLeftMs: _startupAt is { } at ? Math.Max(0, (int)(at - DateTime.UtcNow).TotalMilliseconds) : null,
             StartupNext: _startupNext);
         _state = state;
@@ -1063,7 +1091,7 @@ internal sealed class Model : IDisposable
         catch (Exception ex) when (ex is IOException or JsonException or InvalidDataException)
         {
             _log.Write($"config: could not be read ({ex.Message}); starting without programs, the file is kept");
-            _notice = "starter.json could not be read; it is kept as it is";
+            Notice("starter.json could not be read; it is kept as it is", bad: true);
             return new StarterConfig();
         }
     }
@@ -1084,7 +1112,7 @@ internal sealed class Model : IDisposable
         var program = Find(id);
         if (program == null) return null;
         if (ProgramCheck.BrokenReason(program) is not { } reason) return program;
-        _notice = $"{Label(program)} is a broken entry ({reason}); remove it";
+        Notice($"{Label(program)} is a broken entry ({reason}); remove it", bad: true);
         Publish();
         return null;
     }
@@ -1143,9 +1171,12 @@ internal sealed record PageState(
     long LocalBytes,
     long CleanupBytes,
     object? Copy,
-    OpView? Last,
+    IReadOnlyDictionary<string, OpView> Ops,
     int OpSeq,
+    bool Checking,
     string? Notice,
+    bool NoticeBad,
+    int NoticeSeq,
     int? StartupLeftMs,
     string? StartupNext);
 
@@ -1160,10 +1191,11 @@ internal sealed record SettingsView(
     int StartupDelaySeconds);
 
 // Der laufende Kopiervorgang für die Seite
-internal sealed record CopyView(string Name, CopyProgress P)
+internal sealed record CopyView(string Id, string Name, CopyProgress P)
 {
     public object ToDto() => new
     {
+        id = Id,
         name = Name,
         percent = Math.Round(P.Percent, 1),
         filesDone = P.FilesDone,
