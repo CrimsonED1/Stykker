@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using System.ComponentModel;
 using System.Text.Json;
 using StykkerStarter.Core;
@@ -66,6 +66,9 @@ internal sealed class Model : IDisposable
     private int _readyQueued;
     private bool _startupDone;                 // nur auf dem Thread der Warteschlange
     private DateTime? _startupAt;              // Ende der laufenden Pause (UTC), nur auf dem Thread der Warteschlange
+    private Queue<ProgramEntry>? _startupQueue;   // die restliche Startfolge (nur Thread der Warteschlange)
+    private int _startupStep;                      // macht alte Timer-Schritte wirkungslos
+    private string? _waitedFor;                    // die Pause vor diesem Programm ist schon abgelaufen
     private volatile string? _startupNext;     // Name des nächsten Programms in der Startfolge
     private volatile bool _startNow;           // „Start now“ oder „Start all“: die Pausen entfallen
     private volatile bool _skipStartup;        // „Skip“: die Startfolge entfällt
@@ -139,30 +142,62 @@ internal sealed class Model : IDisposable
     }
 
     // Die Startfolge: nach der Pause vor dem Start des Ganzen geht es in der Reihenfolge von starter.json; vor jedem
-    // Programm die eigene Pause. Läuft auf dem Thread der Warteschlange; „Start now“ und „Skip“ kommen als Felder.
+    // Programm die eigene Pause. Die Pausen laufen über einen Timer, nicht auf dem Thread der Warteschlange: Stop,
+    // Update usw. kommen auch während einer Pause sofort dran.
     private void RunStartup()
     {
         if (_startupDone || _stopping) return;
         _startupDone = true;
         _startupTimer?.Dispose();
-        try
+        if (_skipStartup)
         {
-            if (_skipStartup)
-            {
-                _log.Write("start: programs not started (skipped)");
-                _notice = "Programs not started";
-            }
-            else
-            {
-                _log.Write(_startNow ? "start: programs started at once (start now)" : "start: programs start in order");
-                StartupSequence();
-            }
+            _log.Write("start: programs not started (skipped)");
+            _notice = "Programs not started";
+            FinishStartup();
+            return;
         }
-        finally
+        _log.Write(_startNow ? "start: programs started at once (start now)" : "start: programs start in order");
+        _startupQueue = new Queue<ProgramEntry>(ProgramList.Startable(_config));
+        StartupStep();
+    }
+
+    // Startet Programme, bis eines vor sich eine Pause hat; dann kommt der nächste Schritt über den Timer
+    private void StartupStep()
+    {
+        _startupTimer?.Dispose();
+        _startupStep++;
+        while (_startupQueue is { Count: > 0 } queue)
         {
+            if (_stopping || _skipStartup) { queue.Clear(); break; }
+            var program = queue.Peek();
+            if (!WillStartAtStartup(program)) { queue.Dequeue(); continue; }
+            if (program.StartDelaySeconds > 0 && !_startNow && _waitedFor != program.Id)
+            {
+                _waitedFor = program.Id;
+                _startupNext = Label(program);
+                var delay = TimeSpan.FromSeconds(program.StartDelaySeconds);
+                _startupAt = DateTime.UtcNow + delay;
+                var step = _startupStep;
+                _startupTimer = new System.Threading.Timer(_ => Enqueue(() => { if (step == _startupStep) StartupStep(); }),
+                    null, delay, Timeout.InfiniteTimeSpan);
+                Publish();
+                return;
+            }
+            queue.Dequeue();
             _startupAt = null;
-            _startupNext = null;
+            StartAtStartup(program);
+            Publish();
         }
+        if (_skipStartup) _notice = "Programs not started";
+        FinishStartup();
+    }
+
+    private void FinishStartup()
+    {
+        _startupQueue = null;
+        _startupAt = null;
+        _startupNext = null;
+        SaveConfig();
         CheckAll();
     }
 
@@ -170,26 +205,14 @@ internal sealed class Model : IDisposable
     public void StartupNow()
     {
         _startNow = true;
-        Enqueue(RunStartup);
+        Enqueue(() => { if (_startupQueue != null) StartupStep(); else RunStartup(); });
     }
 
-    // „Skip“ auf der Seite: die Startfolge entfällt diesmal
+    // „Skip“ auf der Seite: die Startfolge entfällt diesmal (auch mitten in der Folge)
     public void SkipStartup()
     {
         _skipStartup = true;
-        Enqueue(RunStartup);
-    }
-
-    private void StartupSequence()
-    {
-        foreach (var program in ProgramList.Startable(_config).ToList())
-        {
-            if (_stopping || _skipStartup) break;
-            if (!WillStartAtStartup(program)) continue;
-            if (program.StartDelaySeconds > 0 && !WaitBefore(program)) break;
-            StartAtStartup(program);
-        }
-        SaveConfig();
+        Enqueue(() => { if (_startupQueue != null) StartupStep(); else RunStartup(); });
     }
 
     // Ein Programm, das die Startfolge startet: ohne Kopie, wenn es nicht läuft; mit Kopie, wenn es nicht läuft und mit
@@ -219,24 +242,6 @@ internal sealed class Model : IDisposable
         catch (Exception ex) when (ex is SourceUnreachableException or InvalidOperationException or IOException)
         {
             _log.Write($"install {program.Id} at start: {ex.Message}");
-        }
-    }
-
-    // Die Pause vor einem Programm in kleinen Schritten. Die Seite bekommt die Restzeit. Gibt false zurück, wenn die
-    // Startfolge abbricht (Beenden oder „Skip“); „Start now“ beendet die Pause sofort.
-    private bool WaitBefore(ProgramEntry program)
-    {
-        _startupNext = Label(program);
-        var until = DateTime.UtcNow.AddSeconds(program.StartDelaySeconds);
-        while (true)
-        {
-            if (_stopping || _skipStartup) return false;
-            if (_startNow) return true;
-            var left = until - DateTime.UtcNow;
-            if (left <= TimeSpan.Zero) return true;
-            _startupAt = until;
-            Publish();
-            Thread.Sleep(left < TimeSpan.FromSeconds(1) ? left : TimeSpan.FromSeconds(1));
         }
     }
 
