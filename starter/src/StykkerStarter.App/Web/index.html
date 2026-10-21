@@ -9,8 +9,16 @@
 <link rel="stylesheet" href="app.css">
 </head>
 <body>
+<div class="tbar" id="tbar">
+  <span class="t-brand"><b>◆</b> Stykker <b>Starter</b></span>
+  <span class="t-sp"></span>
+  <span class="t-controls">
+    <button class="t-btn" id="t-min" title="Minimize">–</button>
+    <button class="t-btn" id="t-max" title="Maximize">□</button>
+    <button class="t-btn t-close" id="t-close" title="Close">✕</button>
+  </span>
+</div>
 <header class="bar">
-  <div class="brand"><b>◆</b> STYKKER <b>STARTER</b></div>
   <nav id="nav">
     <button data-v="apps" aria-current="page">Programs</button>
     <button data-v="add">Add a program</button>
@@ -25,8 +33,8 @@
 
   <!-- Programme -->
   <section class="view show" id="v-apps">
-    <div class="win">
-      <div class="title"><span class="name"><b>◆</b> PROGRAMS</span></div>
+    <div class="card">
+      <div class="title"><span class="dot"></span><span class="name"><b>◆</b> PROGRAMS</span></div>
       <div class="body">
         <div class="row head">
           <h2>Programs</h2><span class="muted small" id="apps-sub"></span>
@@ -42,8 +50,8 @@
 
   <!-- Programm hinzufügen -->
   <section class="view" id="v-add">
-    <div class="win">
-      <div class="title"><span class="name"><b>◆</b> ADD A PROGRAM</span></div>
+    <div class="card">
+      <div class="title"><span class="dot"></span><span class="name"><b>◆</b> ADD A PROGRAM</span></div>
       <div class="body">
         <div class="form">
           <div class="field">
@@ -67,24 +75,24 @@
 
   <!-- Kopieren -->
   <section class="view" id="v-copy">
-    <div class="win">
-      <div class="title"><span class="name"><b>◆</b> COPYING</span></div>
+    <div class="card">
+      <div class="title"><span class="dot"></span><span class="name"><b>◆</b> COPYING</span></div>
       <div class="body" id="copy-body"></div>
     </div>
   </section>
 
   <!-- Update -->
   <section class="view" id="v-update">
-    <div class="win">
-      <div class="title"><span class="name"><b>◆</b> LAST UPDATE</span></div>
+    <div class="card">
+      <div class="title"><span class="dot"></span><span class="name"><b>◆</b> LAST UPDATE</span></div>
       <div class="body" id="update-body"></div>
     </div>
   </section>
 
   <!-- Einstellungen -->
   <section class="view" id="v-settings">
-    <div class="win">
-      <div class="title"><span class="name"><b>◆</b> SETTINGS</span></div>
+    <div class="card">
+      <div class="title"><span class="dot"></span><span class="name"><b>◆</b> SETTINGS</span></div>
       <div class="body">
         <div class="form">
           <div class="field"><span class="label">Check the sources every</span>
@@ -107,7 +115,7 @@
 
 </main>
 
-<div class="notice" id="notice" role="status"></div>
+<div class="toasts" id="toasts" role="status"></div>
 
 <script src="ds/bundle.js"></script>
 <script src="app.js"></script>

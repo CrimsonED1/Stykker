@@ -10,7 +10,8 @@
   var armed = {};            // Programm-Id → Entfernen bestätigt?
   var views = ['apps', 'add', 'copy', 'update', 'settings'];
 
-  function send(obj) { try { window.external.sendMessage(JSON.stringify(obj)); } catch (e) { } }
+  // Schickt eine Nachricht an den Starter. String → so wie er ist, sonst JSON.
+  function send(msg) { try { window.external.sendMessage(typeof msg === 'string' ? msg : JSON.stringify(msg)); } catch (e) { } }
   function $(id) { return document.getElementById(id); }
   function esc(s) {
     return String(s === null || s === undefined ? '' : s).replace(/[&<>"']/g, function (c) {
@@ -36,6 +37,45 @@
     });
   }
 
+  // ---------- Fenster-Chrome ----------
+
+  function updateWindowControls(maximized) {
+    var b = $('t-max');
+    if (b) {
+      b.textContent = maximized ? '─' : '□';
+      b.title = maximized ? 'Restore' : 'Maximize';
+    }
+  }
+  $('t-min').addEventListener('click', function () { send('window:minimize'); });
+  $('t-max').addEventListener('click', function () { send('window:maximize'); });
+  $('t-close').addEventListener('click', function () { send('window:close'); });
+
+  // Fenster per Titelleiste ziehen (Delta-Meldung an den Starter)
+  var dragging = false, lastX = 0, lastY = 0;
+  $('tbar').addEventListener('mousedown', function (ev) {
+    if (ev.target.closest('.t-btn')) return;
+    dragging = true;
+    lastX = ev.screenX;
+    lastY = ev.screenY;
+    document.body.style.cursor = 'grabbing';
+    document.body.style.userSelect = 'none';
+    ev.preventDefault();
+  });
+  document.addEventListener('mousemove', function (ev) {
+    if (!dragging) return;
+    var dx = ev.screenX - lastX;
+    var dy = ev.screenY - lastY;
+    lastX = ev.screenX;
+    lastY = ev.screenY;
+    if (dx !== 0 || dy !== 0) send('window:move ' + dx + ',' + dy);
+  });
+  document.addEventListener('mouseup', function () {
+    if (!dragging) return;
+    dragging = false;
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+  });
+
   // ---------- Programme ----------
 
   function renderPrograms() {
@@ -51,14 +91,14 @@
     list.innerHTML = programs.map(function (p) {
       var chips = [];
       // Ein kaputter Eintrag (Grund in p.broken) läuft nie; er lässt sich nur entfernen
-      if (p.broken) chips.push('<span class="chip err">Broken entry</span>');
-      else chips.push(p.running ? '<span class="chip run">Running</span>' : '<span class="chip off">Stopped</span>');
-      if (!p.broken && !p.reachable) chips.push('<span class="chip err">Source not reachable</span>');
-      if (p.updateVersion) chips.push('<span class="chip upd">Update ' + esc(p.updateVersion) + '</span>');
+      if (p.broken) chips.push('<span class="badge bad">Broken entry</span>');
+      else chips.push(p.running ? '<span class="badge good">Running</span>' : '<span class="badge plain">Stopped</span>');
+      if (!p.broken && !p.reachable) chips.push('<span class="badge bad">Source not reachable</span>');
+      if (p.updateVersion) chips.push('<span class="badge">Update ' + esc(p.updateVersion) + '</span>');
       var buttons = [];
       if (p.updateVersion) buttons.push('<button class="btn sm primary" data-act="update" data-id="' + esc(p.id) + '">' +
         (p.running ? 'Update and restart' : 'Update to ' + esc(p.updateVersion)) + '</button>');
-      if (p.changedSinceStart && !p.updateVersion) chips.push('<span class="chip upd">Changed since last start</span>');
+      if (p.changedSinceStart && !p.updateVersion) chips.push('<span class="badge">Changed since last start</span>');
       if (p.running) {
         buttons.push('<button class="btn sm" data-act="restart" data-id="' + esc(p.id) + '">Restart</button>');
         buttons.push('<button class="btn sm danger" data-act="stop" data-id="' + esc(p.id) + '">Stop</button>');
@@ -94,7 +134,7 @@
       '<div><div class="row" style="margin-bottom:6px"><b>Copying ' + esc(c.name) + '</b>' +
       '<span class="muted small">next to the version that runs, which keeps running</span><span class="sp"></span>' +
       '<span class="mono">' + c.percent.toFixed(0) + ' %</span></div>' +
-      '<div class="progress"><i style="width:' + c.percent + '%"></i></div></div>' +
+      '<div class="bar"><i style="width:' + c.percent + '%"></i></div></div>' +
       '<dl class="kv"><dt>Files</dt><dd>' + c.filesDone + ' of ' + c.filesTotal + '</dd>' +
       '<dt>Data</dt><dd>' + size(c.bytesDone) + ' of ' + size(c.bytesTotal) + '</dd>' +
       '<dt>Speed</dt><dd>' + esc(c.speed) + '</dd>' +
@@ -152,7 +192,12 @@
   }
 
   function renderNotice() {
-    $('notice').textContent = (state && state.notice) || '';
+    var el = $('toasts');
+    var notice = state && state.notice;
+    if (!notice) { el.innerHTML = ''; return; }
+    var text = typeof notice === 'string' ? notice : (notice && notice.text) || '';
+    var level = typeof notice === 'string' ? 'acc' : (notice && notice.level) || 'acc';
+    el.innerHTML = '<div class="toast" style="--level:var(--' + level + ')">' + esc(text) + '</div>';
   }
 
   function render() {
@@ -222,7 +267,13 @@
 
   function onMessage(raw) {
     var m;
-    try { m = JSON.parse(raw); } catch (e) { return; }
+    try { m = JSON.parse(raw); } catch (e) {
+      // Fenster-Chrome: einfache Zeichenketten (nicht JSON)
+      if (raw && raw.startsWith('window:state ')) {
+        updateWindowControls(raw.indexOf('maximized') !== -1);
+      }
+      return;
+    }
     if (m.type === 'state') { state = m; render(); }
     else if (m.type === 'found' || m.type === 'error') renderFound(m);
     else if (m.type === 'picked') { $('f-path').value = m.path; inspect(); }

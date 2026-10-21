@@ -16,24 +16,33 @@ internal static class Program
     [STAThread]
     private static int Main(string[] args)
     {
-        var opt = Options.Parse(args);
-        if (!opt.Gpu && OperatingSystem.IsWindows())
-            Environment.SetEnvironmentVariable("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", "--disable-gpu --disable-gpu-compositing");
-
-        var layout = new DataLayout(opt.DataDir ?? DefaultDataDir());
-        Directory.CreateDirectory(layout.Root);
-
-        // Ein Starter je Benutzer (und je Datenordner): ein zweiter Start holt das Fenster des ersten und endet still
-        var name = SingleInstanceName(layout.Root, isDefault: opt.DataDir == null);
-        using var guard = new Mutex(initiallyOwned: true, name, out bool first);
-        if (!first)
+        var logPath = Path.Combine(Path.GetDirectoryName(AppContext.BaseDirectory) ?? ".", "startup-error.txt");
+        try
         {
-            SingleInstance.SignalOpen(name);
-            return 0;
-        }
+            var opt = Options.Parse(args);
+            if (!opt.Gpu && OperatingSystem.IsWindows())
+                Environment.SetEnvironmentVariable("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", "--disable-gpu --disable-gpu-compositing");
 
-        using var shell = new Shell(layout, opt, name);
-        return shell.Run(openWindow: !opt.TrayOnly);
+            var layout = new DataLayout(opt.DataDir ?? DefaultDataDir());
+            Directory.CreateDirectory(layout.Root);
+
+            // Ein Starter je Benutzer (und je Datenordner): ein zweiter Start holt das Fenster des ersten und endet still
+            var name = SingleInstanceName(layout.Root, isDefault: opt.DataDir == null);
+            using var guard = new Mutex(initiallyOwned: true, name, out bool first);
+            if (!first)
+            {
+                SingleInstance.SignalOpen(name);
+                return 0;
+            }
+
+            using var shell = new Shell(layout, opt, name);
+            return shell.Run(openWindow: !opt.TrayOnly);
+        }
+        catch (Exception ex)
+        {
+            File.WriteAllText(logPath, ex.ToString());
+            return -1;
+        }
     }
 
     // %LOCALAPPDATA%\Stykker\Starter – nur ohne --data-dir
