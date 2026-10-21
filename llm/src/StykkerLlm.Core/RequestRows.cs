@@ -6,10 +6,27 @@ namespace StykkerLlm.Core;
 public sealed record RequestRow(
     string Server, string ServerKey, string? Host, string Model, DateTime? Seen, double Seconds,
     double PromptTps, double GenTps, int GenTokens, string Client, string ClientKind,
-    int? Tools, int? ThinkTokens, string Result, int PromptRead = 0, int PromptReused = -1, bool PromptReusedEstimated = false, string? Route = null);
+    int? Tools, int? ThinkTokens, string Result, int PromptRead = 0, int PromptReused = -1, bool PromptReusedEstimated = false, string? Route = null,
+    string UserAgent = "", DateTime? Start = null, int? HttpStatus = null);
 
 public static class RequestRows
 {
+    // Modelle, die in der Liste vorkommen (ohne leere Namen), sortiert – für den Filter „Model: All / …“
+    public static IReadOnlyList<string> Models(IEnumerable<RequestRow> rows) =>
+        rows.Select(r => r.Model).Where(m => m.Length > 0).Distinct(StringComparer.Ordinal)
+            .OrderBy(m => m, StringComparer.OrdinalIgnoreCase).ToList();
+
+    // Nur die Zeilen dieses Modells. Leer oder ein Modell, das in der Liste nicht (mehr) vorkommt, zeigt alle Zeilen.
+    public static IReadOnlyList<RequestRow> ForModel(IReadOnlyList<RequestRow> rows, string? model)
+    {
+        if (string.IsNullOrEmpty(model) || !rows.Any(r => r.Model == model)) return rows;
+        return rows.Where(r => r.Model == model).ToList();
+    }
+
+    // Beginn aus Ende und Dauer, wenn der Proxy den Beginn nicht kennt (Zeile aus dem Log)
+    private static DateTime? StartOf(DateTime? seen, double seconds) =>
+        seen is DateTime end && seconds > 0 ? end.AddSeconds(-seconds) : null;
+
     // Wie weit Ende laut Log und Ende laut Proxy auseinander liegen dürfen, um als dieselbe Anfrage zu gelten
     public static readonly TimeSpan MatchWindow = TimeSpan.FromSeconds(4);
 
@@ -33,7 +50,8 @@ public static class RequestRows
             string? route = px != null && Unambiguous(px, f, all, proxy) ? px.Route : null;
             rows.Add(new RequestRow(f.Server, f.ServerKey, host, f.Model, f.Seen, f.Seconds, f.PromptTps, f.GenTps, f.GenTokens,
                 client, ClientKind(client), px?.Tools.Length, px is { ReasoningTokens: > 0 } ? px.ReasoningTokens : px != null ? 0 : null,
-                Result(f, px), f.PromptTokens, f.PromptReused, f.PromptReusedEstimated, route));
+                Result(f, px), f.PromptTokens, f.PromptReused, f.PromptReusedEstimated, route,
+                px?.UserAgent ?? "", px?.Start ?? StartOf(f.Seen, f.Seconds), px is { HttpStatus: > 0 } ? px.HttpStatus : null));
         }
         var cloud = proxy.Where(p => ProxyTarget.IsCloudKey(p.ServerKey)).OrderByDescending(p => p.End).Take(take)
             .Select(p => CloudRow(p, nameOf));
@@ -52,7 +70,8 @@ public static class RequestRows
         double gen = p.FirstTokenAt is DateTime ft && p.End > ft && tokens > 0 ? tokens / (p.End - ft).TotalSeconds : 0;
         string client = ClientFromAgent(p.UserAgent);
         return new RequestRow(name, p.ServerKey, Strings.ReqCloud, model, p.End, (p.End - p.Start).TotalSeconds, 0, gen, tokens,
-            client, ClientKind(client), p.Tools.Length, p.ReasoningTokens >= 0 ? p.ReasoningTokens : null, ResultOf(p), 0, -1, false, p.Route);
+            client, ClientKind(client), p.Tools.Length, p.ReasoningTokens >= 0 ? p.ReasoningTokens : null, ResultOf(p), 0, -1, false, p.Route,
+            p.UserAgent, p.Start, p.HttpStatus > 0 ? p.HttpStatus : null);
     }
 
     // Die Zuordnung zu einer lokalen Zeile ist eindeutig, wenn im Fenster kein zweiter Proxy-Eintrag und keine zweite

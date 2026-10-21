@@ -95,15 +95,31 @@
 <div class="card">
     <div class="row"><h2 style="margin:0">@Strings.RecentRequests</h2>
         <span class="spdscale" title="@Strings.ReqSpeedScale">t/s <i class="sp1"></i><i class="sp2"></i><i class="sp3"></i><i class="sp4"></i></span></div>
+    @{ var reqModels = RequestRows.Models(reqs); var shownReqs = RequestRows.ForModel(reqs, _reqModel); }
     @if (reqs.Count == 0) { <span class="muted small">@Strings.NoneYet</span> }
     else
     {
+        @if (reqModels.Count > 0)
+        {
+            <label class="mx-filter"><span class="muted small">@Strings.MxModelFilter</span>
+                <select value="@_reqModel" aria-label="@Strings.MxModelFilter" @onchange='e => _reqModel = e.Value?.ToString() ?? ""'>
+                    <option value="">@Strings.MxAllModels</option>
+                    @foreach (var m in reqModels)
+                    {
+                        <option value="@m">@m</option>
+                    }
+                </select>
+            </label>
+        }
         <div class="reqs">
             <div class="req head" aria-hidden="true"><span></span><span>@Strings.ReqModel</span><span>@Strings.ReqHost</span><span>@Strings.ReqTime</span><span class="r">@Strings.ReqPrompt</span><span class="r">@Strings.ReqCache</span><span class="r">t/s</span><span class="r">@Strings.ReqTokens</span><span class="c">@Strings.ReqTools</span><span class="c">@Strings.ReqThink</span><span class="c">@Strings.ReqResult</span><span class="r">@Strings.ReqAgo</span></div>
-            @foreach (var r in reqs)
+            @foreach (var r in shownReqs)
             {
                 var kind = r.Host == null ? e.Registry.Servers.FirstOrDefault(x => x.Key == r.ServerKey)?.Kind ?? BackendKind.LlamaCpp : BackendKind.LlamaCpp;
-                <div class="req">
+                var rkey = ReqKey(r);
+                bool open = _openReqs.Contains(rkey);
+                <div class="req mx-req @(open ? "open" : "")" role="button" tabindex="0" aria-expanded="@(open ? "true" : "false")"
+                     title="@Strings.MxDetails" @onclick="() => ToggleReq(rkey)" @onkeydown="k => ReqKeyDown(k, rkey)">
                     <span class="cl" title="@(r.Client.Length > 0 ? r.Client : Strings.ReqClientUnknown)"><Icon Name="@("c-" + r.ClientKind)" Title="@(r.Client.Length > 0 ? r.Client : Strings.ReqClientUnknown)" /></span>
                     <span class="mdl" title="@r.Model"><i style="background:var(@BackendColor(kind))"></i><span class="mname">@r.Server</span>@if (ProxyRoutes.Label(r.Route).Length > 0) { <span class="rtag" title="@ProxyRoutes.Tip(r.Route)">@ProxyRoutes.Label(r.Route)</span> }</span>
                     <span class="hostc">@if (r.Host != null) { <span class="chipi host"><Icon Name="host" />@r.Host</span> } else { <span class="muted small">@Strings.CardLocal</span> }</span>
@@ -117,6 +133,25 @@
                     <span class="c res res-@r.Result" title="@Strings.ReqResultText(r.Result)"><Icon Name="@("r-" + r.Result)" Title="@Strings.ReqResultText(r.Result)" /></span>
                     <span class="r muted small">@Ago(r.Seen)</span>
                 </div>
+                @if (open)
+                {
+                    @* Einzelheiten zur Zeile: nur Werte, die die Zeile schon hat (RequestRow) *@
+                    <div class="mx-detail">
+                        <div class="mx-kv" title="@ProxyRoutes.Tip(r.Route)"><span>@Strings.MxRoute</span><b>@Strings.MxRouteText(r.Route)</b></div>
+                        <div class="mx-kv"><span>@Strings.MxClientLabel</span><b>@(r.Client.Length > 0 ? r.Client : Strings.ReqClientUnknown)</b></div>
+                        <div class="mx-kv"><span>@Strings.MxUserAgent</span><b title="@r.UserAgent">@(r.UserAgent.Length > 0 ? r.UserAgent : Strings.MxNoUserAgent)</b></div>
+                        <div class="mx-kv"><span>@Strings.MxPromptTokens</span><b>@(r.PromptRead > 0 ? r.PromptRead.ToString("N0", CultureInfo.InvariantCulture) : Strings.MxNoValue)</b></div>
+                        <div class="mx-kv"><span>@Strings.MxOutputTokens</span><b>@(r.GenTokens > 0 ? r.GenTokens.ToString("N0", CultureInfo.InvariantCulture) : Strings.MxNoValue)</b></div>
+                        <div class="mx-kv" title="@RequestRows.CacheTip(r.PromptReused, r.PromptRead, r.PromptReusedEstimated)"><span>@Strings.MxCacheLabel</span><b>@(RequestRows.CacheText(r.PromptReused) is { Length: > 0 } ct ? ct : Strings.MxNoValue)</b></div>
+                        <div class="mx-kv"><span>@Strings.MxToolsLabel</span><b>@(r.Tools is int tc ? tc.ToString(CultureInfo.InvariantCulture) : Strings.ReqNoProxy)</b></div>
+                        <div class="mx-kv"><span>@Strings.MxThinkLabel</span><b>@(r.ThinkTokens is int tk ? tk.ToString("N0", CultureInfo.InvariantCulture) : Strings.ReqNoProxy)</b></div>
+                        <div class="mx-kv"><span>@Strings.MxStatusLabel</span><b>@Strings.ReqResultText(r.Result)</b></div>
+                        <div class="mx-kv"><span>@Strings.MxHttpStatus</span><b>@(r.HttpStatus is int hs ? hs.ToString(CultureInfo.InvariantCulture) : Strings.MxNoValue)</b></div>
+                        <div class="mx-kv"><span>@Strings.MxStarted</span><b>@(r.Start?.ToString("HH:mm:ss", CultureInfo.InvariantCulture) ?? Strings.MxNoValue)</b></div>
+                        <div class="mx-kv"><span>@Strings.MxEnded</span><b>@(r.Seen?.ToString("HH:mm:ss", CultureInfo.InvariantCulture) ?? Strings.MxNoValue)</b></div>
+                        <div class="mx-kv"><span>@Strings.MxDuration</span><b>@r.Seconds.ToString("0.0", CultureInfo.InvariantCulture) s</b></div>
+                    </div>
+                }
             }
         </div>
     }
@@ -328,6 +363,10 @@
                         <span class="fc-bar"><i class="free" style="width:@Pct(freeGb, Math.Max(needGb, freeGb))"></i><i class="need" style="width:@Pct(needGb, Math.Max(needGb, freeGb))"></i></span>
                         <span class="fc-txt">@Strings.PfNeedsFree(needGb, freeGb)</span>
                     </div>
+                    @if (CtxFit(p, freeGb) is int fit)
+                    {
+                        <div class="mx-ctx @(fit < ContextFit.Step ? "warn" : "")" title="@Strings.MxCtxFitTip">@(fit < ContextFit.Step ? Strings.MxNoContext : Strings.MxCtxFit(fit))</div>
+                    }
                 }
                 @if (running == null && hist is { MaxRamGb: > 0 } rh && e.Sys is { } ramSys)
                 {
@@ -443,6 +482,34 @@
         <span class="pxp-l">@Strings.PxRouted</span>
         <span class="pxp-v">@Strings.PxRoutedText(routes.Auto, routes.Image, routes.Cloud)</span>
     </div>
+    @* „Connect a client“: drei kopierbare Blöcke mit der Adresse dieses Proxys (Text aus Core, ClientSnippets) *@
+    @if (px.Running)
+    {
+        <div class="mx-conn">
+            <button type="button" class="mx-conn-btn" aria-expanded="@(_clientOpen ? "true" : "false")" aria-controls="mx-conn-panel" @onclick="() => _clientOpen = !_clientOpen">@(_clientOpen ? Strings.MxConnectHide : Strings.MxConnectButton)</button>
+            @if (_clientOpen)
+            {
+                var blocks = ClientSnippets.Build(baseUrl, _shellPs ? ClientSnippets.Shell.PowerShell : ClientSnippets.Shell.Bash);
+                <div id="mx-conn-panel" class="mx-conn-panel">
+                    <div class="fchips mx-shell" role="group" aria-label="@Strings.MxShellLabel">
+                        <button class="fchip @(_shellPs ? "on" : "")" aria-pressed="@(_shellPs ? "true" : "false")" @onclick="() => _shellPs = true">@Strings.MxShellPowerShell</button>
+                        <button class="fchip @(_shellPs ? "" : "on")" aria-pressed="@(_shellPs ? "false" : "true")" @onclick="() => _shellPs = false">@Strings.MxShellBash</button>
+                    </div>
+                    @foreach (var b in blocks)
+                    {
+                        var text = b.Text;
+                        <div class="mx-block">
+                            <div class="mx-block-hd"><b>@b.Title</b>
+                                <button class="ib quiet" title="@Strings.PxCopy" aria-label="@Strings.PxCopy" @onclick="() => Copy(text)"><Icon Name="@(_copied ? "r-ok" : "file")" /></button>
+                            </div>
+                            <div class="muted small">@b.Hint</div>
+                            <pre class="mx-code"><code>@text</code></pre>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    }
 </div>
 </div>
 </aside>
@@ -452,6 +519,13 @@
 @code {
     private Timer? _t;
     private string _q = "", _flash = "";
+    // Monitor-Erweiterungen: Client-Blöcke (Ausklappfläche und Shell-Form), Modellfilter der Anfragen, aufgeklappte Anfragen
+    private bool _clientOpen, _shellPs = true;
+    private string _reqModel = "";
+    private readonly HashSet<string> _openReqs = new();
+    // Die Kontextgrenze eines Profils braucht den GGUF-Kopf: einmal je Profil im Hintergrund gelesen und gemerkt
+    private readonly Dictionary<string, GgufInfo?> _gguf = new();
+    private readonly HashSet<string> _ggufBusy = new();
     private Profile? _edit;
     private string _editName = "", _editNote = "", _editArgs = "";
 
@@ -705,6 +779,31 @@
     {
         "live" => "s-gen", "clean" => "r-ok", "crashed" => "e-crash", "lost" => "e-crash", "outside" => "e-kill", _ => "s-idle",
     };
+
+    // Kontext, der zum freien VRAM passt (Profil ohne Lauf): null, solange der GGUF-Kopf nicht gelesen ist oder fehlt
+    private int? CtxFit(Profile p, double freeGb)
+    {
+        var args = LlamaServerArgs.Parse(p.Args, p.Env);
+        if (_gguf.TryGetValue(p.Key, out var g))
+            return g == null ? null : ContextFit.MaxCtx(g, freeGb, args.Ngl, args.CacheTypeK, args.CacheTypeV);
+        if (_ggufBusy.Add(p.Key))
+        {
+            var path = ServerLauncher.ResolveModel(args.Model ?? p.ModelPath, p.WorkingDir);
+            _ = Task.Run(async () =>
+            {
+                GgufInfo? read = null;
+                try { read = Gguf.TryRead(path); }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException) { }
+                await InvokeAsync(() => { _gguf[p.Key] = read; _ggufBusy.Remove(p.Key); StateHasChanged(); });
+            });
+        }
+        return null;
+    }
+
+    // Anfrage aufklappen: ein Klick (oder Enter/Leertaste) öffnet die Einzelheiten, der nächste schließt sie
+    private static string ReqKey(RequestRow r) => $"{r.Seen:O}|{r.ServerKey}|{r.Host}|{r.Model}|{r.Seconds:R}";
+    private void ToggleReq(string key) { if (!_openReqs.Remove(key)) _openReqs.Add(key); }
+    private void ReqKeyDown(KeyboardEventArgs k, string key) { if (k.Key is "Enter" or " " or "Spacebar") ToggleReq(key); }
 
     private async Task Start(Profile p) { if (CanWrite && await Launcher.StartProfileAsync(p)) _flash = Strings.StartingShort; }
     private async Task StartHistory(HistoryEntry h) { if (CanWrite) await Launcher.StartHistoryAsync(h); }
