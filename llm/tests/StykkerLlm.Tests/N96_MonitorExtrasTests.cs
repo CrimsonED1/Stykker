@@ -6,7 +6,7 @@ namespace StykkerLlm.Tests;
 [TestClass]
 public class N96_MonitorExtrasTests
 {
-    private const string Lan = "http://192.168.1.20:17500/v1";
+    private const string Lan = "http://192.0.2.20:17500/v1";
     private const string Loopback = "http://127.0.0.1:17500/v1";
 
     // Modell mit 32 Schichten, 8 KV-Köpfen, Kopfgröße 128 (4096 / 32): f16 ergibt 128 KiB je Token
@@ -31,7 +31,7 @@ public class N96_MonitorExtrasTests
     public void ClaudeCodeGetsRootWithoutV1AndTheProxyNames()
     {
         var ps = Text(Lan, ClientSnippets.Shell.PowerShell, 0);
-        Assert.IsTrue(ps.Contains("$env:ANTHROPIC_BASE_URL = \"http://192.168.1.20:17500\"\n"), ps);
+        Assert.IsTrue(ps.Contains("$env:ANTHROPIC_BASE_URL = \"http://192.0.2.20:17500\"\n"), ps);
         Assert.IsFalse(ps.Contains("17500/v1"), ps);
         Assert.IsTrue(ps.Contains("$env:ANTHROPIC_AUTH_TOKEN = \"stykker\""), ps);
         Assert.IsTrue(ps.Contains("$env:ANTHROPIC_MODEL = \"claude-stykker\""), ps);
@@ -41,7 +41,7 @@ public class N96_MonitorExtrasTests
     public void OpenAiBlockKeepsV1AndUsesStykkerModel()
     {
         var ps = Text(Lan, ClientSnippets.Shell.PowerShell, 1);
-        Assert.IsTrue(ps.Contains("$env:OPENAI_BASE_URL = \"http://192.168.1.20:17500/v1\""), ps);
+        Assert.IsTrue(ps.Contains("$env:OPENAI_BASE_URL = \"http://192.0.2.20:17500/v1\""), ps);
         Assert.IsTrue(ps.Contains("$env:OPENAI_API_KEY = \"stykker\""), ps);
         Assert.IsTrue(ps.Contains("$env:OPENAI_MODEL = \"stykker\""), ps);
     }
