@@ -23,6 +23,9 @@ public sealed class StarterSettings
 
     // Was das Schließen des Fensters macht: "ask" (fragen), "tray" (im Tray weiterlaufen) oder "quit" (beenden)
     public string CloseAction { get; set; } = "ask";
+
+    // Pause vor dem Start der Programme beim Hochfahren des Starters (0 bis 60 Sekunden; fehlt das Feld, gilt 3)
+    public int StartupDelaySeconds { get; set; } = 3;
 }
 
 public sealed class ProgramEntry
@@ -34,6 +37,20 @@ public sealed class ProgramEntry
     public bool StartWithStarter { get; set; } = true;
     public bool UpdateWithoutAsking { get; set; }
     public bool KeepPrevious { get; set; } = true;
+
+    // Neustart nach einem Absturz (Vorgabe aus). Ein Absturz ist ein Ende, das weder der Starter noch der Benutzer
+    // veranlasst hat (siehe Crash/CrashWatch).
+    public bool RestartOnCrash { get; set; }
+
+    // Pause vor dem Start dieses Programms beim Hochfahren des Starters, 0 bis 120 Sekunden (nicht beim Start von Hand)
+    public int StartDelaySeconds { get; set; }
+
+    // Prüfung „läuft heißt bereit“: leer = aus; eine Portnummer (127.0.0.1) oder eine http(s)-Adresse auf dieser Maschine
+    public string ReadyCheck { get; set; } = "";
+
+    // Nach einem Zurückgehen: die automatische Prüfung übernimmt nichts ohne Rückfrage, bis der Benutzer selbst
+    // aktualisiert (dann wird es gelöscht)
+    public bool HeldAfterRollback { get; set; }
 
     // Mit Kopie (Vorgabe): das Programm läuft aus einer Kopie im Datenordner. Ohne Kopie läuft es direkt aus dem
     // Quellordner. Fehlt das Feld in starter.json, gilt die Vorgabe, damit vorhandene Einträge sich nicht ändern.

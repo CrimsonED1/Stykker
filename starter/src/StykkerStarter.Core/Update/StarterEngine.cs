@@ -35,7 +35,9 @@ public enum CheckKind
     Failed,            // Prüfung oder Kopie hat sich nicht durchführen lassen
 }
 
-public sealed record CheckResult(CheckKind Kind, string Message, string? SourceVersion, CopyPlan? Plan, UpdateOutcome? Outcome);
+// SourceBuiltAt: jüngste Schreibzeit der Programmdateien der Quelle („yyyy-MM-dd HH:mm“), null wenn unbekannt
+public sealed record CheckResult(CheckKind Kind, string Message, string? SourceVersion, CopyPlan? Plan, UpdateOutcome? Outcome,
+    string? SourceBuiltAt = null);
 
 // Prüft die Quelle eines Programms: gibt es einen neuen Stand, und darf er ohne Rückfrage übernommen werden?
 // Die Kopie und das Umschalten macht ProgramService; diese Klasse entscheidet nur.
@@ -86,20 +88,38 @@ public sealed class StarterEngine
             return new CheckResult(CheckKind.Failed, ex.Message, null, null, null);
         }
 
+        var builtAt = source.BuiltAtText;
         if (plan.Kind == PlanKind.UpToDate)
-            return new CheckResult(CheckKind.UpToDate, "up to date", plan.Version, plan, null);
+            return new CheckResult(CheckKind.UpToDate, "up to date", plan.Version, plan, null, builtAt);
 
         bool running = _service.IsRunning(program);
-        var decision = forceUpdate ? PolicyDecision.UpdateNow : UpdatePolicy.Decide(settings, program, running);
+        // Nach einem Zurückgehen fragt die Prüfung, bis der Benutzer selbst aktualisiert hat (auch bei „ohne Rückfrage“)
+        var decision = forceUpdate ? PolicyDecision.UpdateNow
+            : program.HeldAfterRollback ? PolicyDecision.Ask
+            : UpdatePolicy.Decide(settings, program, running);
+        var text = NewBuildText(plan.Version, VersionPlanner.IsNewBuild(plan.Version, program.Current?.Version));
         if (decision != PolicyDecision.UpdateNow)
         {
-            _log?.Write($"check {program.Id}: {plan.Version} available");
-            return new CheckResult(CheckKind.UpdateAvailable, $"{plan.Version} is ready", plan.Version, plan, null);
+            _log?.Write($"check {program.Id}: {text}");
+            return new CheckResult(CheckKind.UpdateAvailable, text, plan.Version, plan, null, builtAt);
         }
 
         var outcome = _service.Update(program, source, plan, progress, ct);
         _log?.Write($"update {program.Id} to {plan.Version}: {outcome.Kind}, {outcome.Message}");
-        return new CheckResult(CheckKind.Updated, outcome.Message, plan.Version, plan, outcome);
+        // Der Benutzer hat selbst aktualisiert: die Sperre nach dem Zurückgehen ist aufgehoben
+        if (forceUpdate && outcome.Kind is UpdateKind.Updated or UpdateKind.Switched) program.HeldAfterRollback = false;
+        return new CheckResult(CheckKind.Updated, outcome.Message, plan.Version, plan, outcome, builtAt);
+    }
+
+    // „new build of 0.4.0.0“ bei gleicher Version und anderem Inhalt, sonst „0.4.0.0 is ready“
+    public static string NewBuildText(string version, bool newBuild) => newBuild ? $"new build of {version}" : $"{version} is ready";
+
+    // Ohne Kopie, aber mit Kopie gewünscht (Bearbeiten): die Quelle kopieren, ohne zu starten
+    public UpdateOutcome CopyOnly(ProgramEntry program, IProgress<CopyProgress>? progress = null, CancellationToken ct = default)
+    {
+        var source = SourceTree.Read(program.SourceExe);
+        var plan = VersionPlanner.Plan(program, source, _versions.Read(program.SourceExe), _layout);
+        return _service.CopyOnly(program, source, plan, progress, ct);
     }
 
     // Erste Einrichtung eines Programms: lesen, kopieren, starten
@@ -156,33 +176,35 @@ public sealed class StarterEngine
 
         var listHash = source.ProgramListHash;
         var version = VersionPlanner.VersionOf(listHash, _versions.Read(program.SourceExe));
+        var builtAt = source.BuiltAtText;
         var stand = (version, listHash);
         if (program.StartedListHash == listHash && program.StartedVersion == version)
         {
             _seen.Remove(program.Id);
-            return new CheckResult(CheckKind.UpToDate, "up to date", version, null, null);
+            return new CheckResult(CheckKind.UpToDate, "up to date", version, null, null, builtAt);
         }
 
         bool stable = _seen.TryGetValue(program.Id, out var before) && before == stand;
         _seen[program.Id] = stand;
         bool running = _service.IsRunning(program);
+        var text = NewBuildText(version, VersionPlanner.IsNewBuild(version, program.StartedVersion));
         if (!forceUpdate && (!stable || !running))
         {
-            _log?.Write($"check {program.Id}: {version} differs from the start" +
+            _log?.Write($"check {program.Id}: {text} differs from the start" +
                         (stable ? "; not running, so the next start takes it" : "; checking again at the next check"));
-            return new CheckResult(CheckKind.ChangedSinceStart, "changed since last start", version, null, null);
+            return new CheckResult(CheckKind.ChangedSinceStart, "changed since last start", version, null, null, builtAt);
         }
 
         var decision = forceUpdate ? PolicyDecision.UpdateNow : UpdatePolicy.Decide(settings, program, running: true);
         if (decision != PolicyDecision.UpdateNow)
         {
-            _log?.Write($"check {program.Id}: {version} available, restart waits for the user");
-            return new CheckResult(CheckKind.UpdateAvailable, $"{version} is ready", version, null, null);
+            _log?.Write($"check {program.Id}: {text}, restart waits for the user");
+            return new CheckResult(CheckKind.UpdateAvailable, text, version, null, null, builtAt);
         }
 
         var outcome = _service.RestartInPlace(program, version, listHash);
         _seen.Remove(program.Id);
         _log?.Write($"restart {program.Id} with {version}: {outcome.Kind}, {outcome.Message}");
-        return new CheckResult(CheckKind.Updated, outcome.Message, version, null, outcome);
+        return new CheckResult(CheckKind.Updated, outcome.Message, version, null, outcome, builtAt);
     }
 }

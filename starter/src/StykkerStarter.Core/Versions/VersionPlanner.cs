@@ -29,6 +29,11 @@ public static class VersionPlanner
     public static string VersionOf(string listHash, string? fileVersion) =>
         string.IsNullOrWhiteSpace(fileVersion) ? listHash[..8] : fileVersion.Trim();
 
+    // Ein neuer Build: die Quelle hat dieselbe Version wie das laufende Programm, nur der Inhalt ist anders
+    // (Anzeige „new build of …“ statt „… available“)
+    public static bool IsNewBuild(string? sourceVersion, string? runningVersion) =>
+        sourceVersion != null && runningVersion != null && sourceVersion == runningVersion;
+
     public static CopyPlan Plan(ProgramEntry program, SourceTree source, string? fileVersion, DataLayout layout)
     {
         var listHash = source.ListHash;

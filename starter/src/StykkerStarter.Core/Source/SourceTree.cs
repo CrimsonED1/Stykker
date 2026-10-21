@@ -34,6 +34,17 @@ public sealed class SourceTree
     // Einstellungen im Quellordner zählen dann nicht als neuer Build.
     public string ProgramListHash => _programListHash ??= ComputeListHash(Files.Where(f => IsProgramFile(f.RelativePath)));
 
+    // Wann die Programmdateien zuletzt geschrieben wurden (jüngste Schreibzeit der .exe und .dll), als Text in
+    // Ortszeit „yyyy-MM-dd HH:mm“; null, wenn es keine solche Datei gibt
+    public string? BuiltAtText
+    {
+        get
+        {
+            var newest = Files.Where(f => IsProgramFile(f.RelativePath)).Select(f => f.LastWriteUtc).DefaultIfEmpty(DateTime.MinValue).Max();
+            return newest == DateTime.MinValue ? null : newest.ToLocalTime().ToString("yyyy-MM-dd HH:mm", System.Globalization.CultureInfo.InvariantCulture);
+        }
+    }
+
     public static bool IsProgramFile(string relativePath)
     {
         var ext = Path.GetExtension(relativePath);
