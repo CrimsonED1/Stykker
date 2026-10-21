@@ -9,134 +9,157 @@
 <link rel="stylesheet" href="app.css">
 </head>
 <body>
-<div class="tbar" id="tbar">
-  <span class="t-brand"><b>◆</b> Stykker <b>Starter</b></span>
-  <span class="t-sp"></span>
-  <span class="t-controls">
-    <button class="t-btn" id="t-min" title="Minimize">–</button>
-    <button class="t-btn" id="t-max" title="Maximize">□</button>
-    <button class="t-btn t-close" id="t-close" title="Close">✕</button>
-  </span>
-</div>
-<header class="bar">
-  <nav id="nav">
-    <button data-v="apps" aria-current="page">Programs</button>
-    <button data-v="add">Add a program</button>
-    <button data-v="copy">Copying</button>
-    <button data-v="update">Update</button>
-    <button data-v="settings">Settings</button>
-  </nav>
-  <button class="btn sm" id="theme">Titan</button>
-</header>
+<div class="win">
 
-<main class="stage">
+  <!-- Titelleiste: Marke, die zwei Tabs, Thema und die Fensterknöpfe in einer Zeile. Ziehen und Doppelklick: Fenster -->
+  <header class="tbar" id="tbar">
+    <span class="brand"><b>◆</b> STYKKER <b>STARTER</b></span>
+    <nav class="tabs" id="nav">
+      <button data-v="apps" aria-current="page">Programs<span class="count" id="count">0</span></button>
+      <button data-v="settings">Settings</button>
+    </nav>
+    <span class="t-sp"></span>
+    <button class="tchip" id="theme">Titan</button>
+    <span class="t-controls">
+      <button class="t-btn" id="t-min" title="Minimize">–</button>
+      <button class="t-btn" id="t-max" title="Maximize">□</button>
+      <button class="t-btn t-close" id="t-close" title="Close">✕</button>
+    </span>
+  </header>
 
-  <!-- Programme -->
-  <section class="view show" id="v-apps">
-    <div class="card">
-      <div class="title"><span class="dot"></span><span class="name"><b>◆</b> PROGRAMS</span></div>
-      <div class="body">
-        <div class="row head">
-          <h2>Programs</h2><span class="muted small" id="apps-sub"></span>
-          <span class="sp"></span>
-          <button class="btn sm" id="btn-check">Check now</button>
-          <button class="btn sm primary" id="btn-add">+ Add a program</button>
-        </div>
-        <div class="startup" id="startup" hidden>
-          <span class="spin"></span>
-          <span>Starting the programs in <b class="mono" id="startup-left">3</b> s</span>
-          <span class="sp"></span>
-          <button class="btn sm primary" id="startup-now">Start now</button>
-        </div>
-        <div class="apps" id="apps-list"></div>
+  <main class="content">
+
+    <!-- Programme -->
+    <section class="view show" id="v-apps">
+      <div class="startup" id="startup" hidden>
+        <span class="spin"></span>
+        <span class="sp" id="startup-text"></span>
+        <button class="btn quiet" id="startup-skip">Don't start</button>
+        <button class="btn primary" id="startup-now">Start now</button>
       </div>
-      <div class="foot" id="apps-foot"></div>
-    </div>
-  </section>
 
-  <!-- Programm hinzufügen -->
-  <section class="view" id="v-add">
-    <div class="card">
-      <div class="title"><span class="dot"></span><span class="name"><b>◆</b> ADD A PROGRAM</span></div>
-      <div class="body">
-        <div class="form">
-          <div class="field">
-            <span class="label">Program file</span>
-            <div class="inline"><input class="mono" id="f-path" placeholder="a .exe file, on a share or in a build folder"><button class="btn" id="f-browse">Browse…</button></div>
-            <span class="muted small">With the copy (the default) the whole folder of this file is copied, and the program runs from the copy, so the source can be replaced while it runs.</span>
-          </div>
-          <div class="found" id="f-info"><span class="muted">Choose a program file to see what is found.</span></div>
-          <div class="field"><span class="label">Name</span><input id="f-name"></div>
-          <div class="field"><span class="label">Arguments</span><input class="mono" id="f-args" placeholder="none"></div>
-          <label class="check"><input type="checkbox" id="f-copy" checked><span>Copy to this PC before starting</span></label>
-          <span class="muted small">Without a copy, the program runs from the source folder; a build into that folder can fail while the program runs, because Windows locks its files.</span>
-          <label class="check"><input type="checkbox" id="f-start" checked><span>Start this program when the Starter starts</span></label>
-          <label class="check"><input type="checkbox" id="f-noask"><span>Update without asking (a running program is updated when it is started again)</span></label>
-          <label class="check"><input type="checkbox" id="f-keep" checked><span>Keep the previous version, so I can go back</span></label>
-          <div class="row"><button class="btn primary" id="f-go" disabled>Copy and start</button><button class="btn quiet" id="f-cancel">Cancel</button></div>
-        </div>
+      <div class="listhead">
+        <h2>Programs</h2>
+        <span class="muted small" id="checked">not checked yet</span>
+        <span class="sp"></span>
+        <button class="btn" id="btn-startall">Start all</button>
+        <button class="btn" id="btn-stopall">Stop all</button>
+        <button class="btn" id="btn-check">Check now</button>
+        <button class="btn primary" id="btn-add">+ Add a program</button>
       </div>
-    </div>
-  </section>
 
-  <!-- Kopieren -->
-  <section class="view" id="v-copy">
-    <div class="card">
-      <div class="title"><span class="dot"></span><span class="name"><b>◆</b> COPYING</span></div>
-      <div class="body" id="copy-body"></div>
-    </div>
-  </section>
+      <div class="apps" id="apps-list"></div>
+    </section>
 
-  <!-- Update -->
-  <section class="view" id="v-update">
-    <div class="card">
-      <div class="title"><span class="dot"></span><span class="name"><b>◆</b> LAST UPDATE</span></div>
-      <div class="body" id="update-body"></div>
-    </div>
-  </section>
-
-  <!-- Einstellungen -->
-  <section class="view" id="v-settings">
-    <div class="card">
-      <div class="title"><span class="dot"></span><span class="name"><b>◆</b> SETTINGS</span></div>
-      <div class="body">
-        <div class="form">
+    <!-- Einstellungen: ein Tab, in Gruppen. Jede Änderung wird sofort gespeichert. -->
+    <section class="view" id="v-settings">
+      <div class="settings">
+        <fieldset>
+          <legend class="label">Updates</legend>
           <div class="field"><span class="label">Check the sources every</span>
             <select id="s-interval"><option value="5">5 min</option><option value="10">10 min</option><option value="30">30 min</option><option value="60">hour</option></select>
-          </div>
-          <label class="check"><input type="checkbox" id="s-start"><span>Start the Starter with Windows (in the tray)</span></label>
-          <div class="field"><span class="label">When the window is closed</span>
-            <select id="s-close"><option value="ask">Ask</option><option value="tray">Keep running in the tray</option><option value="quit">Quit the Starter</option></select>
           </div>
           <label class="check"><input type="checkbox" id="s-ask"><span>Ask before updating a running program</span></label>
           <label class="check"><input type="checkbox" id="s-stopped"><span>Update stopped programs without asking</span></label>
           <div class="field"><span class="label">Versions kept per program</span>
-            <select id="s-kept"><option value="1">1</option><option value="2">2</option><option value="3">3</option></select>
+            <select id="s-kept"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option></select>
           </div>
-          <div class="field"><span class="label">Local copies</span>
-            <div class="inline"><input class="mono" id="s-dir" readonly><button class="btn" id="s-open">Open</button></div>
+        </fieldset>
+
+        <fieldset>
+          <legend class="label">Window and start</legend>
+          <label class="check"><input type="checkbox" id="s-start"><span>Start the Starter with Windows (in the tray)</span></label>
+          <div class="field"><span class="label">Wait before starting the programs</span>
+            <select id="s-delay"><option value="0">0 s</option><option value="3">3 s</option><option value="5">5 s</option><option value="10">10 s</option><option value="30">30 s</option></select>
           </div>
-          <div class="row"><button class="btn primary" id="s-save">Save settings</button><span class="sp"></span><button class="btn quiet danger" id="s-cleanup">Remove unused copies</button></div>
+          <div class="field"><span class="label">When the window is closed</span>
+            <select id="s-close"><option value="ask">Ask</option><option value="tray">Keep running in the tray</option><option value="quit">Quit the Starter</option></select>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend class="label">Local copies</legend>
+          <div class="inline"><input class="mono" id="s-dir" readonly><button class="btn" id="s-open">Open</button></div>
+          <div class="row"><span class="muted small" id="s-local"></span><span class="sp"></span>
+            <button class="btn danger" id="s-cleanup">Remove unused copies</button></div>
+        </fieldset>
+
+        <div class="row"><span class="muted small">Changes are saved at once.</span></div>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="foot">
+    <span id="foot-left"></span>
+    <span class="sp"></span>
+    <span id="foot-right"></span>
+  </footer>
+
+  <!-- Unterfenster: Add a program / Edit -->
+  <div class="scrim" id="dlg-form" hidden>
+    <div class="dlg" role="dialog" aria-modal="true" aria-labelledby="form-title">
+      <div class="head"><b>◆</b><span id="form-title">ADD A PROGRAM</span><span class="sp"></span><button class="t-btn" data-close title="Close">✕</button></div>
+      <div class="body">
+        <div class="field">
+          <span class="label">Program file</span>
+          <div class="inline"><input class="mono" id="f-path" placeholder="a .exe file, on a share or in a build folder"><button class="btn" id="f-browse">Browse…</button></div>
+        </div>
+        <div class="found" id="f-found"></div>
+        <div class="row2">
+          <div class="field"><span class="label">Name</span><input id="f-name"></div>
+          <div class="field"><span class="label">Arguments</span><input class="mono" id="f-args" placeholder="none"></div>
+        </div>
+        <div class="field">
+          <span class="label">Run from</span>
+          <span class="seg" role="group">
+            <button id="f-run-copy" aria-pressed="true">A copy on this PC</button>
+            <button id="f-run-src" aria-pressed="false">The source folder</button>
+          </span>
+          <span class="muted small" id="f-run-hint"></span>
+        </div>
+        <label class="check"><input type="checkbox" id="f-start" checked><span>Start with the Starter</span></label>
+        <label class="check"><input type="checkbox" id="f-noask"><span>Update without asking</span></label>
+        <label class="check"><input type="checkbox" id="f-keep" checked><span>Keep the previous version, so I can go back</span></label>
+        <label class="check"><input type="checkbox" id="f-restart"><span>Restart if it stops unexpectedly</span></label>
+        <div class="row2">
+          <div class="field"><span class="label">Wait before starting (s)</span><input type="number" id="f-delay" min="0" max="120" value="0"></div>
+          <div class="field"><span class="label">Ready check</span><input class="mono" id="f-ready" placeholder="port or http://localhost:… – empty = off"></div>
         </div>
       </div>
-    </div>
-  </section>
-
-</main>
-
-<div class="toasts" id="toasts" role="status"></div>
-
-<!-- Fragen beim Schließen und Beenden -->
-<div class="scrim" id="ask" hidden>
-  <div class="dlg card" role="dialog" aria-modal="true" aria-labelledby="ask-title">
-    <div class="title"><span class="dot"></span><span class="name" id="ask-title"></span></div>
-    <div class="body">
-      <p id="ask-text"></p>
-      <ul class="mono small" id="ask-list"></ul>
-      <label class="check" id="ask-remember-row"><input type="checkbox" id="ask-remember"><span>Don't ask again (change it in Settings)</span></label>
-      <div class="row"><span class="sp"></span><span id="ask-buttons" class="row"></span></div>
+      <div class="bottom">
+        <button class="btn quiet" data-close>Cancel</button>
+        <button class="btn primary" id="f-go">Copy and start</button>
+      </div>
     </div>
   </div>
+
+  <!-- Unterfenster: Remove (Bestätigung) -->
+  <div class="scrim" id="dlg-confirm" hidden>
+    <div class="dlg small-dlg" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
+      <div class="head"><b>◆</b><span id="confirm-title">REMOVE</span><span class="sp"></span><button class="t-btn" data-close title="Close">✕</button></div>
+      <div class="body"><p id="confirm-text"></p></div>
+      <div class="bottom">
+        <button class="btn quiet" data-close>Cancel</button>
+        <button class="btn danger" id="confirm-ok">Remove</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Fragen beim Schließen und Beenden (vom Starter) -->
+  <div class="scrim" id="ask" hidden>
+    <div class="dlg small-dlg" role="dialog" aria-modal="true" aria-labelledby="ask-title">
+      <div class="head"><b>◆</b><span id="ask-title"></span></div>
+      <div class="body">
+        <p id="ask-text"></p>
+        <ul class="mono small" id="ask-list"></ul>
+        <label class="check" id="ask-remember-row"><input type="checkbox" id="ask-remember"><span>Don't ask again (change it in Settings)</span></label>
+      </div>
+      <div class="bottom" id="ask-buttons"></div>
+    </div>
+  </div>
+
+  <div class="toasts" id="toasts" role="status" aria-live="polite"></div>
 </div>
 
 <script src="ds/bundle.js"></script>

@@ -24,6 +24,19 @@ Runs programs from a source folder as local copies and keeps them up to date. Yo
 - **"Running means ready"** (optional, `readyCheck`): a port number (checked on 127.0.0.1) or an `http://` or `https://` address whose host is `localhost`, `127.0.0.1` or `[::1]`. After the start the Starter checks every second until the program answers or 60 s have passed (`ready` = `waiting`, `ready` or `timeout`). While it runs, the check repeats every 5 s; a failing check makes it `waiting` again, and does not restart it.
 - **Start all, stop all:** the commands `startAll` and `stopAll` go through the programs in order, without the start pauses.
 
+## The window
+
+Two tabs in the title bar: **Programs** (with the count) and **Settings**. The title bar drags the window; a double-click maximizes it.
+
+- **Programs:** one row per program, with a grip (⋮⋮) to drag it into another place (`move`). The row shows the status chips (Running, Stopped, Starting, Not ready, Crashed, Gave up, Update, New build, Source not reachable, Broken entry). The main button (Update, New build, Restart, Stop, Start) turns into a greyed button with a spinner and text while an operation runs (Queued, Closing with a countdown, Copying with a percentage); a bar at the bottom shows the progress. Every result is a message at the bottom right, errors in red.
+- **Details** (per program): source, folder, versions, start options, ready check, and the last operation with its steps. A copy opens the details of the program that is copied, with the progress and Cancel.
+- **⋯ menu:** Edit…, Go back (only with an earlier copy), Open folder, Show the log, Remove… (asks first).
+- **Add a program / Edit** are dialogs over the list. A duplicate is refused in the dialog. Changing a copy on or off is only possible while the program is stopped.
+- **Settings** save at once. The start pause before the programs is set here.
+- **Tray:** each program has a submenu with Start, Stop, Restart and the update that is offered.
+
+Dropping a `.exe` on the window is not supported: WebView2 gives the page only the file name, not the full path.
+
 ## starter.json
 
 Besides the existing fields (`id`, `name`, `sourceExe`, `arguments`, `startWithStarter`, `updateWithoutAsking`, `keepPrevious`, `copyToLocal`, `copies`, `currentFolder`) the Starter knows:

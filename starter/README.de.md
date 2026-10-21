@@ -24,6 +24,19 @@ Betreibt Programme aus einem Quellordner als lokale Kopien und hält sie aktuell
 - **„Läuft“ heißt bereit** (optional, `readyCheck`): eine Portnummer (geprüft wird 127.0.0.1) oder eine `http://`- oder `https://`-Adresse, deren Host `localhost`, `127.0.0.1` oder `[::1]` ist. Nach dem Start prüft der Starter jede Sekunde, bis das Programm antwortet oder 60 s um sind (`ready` = `waiting`, `ready` oder `timeout`). Läuft es, wird alle 5 s weiter geprüft; eine fehlschlagende Prüfung macht es wieder „waiting“, ein Neustart folgt daraus nicht.
 - **Alle starten, alle stoppen:** die Befehle `startAll` und `stopAll` gehen die Programme der Reihe nach durch; ohne die Startpausen.
 
+## Die Oberfläche
+
+Zwei Tabs in der Titelleiste: **Programs** (mit Anzahl) und **Settings**. Die Titelleiste zieht das Fenster; ein Doppelklick maximiert es.
+
+- **Programs:** eine Zeile je Programm, mit einem Griff (⋮⋮) zum Verschieben (`move`). Die Zeile zeigt die Kennzeichen (Running, Stopped, Starting, Not ready, Crashed, Gave up, Update, New build, Source not reachable, Broken entry). Der Hauptknopf (Update, New build, Restart, Stop, Start) wird während eines Vorgangs zu einem ausgegrauten Knopf mit Kreisel und Text (Queued, Closing mit Countdown, Copying mit Prozent); ein Balken unten zeigt den Fortschritt. Jedes Ergebnis erscheint als Meldung unten rechts, Fehler rot.
+- **Details** (je Programm): Quelle, Ordner, Versionen, Startoptionen, Bereit-Prüfung und der letzte Vorgang mit seinen Schritten. Eine Kopie klappt die Details des kopierenden Programms auf, mit Fortschritt und Cancel.
+- **⋯-Menü:** Edit…, Go back (nur mit einer früheren Kopie), Open folder, Show the log, Remove… (fragt vorher).
+- **Add a program / Edit** sind Unterfenster über der Liste. Ein Doppelt wird im Unterfenster abgelehnt. Die Kopie lässt sich nur umschalten, wenn das Programm steht.
+- **Settings** speichern sofort. Die Pause vor dem Start der Programme steht hier.
+- **Tray:** je Programm ein Untermenü mit Start, Stop, Restart und dem angebotenen Update.
+
+Eine `.exe` auf das Fenster zu ziehen geht nicht: WebView2 gibt der Seite nur den Dateinamen, nicht den vollen Pfad.
+
 ## starter.json
 
 Neben den bisherigen Feldern (`id`, `name`, `sourceExe`, `arguments`, `startWithStarter`, `updateWithoutAsking`, `keepPrevious`, `copyToLocal`, `copies`, `currentFolder`) kennt der Starter:
