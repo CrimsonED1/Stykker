@@ -333,7 +333,13 @@
                     <span class="mc @(draft ? "" : "na off")" title="@(draft ? Strings.PfDraftOn : Strings.PfDraftOff)"><Icon Name="draft" Title="@Strings.CardDraft" /><b>@(draft ? Strings.PfOn : "–")</b></span>
                     <span class="mc @(p.RestartOnCrash ? "" : "na off")" title="@(p.RestartOnCrash ? Strings.PfRestartOn : Strings.PfRestartOff)"><Icon Name="restart" Title="@Strings.PfRestart" /><b>@(p.RestartOnCrash ? Strings.PfOn : "–")</b></span>
                 </div>
-                @if (!string.IsNullOrWhiteSpace(p.Note)) { <div class="pf-note muted small" title="@p.Note">@p.Note</div> }
+                @if (!string.IsNullOrWhiteSpace(p.Note))
+                {
+                    @* Notiz: zwei Zeilen, Klick/Tippen zeigt sie ganz (auf dem Handy gibt es keinen Tooltip) *@
+                    var nid = p.Id.ToString("N"); var nopen = _openNotes.Contains(nid);
+                    <div class="pf-note muted small @(nopen ? "open" : "")" title="@p.Note" role="button" tabindex="0" aria-expanded="@(nopen ? "true" : "false")"
+                         @onclick="() => ToggleNote(nid)" @onkeydown='k => { if (k.Key is "Enter" or " ") ToggleNote(nid); }'>@p.Note</div>
+                }
                 @if (starting != null)
                 {
                     <div class="pf-launch @(starting.State == LaunchState.Failed ? "failed" : "")">
@@ -422,8 +428,8 @@
                 <span style="margin-left:auto"><button class="good" disabled="@ro" @onclick="SaveEdit">@Strings.BtnSaved</button> <button @onclick="() => _edit = null">@Strings.Close</button></span></div>
             <div class="row" style="margin-top:8px">
                 <input placeholder="@Strings.FieldName" @bind="_editName" @bind:event="oninput" style="flex:1" />
-                <input placeholder="@Strings.FieldNote" @bind="_editNote" @bind:event="oninput" style="flex:1" />
             </div>
+            <textarea placeholder="@Strings.FieldNote" @bind="_editNote" @bind:event="oninput" rows="2" style="width:100%;margin-top:8px"></textarea>
             <textarea @bind="_editArgs" @bind:event="oninput" rows="3" style="width:100%;margin-top:8px;font-family:Consolas,monospace"></textarea>
         </div>
     }
@@ -523,6 +529,8 @@
     private bool _clientOpen, _shellPs = true;
     private string _reqModel = "";
     private readonly HashSet<string> _openReqs = new();
+    private readonly HashSet<string> _openNotes = new();
+    private void ToggleNote(string id) { if (!_openNotes.Add(id)) _openNotes.Remove(id); }
     // Die Kontextgrenze eines Profils braucht den GGUF-Kopf: einmal je Profil im Hintergrund gelesen und gemerkt
     private readonly Dictionary<string, GgufInfo?> _gguf = new();
     private readonly HashSet<string> _ggufBusy = new();

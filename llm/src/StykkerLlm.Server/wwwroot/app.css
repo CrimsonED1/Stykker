@@ -705,7 +705,8 @@ html[data-theme=titan] .sp4{--spc:var(--st-read)}   /* schnellste Stufe blau: Or
 
 /* Nach der Endprüfung: Kontext fast voll, Startzustand der Profile, Proxy-Port, Fehler der Anbieter */
 .slot.hot{--sc:var(--bad)}.slot.hot{box-shadow:0 0 0 1px var(--bad)}
-.pf-note{margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pf-note{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;overflow:hidden;margin-top:4px;white-space:pre-line;overflow-wrap:anywhere;cursor:pointer}
+.pf-note.open{display:block}
 .pf-launch{display:flex;align-items:center;gap:6px;margin-top:7px;color:var(--st-load)}.pf-launch span{flex:1;min-width:0}
 .pf-launch.failed{color:var(--bad)}
 .pxp-port{width:96px}
