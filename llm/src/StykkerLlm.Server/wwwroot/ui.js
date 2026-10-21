@@ -31,6 +31,13 @@
     apply();
     window.addEventListener('resize', apply);
 
+    // Kurznamen unter den Kennzahlen der Serverkarten (Schalter „Labels“ im ☰ → Ansicht): je Browser gemerkt, aus
+    // ist der Standard. Die Klasse am <html> setzt schon dieses Skript, damit die Karten nicht umspringen.
+    const LABELS_KEY = 'stykker.cardLabels';
+    const labelsRead = () => { try { return localStorage.getItem(LABELS_KEY) === 'on'; } catch (e) { return false; } };
+    function applyLabels() { root.dataset.cardLabels = labelsRead() ? 'on' : 'off'; }
+    applyLabels();
+
     // Thema: html[data-theme] = dark | titan. Die Wahl kommt vom Server (data-theme-choice beim ersten Bild, danach
     // <meta name="stykker-theme"> im Kopf, den Blazor bei einem Wechsel neu schreibt); „system“ folgt dem Hell/Dunkel
     // des Systems und wechselt mit, wenn es sich ändert.
@@ -135,6 +142,8 @@
         set: function (d) { try { localStorage.setItem(KEY, d); } catch (e) { /* egal: dann eben nur diese Sitzung */ } apply(); },
         shell: inShell,
         // zuletzt gewählter Reiter des Proxy-Dialogs (je Browser); ohne Speicher bleibt es bei dem Standard des Dialogs
+        cardLabels: labelsRead,
+        setCardLabels: function (on) { try { localStorage.setItem(LABELS_KEY, on ? 'on' : 'off'); } catch (e) { /* egal: dann eben nur diese Sitzung */ } applyLabels(); },
         proxyTab: function () { try { return localStorage.getItem(TAB_KEY) || ''; } catch (e) { return ''; } },
         setProxyTab: function (t) { try { localStorage.setItem(TAB_KEY, t); } catch (e) { /* egal: dann eben nur diese Sitzung */ } },
         askClose: askClose,     // auch zum Ansehen ohne Hülle (Bilder, Prüfung)
