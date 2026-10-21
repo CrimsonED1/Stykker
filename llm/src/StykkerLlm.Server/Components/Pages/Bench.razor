@@ -4,17 +4,21 @@
 @inject WebActions Web
 @inject WebPrompt Prompt
 
-@* Benchmark wie im Fenster (docs/ui.md, Bereich 5): Ziel, Umfang, Lauf mit Fortschritt, Ergebnisse *@
+@* Benchmark (docs/ui.md, Bereich 10): Ziel und Umfang, Lauf mit Live-Tabelle, Ergebnisse mit Diagramm je Kontextgröße,
+   Vergleich von bis zu vier Ergebnissen. Rechnungen und Texte stehen in Core (BenchView, Strings). *@
 
-@{ var e = Host.Engine; var bench = Host.Benchmarks; bool ro = Host.ReadOnly; var slotState = ParallelState; }
+@{ var e = Host.Engine; var bench = Host.Benchmarks; bool ro = Host.ReadOnly; var slotState = ParallelState; var ctxSlot = CtxPerSlot; bool willStart = WillStart;
+   var all = e.Library.Benchmarks; var titles = all.Select(b => b.Title).Distinct().OrderBy(t => t, StringComparer.OrdinalIgnoreCase).ToList();
+   var shown = all.Where(b => _filter.Length == 0 || b.Title == _filter).OrderByDescending(x => x.Started).Take(20).ToList();
+   var picked = _compare.Select(id => all.FirstOrDefault(b => b.Id == id)).OfType<BenchResult>().ToList(); }
 
 <h2>@Strings.BenchTitle</h2>
 <p class="muted small">@Strings.BenchHint</p>
 
-<div class="card">
+<div class="card bench-setup">
     <div class="row">
         <span class="muted small">@Strings.BenchTarget</span>
-        <select @bind="_target" style="max-width:440px">
+        <select value="@_target" @onchange="e => PickTarget(e.Value as string ?? string.Empty)" style="max-width:440px">
             <option value="">@(e.Servers.Count == 0 && e.Library.Profiles.Count == 0 ? Strings.BenchNoTarget : Strings.BenchPickTarget)</option>
             @foreach (var s in e.Servers)
             {
@@ -47,12 +51,23 @@
         <span class="muted small">@Strings.BenchContexts</span>
         @foreach (var size in BenchOptions.Ladder)
         {
-            bool on = _sizes.Contains(size);
-            <button class="@(on ? "good" : "")" @onclick="() => ToggleSize(size)">@SizeLabel(size)</button>
+            var sz = size;
+            bool fits = BenchView.Fits(sz, ctxSlot, _gen);
+            bool on = fits && _sizes.Contains(sz);
+            <button class="@(on ? "good" : "")" disabled="@(!fits)" aria-pressed="@(on ? "true" : "false")"
+                    title="@(fits ? "" : Strings.BenchSizeTooBig(ctxSlot ?? 0))" @onclick="() => ToggleSize(sz)">@BenchView.SizeLabel(sz)</button>
         }
     </div>
+    @if (_target.Length > 0)
+    {
+        <div class="muted small" style="margin-top:6px">@(ctxSlot is int c ? Strings.BenchCtxPerSlot(c) : Strings.BenchCtxUnknown)</div>
+    }
+    @if (willStart)
+    {
+        <label class="chk" style="margin-top:8px" title="@Strings.BenchStopAfterTip"><input type="checkbox" @bind="_stopAfter" /> @Strings.BenchStopAfter</label>
+    }
     <div class="row" style="margin-top:12px">
-        <button class="good" disabled="@(ro || bench.Running || string.IsNullOrEmpty(_target))" @onclick="Run">@Strings.BenchRun</button>
+        <button class="good" disabled="@(ro || !Web.CanWrite || bench.Running || string.IsNullOrEmpty(_target))" @onclick="Run">@Strings.BenchRun</button>
         @if (bench.Running)
         {
             <button class="bad" @onclick="() => bench.Cancel()">@Strings.Stop</button>
@@ -66,40 +81,191 @@
     </div>
 </div>
 
+@if (bench.Running && bench.Current is { } live)
+{
+    <h3 class="sec">@Strings.BenchLive</h3>
+    <div class="card">
+        <div class="row"><b>@live.Title</b><span class="muted small">@live.Model</span></div>
+        @StepTable(live, null)
+    </div>
+}
+
 <h3 class="sec">@Strings.BenchResults</h3>
-@if (e.Library.Benchmarks.Count == 0)
+@if (all.Count == 0)
 {
     <div class="card"><span class="muted small">@Strings.BenchNoResults</span></div>
 }
-@foreach (var b in e.Library.Benchmarks.OrderByDescending(x => x.Started).Take(20))
+else
 {
+    <div class="row bench-tools">
+        @if (titles.Count > 1)
+        {
+            <select @bind="_filter" style="max-width:320px" aria-label="@Strings.BenchFilterAll">
+                <option value="">@Strings.BenchFilterAll</option>
+                @foreach (var t in titles) { <option value="@t">@t</option> }
+            </select>
+        }
+        <span class="muted small">@Strings.BenchCompareHint</span>
+        @if (_compare.Count > 0)
+        {
+            <button class="quiet" @onclick="() => _compare.Clear()">@Strings.BenchCompareClear</button>
+        }
+    </div>
+}
+
+@if (picked.Count > 0)
+{
+    <div class="card bench-compare">
+        <div class="row">
+            <b>@Strings.BenchCompareTitle</b>
+            <span class="muted small">@string.Join(" · ", picked.Select(b => b.Title + " " + b.Started.ToString("MM-dd HH:mm", CultureInfo.InvariantCulture)))</span>
+            <a class="btn quiet" style="margin-left:auto" href="@($"/api/bench/compare?ids={string.Join(",", picked.Select(b => b.Id.ToString("N")))}")" target="_blank">@Strings.BenchCompareMarkdown</a>
+        </div>
+        @Charts(picked, true)
+        <div class="tbl-wrap">
+        <table style="margin-top:8px">
+            <tr><th>@Strings.ColTest</th>@foreach (var b in picked) { <th class="num"><span class="bdot" style="--c:@Color(picked.IndexOf(b))"></span>@b.Title</th> }</tr>
+            @foreach (var name in picked.SelectMany(b => b.Steps.Select(s => s.Name)).Distinct())
+            {
+                <tr>
+                    <td>@name</td>
+                    @foreach (var b in picked)
+                    {
+                        var st = b.Steps.FirstOrDefault(s => s.Name == name);
+                        var row = st == null ? null : BenchView.RowOf(st);
+                        <td class="num" title="@(row?.WriteTip)">@(row == null ? "–" : st!.Kind == "tool" ? row.Result : row.Read + " / " + row.Write)</td>
+                    }
+                </tr>
+            }
+        </table>
+        </div>
+        <div class="muted small" style="margin-top:4px">@Strings.BenchCompareUnits</div>
+    </div>
+}
+
+@foreach (var b in shown)
+{
+    var res = b;
     var previous = BenchmarkRunner.PreviousSimilar(e.Library, b);
+    bool sel = _compare.Contains(b.Id);
     <div class="card">
         <div class="row">
+            <label class="chk" title="@Strings.BenchCompareTitle"><input type="checkbox" checked="@sel" disabled="@(!sel && _compare.Count >= BenchView.MaxCompare)" @onchange="() => ToggleCompare(res.Id)" aria-label="@Strings.BenchCompareTitle" /></label>
             <b>@b.Title</b>
             <span class="muted small">@b.Started.ToString("yyyy-MM-dd HH:mm") · @Fmt.Dur(b.DurationSec) · @b.Model</span>
             @if (b.Cancelled) { <span class="pill wait">@Strings.BenchCancelled</span> }
-            <span style="margin-left:auto;white-space:nowrap">
-                <a href="/api/bench/@b.Id.ToString("N")" target="_blank">@Strings.BtnCopyMarkdown</a>
-                <a href="/api/bench/@b.Id.ToString("N")/csv" target="_blank">CSV</a>
+            <span class="bench-acts">
+                <a class="btn quiet" href="/api/bench/@b.Id.ToString("N")" target="_blank">@Strings.BenchMarkdown</a>
+                <a class="btn quiet" href="/api/bench/@b.Id.ToString("N")/csv" target="_blank">@Strings.BenchCsv</a>
+                <button class="ib quiet danger" disabled="@(ro || !Web.CanWrite)" title="@(Web.CanWrite ? Strings.BenchDelete : Strings.ViewerOnly)" aria-label="@Strings.BenchDelete" @onclick="() => Delete(res)"><Icon Name="trash" /></button>
             </span>
         </div>
-        <div class="muted small">@b.Gpu · ctx @b.ContextPerSlot · @b.Slots @Strings.ColSlots · @b.Quant @b.Build</div>
+        <div class="muted small">@Meta(b)</div>
         @if (b.Regression is { } rg)
         {
             <div class="pill half" style="margin-top:8px;white-space:normal">@Strings.BenchRegressionAlert(rg.DropPct, rg.Previous, rg.Current)</div>
         }
+        <div class="bench-body">
+            <div class="bench-tbl">@StepTable(b, previous)</div>
+            @if (b.Steps.Count(s => s.Kind == "context" && s.Ok) >= 2)
+            {
+                @Charts(new[] { b }, false)
+            }
+        </div>
+    </div>
+}
+
+@code {
+    private Timer? _t;
+    private string _target = "", _last = "", _filter = "";
+    private bool _chat = true, _tool = true, _parallel, _stopAfter = true;
+    private int _repeats = 1, _gen = 128;
+    private readonly List<int> _sizes = new();
+    private readonly List<Guid> _compare = new();
+
+    // Aus dem Menü „Bench“ eines Profils: /bench?target=<Profil-ID> – das Ziel steht dann schon drin
+    [SupplyParameterFromQuery(Name = "target")] public string? Target { get; set; }
+
+    // Slots des gewählten Ziels: unbekannt (Hinweis wie bisher), ein Slot (Haken gesperrt), mehrere (Haken frei)
+    private BenchmarkRunner.ParallelHint ParallelState =>
+        string.IsNullOrEmpty(_target) ? BenchmarkRunner.ParallelHint.Unknown : BenchmarkRunner.ParallelHintFor(BenchmarkService.KnownSlots(Host.Engine, _target));
+
+    private int? CtxPerSlot => string.IsNullOrEmpty(_target) ? null : BenchmarkService.KnownContextPerSlot(Host.Engine, _target);
+    private bool WillStart => !string.IsNullOrEmpty(_target) && BenchmarkService.WillStart(Host.Engine, _target);
+
+    // Farben der Ergebnisse im Vergleich: feste Reihenfolge, je Ergebnis eine (höchstens vier, siehe BenchView.MaxCompare)
+    private static readonly string[] Colors = { "var(--acc)", "var(--second)", "var(--good)", "var(--warn)" };
+    private static string Color(int i) => Colors[Math.Clamp(i, 0, Colors.Length - 1)];
+
+    protected override void OnInitialized()
+    {
+        if (!string.IsNullOrEmpty(Target)) PickTarget(Target);
+        _t = new Timer(_ => InvokeAsync(StateHasChanged), null, 800, 800);
+        Host.Benchmarks.Progress += OnProgress;
+    }
+
+    public void Dispose()
+    {
+        _t?.Dispose();
+        Host.Benchmarks.Progress -= OnProgress;
+    }
+
+    private void OnProgress(string message, BenchStep? step) => _ = InvokeAsync(StateHasChanged);
+
+    // Neues Ziel: die Kontextgrößen neu vorwählen (alle, die passen, bis 32k), Parallel nur bei mehreren Slots
+    private void PickTarget(string target)
+    {
+        _target = target;
+        _sizes.Clear();
+        if (target.Length == 0) return;
+        _sizes.AddRange(BenchView.DefaultSizes(CtxPerSlot, _gen));
+        _parallel = ParallelState == BenchmarkRunner.ParallelHint.ManySlots;
+    }
+
+    private void ToggleSize(int size)
+    {
+        if (!_sizes.Remove(size)) { _sizes.Add(size); _sizes.Sort(); }
+    }
+
+    private void ToggleCompare(Guid id)
+    {
+        if (!_compare.Remove(id) && _compare.Count < BenchView.MaxCompare) _compare.Add(id);
+    }
+
+    private static string Meta(BenchResult b)
+    {
+        var parts = new List<string> { b.Gpu };
+        parts.Add(b.Settings.Length > 0 ? b.Settings : $"ctx {b.ContextPerSlot.ToString(CultureInfo.InvariantCulture)}");
+        parts.Add($"{b.Slots.ToString(CultureInfo.InvariantCulture)} {Strings.ColSlots}");
+        if (b.Quant.Length > 0) parts.Add(b.Quant + (b.Parameters.Length > 0 ? " · " + b.Parameters : ""));
+        if (b.Build.Length > 0) parts.Add(b.Build);
+        return string.Join(" · ", parts.Where(p => p.Length > 0));
+    }
+
+    private static string Pct(double? v) => v is { } p ? p.ToString("+0.0;-0.0;0.0", CultureInfo.InvariantCulture) + " %" : "–";
+
+    private static string DeltaClass(BenchTrend t) => t switch
+    {
+        BenchTrend.Better => "delta-up",
+        BenchTrend.Worse => "delta-down",
+        _ => "muted",
+    };
+
+    // Ergebnistabelle (auch für den laufenden Benchmark); previous = früherer Lauf für die Spalte „vs last“
+    private RenderFragment StepTable(BenchResult b, BenchResult? previous) => __builder =>
+    {
         <div class="tbl-wrap">
         <table style="margin-top:8px">
-            <tr><th>@Strings.ColTest</th><th class="num">@Strings.ColReqPrompt</th><th class="num" title="@Strings.ColReadTpsTip">@Strings.ColReadTps</th><th class="num" title="@Strings.ColWriteTpsTip">@Strings.ColWriteTps</th><th class="num" title="@Strings.ColVsLastTip">@Strings.ColVsLast</th><th class="num">@Strings.ColReqTime</th><th>@Strings.ColResult</th></tr>
+            <tr><th>@Strings.ColTest</th><th class="num">@Strings.BenchColPromptTok</th><th class="num" title="@Strings.ColReadTpsTip">@Strings.ColReadTps</th><th class="num" title="@Strings.ColWriteTpsTip">@Strings.ColWriteTps</th><th class="num" title="@Strings.ColVsLastTip">@Strings.ColVsLast</th><th class="num">@Strings.ColReqTime</th><th>@Strings.ColResult</th></tr>
             @foreach (var st in b.Steps)
             {
-                var change = BenchCompare.Against(previous, st);
+                var row = BenchView.RowOf(st);
+                var change = row.Comparable ? BenchCompare.Against(previous, st) : null;
                 <tr>
                     <td>@st.Name</td>
-                    <td class="num">@st.PromptTokens.ToString("N0", CultureInfo.InvariantCulture)</td>
-                    <td class="num">@(st.PromptTps > 0 ? st.PromptTps.ToString("N0", CultureInfo.InvariantCulture) : "–")</td>
-                    <td class="num">@(st.GenTps > 0 ? st.GenTps.ToString("0.0", CultureInfo.InvariantCulture) : "–")</td>
+                    <td class="num">@(st.PromptTokens > 0 ? st.PromptTokens.ToString("N0", CultureInfo.InvariantCulture) : "–")</td>
+                    <td class="num @(row.ReadWeak ? "muted" : "")" title="@row.ReadTip">@row.Read</td>
+                    <td class="num" title="@row.WriteTip">@row.Write</td>
                     @if (change == null)
                     {
                         <td class="num muted" title="@(previous == null ? Strings.BenchVsNone : "")">–</td>
@@ -113,58 +279,70 @@
                         </td>
                     }
                     <td class="num">@st.TotalSec.ToString("0.0", CultureInfo.InvariantCulture) s</td>
-                    <td><span class="pill @(st.Ok ? "ok" : "fail")">@(st.Ok ? "ok" : st.Note.Length > 0 ? st.Note : "failed")</span></td>
+                    <td><span class="pill @(st.Ok ? "ok" : "fail")" title="@row.ResultTip">@row.Result</span></td>
                 </tr>
             }
         </table>
         </div>
-    </div>
-}
-
-@code {
-    private Timer? _t;
-    private string _target = "", _last = "";
-    private bool _chat = true, _tool, _parallel;
-    private int _repeats = 1, _gen = 128;
-    private readonly List<int> _sizes = new();
-
-    // Aus dem Menü „Bench“ eines Profils: /bench?target=<Profil-ID> – das Ziel steht dann schon drin
-    [SupplyParameterFromQuery(Name = "target")] public string? Target { get; set; }
-
-    // Slots des gewählten Ziels: unbekannt (Hinweis wie bisher), ein Slot (Haken gesperrt), mehrere (Haken frei)
-    private BenchmarkRunner.ParallelHint ParallelState =>
-        string.IsNullOrEmpty(_target) ? BenchmarkRunner.ParallelHint.Unknown : BenchmarkRunner.ParallelHintFor(BenchmarkService.KnownSlots(Host.Engine, _target));
-
-    protected override void OnInitialized()
-    {
-        if (!string.IsNullOrEmpty(Target)) _target = Target;
-        _t = new Timer(_ => InvokeAsync(StateHasChanged), null, 800, 800);
-        Host.Benchmarks.Progress += OnProgress;
-    }
-
-    public void Dispose()
-    {
-        _t?.Dispose();
-        Host.Benchmarks.Progress -= OnProgress;
-    }
-
-    private void OnProgress(string message, BenchStep? step) => _ = InvokeAsync(StateHasChanged);
-
-    private void ToggleSize(int size)
-    {
-        if (!_sizes.Remove(size)) { _sizes.Add(size); _sizes.Sort(); }
-    }
-
-    private static string SizeLabel(int size) => size >= 1024 ? (size / 1024) + "k" : size.ToString(CultureInfo.InvariantCulture);
-
-    private static string Pct(double? v) => v is { } p ? p.ToString("+0.0;-0.0;0.0", CultureInfo.InvariantCulture) + " %" : "–";
-
-    private static string DeltaClass(BenchTrend t) => t switch
-    {
-        BenchTrend.Better => "delta-up",
-        BenchTrend.Worse => "delta-down",
-        _ => "muted",
     };
+
+    // Zwei kleine Diagramme nebeneinander (Lesen, Schreiben) statt einer Grafik mit zwei Achsen; legend = Namen unter den Grafiken
+    private RenderFragment Charts(IReadOnlyList<BenchResult> results, bool legend) => __builder =>
+    {
+        <div class="bench-charts">
+            @foreach (var read in new[] { true, false })
+            {
+                var c = BenchView.ContextChart(results, read);
+                if (c.Empty) continue;
+                <figure class="bench-chart">
+                    <figcaption class="muted small">@(read ? Strings.BenchChartRead : Strings.BenchChartWrite)</figcaption>
+                    <svg viewBox="0 0 @BenchView.W.ToString(CultureInfo.InvariantCulture) @BenchView.H.ToString(CultureInfo.InvariantCulture)" role="img" aria-label="@(read ? Strings.BenchChartRead : Strings.BenchChartWrite)">
+                        @foreach (var y in c.YTicks)
+                        {
+                            <line class="grid" x1="@F(BenchView.Left)" x2="@F(BenchView.W - BenchView.Right)" y1="@F(y.Pos)" y2="@F(y.Pos)" />
+                            @Label(BenchView.Left - 4, y.Pos + 3, "end", y.Label)
+                        }
+                        @foreach (var x in c.XTicks)
+                        {
+                            @Label(x.Pos, BenchView.H - 5, "middle", x.Label)
+                        }
+                        @for (int i = 0; i < c.Lines.Count; i++)
+                        {
+                            var line = c.Lines[i];
+                            <g style="--c:@Color(i)">
+                                <polyline class="ln" points="@line.Points" />
+                                @foreach (var d in line.Dots)
+                                {
+                                    <circle class="dot" cx="@F(d.X)" cy="@F(d.Y)" r="4"><title>@d.Tip</title></circle>
+                                }
+                            </g>
+                        }
+                    </svg>
+                </figure>
+            }
+        </div>
+        @if (legend)
+        {
+            <div class="bench-legend small">
+                @for (int i = 0; i < results.Count; i++) { <span><span class="bdot" style="--c:@Color(i)"></span>@results[i].Title <span class="muted">@results[i].Started.ToString("MM-dd HH:mm", CultureInfo.InvariantCulture)</span></span> }
+            </div>
+        }
+        <div class="muted small">@Strings.BenchChartHint</div>
+    };
+
+    private static string F(double v) => v.ToString("0.#", CultureInfo.InvariantCulture);
+
+    // SVG-<text> als fertiges Markup: Razor hält <text> sonst für sein eigenes Steuer-Tag. Beschriftungen sind Zahlen
+    // und Größen wie „4k“ aus Core, trotzdem maskiert.
+    private static MarkupString Label(double x, double y, string anchor, string text) =>
+        new($"<text class=\"ax\" x=\"{F(x)}\" y=\"{F(y)}\" text-anchor=\"{anchor}\">{System.Net.WebUtility.HtmlEncode(text)}</text>");
+
+    private async Task Delete(BenchResult b)
+    {
+        if (!await Prompt.ConfirmAsync(Strings.BenchDelete, Strings.BenchDeleteConfirm(b.Title, b.Started.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)), warning: true)) return;
+        _compare.Remove(b.Id);
+        await Web.RunAsync(new ActionRequest { Action = "bench.delete", Arg = b.Id.ToString("N") });
+    }
 
     private async Task Run()
     {
@@ -180,7 +358,8 @@
                 ["parallel"] = _parallel && ParallelState != BenchmarkRunner.ParallelHint.OneSlot ? "1" : "",
                 ["repeats"] = _repeats.ToString(CultureInfo.InvariantCulture),
                 ["genTokens"] = _gen.ToString(CultureInfo.InvariantCulture),
-                ["contextSizes"] = string.Join(",", _sizes),
+                ["contextSizes"] = string.Join(",", _sizes.Where(s => BenchView.Fits(s, CtxPerSlot, _gen))),
+                ["stopAfter"] = WillStart && _stopAfter ? "1" : "",
             },
         };
         var result = await Web.RunAsync(req);

@@ -850,3 +850,21 @@ nav a:has(.navtxt){display:inline-flex;align-items:center;gap:5px}
 .top>details.menu.more{order:1}.top>.status{order:2}
 @media(min-width:1401px) and (max-width:1700px){html:not([data-view=small]) .top{column-gap:14px}html:not([data-view=small]) .top .status{gap:8px}html:not([data-view=small]) .top nav a{padding:5px 10px}.top a.hchip .mini,.top a.hchip .hchip-unit.tight{display:none}}
 @media(max-width:1900px){.top .hlbl2,.top .hsearch .kbd{display:none}.top .hsearch{padding:5px 10px}}
+/* Benchmark-Seite: Aktionen rechts, Tabelle und zwei kleine Diagramme (Lesen, Schreiben) nebeneinander, darunter bei
+   schmalen Fenstern; Linien 2 px, Punkte 8 px mit Kartenrand, Gitter und Achsen zurückhaltend, Text nie in Serienfarbe */
+.bench-chart g,.bdot{--c:var(--acc)}   /* Serienfarbe; die Seite setzt sie je Ergebnis im style-Attribut */
+.bench-acts{margin-left:auto;display:flex;gap:6px;align-items:center;white-space:nowrap}
+.bench-tools{margin:0 0 10px;gap:10px}
+.bench-body{display:grid;grid-template-columns:minmax(0,1fr);gap:4px 18px}
+.bench-charts{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,400px));gap:10px 24px;margin-top:10px}
+.bench-chart{margin:0}.bench-chart figcaption{margin-bottom:2px}
+.bench-chart svg{width:100%;height:auto;display:block;overflow:visible}
+.bench-chart .grid{stroke:var(--line);stroke-width:1}
+.bench-chart .ax{fill:var(--muted);font:9px var(--font-mono)}
+.bench-chart .ln{fill:none;stroke:var(--c);stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
+.bench-chart .dot{fill:var(--c);stroke:var(--card);stroke-width:2}
+.bench-chart .dot:hover{r:6}
+.bdot{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--c);margin-right:6px;vertical-align:baseline}
+.bench-legend{display:flex;flex-wrap:wrap;gap:4px 16px;margin:6px 0 2px}
+.bench-compare table th .bdot{margin-right:5px}
+html[data-theme=titan] .bench-chart .dot{stroke:var(--card)}

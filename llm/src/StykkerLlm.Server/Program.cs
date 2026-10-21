@@ -323,6 +323,14 @@ app.MapGet("/api/bench/{id}", (string id, EngineHost host) =>
     return Results.Text(BenchmarkExport.Markdown(new[] { found }), "text/markdown; charset=utf-8");
 });
 
+// Mehrere Ergebnisse nebeneinander (Vergleich auf der Benchmark-Seite): /api/bench/compare?ids=a,b,c
+app.MapGet("/api/bench/compare", (string? ids, EngineHost host) =>
+{
+    var wanted = (ids ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToHashSet();
+    var found = host.Engine.Library.Benchmarks.Where(b => wanted.Contains(b.Id.ToString("N"))).OrderBy(b => b.Started).ToList();
+    return found.Count == 0 ? Results.NotFound() : Results.Text(BenchmarkExport.Markdown(found), "text/markdown; charset=utf-8");
+});
+
 app.MapGet("/api/bench/{id}/csv", (string id, EngineHost host) =>
 {
     var found = host.Engine.Library.Benchmarks.FirstOrDefault(b => b.Id.ToString("N") == id);

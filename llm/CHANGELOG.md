@@ -7,6 +7,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## Unreleased
 
 ### Added
+- **Benchmark page reworked.** Each result shows two small charts, read and write t/s by context size (log scale, one
+  line per result). Up to four results can be ticked and compared side by side: overlaid charts, one table and a
+  Markdown export of all of them (`/api/bench/compare?ids=`). The tool call reads as passed or failed instead of
+  meaningless speeds; parallel requests show the combined throughput (Σ); the read speed of very short prompts is
+  dimmed. Context sizes that do not fit the target's context per slot are disabled, and choosing a target preselects
+  the ones that fit, up to 32k. The steps of a running benchmark show in a live table. Results can be deleted
+  (`bench.delete`) and filtered by target. A saved profile started for a benchmark can be stopped again afterwards.
+- **Profile note** shows two lines on the tile and opens fully on click or tap; the editor field takes several lines.
 - **Live status of the model tests.** While the classifier or the vision test runs, the proxy dialog shows a live line
   above the table: the model being asked, its phase (sending, waiting for the first byte, receiving, pause, rate-limit
   wait), the seconds with a bar up to the 60 s limit, the counts (done, ok, failed, skipped) and a rough time left. The

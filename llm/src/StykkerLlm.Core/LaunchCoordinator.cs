@@ -136,6 +136,15 @@ public sealed class LaunchCoordinator
         await StopProcessAsync(pid, info.StartTicks);
     }
 
+    // Ein Server, den der Benchmark selbst gestartet hat, ohne Rückfrage stoppen (der Nutzer hat „danach stoppen“ gewählt).
+    // Nur über die PID aus der Erkennung, nie über den Namen.
+    public async Task<bool> StopStartedAsync(ServerWatcher s)
+    {
+        if (s.Info.Manual || s.Info.Pid is not int pid) return false;
+        _engine.Registry.ExpectStop(s.Key);
+        return await StopProcessAsync(pid, s.Info.StartTicks);
+    }
+
     // „Free VRAM“: alle lokalen llama.cpp-Server stoppen und alle geladenen Ollama-Modelle entladen – eine Bestätigung
     // mit der vollständigen Liste vorher. LM Studio entlädt der Monitor nicht (keine Schnittstelle dafür); es wird nur genannt.
     public async Task FreeVramAsync()

@@ -120,10 +120,15 @@ public sealed class BenchOptions
     public int ContextPerSlot { get; set; } = 4096;
     public int Slots { get; set; } = 1;
     public SecretValue? ApiKey { get; set; }
+    // Ein für den Lauf gestartetes Profil danach wieder stoppen (ein schon laufender Server bleibt immer an)
+    public bool StopAfter { get; set; }
     public TimeSpan RequestTimeout { get; set; } = TimeSpan.FromMinutes(15);
 
     // Welche Kontextgrößen passen in einen Slot (Prompt + Antwort + Reserve)?
-    public IEnumerable<int> UsableSizes() => ContextSizes.Where(s => s + GenTokens + 192 <= ContextPerSlot).OrderBy(s => s);
+    public IEnumerable<int> UsableSizes() => ContextSizes.Where(s => FitsSlot(s, GenTokens, ContextPerSlot)).OrderBy(s => s);
+
+    // Prompt + Antwort + Reserve für Vorlage und Anweisung müssen in einen Slot passen (die Seite sperrt danach ihre Knöpfe)
+    public static bool FitsSlot(int size, int genTokens, int ctxPerSlot) => size + genTokens + 192 <= ctxPerSlot;
 }
 
 // ───────────── Durchführung ─────────────

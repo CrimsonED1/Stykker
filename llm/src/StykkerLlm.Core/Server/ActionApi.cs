@@ -389,6 +389,12 @@ public static class ActionApi
                     return DeleteRecording(e.Paths, req.Arg ?? "");
 
                 // ── Benchmark ──
+                case "bench.delete":
+                {
+                    if (!Guid.TryParse(req.Arg, out var bid) || !e.Library.RemoveBenchmark(bid)) return ActionResult.Fail("benchmark not found");
+                    e.Library.Save();
+                    return Ok(Strings.BenchDeleted);
+                }
                 case "bench.cancel":
                     ctx.Benchmarks?.Cancel();
                     return Ok();
@@ -406,6 +412,7 @@ public static class ActionApi
                         ContextPerSlot = Math.Clamp(req.GetInt("contextPerSlot", 0), 0, 1 << 20),
                         Slots = Math.Clamp(req.GetInt("slots", 1), 1, 64),
                         Seed = req.GetInt("seed", 42),
+                        StopAfter = req.GetBool("stopAfter"),
                     };
                     if (!options.Chat && options.ContextSizes.Length == 0 && !options.Tool && !options.Parallel)
                         return ActionResult.Fail(Strings.BenchNothingSelected);
