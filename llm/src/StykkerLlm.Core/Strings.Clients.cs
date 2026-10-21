@@ -9,7 +9,7 @@ public static partial class Strings
         ClientDesktopDirectHint = "While the switch is off, the desktop app talks directly to Anthropic. That is not an error.",
         ClientCliHint = "Opens a new console window. The CLI uses the address of the Stykker-Proxy.",
         ClientProxyOff = "Proxy is off – start it first",
-        ClientAutoSection = "Auto security classifier", ClientAutoLabel = "Classifier model", ClientAutoSame = "Same as the proxy target",
+        ClientAutoSection = "Safety check (Claude Code auto mode)", ClientAutoLabel = "Safety check model", ClientAutoSame = "Same as the default model",
         ClientAutoSet = "Safety check model set",
         ProxyVisionDescribeLabel = "Describe images only (recommended): the vision model says what is on each image, your default model answers",
         ProxyVisionDescribeOn = "Images are described as text for the default model", ProxyVisionDescribeOff = "Requests with images go to the vision model",
@@ -26,19 +26,22 @@ public static partial class Strings
     public static string ClientUnknown(string id) => $"Unknown client '{id}'";
     public static string ClientUnknownVariant(string key) => $"Unknown start option '{key}'";
 
-    // Modelltest der Sicherheitsprüfung (Proxy-Dialog, Abschnitt „Auto security classifier“)
-    public const string ClassifierTestButton = "Test classifier models", ClassifierTestStop = "Stop",
-        ClassifierTestProvider = "Provider to test", ClassifierTestUse = "Use as auto",
+    // Modelltest der Sicherheitsprüfung (Proxy-Dialog, Abschnitt „Safety check“)
+    public const string ClassifierTestButton = "Test safety check models", ClassifierTestStop = "Stop",
+        ClassifierTestProvider = "Models to test", ClassifierTestUse = "Use for safety check",
         ClassifierTestRealRequest = "Test request: your last real check – it contains your conversation and is sent to the provider.",
         ClassifierTestExampleRequest = "Test request: a built-in example without your conversation. It is sent to the provider.",
         ClassifierTestNoProvider = "Add a cloud provider with its key first.",
+        ClassifierTestLocalRequest = "The test request stays on this PC: it goes straight to the running servers.",
+        TestNoLocalModels = "No model is running on this PC. Start a server first.",
+        TestSourceLocal = "This PC (running servers)",
         ClassifierTestRetry = "Retry unavailable",
         ClassifierTestNoKey = "No API key is stored for this provider. Nothing was sent.",
         ClassifierTestNoModels = "The provider has not listed any model yet. Try again in a few seconds.",
-        ClassifierTestRunning = "A classifier test is already running.",
-        ClassifierTestStarted = "Classifier test started.", ClassifierTestStopping = "Stopping the classifier test.",
-        ClassifierTestNotRunning = "No classifier test is running.",
-        ClassifierTestFailed = "The classifier test could not start.",
+        ClassifierTestRunning = "A safety check test is already running.",
+        ClassifierTestStarted = "Safety check test started.", ClassifierTestStopping = "Stopping the safety check test.",
+        ClassifierTestNotRunning = "No safety check test is running.",
+        ClassifierTestFailed = "The safety check test could not start.",
         ClassifierFormatOk = "ok", ClassifierFormatNo = "no",
         ClassifierColModel = "Model", ClassifierColFormat = "Format", ClassifierColStatus = "Status",
         ClassifierColFirst = "First byte (s)", ClassifierColTotal = "Total (s)", ClassifierColNote = "Note",
@@ -79,6 +82,7 @@ public static partial class Strings
     // Modelltest der Bilderkennung (Proxy-Dialog, Abschnitt „Images“): ein eingebautes Bild, Antwort muss Rot und Blau nennen
     public const string VisionTestButton = "Test vision models", VisionTestUse = "Use as vision",
         VisionTestImageNote = "Test request: a built-in 64 × 64 image (left red, right blue) and a question. It is sent to the provider.",
+        VisionTestImageNoteLocal = "Test request: a built-in 64 × 64 image (left red, right blue) and a question. It stays on this PC.",
         VisionTestRunning = "A model test is already running.", VisionTestStarted = "Vision test started.",
         VisionTestColTime = "Time (s)", VisionTestColOk = "ok";
 
@@ -88,9 +92,9 @@ public static partial class Strings
     public const string TestAddModels = "+ Models", TestInList = "✓ in list", TestColActions = "Use",
         TestAddModelsTip = "Offer this model at the provider, as the Models dialog does",
         TestInListTip = "Offered at the provider. Click to take it off the list.",
-        TestNotTestedAuto = "not tested as classifier", TestNotTestedVision = "not tested for images",
-        TestFailedAuto = "did not pass the classifier test", TestFailedVision = "did not pass the image test",
-        TestMarkAuto = "auto ✓", TestMarkVision = "vision ✓";
+        TestNotTestedAuto = "not tested for the safety check", TestNotTestedVision = "not tested for images",
+        TestFailedAuto = "did not pass the safety check test", TestFailedVision = "did not pass the image test",
+        TestMarkAuto = "safety check ✓", TestMarkVision = "vision ✓";
     public static string TestResultsFrom(DateTime time) =>
         "results from " + time.ToString("yyyy-MM-dd HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture);
     public static string ClassifierTestSummary(int ok, int failed, int skipped) => $"ok {ok} · failed {failed} · skipped {skipped}";

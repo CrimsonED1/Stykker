@@ -44,6 +44,7 @@ public static partial class Strings
     public static string HistRam(double gb) => $"{N1(gb)} GB RAM";
     // Proxy-Panel (U9)
     public const string PxTitle = "Stykker-Proxy", PxOn = "on", PxOff = "off", PxCopy = "Copy address", PxCopied = "Copied";
+    public const string PxDefaultRule = "Requests for \"stykker\", \"claude-stykker\" or an unknown model go here.";
     public const string PxDefault = "Default model", PxDefaultTip = "Requests without a known model name, and those for \"stykker\" or \"claude-stykker\", go to this model.",
         PxLan = "Reachable in the network", PxLanOn = "LAN", PxLanOff = "this PC only";
     // Reiter des Proxy-Dialogs (Sources heißt wie der Abschnitt PxSources)
@@ -60,7 +61,7 @@ public static partial class Strings
     public const string PxRunning = "running", PxStopped = "stopped";
     // Proxy-Karte (nur Information) und Proxy-Dialog (alles Bedienbare)
     public const string PxSettings = "Settings", PxOpenDialog = "Open the Stykker-Proxy settings", PxSwitch = "Run the Stykker-Proxy",
-        PxTarget = "Target", PxClassifier = "Classifier model";
+        PxTarget = "Target", PxClassifier = "Safety check model";
     public static string PxSourceCounts(int machines, int cloud) =>
         (machines == 1 ? "1 machine" : $"{machines} machines") + " · " + (cloud == 1 ? "1 cloud provider" : $"{cloud} cloud providers");
     // Claude Desktop als Client des Proxys (3P-Konfiguration der App, Schalter neben dem Proxy)
@@ -138,6 +139,16 @@ public static partial class Strings
     public static string PfStartingFor(int sec) => $"starting … {sec} s";
     public const string PfRestartTurnOn = "Restart after a crash: turn on", PfRestartTurnOff = "Restart after a crash: turn off";
     public const string PxPort = "Port", PxPortTip = "Port of the proxy on this PC (1024–65535). Clients then use the new address.";
+    public const string PxPortInvalid = "Enter a port from 1024 to 65535.";
+    // Rückfragen im Proxy-Dialog: LAN einschalten, eine Quelle entfernen (beim Anbieter mit dem gespeicherten Schlüssel)
+    public const string PxLanConfirm = "Anyone in your network can then use the models through this proxy, without a code.",
+        PxLanConfirmYes = "Make reachable", PxRemoveConfirmYes = "Remove";
+    public static string PxRemoveMachineAsk(string name) => $"Remove {name}?";
+    public static string PxRemoveProviderAsk(string name) => $"Remove {name} and its stored key?";
+    // Reiter Tests: Umschalter zwischen den beiden Modelltests
+    public const string PxTestsSafety = "Safety check", PxTestsImages = "Images";
+    // Markierung in den Auswahllisten (Routing): das Modell hat den passenden Test bestanden
+    public const string PxPassedMark = " ✓";
     public const string CmdHistory = "history";
     public static string CmdDetails(string name) => $"Details: {name}";
     public static string CmdRecord(string name) => $"Record {name}";

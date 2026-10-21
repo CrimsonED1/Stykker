@@ -40,10 +40,11 @@
 
             @if (_tab == ProxyDialogTabs.General)
             {
-                <div class="cdlg-row">
-                    <span class="cdlg-l">@Strings.PxSwitch</span>
+                <div class="pxp-row">
+                    <span class="pxp-l">@Strings.PxSwitch</span>
                     <button id="pxd-switch" class="switch @(px.Running ? "on" : "")" role="switch" aria-checked="@(px.Running ? "true" : "false")"
                             aria-label="@Strings.PxSwitch" disabled="@(!CanWrite)" @onclick="ToggleProxy"><i></i></button>
+                    <span class="muted small">@(px.Running ? Strings.PxRunning : Strings.PxStopped)</span>
                 </div>
 
                 <div class="pxp-row">
@@ -53,19 +54,28 @@
                         @foreach (var c in models) { <option value="@c.Value">@c.Display</option> }
                     </select>
                 </div>
+                <div class="small muted pxp-sub">@Strings.PxDefaultRule</div>
                 <div class="pxp-row">
                     <span class="pxp-l">@Strings.PxPort <span class="tip" title="@Strings.PxPortTip"><Icon Name="info" /></span></span>
                     <input type="number" min="1024" max="65535" class="pxp-port" value="@(_port ?? px.Port.ToString(CultureInfo.InvariantCulture))" @oninput="e => _port = e.Value?.ToString()" disabled="@(!CanWrite)" aria-label="@Strings.PxPort" />
                     @if (_port != null && _port != px.Port.ToString(CultureInfo.InvariantCulture) && CanWrite)
                     {
-                        <button class="primary" @onclick="SavePort">@Strings.BtnSave</button><button class="ghost" @onclick="() => _port = null">@Strings.PxCancel</button>
+                        <button class="primary" disabled="@(!PortValid)" @onclick="SavePort">@Strings.BtnSave</button><button class="ghost" @onclick="() => _port = null">@Strings.PxCancel</button>
                     }
                 </div>
+                @if (_port != null && !PortValid) { <div class="small warnc pxp-sub">@Strings.PxPortInvalid</div> }
                 <div class="pxp-row">
                     <span class="pxp-l">@Strings.PxLan <span class="tip warnc" title="@Strings.ProxyLanHint"><Icon Name="info" /></span></span>
-                    <button class="switch sm @(px.BindLan ? "on warn" : "")" role="switch" aria-checked="@(px.BindLan ? "true" : "false")" aria-label="@Strings.PxLan" disabled="@(!CanWrite)" @onclick="() => SetLan(!px.BindLan)"><i></i></button>
+                    <button class="switch @(px.BindLan ? "on warn" : "")" role="switch" aria-checked="@(px.BindLan ? "true" : "false")" aria-label="@Strings.PxLan" disabled="@(!CanWrite)" @onclick="OnLanSwitch"><i></i></button>
                     <span class="muted small">@(px.BindLan ? Strings.PxLanOn : Strings.PxLanOff)</span>
                 </div>
+                @if (_askLan && !px.BindLan)
+                {
+                    <div class="pxs-ask">
+                        <span class="small warnc">@Strings.PxLanConfirm</span>
+                        <div class="row"><button class="primary" @onclick="() => { SetLan(true); _askLan = false; }">@Strings.PxLanConfirmYes</button><button class="ghost" @onclick="() => _askLan = false">@Strings.PxCancel</button></div>
+                    </div>
+                }
             }
 
             @if (_tab == ProxyDialogTabs.Sources)
@@ -87,8 +97,15 @@
                             <span class="lampi @(r.Ready ? "ok" : "bad")" title="@(r.Ready ? Strings.PxReachable : Strings.PxUnreachable)"><Icon Name="@(r.Ready ? "r-ok" : "r-err")" Title="@(r.Ready ? Strings.PxReachable : Strings.PxUnreachable)" /></span>
                             <span class="n" title="@r.Url">@r.Name</span>
                             <span class="muted small">@Strings.PxModels(r.Models.Length)</span>
-                            @if (CanWrite) { <button class="ib quiet danger" title="@Strings.PxRemove" aria-label="@Strings.PxRemove" @onclick="() => RemoveRemote(rr.Url)"><Icon Name="trash" /></button> }
+                            @if (CanWrite) { <button class="ib quiet danger" title="@Strings.PxRemove" aria-label="@Strings.PxRemove" @onclick="() => _askRemove = rr.Url"><Icon Name="trash" /></button> }
                         </div>
+                        @if (_askRemove == r.Url)
+                        {
+                            <div class="pxs-ask">
+                                <span class="small">@Strings.PxRemoveMachineAsk(r.Name)</span>
+                                <div class="row"><button class="primary danger" @onclick="() => { RemoveRemote(rr.Url); _askRemove = null; }">@Strings.PxRemoveConfirmYes</button><button class="ghost" @onclick="() => _askRemove = null">@Strings.PxCancel</button></div>
+                            </div>
+                        }
                     }
                     @if (_add == "remote")
                     {
@@ -116,9 +133,16 @@
                             {
                                 <button class="ghost" title="@Strings.ProxyProviderModelsHint" aria-label="@Strings.ProxyProviderModelsButton" @onclick="() => _modelsFor = pp.Url">@Strings.ProxyProviderModelsButton</button>
                                 <button class="ib quiet" title="@Strings.PxSetKey" aria-label="@Strings.PxSetKey" @onclick="() => _keyFor = pp.Url"><Icon Name="edit" /></button>
-                                <button class="ib quiet danger" title="@Strings.PxRemove" aria-label="@Strings.PxRemove" @onclick="() => RemoveProvider(pp.Url)"><Icon Name="trash" /></button>
+                                <button class="ib quiet danger" title="@Strings.PxRemove" aria-label="@Strings.PxRemove" @onclick="() => _askRemove = pp.Url"><Icon Name="trash" /></button>
                             }
                         </div>
+                        @if (_askRemove == pv.Url)
+                        {
+                            <div class="pxs-ask">
+                                <span class="small">@Strings.PxRemoveProviderAsk(pv.Name)</span>
+                                <div class="row"><button class="primary danger" @onclick="() => { RemoveProvider(pp.Url); _askRemove = null; }">@Strings.PxRemoveConfirmYes</button><button class="ghost" @onclick="() => _askRemove = null">@Strings.PxCancel</button></div>
+                            </div>
+                        }
                         @if (pv.Error.Length > 0) { <div class="small pxs-err">@pv.Error</div> }
                         @if (_keyFor == pv.Url)
                         {
@@ -159,10 +183,12 @@
             {
                 <h3 class="sec">@Strings.ClientAutoSection</h3>
                 <div class="small muted">@Strings.ClientAutoHint</div>
+                var passedAuto = Host.Engine.PassedChoices(vision: false);
+                var passedVision = Host.Engine.PassedChoices(vision: true);
                 <select class="cdlg-sel" aria-label="@Strings.ClientAutoLabel" title="@Strings.ClientAutoLabel" disabled="@(!CanWrite)"
                         value="@px.ClassifierValue()" @onchange="OnClassifier">
                     <option value="">@Strings.ClientAutoSame</option>
-                    @foreach (var c in models) { <option value="@c.Value">@c.Display</option> }
+                    @foreach (var c in models) { <option value="@c.Value">@c.Display@(passedAuto.Contains(c.Value) ? Strings.PxPassedMark : "")</option> }
                 </select>
 
                 <h3 class="sec">@Strings.ProxyVisionSection</h3>
@@ -170,7 +196,7 @@
                 <select class="cdlg-sel" aria-label="@Strings.ProxyVisionLabel" title="@Strings.ProxyVisionLabel" disabled="@(!CanWrite)"
                         value="@px.VisionValue()" @onchange="OnVision">
                     <option value="">@Strings.ClientAutoSame</option>
-                    @foreach (var c in models) { <option value="@c.Value">@c.Display</option> }
+                    @foreach (var c in models) { <option value="@c.Value">@c.Display@(passedVision.Contains(c.Value) ? Strings.PxPassedMark : "")</option> }
                 </select>
                 <label class="cdlg-dbg small"><input type="checkbox" checked="@px.VisionDescribe" disabled="@(!CanWrite)" @onchange="OnVisionDescribe" /> @Strings.ProxyVisionDescribeLabel</label>
             }
@@ -183,19 +209,21 @@
                 var tests = Host.Engine.ClassifierRun;
                 var running = tests is { Running: true };
                 var testUrl = ClassifierTestUrl;
-                IReadOnlyList<ClassifierResult> cRows = Providers.Count > 0 ? Host.Engine.ClassifierRows(testUrl) : Array.Empty<ClassifierResult>();
-                IReadOnlyList<VisionResult> cVision = Providers.Count > 0 ? Host.Engine.VisionRows(testUrl) : Array.Empty<VisionResult>();
+                var choiceNames = models.ToDictionary(c => c.Value, c => c.Display);
+                <div class="seg pxd-tabs pxd-sub" role="tablist" aria-label="@Strings.PxTabTests">
+                    <button role="tab" class="@(_testView == "safety" ? "on" : "")" aria-selected="@(_testView == "safety" ? "true" : "false")" @onclick='() => _testView = "safety"'>@Strings.PxTestsSafety</button>
+                    <button role="tab" class="@(_testView == "images" ? "on" : "")" aria-selected="@(_testView == "images" ? "true" : "false")" @onclick='() => _testView = "images"'>@Strings.PxTestsImages</button>
+                </div>
+                @if (_testView == "safety")
+                {
+                IReadOnlyList<ClassifierResult> cRows = Host.Engine.ClassifierRows(testUrl);
+                IReadOnlyList<VisionResult> cVision = Host.Engine.VisionRows(testUrl);
                 <h3 class="sec">@Strings.ClassifierTestButton</h3>
-                <div class="small muted pxp-hint">@(_realRequest ? Strings.ClassifierTestRealRequest : Strings.ClassifierTestExampleRequest)</div>
-                @if (Providers.Count == 0)
-                {
-                    <div class="muted small">@Strings.ClassifierTestNoProvider</div>
-                }
-                else
-                {
+                <div class="small muted pxp-hint">@(testUrl == ClassifierTest.LocalSource ? Strings.ClassifierTestLocalRequest : _realRequest ? Strings.ClassifierTestRealRequest : Strings.ClassifierTestExampleRequest)</div>
                     <div class="pxp-row">
                         <select class="ctt-prov" value="@testUrl" aria-label="@Strings.ClassifierTestProvider" title="@Strings.ClassifierTestProvider"
                                 disabled="@(!CanWrite || running)" @onchange="e => _testUrl = e.Value?.ToString()">
+                            <option value="@ClassifierTest.LocalSource">@Strings.TestSourceLocal</option>
                             @foreach (var pv in Providers) { <option value="@pv.Url">@pv.Name</option> }
                         </select>
                         <label class="small"><input type="checkbox" @bind="_retryUnavailable" disabled="@(!CanWrite || running)" /> @Strings.ClassifierTestRetry</label>
@@ -208,7 +236,6 @@
                             <button class="primary" disabled="@(!CanWrite)" @onclick="StartTest">@Strings.PxStartTest</button>
                         }
                     </div>
-                }
                 @if (running || cRows.Count > 0)
                 {
                     var c = running ? tests!.Counts : ClassifierTest.CountOf(cRows);
@@ -248,13 +275,13 @@
                                 var rr = row;
                                 bool ok = rr.FormatOk is true;
                                 bool skipped = rr.Status == Strings.ClassifierStatusSkipped;
-                                bool isAuto = px.ClassifierValue() == ProxyTarget.CloudKey(testUrl, rr.Model);
-                                bool isVision = px.VisionValue() == ProxyTarget.CloudKey(testUrl, rr.Model);
+                                bool isAuto = px.ClassifierValue() == ProxyPanel.ChoiceValue(testUrl, rr.Model);
+                                bool isVision = px.VisionValue() == ProxyPanel.ChoiceValue(testUrl, rr.Model);
                                 var autoState = ModelTestTable.AsAuto(cRows, rr.Model);
                                 var visionState = ModelTestTable.AsVision(cVision, rr.Model);
                                 bool listed = Offered(testUrl, rr.Model);
                                 <tr class="@(ok ? "ctt-good" : skipped ? "ctt-dim" : "")">
-                                    <td title="@rr.Model">@rr.Model
+                                    <td title="@rr.Model">@ModelName(testUrl, rr.Model, choiceNames)
                                         @if (isAuto) { <span class="ctt-mark">@Strings.TestMarkAuto</span> }
                                         @if (isVision) { <span class="ctt-mark">@Strings.TestMarkVision</span> }
                                     </td>
@@ -269,8 +296,11 @@
                                     <td class="ctt-acts">
                                         @if (CanWrite)
                                         {
+                                            @if (testUrl != ClassifierTest.LocalSource)
+                                            {
                                             <button class="ghost ctt-btn" title="@(listed ? Strings.TestInListTip : Strings.TestAddModelsTip)" aria-label="@(listed ? Strings.TestInList : Strings.TestAddModels)"
                                                     disabled="@running" @onclick="() => ToggleOffered(testUrl, rr.Model)"><Icon Name="@(listed ? "check" : "plus")" /><span class="ctt-lbl">@(listed ? Strings.TestInList : Strings.TestAddModels)</span></button>
+                                            }
                                             <button class="ghost ctt-btn" title="@UseTip(autoState, Strings.ClassifierTestUse, Strings.TestNotTestedAuto, Strings.TestFailedAuto)" aria-label="@Strings.ClassifierTestUse"
                                                     disabled="@(running || autoState != ModelTestTable.UseState.Usable)" @onclick='() => UseModel("proxy.classifier", testUrl, rr.Model)'><Icon Name="proxy" /><span class="ctt-lbl">@Strings.ClassifierTestUse</span></button>
                                             <button class="ghost ctt-btn" title="@UseTip(visionState, Strings.VisionTestUse, Strings.TestNotTestedVision, Strings.TestFailedVision)" aria-label="@Strings.VisionTestUse"
@@ -284,23 +314,21 @@
                     </div>
                 }
 
+                }
+                else
+                {
                 @* Bildtest: jedes Modell bekommt ein kleines Bild (links rot, rechts blau) und zeigt, ob es beide Farben nennt *@
                 var vtests = Host.Engine.VisionRun;
                 var vrunning = vtests is { Running: true };
                 var visionUrl = VisionTestUrl;
-                IReadOnlyList<VisionResult> vRows = Providers.Count > 0 ? Host.Engine.VisionRows(visionUrl) : Array.Empty<VisionResult>();
-                IReadOnlyList<ClassifierResult> vCls = Providers.Count > 0 ? Host.Engine.ClassifierRows(visionUrl) : Array.Empty<ClassifierResult>();
+                IReadOnlyList<VisionResult> vRows = Host.Engine.VisionRows(visionUrl);
+                IReadOnlyList<ClassifierResult> vCls = Host.Engine.ClassifierRows(visionUrl);
                 <h3 class="sec">@Strings.VisionTestButton</h3>
-                <div class="small muted pxp-hint">@Strings.VisionTestImageNote</div>
-                @if (Providers.Count == 0)
-                {
-                    <div class="muted small">@Strings.ClassifierTestNoProvider</div>
-                }
-                else
-                {
+                <div class="small muted pxp-hint">@(visionUrl == ClassifierTest.LocalSource ? Strings.VisionTestImageNoteLocal : Strings.VisionTestImageNote)</div>
                     <div class="pxp-row">
                         <select class="ctt-prov" value="@visionUrl" aria-label="@Strings.ClassifierTestProvider" title="@Strings.ClassifierTestProvider"
                                 disabled="@(!CanWrite || vrunning)" @onchange="e => _visionUrl = e.Value?.ToString()">
+                            <option value="@ClassifierTest.LocalSource">@Strings.TestSourceLocal</option>
                             @foreach (var pv in Providers) { <option value="@pv.Url">@pv.Name</option> }
                         </select>
                         <label class="small"><input type="checkbox" @bind="_retryVision" disabled="@(!CanWrite || vrunning)" /> @Strings.ClassifierTestRetry</label>
@@ -313,7 +341,6 @@
                             <button class="primary" disabled="@(!CanWrite)" @onclick="StartVisionTest">@Strings.PxStartTest</button>
                         }
                     </div>
-                }
                 @if (vrunning || vRows.Count > 0)
                 {
                     var vc = vrunning ? vtests!.Counts : VisionTest.CountOf(vRows);
@@ -352,13 +379,13 @@
                             {
                                 var vr = row;
                                 bool skipped = vr.Status == Strings.ClassifierStatusSkipped;
-                                bool isAuto = px.ClassifierValue() == ProxyTarget.CloudKey(visionUrl, vr.Model);
-                                bool isVision = px.VisionValue() == ProxyTarget.CloudKey(visionUrl, vr.Model);
+                                bool isAuto = px.ClassifierValue() == ProxyPanel.ChoiceValue(visionUrl, vr.Model);
+                                bool isVision = px.VisionValue() == ProxyPanel.ChoiceValue(visionUrl, vr.Model);
                                 var visionState = ModelTestTable.AsVision(vRows, vr.Model);
                                 var autoState = ModelTestTable.AsAuto(vCls, vr.Model);
                                 bool listed = Offered(visionUrl, vr.Model);
                                 <tr class="@(vr.Ok ? "ctt-good" : skipped ? "ctt-dim" : "")">
-                                    <td title="@vr.Model">@vr.Model
+                                    <td title="@vr.Model">@ModelName(visionUrl, vr.Model, choiceNames)
                                         @if (isAuto) { <span class="ctt-mark">@Strings.TestMarkAuto</span> }
                                         @if (isVision) { <span class="ctt-mark">@Strings.TestMarkVision</span> }
                                     </td>
@@ -372,8 +399,11 @@
                                     <td class="ctt-acts">
                                         @if (CanWrite)
                                         {
+                                            @if (visionUrl != ClassifierTest.LocalSource)
+                                            {
                                             <button class="ghost ctt-btn" title="@(listed ? Strings.TestInListTip : Strings.TestAddModelsTip)" aria-label="@(listed ? Strings.TestInList : Strings.TestAddModels)"
                                                     disabled="@vrunning" @onclick="() => ToggleOffered(visionUrl, vr.Model)"><Icon Name="@(listed ? "check" : "plus")" /><span class="ctt-lbl">@(listed ? Strings.TestInList : Strings.TestAddModels)</span></button>
+                                            }
                                             <button class="ghost ctt-btn" title="@UseTip(visionState, Strings.VisionTestUse, Strings.TestNotTestedVision, Strings.TestFailedVision)" aria-label="@Strings.VisionTestUse"
                                                     disabled="@(vrunning || visionState != ModelTestTable.UseState.Usable)" @onclick='() => UseModel("proxy.vision", visionUrl, vr.Model)'><Icon Name="eye" /><span class="ctt-lbl">@Strings.VisionTestUse</span></button>
                                             <button class="ghost ctt-btn" title="@UseTip(autoState, Strings.ClassifierTestUse, Strings.TestNotTestedAuto, Strings.TestFailedAuto)" aria-label="@Strings.ClassifierTestUse"
@@ -385,6 +415,7 @@
                             </tbody>
                         </table>
                     </div>
+                }
                 }
             }
 
@@ -414,6 +445,10 @@
     private string? _add, _keyFor, _modelsFor;
     private string? _port;
     private bool _wasOpen, _focus;
+    // Rückfragen: LAN einschalten, eine Quelle entfernen (deren URL); im Reiter Tests der sichtbare Test ("safety" oder "images")
+    private bool _askLan;
+    private string? _askRemove;
+    private string _testView = "safety";
     // Der offene Reiter (ProxyDialogTabs); beim ersten Zeichnen aus dem Browser gelesen
     private string _tab = ProxyDialogTabs.General;
     // Modelltests: je Test der gewählte Anbieter und die Wiederholung „Retry unavailable“ (Modelle, die beim letzten Lauf
@@ -444,7 +479,8 @@
         {
             _flash = "";
             _port = null;
-            _add = _keyFor = _modelsFor = null;
+            _add = _keyFor = _modelsFor = _askRemove = null;
+            _askLan = false;
             _testUrl = _visionUrl = null;
             _retryUnavailable = _retryVision = false;
             _realRequest = Host.Engine.ClassifierSample().Real;
@@ -535,8 +571,12 @@
     }
 
     // Der Anbieter, den der jeweilige Test prüft (Regel in ProxyPanel.TestTarget)
-    private string ClassifierTestUrl => ProxyPanel.TestTarget(Providers.Select(p => (p.Url, p.HasKey)), _testUrl);
-    private string VisionTestUrl => ProxyPanel.TestTarget(Providers.Select(p => (p.Url, p.HasKey)), _visionUrl);
+    private string ClassifierTestUrl => ProxyPanel.TestSource(Providers.Select(p => (p.Url, p.HasKey)), _testUrl);
+    private string VisionTestUrl => ProxyPanel.TestSource(Providers.Select(p => (p.Url, p.HasKey)), _visionUrl);
+
+    // Name in der Testtabelle: lokal der Anzeigename aus der Auswahl (der Testname ist „<Server-Key>|<Modell>“), sonst das Modell
+    private static string ModelName(string source, string model, IReadOnlyDictionary<string, string> names) =>
+        source == ClassifierTest.LocalSource && names.TryGetValue(model, out var shown) ? shown : model;
 
     private bool Offered(string url, string model)
         => Providers.FirstOrDefault(p => p.Url == url).Offered is { } offered && Array.IndexOf(offered, model) >= 0;
@@ -569,7 +609,7 @@
     private async Task UseModel(string action, string url, string model)
     {
         if (!CanWrite) return;
-        if (!Offered(url, model))
+        if (url != ClassifierTest.LocalSource && !Offered(url, model))
         {
             var entry = Providers.FirstOrDefault(p => p.Url == url);
             // Ohne gelistete Modelle wäre die Auswahl leer und die gewählten Modelle gingen verloren: erst warten
@@ -580,7 +620,7 @@
             var a = await Web.RunAsync(add);
             if (!a.Ok) { _flash = a.Message; return; }
         }
-        var r = await Web.RunAsync(new ActionRequest { Action = action, Arg = ProxyTarget.CloudKey(url, model) });
+        var r = await Web.RunAsync(new ActionRequest { Action = action, Arg = ProxyPanel.ChoiceValue(url, model) });
         if (r.Ok) { _flash = ""; Toast.Show(r.Message); } else _flash = r.Message;
     }
 
@@ -610,6 +650,16 @@
     private static string Sec(double? sec) => sec is double s ? s.ToString("0.00", CultureInfo.InvariantCulture) : "–";
 
     private void SetLan(bool on) { if (CanWrite) Host.Engine.Proxies.SetBindLan(on); }
+
+    // LAN aus: sofort. LAN an: erst die Rückfrage (jeder im Netz könnte den Proxy dann nutzen)
+    private void OnLanSwitch()
+    {
+        if (!CanWrite) return;
+        if (Host.Engine.Proxies.BindLan) { _askLan = false; SetLan(false); }
+        else _askLan = !_askLan;
+    }
+
+    private bool PortValid => int.TryParse(_port, NumberStyles.None, CultureInfo.InvariantCulture, out var n) && n is >= 1024 and <= 65535;
 
     private async Task SavePort()
     {
