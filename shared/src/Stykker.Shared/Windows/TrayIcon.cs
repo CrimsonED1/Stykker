@@ -8,15 +8,16 @@ namespace Stykker.Shared.Windows;
 // über das Symbol.
 public sealed class TrayIcon : IDisposable
 {
-    // Ein Eintrag im Rechtsklick-Menü. Separator = true ergibt einen Trennstrich ohne Aktion.
-    public sealed record Item(int Id, string Text, bool Separator = false, bool Disabled = false);
+    // Ein Eintrag im Rechtsklick-Menü. Separator = true ergibt einen Trennstrich ohne Aktion. Children (optional) macht
+    // den Eintrag zu einem Untermenü; Id und Aktion gelten dann für dessen Einträge.
+    public sealed record Item(int Id, string Text, bool Separator = false, bool Disabled = false, IReadOnlyList<Item>? Children = null);
 
     private const int WmClose = 0x0010, WmDestroy = 0x0002, WmNull = 0x0281, WmCommand = 0x0111;
     private const int WmLButtonUp = 0x0202, WmLButtonDblClk = 0x0203, WmRButtonUp = 0x0205;
     private const int WmApp = 0x8000 + 1;            // eigene Nachricht: die Maus auf dem Symbol
     private const int NimAdd = 0, NimModify = 1, NimDelete = 2;
     private const int NifMessage = 1, NifIcon = 2, NifTip = 4, NifInfo = 0x10, NiifInfo = 0x1;
-    private const uint MfSeparator = 0x00000800, MfGrayed = 0x00000001;
+    private const uint MfSeparator = 0x00000800, MfGrayed = 0x00000001, MfPopup = 0x00000010;
     private const uint TpmRightButton = 0x0002, TpmReturnCmd = 0x0100, TpmNonotify = 0x0080;
 
     private static readonly IntPtr HwndMessage = new(-3);        // HWND_MESSAGE: Fenster ohne Rahmen, nur für Nachrichten
@@ -164,13 +165,8 @@ public sealed class TrayIcon : IDisposable
     // und der nächste Klick geht ins Leere (das ist der Grund für SetForegroundWindow davor).
     private void ShowMenu()
     {
-        var menu = CreatePopupMenu();
+        var menu = BuildMenu(_items());
         if (menu == IntPtr.Zero) return;
-        foreach (var it in _items())
-        {
-            if (it.Separator) AppendMenu(menu, MfSeparator, 0, null);
-            else AppendMenu(menu, it.Disabled ? MfGrayed : 0, new IntPtr(it.Id), it.Text);
-        }
         GetCursorPos(out var pt);
         var hwnd = Handle;
         SetForegroundWindow(hwnd);
@@ -178,6 +174,24 @@ public sealed class TrayIcon : IDisposable
         PostMessage(hwnd, WmNull, IntPtr.Zero, IntPtr.Zero);
         DestroyMenu(menu);
         if (cmd != IntPtr.Zero) Guard(() => _onMenu(cmd.ToInt32()));
+    }
+
+    // Ein Menü aus den Einträgen; mit Children ein Untermenü (CreatePopupMenu, an den Eintrag gehängt als MF_POPUP)
+    private static IntPtr BuildMenu(IReadOnlyList<Item> items)
+    {
+        var menu = CreatePopupMenu();
+        if (menu == IntPtr.Zero) return IntPtr.Zero;
+        foreach (var it in items)
+        {
+            if (it.Separator) AppendMenu(menu, MfSeparator, 0, null);
+            else if (it.Children is { Count: > 0 } children)
+            {
+                var sub = BuildMenu(children);
+                AppendMenu(menu, MfPopup | (it.Disabled ? MfGrayed : 0), sub, it.Text);
+            }
+            else AppendMenu(menu, it.Disabled ? MfGrayed : 0, new IntPtr(it.Id), it.Text);
+        }
+        return menu;
     }
 
     // Das Symbol aus der eigenen Datei (ApplicationIcon), sonst das Standardsymbol des Systems

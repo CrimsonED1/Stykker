@@ -17,6 +17,9 @@ public sealed class StarterLog
         _file = file;
     }
 
+    // Der Pfad der Protokolldatei (der Knopf „Show the log“ öffnet sie)
+    public string FilePath => _file;
+
     // Die Datei für das Protokoll: <exeDir>\logs\starter-<Rechner>.log, wenn der Ordner beschreibbar ist (Probe: anlegen
     // und anhängen), sonst <Datenordner>\logs\starter.log.
     public static string PickFile(string exeDir, DataLayout layout, string machineName)
