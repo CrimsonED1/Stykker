@@ -116,6 +116,21 @@ public static class StateJson
                 w.WriteEndObject();
             }
             w.WriteEndArray();
+            // Verbrauch je Cloud-Anbieter: heute und die letzten 7 Tage (additiv, Zahlen aus CloudUsage)
+            w.WriteStartArray("cloudUsage");
+            foreach (var u in e.CloudUsage.Snapshot())
+            {
+                w.WriteStartObject();
+                w.WriteString("url", u.Url);
+                w.WriteNumber("todayRequests", u.TodayRequests);
+                w.WriteNumber("todayTokens", u.TodayTokens);
+                w.WriteNumber("todayErrors", u.TodayErrors);
+                w.WriteNumber("weekRequests", u.WeekRequests);
+                w.WriteNumber("weekTokens", u.WeekTokens);
+                w.WriteNumber("weekErrors", u.WeekErrors);
+                w.WriteEndObject();
+            }
+            w.WriteEndArray();
             // Die Auswahl „serviertes Modell": lokale Modelle und Cloud-Modelle, jeder mit dem Wert der Auswahl
             w.WriteStartArray("choices");
             foreach (var c in e.Proxies.Choices())
@@ -950,8 +965,16 @@ public sealed class StateSnapshot
         Choices = ReadChoices(p),
         Providers = ReadProviders(p),
         Remotes = ReadRemotes(p),
+        CloudUsage = ReadCloudUsage(p),
         Claude = ReadClaude(p),
     } : new();
+
+    private static List<ProxyCloudUsageState> ReadCloudUsage(JsonElement p) => J.Arr(p, "cloudUsage").Select(c => new ProxyCloudUsageState
+    {
+        Url = J.Str(c, "url") ?? "",
+        TodayRequests = J.Long(c, "todayRequests"), TodayTokens = J.Long(c, "todayTokens"), TodayErrors = J.Long(c, "todayErrors"),
+        WeekRequests = J.Long(c, "weekRequests"), WeekTokens = J.Long(c, "weekTokens"), WeekErrors = J.Long(c, "weekErrors"),
+    }).ToList();
 
     // Zustand des Schalters „Claude Desktop auf den Stykker-Proxy"
     private static ClaudeState ReadClaude(JsonElement p) => J.Obj(p, "claude") is { } c ? new ClaudeState
@@ -1398,6 +1421,9 @@ internal static class J
     public static double? DblOrNull(JsonElement e, string name) =>
         e.ValueKind == JsonValueKind.Object && e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Number && v.TryGetDouble(out var d) ? d : null;
 
+    public static long Long(JsonElement e, string name) =>
+        e.ValueKind == JsonValueKind.Object && e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Number && v.TryGetInt64(out var l) ? l : 0;
+
     public static int Int(JsonElement e, string name, int def = 0) =>
         e.ValueKind == JsonValueKind.Object && e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out var i) ? i : def;
 
@@ -1456,8 +1482,22 @@ public sealed class ProxyState
     public List<ProxyChoiceState> Choices { get; init; } = new();
     public List<ProxyProviderState> Providers { get; init; } = new();
     public List<ProxyRemoteState> Remotes { get; init; } = new();
+    // Verbrauch je Cloud-Anbieter (heute und 7 Tage); additiv
+    public List<ProxyCloudUsageState> CloudUsage { get; init; } = new();
     // Claude Desktop auf den Stykker-Proxy umgeschaltet (3P-Konfiguration der App)
     public ClaudeState Claude { get; init; } = new();
+}
+
+// Verbrauch eines Cloud-Anbieters (heute und die letzten 7 Tage)
+public sealed class ProxyCloudUsageState
+{
+    public string Url { get; init; } = "";
+    public long TodayRequests { get; init; }
+    public long TodayTokens { get; init; }
+    public long TodayErrors { get; init; }
+    public long WeekRequests { get; init; }
+    public long WeekTokens { get; init; }
+    public long WeekErrors { get; init; }
 }
 
 // Zustand des Schalters „Claude Desktop auf den Stykker-Proxy"
