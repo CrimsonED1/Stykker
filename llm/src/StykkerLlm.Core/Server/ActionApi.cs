@@ -489,7 +489,7 @@ public static class ActionApi
                     if (req.Name != null) m.Name = req.Name;
                     if (req.Get("exe") is { } exe) m.Exe = exe;
                     if (req.Get("args") is { } args) m.Args = args;
-                    if (req.Get("modelFile") is { } file) m.ModelFile = file;
+                    if (req.Get("modelFile") is { } file) { m.ModelFile = file; m.SizeGb = EvalQueue.Size(file); }
                     if (req.Get("port") is { } port && int.TryParse(port, out var pn)) m.Port = pn;
                     if (req.Get("enabled") is { } en) m.Enabled = en is "1" or "true" or "yes" or "on";
                     q.SaveModels();

@@ -22,6 +22,9 @@ public static partial class Strings
     public const string EvalNoResults = "No results yet.";
     public const string EvalNoAnswer = "(no answer text)";
     public const string EvalLive = "Live";
+    // Laufende Aufgabe: seit wann, und wie schnell der Server gerade schreibt (bei langsamen Modellen sieht man sonst minutenlang nichts)
+    public static string EvalRunningFor(double sec, double? tps) =>
+        $"{sec.ToString("0", CultureInfo.InvariantCulture)} s" + (tps is > 0 ? $" · {tps.Value.ToString("0.0", CultureInfo.InvariantCulture)} t/s" : "");
     public static string EvalJobs(int n) => $"{n} jobs";
     public static string EvalJobsLeft(int left, int all) => $"{left} of {all} left";
     public static string EvalModelsTimesSuites(int models, int suites) => $"{models} models × {suites} suites";
