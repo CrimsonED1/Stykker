@@ -59,12 +59,12 @@
             var frac = g.MemTotalGb > 0 ? Math.Clamp(g.MemUsedGb / g.MemTotalGb, 0, 1) : 0;
             <a class="hchip @(frac > .92 ? "warn" : "")" href="gpu" title="@g.Name · @Strings.GpuHeadline(g.MemUsedGb, g.MemTotalGb)">
                 <Icon Name="vram" /><span class="mini"><i style="width:@((int)(frac * 100))%"></i></span>
-                <b>@g.MemUsedGb.ToString("0.0", CultureInfo.InvariantCulture)</b><span class="muted hlbl">/@g.MemTotalGb.ToString("0", CultureInfo.InvariantCulture) GB</span>
+                <b>@g.MemUsedGb.ToString("0.0", CultureInfo.InvariantCulture)</b><span class="muted hchip-unit tight">/@g.MemTotalGb.ToString("0", CultureInfo.InvariantCulture) GB</span>
             </a>
         }
         @if (Host.Engine.Sys is { } s)
         {
-            <span class="hchip" title="@Strings.RamFreeGb(s.RamTotalGb - s.RamUsedGb)"><Icon Name="ram" /><b>@((s.RamTotalGb - s.RamUsedGb).ToString("0.0", CultureInfo.InvariantCulture))</b><span class="muted hlbl">GB free</span></span>
+            <span class="hchip" title="@Strings.RamFreeGb(s.RamTotalGb - s.RamUsedGb)"><Icon Name="ram" /><b>@((s.RamTotalGb - s.RamUsedGb).ToString("0.0", CultureInfo.InvariantCulture))</b><span class="muted hchip-unit">@Strings.HdrRamFree</span></span>
         }
         @* Ein Chip je Proxy-Client (Claude Desktop, Claude Code): Lampe an, wenn er über den Stykker-Proxy läuft; Klick öffnet den Dialog *@
         @foreach (var client in Host.Engine.Clients.All)
@@ -76,7 +76,7 @@
                         @onclick="() => Dialogs.Open(c.Id)"><span class="lamp"></span><Icon Name="@c.IconName" /><b class="hlbl">@c.Title</b><Icon Name="wrench" Class="sm wr" /></button>
             }
         }
-        <span class="hchip @(busy > 0 ? "busy" : "")" title="@Strings.HdrServersTip"><Icon Name="slots" /><b>@Strings.HdrServers(srv.Count, busy)</b></span>
+        <span class="hchip @(busy > 0 ? "busy" : "")" title="@Strings.HdrServersTip"><Icon Name="slots" /><b>@Strings.HdrSrvChip(srv.Count, busy)</b></span>
         @if (Host.ReadOnly)
         {
             <span class="pill wait" title="@Strings.ServerReadOnlyHint">@Strings.ServerReadOnly</span>
@@ -115,6 +115,9 @@
                 <button class="@(_density == DensityAuto ? "on" : "")" @onclick="() => SetDensity(DensityAuto)">@Strings.ViewAuto</button>
                 <button class="@(_density == DensitySmall ? "on" : "")" @onclick="() => SetDensity(DensitySmall)">@Strings.ViewSmall</button>
                 <button class="@(_density == DensityFull ? "on" : "")" @onclick="() => SetDensity(DensityFull)">@Strings.ViewFull</button>
+            </div>
+            <div class="seg">
+                <button class="@(_cardLabels ? "on" : "")" title="@Strings.CardLabelsTip" aria-pressed="@(_cardLabels ? "true" : "false")" @onclick="ToggleCardLabels">@Strings.CardLabels</button>
             </div>
         </div>
     </details>
@@ -166,6 +169,7 @@ else if (Viewer.Known && Viewer.IsViewer)
     private bool _confirm;
     private bool _shell;                 // in der Fenster-Hülle: dort die Zurück/Vor-Knöpfe zeigen
     private string _density = DensityAuto;   // auto = nach Fensterbreite (der Umschalter im ☰ überstimmt sie)
+    private bool _cardLabels;                // Kurznamen unter den Kennzahlen der Serverkarten (Schalter im ☰ → Ansicht)
     // Seiten, die nicht als Hauptpunkt in der Kopfzeile stehen, sondern im ☰
     private static readonly string[] MorePages = { "runs", "catalog", "models", "gpu", "compare", "hosts", "nodes", "phone", "settings", "bugreport", "serverdetail" };
 
@@ -178,7 +182,15 @@ else if (Viewer.Known && Viewer.IsViewer)
         await Viewer.LoadAsync();
         _shell = await Safe<bool>("stykkerUi.shell");
         _density = await Safe<string>("stykkerUi.density") ?? "auto";
+        _cardLabels = await Safe<bool>("stykkerUi.cardLabels");
         StateHasChanged();
+    }
+
+    // Kurznamen auf den Serverkarten (je Browser gemerkt; ui.js setzt die Klasse am <html>)
+    private async Task ToggleCardLabels()
+    {
+        _cardLabels = !_cardLabels;
+        await JS.InvokeVoidAsync("stykkerUi.setCardLabels", _cardLabels);
     }
 
     // Fehlt das Skript (alte Seite im Cache), bleibt die Oberfläche einfach ohne Hüllen-Knöpfe und in „auto“

@@ -136,6 +136,10 @@
                                 <button class="ib quiet danger" title="@Strings.PxRemove" aria-label="@Strings.PxRemove" @onclick="() => _askRemove = pp.Url"><Icon Name="trash" /></button>
                             }
                         </div>
+                        @if (Host.Engine.CloudUsage.Get(pv.Url) is { HasUse: true } usage)
+                        {
+                            <div class="muted small">@Strings.CloudUsageLine(usage.TodayRequests, usage.TodayTokens, usage.WeekRequests, usage.WeekTokens)</div>
+                        }
                         @if (_askRemove == pv.Url)
                         {
                             <div class="pxs-ask">

@@ -32,6 +32,8 @@ public sealed class MonitorEngine : IDisposable
     public ProxyManager Proxies { get; }
     // Zähler der Wege des Proxys seit Serverstart (Zeile „Routed“ in der Proxy-Karte)
     public ProxyRouteCounts RouteCounts { get; } = new();
+    // Verbrauch der Cloud-Anbieter je Tag (Anfragen, Fehler, Ausgabe-Token); siehe CloudUsage
+    public CloudUsage CloudUsage { get; }
     // Schalter „Claude Desktop auf den Stykker-Proxy" (3P-Ablage der App)
     public ClaudeDesktop Claude { get; }
     // Alle Proxy-Clients (Kopfleiste, Client-Dialog, Aktionen client.*); heute nur Claude (Clients/ProxyClients.cs)
@@ -140,6 +142,7 @@ public sealed class MonitorEngine : IDisposable
         // Ungültigen Pfad einmal bereinigen (Standard = Datenordner), sonst erscheint der Hinweis bei jedem Start
         if (csvNote != null && !readOnly) { settings.CsvLog = null; try { settings.Save(); } catch { } }
         Csv = new RequestLog(readOnly ? null : csvPath) { MaxBytes = limits.MaxCsvBytes };
+        CloudUsage = new CloudUsage(readOnly ? null : paths.CloudUsageFile);
         ProxyCsv = new ProxyLog(readOnly ? null : Path.Combine(paths.LogsDir, "proxy.csv")) { MaxBytes = limits.MaxCsvBytes };
         _providerKeys = readOnly ? null : new ProviderKeys(paths.Root, platform);
         Proxies = new ProxyManager(() => Registry.Servers, settings, OnProxyRecord, factory: proxyFactory, http: _http,
@@ -369,6 +372,7 @@ public sealed class MonitorEngine : IDisposable
             while (_recentProxy.Count > 64) _recentProxy.Dequeue();
         }
         RouteCounts.Add(px);
+        CloudUsage.Add(px);
         // Beobachtung des Proxys an alle laufenden Aufnahmen (Sitzungen sperren intern, der Aufruf kommt von einem Hintergrund-Thread)
         var w = Registry.Servers.FirstOrDefault(x => x.Key == px.ServerKey);
         Recorder.OnProxyRecord(px, w?.Name ?? Proxies.DisplayName(px.ServerKey), w?.Model ?? "");
@@ -544,6 +548,7 @@ public sealed class MonitorEngine : IDisposable
         _disposed = true;
         StopClassifierTest();
         Csv.Flush();
+        CloudUsage.Flush();
         Recorder.Dispose();
         Proxies.Dispose();
         Registry.Dispose();   // speichert auch die Bibliothek

@@ -6,7 +6,11 @@ namespace StykkerLlm.Server.Components;
 // Was eine Serverkarte zeigt (docs/plan-ui-redesign.md, U4), gleich für Server auf diesem PC (ServerWatcher) und auf
 // einem Model-Host (RemoteServer aus dem Stand des Hosts). Ein Wert, den das Backend nicht meldet, bleibt null – die
 // Karte zeigt dann ein gedämpftes „–“ an seinem festen Platz.
-public sealed record CardSlot(int Id, string State, double Frac, double Tps, long Generated, int CtxUsed, int CtxMax, bool Full = false);
+public sealed record CardSlot(int Id, string State, double Frac, double Tps, long Generated, int CtxUsed, int CtxMax, bool Full = false)
+{
+    // Kontext-Balken des Slots (Stufe, Anteil, Tooltip); die Rechnung steht in Core (SlotContextFill)
+    public CtxFill Ctx => SlotContextFill.Of(CtxUsed, CtxMax);
+}
 
 // Ein Abschnitt der Lesephase in der Kurve: X und Breite (SVG-Einheiten) und der Tooltip
 public sealed record ReadBand(string X, string W, string Tip);
