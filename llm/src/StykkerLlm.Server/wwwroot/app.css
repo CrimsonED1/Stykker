@@ -779,6 +779,20 @@ html:root details.menu>div,html:root .cmdk,html:root .toast{background:linear-gr
 [data-view=small] .top .hsearch{padding:5px 10px}
 @media(max-width:640px){html[data-view] .top .status{width:100%;flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;padding-bottom:2px}}
 
+/* Kopf und Karten (auftrag-llm-kopf-karten) */
+/* Kopfleiste: die Einheit einer Zahl (GB, GB free, srv) bleibt immer stehen; nur die Wörter davor fallen weg */
+.top .hchip-unit{white-space:nowrap}
+.top .hchip-unit.tight{margin-left:-4px}
+/* Serverkarte: Kurzname unter jeder Kennzahl, nur mit dem Schalter „Labels“ (ui.js setzt html[data-card-labels]) */
+.mc .mlbl{display:none;flex-basis:100%;font:10px/1.1 var(--font-mono);color:var(--muted);font-weight:400;white-space:nowrap}
+html[data-card-labels=on] .mgrid .mc{flex-wrap:wrap;row-gap:1px}
+html[data-card-labels=on] .mc .mlbl{display:block}
+/* Kontext-Balken je Slot (llama.cpp): dünn, Warnfarbe ab 85 %, Fehlerfarbe ab 100 %; ohne Werte kein Balken */
+.slot .cbar{display:block;width:26px;height:3px;margin-top:2px;border-radius:2px;background:var(--track);overflow:hidden}
+.slot .cbar i{display:block;height:100%;background:var(--acc)}
+.slot .cbar.warn i{background:var(--warn)}
+.slot .cbar.full i{background:var(--bad)}
+
 /* Handy (bis 640 px): zuerst, was läuft, dann die letzten Anfragen, dann der Proxy, Saved, Hardware und der Verlauf.
    Breiter (641–1100 px) bleibt es bei der Reihenfolge von docs/ui.md darüber. */
 @media(max-width:640px){.mon-run{order:1}.mon-rec{order:2}.mon-proxy{order:3}.mon-saved{order:4}.mon-hw{order:5}.mon-hist{order:6}}

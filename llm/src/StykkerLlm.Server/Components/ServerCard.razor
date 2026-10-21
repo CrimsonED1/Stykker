@@ -121,6 +121,10 @@
                     {
                         <span class="slot @(v.Full ? "hot" : "")" data-s="@v.State" style="--f:@((int)(v.Frac * 100))%" title="@SlotTip(v)">
                             <i></i><Icon Name="@("s-" + v.State)" Class="sm" /><b>@v.Id</b>
+                            @if (v.Ctx.Shown)
+                            {
+                                <span class="cbar @v.Ctx.Css" title="@v.Ctx.Text"><i style="width:@(v.Ctx.Percent)%"></i></span>
+                            }
                         </span>
                     }
                 </div>
@@ -129,25 +133,25 @@
     }
 
     <div class="mgrid">
-        @Metric("vram", Strings.CardVram, m.VramGb is double vr ? F1(vr) : null, "G")
-        @Metric("ram", Strings.CardRam, m.RamGb is double ra ? F1(ra) : null, "G")
-        @Metric("cpu", Strings.CardCpu, m.CpuPercent is double cp ? cp.ToString("0", CultureInfo.InvariantCulture) : null, "%")
-        @Metric("file", Strings.CardFile, m.ModelFileGb is double mf ? F1(mf) : null, "G")
-        @Metric("ctx", Strings.CardCtx, m.CtxPerSlot is int cx && cx > 0 ? (cx / 1024).ToString(CultureInfo.InvariantCulture) : null, "k")
+        @Metric("vram", Strings.CardVram, m.VramGb is double vr ? F1(vr) : null, "G", label: Strings.LblVram)
+        @Metric("ram", Strings.CardRam, m.RamGb is double ra ? F1(ra) : null, "G", label: Strings.LblRam)
+        @Metric("cpu", Strings.CardCpu, m.CpuPercent is double cp ? cp.ToString("0", CultureInfo.InvariantCulture) : null, "%", label: Strings.LblCpu)
+        @Metric("file", Strings.CardFile, m.ModelFileGb is double mf ? F1(mf) : null, "G", label: Strings.LblFile)
+        @Metric("ctx", Strings.CardCtx, m.CtxPerSlot is int cx && cx > 0 ? (cx / 1024).ToString(CultureInfo.InvariantCulture) : null, "k", label: Strings.LblCtx)
         @if (m.MultiModel)
         {
-            @Metric("layers", Strings.CardModels, m.Online ? m.Models.Count.ToString(CultureInfo.InvariantCulture) : null, "")
+            @Metric("layers", Strings.CardModels, m.Online ? m.Models.Count.ToString(CultureInfo.InvariantCulture) : null, "", label: Strings.LblModels)
         }
         else
         {
-            @Metric("slots", Strings.CardSlots, m.Slots.Count > 0 ? $"{m.SlotsBusy}/{m.Slots.Count}" : null, "")
+            @Metric("slots", Strings.CardSlots, m.Slots.Count > 0 ? $"{m.SlotsBusy}/{m.Slots.Count}" : null, "", label: Strings.LblSlots)
         }
-        @Metric("queue", Strings.CardQueue, m.Queue?.ToString(CultureInfo.InvariantCulture), "", warn: m.Queue > 0)
-        @Metric("peak", Strings.CardPeak, m.Peak > 0 ? F1(m.Peak) : null, "", sep: true)
-        @Metric("avg", Strings.CardAvg, m.Avg > 0 ? F1(m.Avg) : null, "")
-        @Metric("sum", Strings.CardSum, m.GeneratedTotal > 0 ? F1(m.GeneratedTotal / 1000.0) : null, "k")
-        @Metric("draft", Strings.CardDraft, m.DraftRate is double dr ? (dr * 100).ToString("0", CultureInfo.InvariantCulture) : null, "%")
-        @Metric("users", Strings.CardClients + ": " + (m.Clients.Length == 0 ? Strings.CardNone : string.Join(", ", m.Clients)), m.Clients.Length.ToString(CultureInfo.InvariantCulture), "")
+        @Metric("queue", Strings.CardQueue, m.Queue?.ToString(CultureInfo.InvariantCulture), "", warn: m.Queue > 0, label: Strings.LblQueue)
+        @Metric("peak", Strings.CardPeak, m.Peak > 0 ? F1(m.Peak) : null, "", sep: true, label: Strings.LblPeak)
+        @Metric("avg", Strings.CardAvg, m.Avg > 0 ? F1(m.Avg) : null, "", label: Strings.LblAvg)
+        @Metric("sum", Strings.CardSum, m.GeneratedTotal > 0 ? F1(m.GeneratedTotal / 1000.0) : null, "k", label: Strings.LblTokens)
+        @Metric("draft", Strings.CardDraft, m.DraftRate is double dr ? (dr * 100).ToString("0", CultureInfo.InvariantCulture) : null, "%", label: Strings.LblSpec)
+        @Metric("users", Strings.CardClients + ": " + (m.Clients.Length == 0 ? Strings.CardNone : string.Join(", ", m.Clients)), m.Clients.Length.ToString(CultureInfo.InvariantCulture), "", label: Strings.LblClients)
     </div>
 </article>
 
@@ -186,10 +190,11 @@
     }
 
     // Ein Feld der Kennzahlenreihe: Symbol, Wert, Einheit; fehlt der Wert, gedämpftes „–“ mit Grund im Tooltip
-    private RenderFragment Metric(string icon, string title, string? value, string unit, bool sep = false, bool warn = false) => __builder =>
+    // Der Kurzname (label) steht nur mit dem Schalter „Labels“ darunter (CSS: .mlbl)
+    private RenderFragment Metric(string icon, string title, string? value, string unit, bool sep = false, bool warn = false, string label = "") => __builder =>
     {
         var cls = "mc" + (value == null ? " na" : "") + (sep ? " sep" : "") + (warn ? " warn" : "");
         var tip = value == null ? $"{title}: {Strings.CardNotReported}" : title;
-        <span class="@cls" title="@tip"><Icon Name="@icon" Title="@title" /><b>@(value ?? "–")</b>@if (value != null && unit.Length > 0) { <small>@unit</small> }</span>
+        <span class="@cls" title="@tip"><Icon Name="@icon" Title="@title" /><b>@(value ?? "–")</b>@if (value != null && unit.Length > 0) { <small>@unit</small> }<em class="mlbl">@label</em></span>
     };
 }
