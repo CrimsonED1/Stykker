@@ -96,13 +96,18 @@ internal sealed class Shell : IDisposable
             _window = new PhotinoWindow()
                 .SetTitle("Stykker Starter")
                 .SetUseOsDefaultSize(false)
+                .SetUseOsDefaultLocation(false)
                 .SetSize(new Size(1080, 780))
                 .Center()
+                .SetChromeless(true)
                 .SetTemporaryFilesPath(Path.Combine(_layout.Root, "web-shell"));
-            // Das Symbol des Fensters (Titelleiste, Taskleiste); die Datei liegt neben der Exe
+            // Das Symbol des Fensters (Taskleiste); die Datei liegt neben der Exe
             var icon = Path.Combine(AppContext.BaseDirectory, IconFile);
             if (File.Exists(icon)) _window.SetIconFile(icon);
             _window.RegisterWebMessageReceivedHandler(OnMessage);
+            // Fenster-Chrome: Zustandsänderungen (Maximize/Restore) melden an die Seite
+            _window.RegisterMaximizedHandler((s, e) => SendWindowState(true));
+            _window.RegisterRestoredHandler((s, e) => SendWindowState(false));
             // Photino verlangt eine Startseite vor WaitForClose; die Seite ist eingebettet (siehe WebContent)
             _window.LoadRawString(WebContent.Page(_gpu));
             _windowThread = Environment.CurrentManagedThreadId;
@@ -126,6 +131,28 @@ internal sealed class Shell : IDisposable
             _log.Write("window: page ready");
             var model = _model;
             model?.Enqueue(model.Publish);
+            SendWindowState();
+            return;
+        }
+        // Fenster-Chrome: einfache Zeichenketten (nicht JSON)
+        if (message == "window:minimize") { _window?.SetMinimized(true); return; }
+        if (message == "window:maximize") { _window?.SetMaximized(true); return; }
+        if (message == "window:restore") { _window?.SetMaximized(false); return; }
+        if (message == "window:close") { _window?.Close(); return; }
+        if (message.StartsWith("window:move "))
+        {
+            var parts = message.Substring("window:move ".Length).Split(',');
+            if (parts.Length == 2 &&
+                int.TryParse(parts[0], out var dx) &&
+                int.TryParse(parts[1], out var dy))
+            {
+                try
+                {
+                    if (_window?.Maximized != true)
+                        _window?.Offset(new Point(dx, dy));
+                }
+                catch { }
+            }
             return;
         }
         JsonDocument doc;
@@ -167,6 +194,20 @@ internal sealed class Shell : IDisposable
             try { _window.SendWebMessage(json); }
             catch (Exception ex) when (ex is InvalidOperationException or ObjectDisposedException) { }
         }
+    }
+
+    // Fenster-Chrome: Maximisierungs-Zustand an die Seite melden (Button □/⬜).
+    private void SendWindowState()
+    {
+        bool maximized = false;
+        try { maximized = _window?.Maximized == true; }
+        catch { }
+        SendWindowState(maximized);
+    }
+
+    private void SendWindowState(bool maximized)
+    {
+        ReplyFromWindow("window:state " + (maximized ? "maximized" : "restored"));
     }
 
     // Aus Hintergrundthreads: auf den Fensterthread umleiten. Nicht unter dem Schloss, weil das Fenster darauf wartet.
