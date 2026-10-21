@@ -20,6 +20,9 @@ public sealed class StarterSettings
     public bool AskBeforeUpdate { get; set; } = true;
     public bool UpdateStoppedWithoutAsking { get; set; }
     public int VersionsKept { get; set; } = 2;
+
+    // Was das Schließen des Fensters macht: "ask" (fragen), "tray" (im Tray weiterlaufen) oder "quit" (beenden)
+    public string CloseAction { get; set; } = "ask";
 }
 
 public sealed class ProgramEntry

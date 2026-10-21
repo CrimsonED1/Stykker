@@ -28,6 +28,8 @@ internal sealed class Shell : IDisposable
     private int _windowThread;   // der Thread, in dem das Fenster läuft (der Hauptthread)
     private bool _ready;      // die Seite hat „shell.ready“ gemeldet: erst dann darf SendWebMessage kommen
     private volatile bool _quit;
+    private bool _allowClose;           // das Fenster schließt ohne Frage (gewählt: in den Tray); nur Fensterthread
+    private volatile string? _pendingAsk;   // Frage, die die Seite zeigen soll, sobald sie steht ("quit")
     private bool _disposed;
     private int _nextMenuId = MenuFirstDynamic;
     private Model? _model;
@@ -35,6 +37,7 @@ internal sealed class Shell : IDisposable
     private EventWaitHandle? _openEvent;
     private readonly bool _defaultData;
     private readonly int? _checkEvery;
+    private static readonly TimeSpan StartupDelay = TimeSpan.FromSeconds(3);
 
     public Shell(DataLayout layout, Program.Options opt, string mutexName)
     {
@@ -57,7 +60,13 @@ internal sealed class Shell : IDisposable
 
         _openEvent = SingleInstance.Listen(_mutexName, () => Post(OpenWindow));
         _model.Start();
-        if (openWindow) Post(OpenWindow);
+        // Erst die Oberfläche, dann die Programme (siehe Model.BeginStartupAfter)
+        if (openWindow)
+        {
+            _model.BeginStartupFallback(TimeSpan.FromSeconds(20));
+            Post(OpenWindow);
+        }
+        else _model.BeginStartupAfter(StartupDelay);
 
         while (!_quit)
             _requests.Take()();
@@ -93,6 +102,7 @@ internal sealed class Shell : IDisposable
         {
             if (_window != null) return;   // schon offen
             _ready = false;
+            _allowClose = false;
             _window = new PhotinoWindow()
                 .SetTitle("Stykker Starter")
                 .SetUseOsDefaultSize(false)
@@ -105,6 +115,7 @@ internal sealed class Shell : IDisposable
             var icon = Path.Combine(AppContext.BaseDirectory, IconFile);
             if (File.Exists(icon)) _window.SetIconFile(icon);
             _window.RegisterWebMessageReceivedHandler(OnMessage);
+            _window.RegisterWindowClosingHandler(OnClosing);
             // Fenster-Chrome: Zustandsänderungen (Maximize/Restore) melden an die Seite
             _window.RegisterMaximizedHandler((s, e) => SendWindowState(true));
             _window.RegisterRestoredHandler((s, e) => SendWindowState(false));
@@ -131,7 +142,13 @@ internal sealed class Shell : IDisposable
             _log.Write("window: page ready");
             var model = _model;
             model?.Enqueue(model.Publish);
+            model?.BeginStartupAfter(StartupDelay);
             SendWindowState();
+            if (_pendingAsk is { } ask)
+            {
+                _pendingAsk = null;
+                ReplyFromWindow(AskJson(ask));
+            }
             return;
         }
         // Fenster-Chrome: einfache Zeichenketten (nicht JSON)
@@ -166,7 +183,26 @@ internal sealed class Shell : IDisposable
             {
                 case "pick": Pick(); break;
                 case "close": _window?.Close(); break;
-                case "quit": RequestQuit(); break;
+                case "quit": AskQuit(); break;
+                case "closeChoice":
+                {
+                    var choice = root.TryGetProperty("choice", out var ch) ? ch.GetString() : null;
+                    var remember = root.TryGetProperty("remember", out var r) && r.ValueKind == JsonValueKind.True;
+                    _log.Write($"close: choice {choice}{(remember ? ", remembered" : "")}");
+                    if (choice is not ("tray" or "quit")) break;
+                    if (remember) _model?.RememberCloseAction(choice);
+                    if (choice == "tray") CloseToTray();
+                    else AskQuit();
+                    break;
+                }
+                case "quitWith":
+                {
+                    var stop = root.TryGetProperty("stop", out var s) && s.ValueKind == JsonValueKind.True;
+                    _log.Write($"quit: stop the programs {(stop ? "yes" : "no")}");
+                    if (stop && _model != null) _model.StopAllThen(RequestQuit);
+                    else RequestQuit();
+                    break;
+                }
                 case "openFolder":
                     Process.Start(new ProcessStartInfo("explorer.exe", "\"" + _layout.Root + "\"") { UseShellExecute = false });
                     break;
@@ -176,6 +212,44 @@ internal sealed class Shell : IDisposable
             }
         }
     }
+
+    // Das X (eigene Titelleiste, Alt+F4, Taskleiste). true = offen lassen (Photino.NET: true heißt „nicht schließen“).
+    // Je nach Einstellung: fragen, in den Tray (das Fenster schließt, der Starter läuft weiter) oder beenden.
+    private bool OnClosing(object? sender, EventArgs e)
+    {
+        if (_quit || _allowClose) return false;
+        bool ready;
+        lock (_gate) ready = _ready;
+        if (!ready) return false;               // keine Seite, die fragen könnte: wie bisher in den Tray
+        switch (_model?.CloseAction ?? "ask")
+        {
+            case "tray": return false;
+            case "quit": AskQuit(); return true;
+        }
+        ReplyFromWindow(AskJson("close"));
+        return true;
+    }
+
+    private void CloseToTray()
+    {
+        _allowClose = true;
+        _window?.Close();
+    }
+
+    // Beenden: laufen Programme, fragt die Seite, ob sie mit gestoppt werden; sonst endet der Starter gleich.
+    // Von jedem Thread (Tray, Seite); ist das Fenster zu, geht es dafür auf.
+    private void AskQuit()
+    {
+        var running = _model?.Programs.Any(p => p.Running) == true;
+        if (!running) { RequestQuit(); return; }
+        bool ready;
+        lock (_gate) ready = _ready && _window != null;
+        if (ready) { Tell(AskJson("quit")); return; }
+        _pendingAsk = "quit";
+        Post(OpenWindow);
+    }
+
+    private static string AskJson(string what) => JsonSerializer.Serialize(new { type = "ask", what });
 
     // Der Dateidialog gehört zum Fenster; das Ergebnis geht zurück an die Seite
     private void Pick()
@@ -306,7 +380,7 @@ internal sealed class Shell : IDisposable
         _menu[open] = () => Post(OpenWindow);
         items.Add(new TrayIcon.Item(open, "Open the Starter"));
         var quit = _nextMenuId++;
-        _menu[quit] = RequestQuit;
+        _menu[quit] = AskQuit;
         items.Add(new TrayIcon.Item(quit, "Quit the Starter"));
         return items;
     }

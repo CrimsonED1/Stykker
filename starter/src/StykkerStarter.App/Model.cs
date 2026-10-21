@@ -46,6 +46,12 @@ internal sealed class Model : IDisposable
     private DateTime? _lastChecked;
     private DateTime _nextCheck;
     private System.Threading.Timer? _timer;
+    private System.Threading.Timer? _startupTimer;
+    private System.Threading.Timer? _fallbackTimer;
+    private int _startupScheduled;
+    private bool _startupDone;          // nur auf dem Thread der Warteschlange
+    private DateTime? _startupAt;       // wann die Programme starten (UTC), solange die Pause läuft
+    private volatile bool _stopping;
     private DateTime _copyPublished = DateTime.MinValue;
 
     private volatile ProgramView[] _programs = Array.Empty<ProgramView>();
@@ -84,9 +90,78 @@ internal sealed class Model : IDisposable
                            (broken == null ? "" : $", BROKEN: {broken}"));
             }
             Reschedule();
-            StartupPrograms();
-            CheckAll();
+            Publish();
         });
+    }
+
+    // Erst das Fenster, dann die Programme: die Seite meldet sich (oder der Tray ist allein), und nach der Pause
+    // starten die Programme und die erste Prüfung. Läuft nur einmal, auch wenn mehrere Auslöser kommen.
+    public void BeginStartupAfter(TimeSpan delay)
+    {
+        if (Interlocked.Exchange(ref _startupScheduled, 1) != 0) return;
+        _log.Write($"start: programs start in {delay.TotalSeconds:0} s");
+        Enqueue(() =>
+        {
+            if (_startupDone) return;
+            _startupAt = DateTime.UtcNow + delay;   // die Seite zählt davon herunter
+            Publish();
+        });
+        _startupTimer = new System.Threading.Timer(_ => Enqueue(RunStartup), null, delay, Timeout.InfiniteTimeSpan);
+    }
+
+    // „Start now“ auf der Seite: nicht auf die Pause warten
+    private void StartupNow()
+    {
+        Interlocked.Exchange(ref _startupScheduled, 1);
+        _startupTimer?.Dispose();
+        _log.Write("start: programs started at once (start now)");
+        RunStartup();
+    }
+
+    private void RunStartup()
+    {
+        if (_startupDone || _stopping) return;
+        _startupDone = true;
+        _startupAt = null;
+        StartupPrograms();
+        CheckAll();
+    }
+
+    // Beenden mit „die Programme auch stoppen“: jedes laufende Programm wird gestoppt (höflich, nach 10 s hart),
+    // danach ruft der Starter done. Neue Starts und Prüfungen gibt es ab jetzt nicht mehr.
+    public void StopAllThen(Action done)
+    {
+        StopEngine();
+        Enqueue(() =>
+        {
+            _startupDone = true;
+            _startupAt = null;
+            _notice = "Stopping the programs…";
+            Publish();
+            foreach (var program in _config.Programs.ToList())
+            {
+                if (ProgramCheck.BrokenReason(program) != null || !_service.IsRunning(program)) continue;
+                var report = _service.Stop(program);
+                _log.Write($"quit: stop {program.Id}: {report.Closed.Count} closed, {report.Killed.Count} ended, {report.Left.Count} left");
+            }
+            done();
+        });
+    }
+
+    // Was das Schließen des Fensters macht: "ask", "tray" oder "quit" (Einstellung, auch aus dem Dialog gemerkt)
+    public string CloseAction => _config.Settings.CloseAction;
+
+    public void RememberCloseAction(string action) => Enqueue(() =>
+    {
+        _config.Settings.CloseAction = action;
+        SaveConfig();
+        Publish();
+    });
+
+    // Falls die Seite nie fertig wird (WebView2 fehlt): die Programme starten trotzdem
+    public void BeginStartupFallback(TimeSpan after)
+    {
+        _fallbackTimer = new System.Threading.Timer(_ => BeginStartupAfter(TimeSpan.Zero), null, after, Timeout.InfiniteTimeSpan);
     }
 
     // Beim Start: ein Programm ohne Kopie wird eingerichtet (kopieren und starten); eines, das mit dem Starter starten
@@ -155,8 +230,11 @@ internal sealed class Model : IDisposable
     // Beim Beenden: der Timer hört auf, eine laufende Kopie oder Prüfung wird abgebrochen, und es kommt keine neue dazu
     public void StopEngine()
     {
+        _stopping = true;
         _timer?.Dispose();
         _timer = null;
+        _startupTimer?.Dispose();
+        _fallbackTimer?.Dispose();
         _cancel?.Cancel();
     }
 
@@ -175,6 +253,7 @@ internal sealed class Model : IDisposable
         {
             case "ready": Enqueue(Publish); break;
             case "check": Enqueue(CheckAll); break;
+            case "startNow": Enqueue(StartupNow); break;
             case "update": { var id = Str(message, "id"); Enqueue(() => UpdateProgram(id)); break; }
             case "start": { var id = Str(message, "id"); Enqueue(() => StartProgram(id)); break; }
             case "stop": { var id = Str(message, "id"); Enqueue(() => StopProgram(id)); break; }
@@ -199,6 +278,7 @@ internal sealed class Model : IDisposable
 
     private void CheckAll()
     {
+        if (_stopping) return;
         _lastChecked = DateTime.Now;
         bool changed = false;
         foreach (var program in _config.Programs.ToList())
@@ -417,6 +497,8 @@ internal sealed class Model : IDisposable
         s.AskBeforeUpdate = Bool(message, "askBeforeUpdate", s.AskBeforeUpdate);
         s.UpdateStoppedWithoutAsking = Bool(message, "updateStoppedWithoutAsking", s.UpdateStoppedWithoutAsking);
         s.VersionsKept = Math.Clamp(Int(message, "versionsKept", s.VersionsKept), 1, 5);
+        var close = Str(message, "closeAction");
+        if (close is "ask" or "tray" or "quit") s.CloseAction = close;
         SaveConfig();
         Reschedule();
 
@@ -468,6 +550,7 @@ internal sealed class Model : IDisposable
                 askBeforeUpdate = settings.AskBeforeUpdate,
                 updateStoppedWithoutAsking = settings.UpdateStoppedWithoutAsking,
                 versionsKept = settings.VersionsKept,
+                closeAction = settings.CloseAction,
                 autostartApplies = _defaultData,
             },
             dataDir = _layout.Root,
@@ -480,6 +563,7 @@ internal sealed class Model : IDisposable
             last = _last,
             opSeq = _opSeq,
             notice = _notice,
+            startupLeftMs = _startupAt is { } at ? Math.Max(0, (int)(at - DateTime.UtcNow).TotalMilliseconds) : (int?)null,
         });
         _sink(json);
         _trayChanged();

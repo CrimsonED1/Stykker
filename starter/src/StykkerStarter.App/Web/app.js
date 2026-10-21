@@ -175,6 +175,7 @@
     $('s-ask').checked = s.askBeforeUpdate;
     $('s-stopped').checked = s.updateStoppedWithoutAsking;
     $('s-kept').value = String(s.versionsKept);
+    $('s-close').value = s.closeAction || 'ask';
     $('s-start').disabled = !s.autostartApplies;
     $('s-save').title = s.autostartApplies ? '' : 'A test data folder does not change the autostart';
   }
@@ -200,6 +201,74 @@
     el.innerHTML = '<div class="toast" style="--level:var(--' + level + ')">' + esc(text) + '</div>';
   }
 
+  // ---------- Pause vor dem Start der Programme ----------
+
+  var startupDeadline = null, startupTick = null;
+  function renderStartup() {
+    var left = state && state.startupLeftMs;
+    if (left === null || left === undefined) {
+      startupDeadline = null;
+      if (startupTick) { clearInterval(startupTick); startupTick = null; }
+      $('startup').hidden = true;
+      return;
+    }
+    startupDeadline = Date.now() + left;
+    $('startup').hidden = false;
+    drawStartup();
+    if (!startupTick) startupTick = setInterval(drawStartup, 200);
+  }
+  function drawStartup() {
+    if (startupDeadline === null) return;
+    $('startup-left').textContent = Math.max(0, Math.ceil((startupDeadline - Date.now()) / 1000));
+  }
+  $('startup-now').addEventListener('click', function () { $('startup-now').disabled = true; send({ cmd: 'startNow' }); });
+
+  // ---------- Fragen beim Schließen und Beenden ----------
+
+  function askButton(label, cls, onClick) {
+    var b = document.createElement('button');
+    b.className = 'btn ' + cls;
+    b.textContent = label;
+    b.addEventListener('click', onClick);
+    return b;
+  }
+  function closeAsk() { $('ask').hidden = true; }
+  function openAsk(what) {
+    var buttons = $('ask-buttons');
+    buttons.innerHTML = '';
+    $('ask-list').innerHTML = '';
+    $('ask-remember').checked = false;
+    if (what === 'close') {
+      $('ask-title').innerHTML = '<b>◆</b> CLOSE THE WINDOW';
+      $('ask-text').textContent = 'Keep the Starter running in the tray, or quit it?';
+      $('ask-remember-row').hidden = false;
+      buttons.appendChild(askButton('Cancel', 'quiet', closeAsk));
+      buttons.appendChild(askButton('Quit', '', function () {
+        send({ cmd: 'closeChoice', choice: 'quit', remember: $('ask-remember').checked });
+        closeAsk();
+      }));
+      buttons.appendChild(askButton('Keep in tray', 'primary', function () {
+        send({ cmd: 'closeChoice', choice: 'tray', remember: $('ask-remember').checked });
+        closeAsk();
+      }));
+    } else {
+      var running = ((state && state.programs) || []).filter(function (p) { return p.running; });
+      $('ask-title').innerHTML = '<b>◆</b> QUIT THE STARTER';
+      $('ask-text').textContent = running.length === 1
+        ? 'This program is running. Stop it too?'
+        : 'These programs are running. Stop them too?';
+      $('ask-list').innerHTML = running.map(function (p) { return '<li>' + esc(p.name) + '</li>'; }).join('');
+      $('ask-remember-row').hidden = true;
+      buttons.appendChild(askButton('Cancel', 'quiet', closeAsk));
+      buttons.appendChild(askButton('Quit, keep them running', '', function () { send({ cmd: 'quitWith', stop: false }); closeAsk(); }));
+      buttons.appendChild(askButton('Stop them and quit', 'danger', function () { send({ cmd: 'quitWith', stop: true }); closeAsk(); }));
+    }
+    $('ask').hidden = false;
+    var last = buttons.lastChild;
+    if (last) last.focus();
+  }
+  document.addEventListener('keydown', function (ev) { if (ev.key === 'Escape' && !$('ask').hidden) closeAsk(); });
+
   function render() {
     if (!state) return;
     renderPrograms();
@@ -208,6 +277,7 @@
     renderSettings();
     renderFooter();
     renderNotice();
+    renderStartup();
     // Nach einem Vorgang, den der Benutzer angestoßen hat, zeigt der Starter das Ergebnis; sonst bleibt die Seite stehen
     if (pendingSeq !== null && !state.copy && state.opSeq !== pendingSeq) {
       pendingSeq = null;
@@ -276,6 +346,7 @@
     }
     if (m.type === 'state') { state = m; render(); }
     else if (m.type === 'found' || m.type === 'error') renderFound(m);
+    else if (m.type === 'ask') openAsk(m.what);
     else if (m.type === 'picked') { $('f-path').value = m.path; inspect(); }
   }
 
@@ -324,7 +395,7 @@
     });
   });
 
-  ['s-interval', 's-start', 's-ask', 's-stopped', 's-kept'].forEach(function (id) {
+  ['s-interval', 's-start', 's-ask', 's-stopped', 's-kept', 's-close'].forEach(function (id) {
     $(id).addEventListener('change', function () { dirty = true; });
   });
   $('s-save').addEventListener('click', function () {
@@ -336,6 +407,7 @@
       askBeforeUpdate: $('s-ask').checked,
       updateStoppedWithoutAsking: $('s-stopped').checked,
       versionsKept: parseInt($('s-kept').value, 10),
+      closeAction: $('s-close').value,
     });
   });
   $('s-cleanup').addEventListener('click', function () { send({ cmd: 'cleanup' }); });
