@@ -12,6 +12,8 @@ public sealed class AppPaths
     public string? AppDir { get; }
     public string SettingsFile => Path.Combine(Root, "settings.json");
     public string LibraryFile => Path.Combine(Root, "library.json");
+    // Verbrauch der Cloud-Anbieter je Tag (nur Zahlen, siehe CloudUsage)
+    public string CloudUsageFile => Path.Combine(Root, "cloud-usage.json");
     // Protokolle: Anfrageprotokoll, Server-Logs (<name>-<port>.log), Aufnahmen und die Logs der Programme. Eine Stelle für alles.
     public string LogsDir => _logsDir.Value;
     public string DefaultCsv => Path.Combine(LogsDir, "requests.csv");

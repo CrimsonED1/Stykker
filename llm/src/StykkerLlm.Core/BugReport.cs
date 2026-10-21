@@ -41,6 +41,7 @@ public static partial class BugReport
                 }
             }
             if (File.Exists(paths.SettingsFile)) Add(zip, entries, "settings.json", Redact(ReadShared(paths.SettingsFile)));
+            if (File.Exists(paths.CloudUsageFile)) Add(zip, entries, "cloud-usage.json", Redact(ReadShared(paths.CloudUsageFile)));
             if (!string.IsNullOrWhiteSpace(stateJson)) Add(zip, entries, "state.json", Redact(stateJson));
         }
         var summary = Strings.BugReportSummary(zipPath, entries.Count);
