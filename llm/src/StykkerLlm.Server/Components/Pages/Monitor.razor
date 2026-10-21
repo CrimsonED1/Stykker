@@ -499,9 +499,10 @@
                     {
                         var text = b.Text;
                         <div class="mx-block">
-                            <div class="mx-block-hd"><b>@b.Title</b><span class="muted small">@b.Hint</span>
+                            <div class="mx-block-hd"><b>@b.Title</b>
                                 <button class="ib quiet" title="@Strings.PxCopy" aria-label="@Strings.PxCopy" @onclick="() => Copy(text)"><Icon Name="@(_copied ? "r-ok" : "file")" /></button>
                             </div>
+                            <div class="muted small">@b.Hint</div>
                             <pre class="mx-code"><code>@text</code></pre>
                         </div>
                     }
