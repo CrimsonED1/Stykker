@@ -8,7 +8,7 @@ public static partial class Strings
     public const string CardCtx = "Context per slot", CardSlots = "Busy slots / slots", CardModels = "Loaded models";
     public const string CardQueue = "Waiting requests (queue)", CardPeak = "Peak t/s", CardAvg = "Average t/s while active";
     public const string CardSum = "Tokens generated", CardDraft = "Draft acceptance (speculative decoding)", CardClients = "Clients";
-    public const string CardNotReported = "not reported by this backend", CardNone = "none";
+    public const string CardNone = "none";
     public const string CardLocal = "local", CardLocalTip = "Runs on this machine";
     public static string CardHostTip(string host) => $"Runs on model host {host}";
     public const string CardServed = "Served by the proxy as \"stykker\"", CardServe = "Serve via the proxy as \"stykker\"";
@@ -158,6 +158,11 @@ public static partial class Strings
     public const string NoticeDismissed = "Notice hidden";
     public const string HostRemoveTitle = "Remove host";
     public static string HostRemoveConfirm(string name) => $"Remove the host \"{name}\"? It has to be paired again with a new code.";
+    // Kurzwort unter der Slot-Nummer (die Kachel ist 38 px breit, ein Tooltip fehlt am Handy)
+    public static string SlotShort(string state) => state switch
+    {
+        "gen" => "write", "read" => "read", "load" => "load", "off" => "off", _ => "idle",
+    };
     public static string StateText(string state) => state switch
     {
         "gen" => CardStateGen, "read" => CardStateRead, "load" => CardStateLoad, "off" => CardStateOff, _ => CardStateIdle,

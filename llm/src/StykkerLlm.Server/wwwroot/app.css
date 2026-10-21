@@ -422,7 +422,7 @@ html.shell .hchip .mini i{transition:none;box-shadow:none}
 .slot[data-s=idle]>i{box-shadow:none}
 .slot[data-s=gen]>i::after{content:"";position:absolute;inset:0;background:linear-gradient(0deg,transparent,rgb(255 255 255/.35),transparent);background-size:100% 40%;background-repeat:no-repeat;animation:slot-run 1.4s linear infinite}
 @keyframes slot-run{from{background-position:0 160%}to{background-position:0 -60%}}
-.slot .ic,.slot b{position:relative}.slot b{font:10px var(--font-mono);color:var(--muted);font-weight:400}
+.slot .ic,.slot b,.slot .slot-st{position:relative}.slot .slot-st{font:9px var(--font-mono);font-style:normal;color:var(--muted);line-height:1}.slot b{font:10px var(--font-mono);color:var(--muted);font-weight:400}
 .mods{display:flex;flex-direction:column;gap:5px;margin-top:10px}
 .mod{display:grid;grid-template-columns:minmax(0,1fr) 70px 70px 54px 54px 30px;gap:10px;align-items:center}
 .mod.head{font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
@@ -841,3 +841,12 @@ html[data-card-labels=on] .mc .mlbl{display:block}
 .mx-kv b{font:500 12px var(--font-mono);color:var(--ink);text-align:right;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .mx-ctx{font:12px var(--font-mono);color:var(--muted);margin-top:3px}
 .mx-ctx.warn{color:var(--warn)}
+/* Kopfzeile: Text neben dem Prompt-Symbol; Handy: die Chipreihe scrollt quer, ein Verlauf rechts zeigt, dass mehr kommt */
+nav a:has(.navtxt){display:inline-flex;align-items:center;gap:5px}
+@media(max-width:640px){html[data-view] .top .status{-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 28px),transparent);mask-image:linear-gradient(90deg,#000 calc(100% - 28px),transparent);padding-right:24px}}
+/* ☰ steht direkt hinter den Reitern (nicht allein am Ende der Leiste): reicht der Platz nicht, rutscht die ganze
+   Statusleiste in die zweite Zeile, nie das ☰ allein. Zwischen 1400 und 1700 px rücken Reiter und Chips enger, damit
+   bei 1440 px (übliches Notebook) alles in eine Zeile passt; der VRAM-Chip zeigt dann nur die Zahl (Gesamt im Tooltip). */
+.top>details.menu.more{order:1}.top>.status{order:2}
+@media(min-width:1401px) and (max-width:1700px){html:not([data-view=small]) .top{column-gap:14px}html:not([data-view=small]) .top .status{gap:8px}html:not([data-view=small]) .top nav a{padding:5px 10px}.top a.hchip .mini,.top a.hchip .hchip-unit.tight{display:none}}
+@media(max-width:1900px){.top .hlbl2,.top .hsearch .kbd{display:none}.top .hsearch{padding:5px 10px}}
