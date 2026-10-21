@@ -219,6 +219,9 @@ public sealed class AppSettings
     public int BenchRegressionPct { get; set; } = 10;        // ab diesem Rückgang in % meldet ein Benchmark-Lauf (0 = nie)
     // Port des StykkerLLM-Servers, mit dem Fenster und TUI arbeiten (0 = keiner eingeschaltet: alles selbst messen)
     public int ServerPort { get; set; }
+    // Prompt-Seite: letzter Arbeitsordner und ob die Werkzeuge an waren. AutoApprove und der API-Schlüssel bleiben aus Absicht draußen
+    public string PromptWorkdir { get; set; } = "";
+    public bool PromptToolsOn { get; set; }
 
     [JsonIgnore] public StorageLimits Limits => StorageLimits.FromMb(MaxLogFiles, MaxLogsMb, MaxRecordings, MaxRecordingsMb, MaxRecordingMb, MaxCsvMb);
     [JsonIgnore] public TimeSpan StartTimeout => TimeSpan.FromMinutes(StartTimeoutMin > 0 ? StartTimeoutMin : 10);
@@ -264,6 +267,7 @@ public sealed class AppSettings
         bool portMoved = s.ProxyPort == 8079;
         if (portMoved) s.ProxyPort = 17500;
         s.ProxyTarget ??= "";
+        s.PromptWorkdir ??= "";
         s.ProxyClassifier ??= "";
         s.ProxyVision ??= "";
         if (s.GpuTopCount <= 0) s.GpuTopCount = 8;

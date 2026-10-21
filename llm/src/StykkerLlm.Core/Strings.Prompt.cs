@@ -12,7 +12,7 @@ public static partial class Strings
     public const string PromptThinking = "thinking";
     public const string PromptYou = "You", PromptModelSays = "Model";
     public const string PromptBusy = "An answer is still coming.";
-    public const string PromptNeedsKey = "The server wants an API key (started with --api-key). Enter it in the field above.";
+    public const string PromptNeedsKey = "The server wants an API key (started with --api-key). Enter it under Advanced.";
     public const string PromptNoServer = "No server with a loaded model.";
     // Einträge „Via Stykker-Proxy“ (Cloud-Modelle und das aktuelle Ziel des Proxys)
     public const string PromptViaGroup = "Via Stykker-Proxy", PromptViaCurrent = "Stykker-Proxy · current target";
@@ -33,6 +33,10 @@ public static partial class Strings
     public const string ToolTimeout = "Stopped after 60 s.";
     public const string ToolTruncated = "… (output cut)";
     public const string PromptNoWorkdir = "Pick a working folder that exists.";
+    // Ordner-Wähler und erweiterte Optionen der Prompt-Seite
+    public const string PromptChooseFolder = "Choose folder…", PromptUseFolder = "Use this folder", PromptFolderCancel = "Cancel";
+    public const string PromptFolderUp = "Up one level", PromptFolderDrives = "Drives", PromptFolderEmpty = "No subfolders here.";
+    public const string PromptFolderFailed = "This folder can't be opened.", PromptAdvanced = "Advanced";
     public static string ToolNotFound(string path) => $"Not found: {path}";
     public static string ToolTooBig(int bytes) => $"File is larger than {bytes / 1000} KB – read it with offset and limit.";
     public static string ToolWritten(string path, int chars) => $"Wrote {path} ({chars} chars).";
