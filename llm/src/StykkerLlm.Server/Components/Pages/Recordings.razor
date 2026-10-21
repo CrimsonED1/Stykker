@@ -71,6 +71,7 @@
             <div class="kpi"><div class="muted">@Strings.TileCache</div>@r.CachePct.ToString("0", CultureInfo.InvariantCulture) %</div>
             <div class="kpi"><div class="muted">TTFT</div>@r.TtftP50.ToString("0.00", CultureInfo.InvariantCulture) / @r.TtftP95.ToString("0.00", CultureInfo.InvariantCulture) s</div>
             <div class="kpi"><div class="muted">@Strings.ChipGpuVram</div>@r.MaxVramGb.ToString("0.0", CultureInfo.InvariantCulture) GB</div>
+            <div class="kpi"><div class="muted">@Strings.RowRamMax</div>@r.MaxRamGb.ToString("0.0", CultureInfo.InvariantCulture) GB</div>
             <div class="kpi"><div class="muted">@Strings.TileEnergy</div>@r.EnergyWh.ToString("0.0", CultureInfo.InvariantCulture) Wh</div>
         </div>
         @if (_open == r.File)

@@ -29,9 +29,19 @@ public static partial class Strings
     public const string PfDraftOn = "Speculative decoding with a draft model", PfDraftOff = "No draft model";
     public const string PfRestartOn = "Restarts after a crash", PfRestartOff = "No restart after a crash";
     public const string PfOn = "on", PfOff = "off", PfCmdLine = "command line";
+    // Die Balken: „needs 10.3 · 14.6 free“. needs = höchster Wert aus früheren Läufen (sonst Schätzung), free = jetzt frei
+    public const string PfNeeds = "needs", PfFree = "free", PfForecastDef = "needs = highest use seen in earlier runs (or estimate from the model file); free = free right now";
+    public static string PfNeedsFree(double need, double free) => $"{PfNeeds} {N1(need)} · {N1(free)} {PfFree}";
     public static string PfForecastTip(double need, double free, bool measured) =>
-        $"Needs about {N1(need)} GB VRAM ({(measured ? "measured last run" : "estimated from the model file")}), {N1(free)} GB free now" +
+        $"{PfForecastDef}. VRAM needs about {N1(need)} GB ({(measured ? "measured last run" : "estimated from the model file")}), {N1(free)} GB free now" +
         (need > free ? " – it may not fit, or spill into shared RAM." : ".");
+    public static string PfRamForecastTip(double need, double free) =>
+        $"needs = highest RAM use seen (with child processes) in earlier runs; free = free RAM right now. RAM needs about {N1(need)} GB, {N1(free)} GB free now" +
+        (need > free ? " – it may not fit." : ".");
+    // Warnung vor dem Start, wenn der gemerkte RAM-Bedarf größer ist als der freie RAM (+ 1 GB Puffer): nur eine Warnung
+    public static string RamNeedWarn(double need, double free) =>
+        $"Needs about {N1(need)} GB RAM (highest seen in an earlier run, with child processes), {N1(free)} GB free.";
+    public static string HistRam(double gb) => $"{N1(gb)} GB RAM";
     // Proxy-Panel (U9)
     public const string PxTitle = "Stykker-Proxy", PxOn = "on", PxOff = "off", PxCopy = "Copy address", PxCopied = "Copied";
     public const string PxDefault = "Default model", PxDefaultTip = "Requests without a known model name, and those for \"stykker\" or \"claude-stykker\", go to this model.",

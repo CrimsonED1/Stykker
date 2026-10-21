@@ -8,8 +8,11 @@ namespace StykkerLlm.Core;
 // PublicModel ist der Name, unter dem der Client es sieht (bei Namensgleichheit bzw. Cloud „<Anbieter>/<Modell>"). ServerKey ist der
 // besitzende lokale Server (für die Aufnahme), Remote markiert Modelle eines angehängten Rechners, Cloud die eines Anbieters im Netz,
 // DisplayName dient der Anzeige. HostId: das Ziel läuft auf einem Model-Host (Url ist dort lokal, Weg über den Tunnel).
+// ContextLength: Kontext einer Anfrage (bei llama.cpp je Slot), null = unbekannt. Slots/SlotsIdle: parallele Plätze des
+// Servers (nur llama.cpp), gesamt und gerade frei – so sieht ein Client, wie viele Anfragen gleichzeitig laufen können.
 public sealed record ProxyTarget(string Key, string Url, string? Model, BackendKind Kind, bool Ready, bool Loading,
-    string ServerKey = "", bool Remote = false, string? PublicModel = null, string DisplayName = "", bool Cloud = false, string HostId = "")
+    string ServerKey = "", bool Remote = false, string? PublicModel = null, string DisplayName = "", bool Cloud = false, string HostId = "",
+    int? ContextLength = null, int? Slots = null, int? SlotsIdle = null)
 {
     // Name, unter dem das Modell angeboten wird (Adressierung durch den Client)
     public string? EffectiveModel => string.IsNullOrEmpty(PublicModel) ? Model : PublicModel;
@@ -304,9 +307,10 @@ public class RouterProxy : RequestProxy
             // Claude Desktop (Anthropic-Client) bekommt nur, was sofort antwortet: laufende lokale Server und die gewählten
             // Cloud-Modelle – keine Modelldateien, die erst starten müssten. Andere Clients sehen die Liste wie bisher.
             bool anthropic = headers.Any(h => h.Name.Equals("anthropic-version", StringComparison.OrdinalIgnoreCase));
+            var def = DefaultTarget(targets);
             return anthropic
-                ? Local(200, ModelsJson(targets.Where(t => t.Cloud || t.Ready).ToList()))
-                : Local(200, ModelsJson(targets, StartableModels?.Invoke()));
+                ? Local(200, ModelsJson(targets.Where(t => t.Cloud || t.Ready).ToList(), def: def))
+                : Local(200, ModelsJson(targets, StartableModels?.Invoke(), def));
         }
 
         // Die Claude-App schickt /v1/messages und erwartet Anthropic-Ereignisse zurück: übersetzen statt durchreichen
@@ -314,7 +318,7 @@ public class RouterProxy : RequestProxy
             return await RouteAnthropicAsync(targets, headers, body, ct).ConfigureAwait(false);
 
         var (t, error, errorStatus, route) = await ResolveAsync(targets, body, ct).ConfigureAwait(false);
-        if (t == null) return Local(errorStatus, ErrorJson(error!));
+        if (t == null) return Local(errorStatus, errorStatus == 400 ? TooLongJson(error!) : ErrorJson(error!));
 
         // model auf den Namen setzen, den das Ziel erwartet (bei „stykker" → Modell des Ziels)
         var rewritten = t.Model != null ? RewriteModel(body, t.Model) : body;
@@ -372,8 +376,78 @@ public class RouterProxy : RequestProxy
         if (t.Loading) t = await WaitForReadyAsync(t.Key, t, ct).ConfigureAwait(false);
         if (t == null || !t.Ready) return (null, t != null && t.Cloud ? Strings.ProxyProviderOfflineProxy : Strings.ProxyTargetOffline, 503, route);
         if (t.Loading) return (null, Strings.ProxyTargetLoading, 503, route);   // immer noch am Laden (Zeit abgelaufen)
+        if (TooLong(t, body) is { } tooLong) return (null, tooLong, 400, route);
         return (t, null, 200, route);
     }
+
+    // ── Kontext-Vorprüfung ──
+
+    // Passt die Anfrage sicher nicht in den Kontext des Ziels, antwortet der Proxy sofort mit der Meldung, die Clients als
+    // „zu langer Prompt“ kennen (Claude Code verdichtet dann). Wichtig vor allem für Ollama: es schneidet zu lange Prompts
+    // still ab, statt einen Fehler zu melden. Geschätzt wird eine Untergrenze; Grenzfälle entscheidet weiter das Backend.
+    internal static string? TooLong(ProxyTarget t, byte[]? body)
+    {
+        if (t.ContextLength is not > 0 || body == null) return null;
+        int min = MinPromptTokens(body);
+        return min > t.ContextLength ? Strings.ProxyPromptTooLong(min, t.ContextLength.Value) : null;
+    }
+
+    // Zeichen je Token für die Untergrenze: echte Texte liegen bei 3–4 Zeichen je Token, 6 ist großzügig. So wird nur
+    // abgelehnt, was auch bei sehr günstigem Text nicht passt.
+    internal const int CharsPerTokenMin = 6;
+
+    // Untergrenze der Prompt-Token: alle Textwerte der Anfrage (Nachrichten, System, Werkzeuge), ohne Bilddaten
+    // (Anthropic „source.data“ bei base64, OpenAI-„data:“-Adressen). Kein JSON → 0 (keine Prüfung).
+    internal static int MinPromptTokens(byte[] body)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(body);
+            long chars = TextChars(doc.RootElement, isImageData: false);
+            return (int)Math.Min(int.MaxValue, chars / CharsPerTokenMin);
+        }
+        catch (JsonException) { return 0; }
+    }
+
+    private static long TextChars(JsonElement e, bool isImageData)
+    {
+        switch (e.ValueKind)
+        {
+            case JsonValueKind.String:
+                if (isImageData) return 0;
+                var str = e.GetString() ?? "";
+                return str.StartsWith("data:", StringComparison.Ordinal) ? 0 : str.Length;
+            case JsonValueKind.Array:
+                long a = 0;
+                foreach (var x in e.EnumerateArray()) a += TextChars(x, false);
+                return a;
+            case JsonValueKind.Object:
+                bool base64 = e.TryGetProperty("type", out var ty) && ty.ValueKind == JsonValueKind.String && ty.GetString() == "base64";
+                long o = 0;
+                foreach (var p in e.EnumerateObject())
+                {
+                    if (p.NameEquals("model")) continue;
+                    o += TextChars(p.Value, base64 && p.NameEquals("data"));
+                }
+                return o;
+            default:
+                return 0;
+        }
+    }
+
+    // Kontext-Überlauf in der Meldung eines Backends (llama.cpp, vLLM, LM Studio, Ollama, OpenAI-artige Anbieter)
+    private static readonly System.Text.RegularExpressions.Regex OverflowPattern = new(
+        @"exceeds? the available context|context (size|length|window) (has been )?exceeded|maximum context length|context_length_exceeded|too many tokens|prompt is too long|input is too long",
+        System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    internal static bool IsContextOverflow(string? message) => message != null && OverflowPattern.IsMatch(message);
+
+    // Für die Claude-App: ein Kontext-Überlauf des Backends in der Form der Anthropic-API („prompt is too long: …“),
+    // daran erkennt Claude Code den Überlauf und verdichtet das Gespräch. Andere Meldungen bleiben, wie sie sind.
+    internal static string AnthropicOverflowMessage(string message) =>
+        IsContextOverflow(message) && !message.StartsWith("prompt is too long", StringComparison.OrdinalIgnoreCase)
+            ? "prompt is too long: " + message
+            : message;
 
     // ── Anthropic-Brücke (die Claude-App) ──
 
@@ -473,6 +547,7 @@ public class RouterProxy : RequestProxy
                 }
                 int code = status is 400 or 401 or 403 or 404 or 413 or 429 or 529 ? status : 502;
                 string message = ErrorMessage(text) ?? resp.ReasonPhrase ?? "error";
+                if (IsContextOverflow(message)) { code = 400; message = AnthropicOverflowMessage(message); }
                 await WriteJsonAsync(net, code, AnthropicBridge.ErrorJson(code, message), ct).ConfigureAwait(false);
                 return code;
             }
@@ -668,30 +743,39 @@ public class RouterProxy : RequestProxy
     // Die Modellliste in einer Form, die OpenAI- und Anthropic-Clients beide lesen: je Eintrag „object“/„owned_by“ (OpenAI)
     // und „type“/„display_name“/„created_at“ (Anthropic), dazu „has_more“, „first_id“, „last_id“. Claude Desktop füllt
     // damit seine Modellauswahl (modelDiscoveryEnabled); der erste Eintrag ist dort das Standardmodell.
-    private static string ModelsJson(IReadOnlyList<ProxyTarget> targets, IReadOnlyList<string>? startable = null)
+    // def: das Standardziel – die beiden Standard-Einträge tragen seine Angaben (dorthin gehen ihre Anfragen)
+    private static string ModelsJson(IReadOnlyList<ProxyTarget> targets, IReadOnlyList<string>? startable = null, ProxyTarget? def = null)
     {
-        var entries = new List<(string Id, string Display, string Owner)>
+        var entries = new List<(string Id, string Display, string Owner, ProxyTarget? Target)>
         {
             // Der Name, den die Claude-App als Standard ansprach: geht an das Standardziel des Proxys
-            (ClaudeDesktop.ModelAlias, "Stykker · current target", "stykker"),
-            (VirtualModel, "Stykker · current target (stykker)", "stykker"),
+            (ClaudeDesktop.ModelAlias, "Stykker · current target", "stykker", def),
+            (VirtualModel, "Stykker · current target (stykker)", "stykker", def),
         };
         var seen = new HashSet<string>(entries.Select(e => e.Id), StringComparer.OrdinalIgnoreCase);
         foreach (var t in targets)
             if (t.EffectiveModel is { Length: > 0 } m && seen.Add(m))
-                entries.Add((m, string.IsNullOrWhiteSpace(t.DisplayName) ? m : t.DisplayName, "stykker-proxy"));
+                entries.Add((m, string.IsNullOrWhiteSpace(t.DisplayName) ? m : t.DisplayName, "stykker-proxy", t));
         // dazu die Modelldateien der Hosts: sie starten bei der ersten Anfrage
         foreach (var m in startable ?? Array.Empty<string>())
-            if (!string.IsNullOrEmpty(m) && seen.Add(m)) entries.Add((m, m, "stykker-proxy"));
+            if (!string.IsNullOrEmpty(m) && seen.Add(m)) entries.Add((m, m, "stykker-proxy", null));
 
         var sb = new StringBuilder();
         sb.Append("{\"object\":\"list\",\"data\":[");
         for (int i = 0; i < entries.Count; i++)
         {
-            var (id, display, owner) = entries[i];
+            var (id, display, owner, t) = entries[i];
             if (i > 0) sb.Append(',');
             sb.Append("{\"id\":\"").Append(JsonEscape(id)).Append("\",\"object\":\"model\",\"owned_by\":\"").Append(owner)
-              .Append("\",\"type\":\"model\",\"display_name\":\"").Append(JsonEscape(display)).Append("\",\"created_at\":\"1970-01-01T00:00:00Z\"}");
+              .Append("\",\"type\":\"model\",\"display_name\":\"").Append(JsonEscape(display)).Append("\",\"created_at\":\"1970-01-01T00:00:00Z\"");
+            // Zusatzangaben nur, wenn bekannt (keine falschen Werte): Kontext je Anfrage, parallele Slots gesamt/frei
+            if (t?.ContextLength is > 0 and var ctx)
+                sb.Append(",\"context_length\":").Append(ctx);
+            if (t?.Slots is > 0 and var slots)
+                sb.Append(",\"slots_total\":").Append(slots);
+            if (t?.Slots is > 0 && t.SlotsIdle is >= 0 and var idle)
+                sb.Append(",\"slots_idle\":").Append(idle);
+            sb.Append('}');
         }
         sb.Append("],\"has_more\":false,\"first_id\":\"").Append(JsonEscape(entries[0].Id))
           .Append("\",\"last_id\":\"").Append(JsonEscape(entries[^1].Id)).Append("\"}");
@@ -703,6 +787,10 @@ public class RouterProxy : RequestProxy
         // Das Fehlerobjekt bedient OpenAI- und Anthropic-Clients (beide lesen "error" mit "type" und "message")
         return "{\"type\":\"error\",\"error\":{\"type\":\"service_unavailable\",\"message\":\"" + JsonEscape(message) + "\"}}";
     }
+
+    // Fehlerobjekt für eine zu lange Anfrage: Typ und Code wie bei der OpenAI-API, damit Clients den Überlauf erkennen
+    private static string TooLongJson(string message) =>
+        "{\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"code\":\"context_length_exceeded\",\"message\":\"" + JsonEscape(message) + "\"}}";
 
     private static string JsonEscape(string s) => s.Replace("\\", "\\\\").Replace("\"", "\\\"");
 }

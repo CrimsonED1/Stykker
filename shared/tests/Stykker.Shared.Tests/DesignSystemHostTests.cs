@@ -50,6 +50,22 @@ public class DesignSystemHostTests
         finally { Directory.Delete(root, recursive: true); }
     }
 
+    // Im Veröffentlichungs-Paket liegt design-system neben der exe: der Ordner gewinnt gegen eine Monorepo darüber.
+    [Fact]
+    public void ADesignSystemBesideTheProgramWinsOverTheRepo()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "stykker-ds-" + Guid.NewGuid().ToString("N"));
+        var program = Path.Combine(root, "publish");
+        var beside = Path.Combine(program, "design-system");
+        var repo = Path.Combine(root, "shared", "design-system");
+        Directory.CreateDirectory(beside);
+        Directory.CreateDirectory(repo);
+        File.WriteAllText(Path.Combine(beside, "tokens.css"), ":root{}");
+        File.WriteAllText(Path.Combine(repo, "tokens.css"), ":root{}");
+        try { Assert.Equal(beside, DesignSystemHost.FindFrom(program)); }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
     // Die Tests liegen in der Monorepo: von hier aus muss die Vorgabe das echte Design-System treffen.
     [Fact]
     public void TheDefaultPointsAtTheDesignSystemOfThisRepo() =>

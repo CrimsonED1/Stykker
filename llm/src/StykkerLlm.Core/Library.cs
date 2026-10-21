@@ -56,6 +56,7 @@ public sealed class HistoryEntry
     public double TpsSum { get; set; }
     public long TpsCount { get; set; }
     public double MaxVramGb { get; set; }
+    public double MaxRamGb { get; set; }   // höchster Arbeitsspeicher des Servers mit Kindprozessen (Working Set)
     public double? ModelSizeGb { get; set; }
     // Letzter Lauf (U8): erzeugte Tokens und wie er endete – "" (läuft/unbekannt), clean (über StykkerLLM gestoppt),
     // crashed (abgestürzt, Ursache im Log erkannt), lost (unerwartet weg, Ursache unbekannt), outside (von außen beendet, nicht von StykkerLLM gestartet)
@@ -78,7 +79,7 @@ public sealed class LibraryData
 }
 
 // Was ein Beobachtungsschritt über einen laufenden Server weiß
-public sealed record Observation(double Tps, double? VramGb, double? ModelGb, int? Ctx = null, long Generated = 0);
+public sealed record Observation(double Tps, double? VramGb, double? ModelGb, int? Ctx = null, long Generated = 0, double? RamGb = null);
 
 // library.json: gemerkte Profile und Verlauf. Änderungen nur vom UI-Thread (intern trotzdem gesperrt).
 // Gespeichert wird verzögert (SaveIfDirty) und atomar; eine unlesbare Datei wird zur Seite gelegt, nicht überschrieben.
@@ -331,6 +332,7 @@ public sealed class Library
                 h.TpsSum += obs.Tps; h.TpsCount++;
             }
             if (obs.VramGb is double v) h.MaxVramGb = Math.Max(h.MaxVramGb, v);
+            if (obs.RamGb is double ram) h.MaxRamGb = Math.Max(h.MaxRamGb, ram);
             if (obs.Generated > 0) h.LastRunTokens = obs.Generated;
             if (obs.ModelGb is double m && m > 0) h.ModelSizeGb = m;
 

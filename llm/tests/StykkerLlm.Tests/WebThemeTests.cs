@@ -106,13 +106,18 @@ public class WebThemeTests
         Assert.AreEqual("System", new AppSettings().Theme, "neue Installationen folgen dem System");
     }
 
+    // Eine Quelle für die Farben: jede Variable, die app.css liest, steht in shared/design-system/tokens.css oder wird am
+    // Element selbst gesetzt (--b, --sc, --spc; --f setzt die Seite je Balken). Sonst erfindet die Seite Werte neben dem Design-System.
     [TestMethod]
-    public void Css_HasDarkAtTheRoot_AndTitanBehindTheAttribute()
+    public void EveryVariableOfTheStylesheetComesFromTheDesignSystem()
     {
-        var css = ThemeCatalog.Css();
-        StringAssert.StartsWith(css, ":root{color-scheme:dark");
-        StringAssert.Contains(css, "html[data-theme=titan]{color-scheme:light");
-        Assert.IsFalse(css.Contains('"'));
+        var root = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "..");
+        var css = File.ReadAllText(Path.Combine(root, "llm", "src", "StykkerLlm.Server", "wwwroot", "app.css"));
+        var tokens = File.ReadAllText(Path.Combine(root, "shared", "design-system", "tokens.css"));
+        var used = System.Text.RegularExpressions.Regex.Matches(css, @"var\(--([a-z0-9-]+)").Select(m => m.Groups[1].Value).ToHashSet();
+        var defined = System.Text.RegularExpressions.Regex.Matches(css, @"--([a-z0-9-]+)\s*:").Select(m => m.Groups[1].Value).ToHashSet();
+        var missing = used.Where(v => !defined.Contains(v) && !tokens.Contains("--" + v + ":") && v != "f").OrderBy(v => v).ToList();
+        CollectionAssert.AreEqual(Array.Empty<string>(), missing, "Variablen ohne Quelle im Design-System");
     }
 
     [TestMethod]

@@ -3,8 +3,9 @@ using System.Globalization;
 namespace StykkerLlm.Core;
 
 // Die Themen aller Oberflächen (docs/plan-ui-redesign.md, U1): Dark und Spacepunk Titan, dazu „System“ (hell → Titan,
-// dunkel → Dark). Das Web setzt daraus seine CSS-Variablen (ThemeCatalog.Css in den Kopf jeder Seite), die TUI kennt
-// dieselben Namen (siehe Tui\Palette). Farben mit Deckkraft stehen als #rrggbbaa.
+// dunkel → Dark). Die Weboberfläche liest ihre Farben aus shared/design-system/tokens.css; CssVariables() füllt die
+// Seiten ohne Design-System (Anmeldung, Fenster-Dialog), die TUI kennt dieselben Namen (siehe Tui\Palette).
+// Farben mit Deckkraft stehen als #rrggbbaa.
 public sealed record ThemeInfo
 {
     public string Name { get; init; } = "";
@@ -168,10 +169,6 @@ public static class ThemeCatalog
 
     // Wie die Weboberfläche zeichnet: "dark", "titan" oder "system" (dann entscheidet ui.js nach prefers-color-scheme)
     public static string Mode(string? name) => IsSystem(name) || string.IsNullOrWhiteSpace(name) ? "system" : Find(name).Slug;
-
-    // Der Stilblock für den Kopf jeder Seite: Dark als Grundlage, Titan über html[data-theme=titan]
-    public static string Css() =>
-        ":root{" + ThemeInfo.Dark.CssVariables() + "}html[data-theme=titan]{" + ThemeInfo.Titan.CssVariables() + "}";
 
     private static string Norm(string s) => new string(s.Where(char.IsLetter).ToArray()).ToLowerInvariant();
 }

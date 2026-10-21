@@ -1,0 +1,64 @@
+@page "/overview"
+@using Stykker.Pairing
+@* Die Übersicht: Prozessor und Speicher, die GPU und die Laufwerke auf einer Seite. Statisch gerendert; die Werte holt
+   overview.js im Sekundentakt aus /api/overview. Kein Wert steht als Zahl im Markup: fehlt eine Messung, zeigt die Seite „–".
+   Aussehen und Markup: die Hardware-Bausteine des Design-Systems (hw-*), dieselben wie in StykkerLLM. *@
+
+<div class="top">
+    <div class="brand"><span class="logo">◆</span> STYKKER <span class="acc">SYS</span></div>
+    <nav>
+        <a class="active" href="/overview">Overview</a>
+        <a href="/">Processes</a>
+        <a href="/disks">Disks</a>
+        <a href="http://127.0.0.1:@(StykkerPorts.Hub)/" title="StykkerHUD: CPU, memory, GPU, storage and network">Hub</a>
+    </nav>
+    <div class="strip">
+        <span class="stat" title="Processor, all cores">CPU <b id="v-cpu">–</b></span>
+        <span class="stat" title="Memory in use">RAM <b id="v-ram">–</b></span>
+        <span class="stat" title="Graphics card: load of its busiest engine">GPU <b id="v-gpu">–</b></span>
+        <div class="seg" role="group" aria-label="Theme">
+            <button type="button" data-theme-choice="dark" class="on">Dark</button>
+            <button type="button" data-theme-choice="titan">Titan</button>
+        </div>
+    </div>
+</div>
+
+<main>
+    <div id="ov-notes"></div>
+
+    <section class="hw-card">
+        <div class="hw-head">Processor and memory<span class="hw-sub" id="v-ov-time">–</span></div>
+        <div class="hw-meters" id="ov-system"></div>
+        <div class="hw-subh">Cores</div>
+        <div id="ov-cores"></div>
+        <div class="hw-sep">
+            <div class="hw-subh">Largest programs by memory</div>
+            <div id="ov-ram"></div>
+        </div>
+        <div class="hw-sep">
+            <div class="hw-subh">Largest programs by processor</div>
+            <p class="hw-sub hw-hint-line">Share of the whole processor. Refreshes every second while this page is open.</p>
+            <div class="hw-scroll" id="ov-cpu-procs"></div>
+        </div>
+        <div class="hw-sep" id="ov-sys-history"></div>
+    </section>
+
+    <section class="hw-card">
+        <div class="hw-head">Graphics card<span class="hw-sub">Windows GPU counters</span></div>
+        <div class="hw-meters" id="ov-gpu"></div>
+        <div class="hw-subh">Engines</div>
+        <p class="hw-sub hw-hint-line">Engines run side by side; the load above is the busiest one.</p>
+        <div id="ov-engines"></div>
+        <div class="hw-sep">
+            <div class="hw-subh">Largest programs by graphics memory</div>
+            <div class="hw-scroll" id="ov-gpu-procs"></div>
+        </div>
+        <div class="hw-sep" id="ov-gpu-history"></div>
+    </section>
+
+    <section class="hw-card">
+        <div class="hw-head">Drives<a class="hw-more" href="/disks" title="Drives and disk traffic per program">Details</a></div>
+        <div id="ov-volumes"></div>
+        <div id="ov-disk-notes"></div>
+    </section>
+</main>

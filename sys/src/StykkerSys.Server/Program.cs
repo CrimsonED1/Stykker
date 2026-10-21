@@ -31,8 +31,9 @@ if (args.Contains("--help") || args.Contains("-h"))
                             the hub's port (default 17400): only the hub may show this page in a frame
           --help            this text
 
-        Endpoints: / (web interface), /disks (the drives and the disk traffic per program),
-        /api/snapshot (the process list as JSON), /api/disks (the drives as JSON), and the local-only
+        Endpoints: / (web interface), /overview (processor, memory, GPU and drives at a glance),
+        /disks (the drives and the disk traffic per program), /api/snapshot (the process list as JSON),
+        /api/overview and /api/disks (as JSON), and the local-only
         POST /api/process/end, /api/process/priority, /api/process/open.
 
         The server binds the port immediately and reads nothing until a viewer appears: the list starts
@@ -73,6 +74,9 @@ builder.Services.AddSingleton<SysService>();
 builder.Services.AddSingleton<IDiskProbe>(_ => CreateDiskProbe(basic));
 builder.Services.AddSingleton(sp => new DiskSampler(sp.GetRequiredService<IDiskProbe>()));
 builder.Services.AddSingleton<DiskService>();
+builder.Services.AddSingleton<IHardwareProbe>(_ => CreateHardwareProbe(basic));
+builder.Services.AddSingleton(sp => new OverviewSampler(sp.GetRequiredService<IHardwareProbe>()));
+builder.Services.AddSingleton<OverviewService>();
 builder.Services.AddRazorComponents();
 // Alle Zahlen der Antworten auf eine Nachkommastelle (siehe OneDecimalJson).
 builder.Services.ConfigureHttpJsonOptions(options => options.SerializerOptions.Converters.Add(new OneDecimalJson()));
@@ -95,6 +99,10 @@ app.UseAntiforgery();
 app.MapGet("/api/snapshot", (SysService service) => Results.Json(service.Snapshot()));
 // Die Laufwerke (Seite /disks): dieselbe Schleife wie bei den Prozessen, nur sichtbar, solange jemand die Seite ansieht
 app.MapGet("/api/disks", (DiskService service) => Results.Json(service.Snapshot()));
+// Die Übersicht (Seite /overview): Prozessor, Speicher, GPU und größte Programme, dazu die Laufwerke – eine Abfrage je Takt.
+// Beide Messschleifen laufen nur, solange diese Seite abgefragt wird.
+app.MapGet("/api/overview", (OverviewService overview, DiskService disks) =>
+    Results.Json(new OverviewResponse(overview.Snapshot(), disks.Snapshot())));
 
 // ── Aktionen ──
 // Drei Türen, alle nur für diese Maschine und nur für die eigene Seite: der Rumpf muss JSON sein (ein fremdes
@@ -167,6 +175,14 @@ static IDiskProbe CreateDiskProbe(bool basic)
     if (basic) return new BasicDiskProbe();
     if (!OperatingSystem.IsWindows()) return new BasicDiskProbe();
     return new WindowsDiskProbe();
+}
+
+// Und für die Übersicht: Prozessor, Speicher und GPU nur unter Windows
+static IHardwareProbe CreateHardwareProbe(bool basic)
+{
+    if (basic) return new BasicHardwareProbe();
+    if (!OperatingSystem.IsWindows()) return new BasicHardwareProbe();
+    return new WindowsHardwareProbe();
 }
 
 internal sealed record ProcessEndRequest(int Pid, bool Tree);

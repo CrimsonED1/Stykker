@@ -607,13 +607,15 @@ public sealed class ProxyManager : IDisposable
         if (rs.Backend == "llama.cpp")
         {
             var model = !string.IsNullOrEmpty(rs.Model) && rs.Model != "–" ? rs.Model : rs.Name;
+            var (ctx, slots, idle) = LlamaSlots(rs.Props, rs.Slots);
             yield return new ProxyTarget(prefix + model, rs.Url, model, BackendKind.LlamaCpp, rs.Online && !rs.Loading, rs.Loading,
-                Remote: true, PublicModel: ServerInfo.ModelName(model), DisplayName: $"{h.Name} · {rs.Name}", HostId: h.HostId);
+                Remote: true, PublicModel: ServerInfo.ModelName(model), DisplayName: $"{h.Name} · {rs.Name}", HostId: h.HostId,
+                ContextLength: ctx, Slots: slots, SlotsIdle: idle);
             yield break;
         }
-        foreach (var m in rs.Models.Select(m => m.Name).Where(n => !string.IsNullOrEmpty(n)).Distinct(StringComparer.OrdinalIgnoreCase))
-            yield return new ProxyTarget(prefix + m, rs.Url, m, BackendKind.LmStudio, rs.Online, false,
-                Remote: true, DisplayName: $"{h.Name} · {m}", HostId: h.HostId);
+        foreach (var m in DistinctModels(rs.Models))
+            yield return new ProxyTarget(prefix + m.Name, rs.Url, m.Name, BackendKind.LmStudio, rs.Online, false,
+                Remote: true, DisplayName: $"{h.Name} · {m.Name}", HostId: h.HostId, ContextLength: LoadedContext(m));
     }
 
     // Die Ziele eines lokalen Servers: llama.cpp führt ein Modell, Ollama/LM Studio je geladenes Modell eines
@@ -622,14 +624,15 @@ public sealed class ProxyManager : IDisposable
         if (s.Kind == BackendKind.LlamaCpp)
         {
             var model = ModelOf(s);
+            var (ctx, slots, idle) = LlamaSlots(s.Props, s.Slots);
             // Anzeige kurz halten: llama.cpp liefert als „model"-ID oft den vollen Dateipfad (der bleibt zum Routen nötig).
             // Die Kontextgröße mit anzeigen: macht den häufigen „Anfrage > Ziel-Kontext"-Fehler sofort sichtbar.
-            var ctx = s.Props?.NCtx is int n && n > 0 ? $" · ctx {n / 1024}k" : "";
+            var label = ctx is > 0 ? $" · ctx {ctx / 1024}k" : "";
             yield return new ProxyTarget($"{s.Key}|{model}", s.Url, model, s.Kind, s.Online, s.Loading,
-                ServerKey: s.Key, DisplayName: s.Name + ctx);
+                ServerKey: s.Key, DisplayName: s.Name + label, ContextLength: ctx, Slots: slots, SlotsIdle: idle);
             yield break;
         }
-        var models = s.Models.Select(m => m.Name).Where(n => !string.IsNullOrEmpty(n)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        var models = DistinctModels(s.Models);
         if (models.Count == 0)
         {
             // Nichts geladen: als Standardziel (Pfade ohne Modell) weiterhin brauchbar
@@ -637,8 +640,29 @@ public sealed class ProxyManager : IDisposable
             yield break;
         }
         foreach (var m in models)
-            yield return new ProxyTarget($"{s.Key}|{m}", s.Url, m, s.Kind, s.Online, false,
-                ServerKey: s.Key, DisplayName: $"{s.Name} · {m}");
+            yield return new ProxyTarget($"{s.Key}|{m.Name}", s.Url, m.Name, s.Kind, s.Online, false,
+                ServerKey: s.Key, DisplayName: $"{s.Name} · {m.Name}", ContextLength: LoadedContext(m));
+    }
+
+    // Ollama/LM Studio: je geladenes Modell ein Ziel; derselbe Name (Groß/klein egal) zählt einmal, der erste Eintrag gilt
+    internal static List<LoadedModel> DistinctModels(IEnumerable<LoadedModel> models) => models
+        .Where(m => !string.IsNullOrEmpty(m.Name))
+        .GroupBy(m => m.Name, StringComparer.OrdinalIgnoreCase)
+        .Select(g => g.First())
+        .ToList();
+
+    // Der Kontext, den eine Anfrage an dieses Modell wirklich hat. LM Studio ohne geladenen Wert liefert nur den Höchstwert
+    // des Modells – der wäre zu groß und wird nicht gemeldet.
+    internal static int? LoadedContext(LoadedModel m) => !m.ContextIsMax && m.ContextLength is > 0 ? m.ContextLength : null;
+
+    // llama.cpp: Kontext je Slot (/props, sonst /slots), Slots gesamt und gerade frei. Ohne Angabe jeweils null.
+    // Frei kennt nur /slots; gesamt kommt aus /props (total_slots), sonst aus der Zahl der gemeldeten Slots.
+    internal static (int? Context, int? Slots, int? Idle) LlamaSlots(LlamaProps? props, IReadOnlyList<SlotView> slots)
+    {
+        int? ctx = props?.NCtx is > 0 ? props.NCtx : slots.Count > 0 && slots.Max(v => v.CtxMax) is var m and > 0 ? m : null;
+        int? total = props?.TotalSlots is > 0 ? props.TotalSlots : slots.Count > 0 ? slots.Count : null;
+        int? idle = slots.Count > 0 ? slots.Count(v => !v.Busy) : null;
+        return (ctx, total, idle);
     }
 
     private static string? ModelOf(ServerWatcher s)
