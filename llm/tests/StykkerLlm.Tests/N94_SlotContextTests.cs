@@ -2,7 +2,7 @@ using StykkerLlm.Core;
 
 namespace StykkerLlm.Tests;
 
-// N94 – Kontext-Füllstand je Slot (Serverkarte): Anteil, Stufen ok/warn/full (ab 85 % und ab 100 %), kein Balken
+// N94 – Kontext-Füllstand je Slot (Serverkarte): Anteil, Stufen ok/warn/full (ab 90 % wie CtxPressure.NearlyFull und ab 100 %), kein Balken
 // ohne Werte, Text mit k-Rundung.
 [TestClass]
 public class N94_SlotContextTests
@@ -18,22 +18,22 @@ public class N94_SlotContextTests
     }
 
     [TestMethod]
-    public void Below_85_percent_is_ok()
+    public void Below_90_percent_is_ok()
     {
-        var f = SlotContextFill.Of(33600, 40000);   // genau 84 %
+        var f = SlotContextFill.Of(35600, 40000);   // genau 89 %
         Assert.AreEqual(CtxFillLevel.Ok, f.Level);
-        Assert.AreEqual(84, f.Percent);
+        Assert.AreEqual(89, f.Percent);
         Assert.AreEqual("ok", f.Css);
         Assert.AreEqual(CtxFillLevel.Ok, SlotContextFill.Of(0, 40000).Level);
     }
 
     [TestMethod]
-    public void From_85_percent_is_warn_and_below_100_stays_warn()
+    public void From_90_percent_is_warn_and_below_100_stays_warn()
     {
-        Assert.AreEqual(CtxFillLevel.Warn, SlotContextFill.Of(34000, 40000).Level, "genau 85 % ist schon warn");
+        Assert.AreEqual(CtxFillLevel.Warn, SlotContextFill.Of(36000, 40000).Level, "genau 90 % ist schon warn");
         Assert.AreEqual(CtxFillLevel.Warn, SlotContextFill.Of(39999, 40000).Level, "knapp unter voll bleibt warn");
         Assert.AreEqual(99, SlotContextFill.Of(39999, 40000).Percent, "Anteil wird abgerundet, nie 100 vor voll");
-        Assert.AreEqual("warn", SlotContextFill.Of(34000, 40000).Css);
+        Assert.AreEqual("warn", SlotContextFill.Of(36000, 40000).Css);
     }
 
     [TestMethod]

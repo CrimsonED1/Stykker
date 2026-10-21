@@ -2,7 +2,8 @@ using System.Globalization;
 
 namespace StykkerLlm.Core;
 
-// Kontext-Füllstand eines Slots (llama.cpp): der Balken je Slot auf der Serverkarte. Stufen: ok unter 85 %, warn ab 85 %,
+// Kontext-Füllstand eines Slots (llama.cpp): der Balken je Slot auf der Serverkarte. Stufen: ok unter 90 %, warn ab 90 %
+// (dieselbe Schwelle wie CtxPressure.NearlyFull, Chip „ctx full“),
 // full ab 100 %. Ohne Werte (CtxMax 0) gibt es keinen Balken (Level None). Die Karte zeigt nur, was hier steht.
 public enum CtxFillLevel { None, Ok, Warn, Full }
 
@@ -16,7 +17,7 @@ public sealed record CtxFill(CtxFillLevel Level, int Percent, string Text)
 
 public static class SlotContextFill
 {
-    public const int WarnPercent = 85;
+    public const int WarnPercent = (int)(CtxPressure.NearlyFull * 100);
 
     public static CtxFill Of(int used, int max)
     {
