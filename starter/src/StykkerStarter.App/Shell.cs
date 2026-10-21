@@ -37,7 +37,6 @@ internal sealed class Shell : IDisposable
     private EventWaitHandle? _openEvent;
     private readonly bool _defaultData;
     private readonly int? _checkEvery;
-    private static readonly TimeSpan StartupDelay = TimeSpan.FromSeconds(3);
 
     public Shell(DataLayout layout, Program.Options opt, string mutexName)
     {
@@ -66,7 +65,7 @@ internal sealed class Shell : IDisposable
             _model.BeginStartupFallback(TimeSpan.FromSeconds(20));
             Post(OpenWindow);
         }
-        else _model.BeginStartupAfter(StartupDelay);
+        else _model.BeginStartup();
 
         while (!_quit)
             _requests.Take()();
@@ -142,7 +141,7 @@ internal sealed class Shell : IDisposable
             _log.Write("window: page ready");
             var model = _model;
             model?.Enqueue(model.Publish);
-            model?.BeginStartupAfter(StartupDelay);
+            model?.BeginStartup();
             SendWindowState();
             if (_pendingAsk is { } ask)
             {
@@ -294,6 +293,13 @@ internal sealed class Shell : IDisposable
             window = _window;
         }
         if (window == null) return;
+        // Aus dem Fensterthread (ein Befehl der Seite) direkt senden: ein Invoke auf dem eigenen Thread käme nicht dran
+        if (Environment.CurrentManagedThreadId == _windowThread)
+        {
+            try { window.SendWebMessage(json); }
+            catch (Exception ex) when (ex is InvalidOperationException or ObjectDisposedException) { }
+            return;
+        }
         try
         {
             window.Invoke(() =>
