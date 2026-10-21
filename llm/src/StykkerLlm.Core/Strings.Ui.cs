@@ -165,6 +165,9 @@ public static partial class Strings
     public const string ProxyNoTarget = "The Stykker-Proxy has no target: no server is running.";
     public const string ProxyTargetLoading = "The target server is still loading its model. Please try again in a moment.";
     public const string ProxyTargetOffline = "The target server is offline.";
+    // Genau die Form der Anthropic-API („prompt is too long: N tokens > M maximum“): daran erkennen Claude Code und andere den
+    // Überlauf. N ist die Untergrenze der Schätzung, M der Kontext des Zielmodells.
+    public static string ProxyPromptTooLong(int atLeast, int context) => $"prompt is too long: {atLeast} tokens > {context} maximum";
     public const string ProxyAnthropicTimeout = "The target server did not answer in time.";
     public const string ProxyAnthropicUnreachable = "The target server is not reachable.";
     public const string ProxyTargetNone = "none";

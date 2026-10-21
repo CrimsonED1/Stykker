@@ -22,7 +22,9 @@ public interface IBackendProbe
 }
 
 // Ein im Backend geladenes Modell (Ollama /api/ps, LM Studio /api/v0/models mit state "loaded")
-public sealed record LoadedModel(string Name, long SizeBytes, long VramBytes, DateTime? ExpiresAt, int? ContextLength, string Detail, string State);
+// ContextIsMax: ContextLength ist nur der Höchstwert des Modells (LM Studio ohne geladenen Wert), nicht der geladene Kontext
+public sealed record LoadedModel(string Name, long SizeBytes, long VramBytes, DateTime? ExpiresAt, int? ContextLength, string Detail, string State,
+    bool ContextIsMax = false);
 
 // ───────────── Ollama ─────────────
 // Nach der offiziellen API-Dokumentation (docs/api.md): GET /api/version -> {"version":"0.5.1"},
@@ -136,7 +138,8 @@ public static class LmStudioApi
 
     public static List<LoadedModel> Loaded(List<ModelEntry> all) =>
         all.Where(m => m.Loaded).Select(m => new LoadedModel(m.Id, 0, 0, null, m.LoadedContext ?? m.MaxContext,
-            string.Join(" ", new[] { m.Arch, m.Quantization, m.Format }.Where(s => s.Length > 0)), "loaded")).ToList();
+            string.Join(" ", new[] { m.Arch, m.Quantization, m.Format }.Where(s => s.Length > 0)), "loaded",
+            ContextIsMax: m.LoadedContext is not > 0 && m.MaxContext is > 0)).ToList();
 }
 
 public sealed class LmStudioProbe : IBackendProbe

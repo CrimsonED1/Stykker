@@ -58,4 +58,40 @@ public class N69_ClaudeModelListTests
         CollectionAssert.Contains(ids, "stopped-model");
         CollectionAssert.Contains(ids, "running-model");
     }
+
+    // N-Context: der Proxy liefert die Kontextgröße pro Modell (pro Slot) über "context_length".
+    // llama.cpp = Props.NCtx, Ollama/LM Studio = je Modell; unbekannt bleibt das Feld aus.
+    [TestMethod]
+    public async Task context_length_is_exposed_per_slot()
+    {
+        using var proxy = new RouterProxy(0);
+        proxy.SetTargets(new[]
+        {
+            new ProxyTarget("s1|llama", "http://127.0.0.1:1", "llama-model", BackendKind.LlamaCpp, true, false,
+                DisplayName: "Llama · llama-model", ContextLength: 8192),
+            new ProxyTarget("s2|ollama-a", "http://127.0.0.1:2", "ollama-a", BackendKind.Ollama, true, false,
+                DisplayName: "Ollama · ollama-a", ContextLength: 131072),
+            new ProxyTarget("s2|ollama-b", "http://127.0.0.1:2", "ollama-b", BackendKind.Ollama, true, false,
+                DisplayName: "Ollama · ollama-b", ContextLength: 4096),
+            new ProxyTarget("s3|noctx", "http://127.0.0.1:3", "no-ctx", BackendKind.LlamaCpp, true, false,
+                DisplayName: "NoCtx · no-ctx"),
+        }, "s1|llama");
+        proxy.Start();
+
+        var root = await Models(proxy.ListenPort, anthropic: false);
+        var data = root.GetProperty("data").EnumerateArray().ToArray();
+
+        var llama = data.Single(d => d.GetProperty("id").GetString() == "llama-model");
+        Assert.AreEqual(8192, llama.GetProperty("context_length").GetInt32());
+
+        // Pro Slot: zwei Ollama-Modelle auf demselben Server, unterschiedliche Kontextgrößen
+        var ollamaA = data.Single(d => d.GetProperty("id").GetString() == "ollama-a");
+        Assert.AreEqual(131072, ollamaA.GetProperty("context_length").GetInt32());
+        var ollamaB = data.Single(d => d.GetProperty("id").GetString() == "ollama-b");
+        Assert.AreEqual(4096, ollamaB.GetProperty("context_length").GetInt32());
+
+        // Unbekannte Kontextgröße: Feld bleibt absent (keine falsche Angabe)
+        var noCtx = data.Single(d => d.GetProperty("id").GetString() == "no-ctx");
+        Assert.IsFalse(noCtx.TryGetProperty("context_length", out _));
+    }
 }
