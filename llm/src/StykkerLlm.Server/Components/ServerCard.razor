@@ -116,11 +116,11 @@
             </div>
             @if (m.Slots.Count > 0)
             {
-                <div class="tiles">
+                <div class="tiles" role="group" aria-label="@Strings.LblSlots">
                     @foreach (var v in m.Slots)
                     {
                         <span class="slot @(v.Full ? "hot" : "")" data-s="@v.State" style="--f:@((int)(v.Frac * 100))%" title="@SlotTip(v)">
-                            <i></i><Icon Name="@("s-" + v.State)" Class="sm" /><b>@v.Id</b>
+                            <i></i><Icon Name="@("s-" + v.State)" Class="sm" /><b>@v.Id</b><em class="slot-st">@Strings.SlotShort(v.State)</em>
                             @if (v.Ctx.Shown)
                             {
                                 <span class="cbar @v.Ctx.Css" title="@v.Ctx.Text"><i style="width:@(v.Ctx.Percent)%"></i></span>
@@ -189,12 +189,13 @@
         return left.TotalMinutes < 1 ? $"{(int)left.TotalSeconds}s" : $"{(int)Math.Ceiling(left.TotalMinutes)}m";
     }
 
-    // Ein Feld der Kennzahlenreihe: Symbol, Wert, Einheit; fehlt der Wert, gedämpftes „–“ mit Grund im Tooltip
+    // Ein Feld der Kennzahlenreihe: Symbol, Wert, Einheit. Meldet der Server den Wert nicht (LM Studio, Ollama kennen
+    // z. B. keine Slots oder Draft-Rate), bleibt das Feld weg – eine Reihe aus „–“ war nur Rauschen.
     // Der Kurzname (label) steht nur mit dem Schalter „Labels“ darunter (CSS: .mlbl)
     private RenderFragment Metric(string icon, string title, string? value, string unit, bool sep = false, bool warn = false, string label = "") => __builder =>
     {
-        var cls = "mc" + (value == null ? " na" : "") + (sep ? " sep" : "") + (warn ? " warn" : "");
-        var tip = value == null ? $"{title}: {Strings.CardNotReported}" : title;
-        <span class="@cls" title="@tip"><Icon Name="@icon" Title="@title" /><b>@(value ?? "–")</b>@if (value != null && unit.Length > 0) { <small>@unit</small> }<em class="mlbl">@label</em></span>
+        if (value == null) return;
+        var cls = "mc" + (sep ? " sep" : "") + (warn ? " warn" : "");
+        <span class="@cls" title="@title"><Icon Name="@icon" Title="@title" /><b>@value</b>@if (unit.Length > 0) { <small>@unit</small> }<em class="mlbl">@label</em></span>
     };
 }

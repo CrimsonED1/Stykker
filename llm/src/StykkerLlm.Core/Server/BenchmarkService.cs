@@ -35,6 +35,7 @@ public sealed class BenchmarkService
         var ct = _cts.Token;
         RecordingSession? session = null;
         BenchResult? result = null;
+        ServerWatcher? startedHere = null;
         BenchRegression? regression = null;
         try
         {
@@ -46,6 +47,7 @@ public sealed class BenchmarkService
                 Say(Strings.BenchStarting(profile.Name));
                 server = await launcher.StartProfileAndWaitAsync(profile, null, ct);
                 if (server == null) { Say(Strings.BenchStartFailed); return null; }
+                startedHere = server;
                 // jetzt sind Kontext und Slots des laufenden Servers bekannt
                 options.ContextPerSlot = Math.Max(1, (server.Props?.NCtx ?? options.ContextPerSlot * options.Slots) / Math.Max(1, options.Slots));
                 options.Slots = Math.Max(1, server.Props?.TotalSlots ?? options.Slots);
@@ -103,12 +105,38 @@ public sealed class BenchmarkService
         finally
         {
             if (session != null) engine.Recorder.Stop(session);
+            if (startedHere != null && options.StopAfter && await launcher.StopStartedAsync(startedHere)) Say(Strings.BenchStoppedAfter(startedHere.Name));
             Running = false;
             if (result != null) Finished?.Invoke(result, regression);
             // Scheitert der Lauf vor dem ersten Ergebnis, bleibt der Grund in Status stehen (sonst meldet die
             // Steuer-API nur "error:" ohne Text); der Lauf beginnt ohnehin mit leerem Status.
         }
     }
+
+    // Kontext je Slot des Ziels, soweit bekannt: laufender Server aus den Slots bzw. /props, Profil aus -c und -np
+    public static int? KnownContextPerSlot(MonitorEngine engine, string targetKey)
+    {
+        var server = engine.Servers.FirstOrDefault(s => s.Key == targetKey);
+        if (server != null)
+        {
+            if (server.Slots.Count > 0 && server.Slots.Max(v => v.CtxMax) is > 0 and var m) return m;
+            if (server.Props is { NCtx: > 0 } p) return p.NCtx / Math.Max(1, p.TotalSlots);
+            return PerSlot(server.Info.Args);
+        }
+        var profile = FindProfile(engine.Library, targetKey);
+        return profile == null ? null : PerSlot(profile.Args);
+    }
+
+    // llama-server teilt -c auf die Slots auf (-np); ohne -c ist der Kontext unbekannt
+    public static int? PerSlot(IReadOnlyList<string> args)
+    {
+        var a = LlamaServerArgs.Parse(args);
+        return a.Ctx is > 0 and var c ? c / Math.Max(1, a.Np ?? 1) : null;
+    }
+
+    // Ist das Ziel ein gespeichertes Profil, das (noch) nicht läuft? Dann wird es für den Lauf gestartet.
+    public static bool WillStart(MonitorEngine engine, string targetKey) =>
+        !engine.Servers.Any(s => s.Key == targetKey) && FindProfile(engine.Library, targetKey) != null;
 
     // Slots des gewählten Ziels, soweit bekannt: laufender Server aus /props (sonst -np), gespeichertes Profil aus den Startargumenten
     public static int? KnownSlots(MonitorEngine engine, string targetKey)

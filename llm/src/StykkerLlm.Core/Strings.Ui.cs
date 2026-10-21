@@ -357,6 +357,24 @@ public static partial class Strings
     public const string BenchCancelling = "Cancelling the benchmark …";
     public static string BenchStepsDone(int n) => n == 1 ? "1 step done" : n.ToString(Inv) + " steps done";
     public const string BenchNoResults = "No benchmark has been run yet.";
+    // Benchmark-Seite (Überarbeitung 2026-10-21)
+    public const string BenchStepFailed = "failed", BenchToolOk = "called get_weather(Paris)";
+    public const string BenchReadWeakTip = "Short prompt: the fixed start-up time dominates, so this read speed says little.";
+    public static string BenchParallelTip(int n, double aggregate, double perRequest) =>
+        $"{n.ToString(Inv)} requests together: {aggregate.ToString("0.0", Inv)} t/s; each request {perRequest.ToString("0.0", Inv)} t/s.";
+    public static string BenchSizeTooBig(int ctxPerSlot) => $"Does not fit: the target has {ctxPerSlot.ToString("N0", Inv)} tokens of context per slot.";
+    public static string BenchCtxPerSlot(int ctxPerSlot) => $"Context per slot: {ctxPerSlot.ToString("N0", Inv)} tokens. Larger sizes are skipped.";
+    public const string BenchCtxUnknown = "Context per slot is not known yet; sizes that do not fit are skipped during the run.";
+    public const string BenchStopAfter = "Stop the profile afterwards", BenchStopAfterTip = "The profile is started for the benchmark; stop it again when the run ends.";
+    public static string BenchStoppedAfter(string name) => $"Stopped \"{name}\" again.";
+    public const string BenchLive = "Running now", BenchChartRead = "Read t/s by context", BenchChartWrite = "Write t/s by context";
+    public const string BenchChartHint = "Context steps only. Read = prompt processing, write = generation.";
+    public const string BenchCompareTitle = "Compare", BenchCompareHint = "Tick up to four results to put them side by side.";
+    public const string BenchCompareBtn = "Compare", BenchCompareClear = "Clear", BenchCompareMarkdown = "Markdown of these";
+    public const string BenchFilterAll = "All targets", BenchDelete = "Delete result", BenchDeleted = "Result deleted";
+    public static string BenchDeleteConfirm(string title, string when) => $"Delete the benchmark \"{title}\" from {when}?";
+    public const string BenchSettingsNone = "settings not recorded";
+    public const string BenchColPromptTok = "Prompt tok", BenchMarkdown = "Markdown", BenchCsv = "CSV", BenchCompareUnits = "read / write in t/s";
 
     // Einstellungen und About (auch im Web: Bereich 7 und 8)
     public const string SetLimitsTitle = "Limits and storage";
