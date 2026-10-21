@@ -586,6 +586,11 @@ button.hchip:hover{color:var(--ink);border-color:rgb(var(--acc-rgb)/.5)}
 .pxs-none{padding:2px}
 .pxs-form{display:flex;flex-direction:column;gap:6px;padding:8px;margin:4px 0;border:1px dashed var(--line);border-radius:8px}
 .pxs-form .row{justify-content:flex-end}
+.pxs-ask{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;padding:8px;margin:4px 0;border:1px solid var(--warn);border-radius:8px}
+.pxd .pxp-l{min-width:180px;font-size:13px}
+.pxp-sub{margin:4px 0 0 188px}
+@media (max-width:560px){.pxd .pxp-l{min-width:0;width:100%}.pxp-sub{margin-left:0}}
+.pxd-sub{display:flex;width:fit-content;margin-top:12px}
 .warnc{color:var(--warn)}
 .pxp-models{margin-top:10px;font-size:12px}.pxp-models summary{cursor:pointer;color:var(--muted)}
 .pxp-models ul{margin:6px 0 0;padding-left:16px;font-family:var(--font-mono)}
@@ -597,6 +602,7 @@ html[data-theme=titan] .switch.on.warn i{background:var(--l-warn,#d99a1e)}
 html[data-theme=titan] .lamp{box-shadow:0 0 0 1px var(--border)}
 html[data-theme=titan] .pxp-url{border-radius:0;background:var(--disp);color:var(--disp-ink)}
 html[data-theme=titan] .pxs-form{border-radius:0;border-color:var(--border)}
+html[data-theme=titan] .pxs-ask{border-radius:0}
 
 /* Letzte Anfragen (U7) */
 .spdscale{margin-left:auto;display:inline-flex;align-items:center;gap:3px;font-size:11px;color:var(--muted)}

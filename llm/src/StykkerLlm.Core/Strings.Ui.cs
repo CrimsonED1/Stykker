@@ -184,7 +184,7 @@ public static partial class Strings
     public const string ProxySwitchHint = "The choice applies from the next request. A running client session (Qwen Code …) may need a reload, because another backend can use a different chat template.";
     public const string ProxyRemoteLabel = "Other machines with Stykker";
     public const string ProxyRemoteNameLabel = "Name";
-    public const string ProxyRemoteUrlLabel = "URL (http://machine:17500)";
+    public const string ProxyRemoteUrlLabel = "URL, e.g. http://192.0.2.10:17500";
     public const string ProxyRemoteHint = "The other machine must offer its Stykker-Proxy on the LAN. Its models then appear here, like one local LLM.";
     public const string ProxyRemoteEmpty = "No other machine attached.";
     public const string ProxyLanLabel = "Offer this proxy on the LAN (no access code)";

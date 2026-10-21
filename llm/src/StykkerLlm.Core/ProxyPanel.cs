@@ -40,6 +40,21 @@ public static class ProxyPanel
         if (chosen != null && all.Any(p => p.Url == chosen)) return chosen;
         return all.FirstOrDefault(p => p.HasKey).Url ?? all.FirstOrDefault().Url ?? "";
     }
+
+    // Wie TestTarget, aber mit diesem PC (ClassifierTest.LocalSource) als Quelle: gewählt bleibt gewählt; ohne Wahl der erste
+    // Anbieter mit Schlüssel, sonst dieser PC – ein Anbieter ohne Schlüssel könnte ohnehin nichts testen.
+    public static string TestSource(IEnumerable<(string Url, bool HasKey)> providers, string? chosen)
+    {
+        var all = providers.ToList();
+        if (chosen == ClassifierTest.LocalSource) return chosen;
+        if (chosen != null && all.Any(p => p.Url == chosen)) return chosen;
+        return all.FirstOrDefault(p => p.HasKey).Url ?? ClassifierTest.LocalSource;
+    }
+
+    // Der Auswahlwert (Routing, „Use for …“) eines getesteten Modells: lokal ist der Modellname schon der Auswahlwert,
+    // bei einem Anbieter die Cloud-Zielkennung
+    public static string ChoiceValue(string source, string model) =>
+        source == ClassifierTest.LocalSource ? model : ProxyTarget.CloudKey(source, model);
 }
 
 // Die Reiter des Proxy-Dialogs in ihrer Reihenfolge. Der zuletzt gewählte Reiter bleibt je Browser (ui.js); ein leerer oder
