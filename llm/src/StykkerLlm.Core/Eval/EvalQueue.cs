@@ -15,6 +15,23 @@ public sealed class EvalModelDef
     public string Source { get; set; } = "manual";   // profile | gguf | manual
     public string ModelFile { get; set; } = "";
     public double SizeGb { get; set; }
+
+    // Startbefehl: die Argumente wie eingetragen; fehlen Modell oder Port, kommen sie aus den Feldern. Ein von Hand
+    // eingetragenes Modell mit nur „-c 16384“ startete sonst llama-server ohne Modell, und der Test wartete 8 Minuten.
+    public string LaunchArgs()
+    {
+        var list = CmdLine.Split(Args);
+        var a = LlamaServerArgs.Parse(list);
+        var extra = new List<string>();
+        bool hf = list.Any(x => x is "-hf" or "--hf-repo" or "-hfr" or "--hf-file" or "-mu" or "--model-url");
+        if (a.Model == null && !hf && ModelFile.Length > 0) extra.AddRange(new[] { "-m", ModelFile });
+        if (a.Port == null && Port > 0)
+        {
+            if (!list.Any(x => x is "--host")) extra.AddRange(new[] { "--host", "127.0.0.1" });
+            extra.AddRange(new[] { "--port", Port.ToString(System.Globalization.CultureInfo.InvariantCulture) });
+        }
+        return extra.Count == 0 ? Args : string.Join(' ', new[] { CmdLine.Join(extra), Args }.Where(s => s.Length > 0));
+    }
 }
 
 public sealed class EvalQueueSettings
@@ -39,6 +56,7 @@ public sealed class EvalJob
     public int Done { get; internal set; }
     public int Total { get; internal set; }
     public string Current { get; internal set; } = "";
+    public DateTime? CurrentSince { get; internal set; }   // Beginn der laufenden Aufgabe (Anzeige „seit 74 s“)
     public List<EvalTaskResult> Live { get; } = new();
     public List<EvalRun> Runs { get; } = new();
     public DateTime? Started { get; internal set; }
@@ -141,7 +159,7 @@ public sealed class EvalQueue : IDisposable
         return added;
     }
 
-    private static double Size(string f) { try { return new FileInfo(f).Length / 1073741824.0; } catch { return 0; } }
+    internal static double Size(string f) { try { return new FileInfo(f).Length / 1073741824.0; } catch { return 0; } }
 
     public void Enqueue(IEnumerable<EvalModelDef> models, IEnumerable<string> suites, int repeat = 1)
     {
@@ -219,8 +237,8 @@ public sealed class EvalQueue : IDisposable
                 Python = AllowCode ? Python : null, PythonChecks = Python, ContextLimit = ctxLimit,
                 Progress = (t, r) =>
                 {
-                    if (r == null) job.Current = $"{t.Category} · {t.Title}";
-                    else { lock (job.Live) job.Live.Add(r); job.Done++; job.Current = ""; }
+                    if (r == null) { job.Current = $"{t.Category} · {t.Title}"; job.CurrentSince = DateTime.Now; }
+                    else { lock (job.Live) job.Live.Add(r); job.Done++; job.Current = ""; job.CurrentSince = null; }
                     Changed?.Invoke();
                 },
             }, ct).ConfigureAwait(false);
@@ -248,7 +266,7 @@ public sealed class EvalQueue : IDisposable
         }
         catch { }
         Process? p;
-        try { p = Process.Start(new ProcessStartInfo(m.Exe, m.Args) { UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = Path.GetDirectoryName(m.Exe) ?? "" }); }
+        try { p = Process.Start(new ProcessStartInfo(m.Exe, m.LaunchArgs()) { UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = Path.GetDirectoryName(m.Exe) ?? "" }); }
         catch (Exception ex) { return (null, 0, "start failed: " + ex.Message); }
         if (p == null) return (null, 0, "start failed");
         var until = DateTime.Now.AddMinutes(8);

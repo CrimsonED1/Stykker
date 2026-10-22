@@ -96,7 +96,12 @@
                     @r.Category · @r.Title <span class="muted">@Strings.EvalSeconds1(r.Seconds) · @r.GenTokens tok · @r.GenTps.ToString("0", CultureInfo.InvariantCulture) t/s</span>
                     @if (!r.Passed && r.Note.Length > 0) { <span class="muted"> – @r.Note</span> }</div>
             }
-            @if (cur.Current.Length > 0) { <div class="muted">… @cur.Current</div> }
+            @if (cur.Current.Length > 0)
+            {
+                var since = cur.CurrentSince is DateTime cs ? (DateTime.Now - cs).TotalSeconds : 0;
+                double? tps = Host.Engine.Servers.FirstOrDefault(s => s.Info.Port == cur.Model.Port)?.Current;
+                <div class="muted">… @cur.Current <span class="small">· @Strings.EvalRunningFor(since, tps)</span></div>
+            }
         </div>
     </div>
 }
@@ -126,10 +131,12 @@
     protected override void OnInitialized()
     {
         _suites = EvalSuites.All(Paths.EvalSuitesDir);
+        if (Choices.Count == 1) _models.Add(Choices[0].Id);   // nur ein Modell: gleich angehakt
         Queue.Changed += OnChanged;
         _t = new Timer(_ =>
         {
-            if (_dirty) { _dirty = false; InvokeAsync(StateHasChanged); }
+            // während eine Aufgabe läuft jede halbe Sekunde (Laufzeit und t/s ändern sich ohne Ereignis der Warteschlange)
+            if (_dirty || Queue.Jobs.Any(j => j.State == EvalJobState.Running)) { _dirty = false; InvokeAsync(StateHasChanged); }
         }, null, 500, 500);
     }
 
