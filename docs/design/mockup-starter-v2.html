@@ -1,0 +1,366 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stykker Starter – mockup v2</title>
+<!--
+  Mockup v2 des Starters (Umbau der Oberfläche):
+  - nur noch zwei Tabs, in der eigenen Titelleiste: Programs und Settings. „Copying“ und „Update“ entfallen; Fortschritt
+    und der Ablauf des letzten Vorgangs stehen direkt am Programm (aufklappbar über „Details“).
+  - „Add a program“ ist ein Unterfenster (Dialog über der Liste), kein Tab.
+  - Jeder Knopf zeigt, dass etwas passiert: er wird zum Fortschritt („Stopping… 7 s“), die Zeile bekommt einen
+    Status „Stopping“ und einen Balken; am Ende kommt eine Meldung unten rechts.
+  - Pause vor dem Start der Programme als Leiste über der Liste, mit Countdown und „Start now“.
+  Statische Seite mit simulierten Abläufen: alle Namen, Pfade und Zahlen sind erfunden. Klick auf Stop, Restart,
+  Update, Start, „Add a program“, das X oben rechts. Thema über den Knopf in der Titelleiste.
+  Farben sind die Token aus shared/design-system/tokens.css, hier eingebettet, damit die Datei allein öffnet.
+-->
+<style>
+:root,[data-theme="dark"]{--bg:#060916;--bg-top:#0e1430;--card:#111a33;--card-2:#0e0f26;--border:#4fe3ff40;--line:#24325a;--track:#ffffff1c;--ink:#e8eeff;--muted:#8292b8;--na:#7a87ab;--acc:#4fe3ff;--acc-t:var(--acc);--on-acc:#060916;--good:#6cffb0;--warn:#ffc857;--bad:#ff5c7a;--shadow-menu:0 8px 20px rgba(0,0,0,.45)}
+[data-theme="titan"]{--bg:#d9dcdb;--bg-top:#d9dcdb;--card:#cbd0cf;--card-2:#bfc5c4;--border:#7e8789;--line:#a9b0b1;--track:#7e878940;--ink:#1a1e20;--muted:#484f52;--na:#4f5659;--acc:#bd5017;--acc-t:#8f3a0c;--on-acc:#f4f1ec;--good:#256030;--warn:#734f08;--bad:#962817;--shadow-menu:none}
+:root{--radius:12px;--radius-md:8px;--radius-sm:6px;--radius-xs:4px;--font-sans:"Segoe UI Variable Text","Segoe UI",system-ui,sans-serif;--font-mono:"Cascadia Mono","Cascadia Code",Consolas,ui-monospace,monospace}
+[data-theme="titan"]{--radius:2px;--radius-md:2px;--radius-sm:2px;--radius-xs:1px}
+*{box-sizing:border-box}
+html{background:#03050c}
+body{margin:0;font:13px/1.45 var(--font-sans);color:var(--ink);padding:24px 16px}
+button,input,select{font:inherit;color:inherit}
+.mono{font-family:var(--font-mono);font-variant-numeric:tabular-nums}
+.muted{color:var(--muted)}.small{font-size:12px}
+h2,h3{margin:0;font-weight:600}h2{font-size:15px}
+.label{font-size:11px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}
+[hidden]{display:none!important}
+.sp{flex:1}
+.row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.note{max-width:1000px;margin:0 auto 12px;color:#8292b8;font-size:12px}
+
+/* Das Fenster */
+.win{position:relative;max-width:1000px;height:640px;margin:0 auto;display:flex;flex-direction:column;overflow:hidden;
+  background:linear-gradient(var(--bg-top),var(--bg) 600px) no-repeat var(--bg);border:1px solid var(--border);border-radius:var(--radius-md);box-shadow:var(--shadow-menu)}
+
+/* Titelleiste mit den Tabs: eine Zeile statt zwei */
+.tbar{display:flex;align-items:stretch;height:40px;padding-left:14px;background:var(--bg-top);border-bottom:1px solid var(--line);user-select:none}
+.brand{display:flex;align-items:center;gap:6px;font-family:var(--font-mono);font-weight:700;letter-spacing:.14em;font-size:12px;margin-right:18px}
+.brand b{color:var(--acc)}
+.tabs{display:flex;gap:2px}
+.tabs button{background:none;border:0;border-bottom:2px solid transparent;padding:0 14px;color:var(--muted);cursor:pointer}
+.tabs button:hover{color:var(--ink)}
+.tabs button[aria-current="page"]{color:var(--ink);border-bottom-color:var(--acc);font-weight:600}
+.tabs .count{margin-left:6px;font-size:11px;color:var(--muted)}
+.wbtns{display:flex;margin-left:8px}
+.wbtn{width:44px;display:grid;place-items:center;background:none;border:0;color:var(--muted);cursor:pointer}
+.wbtn:hover{background:color-mix(in srgb,var(--ink) 10%,transparent);color:var(--ink)}
+.wbtn.x:hover{background:var(--bad);color:#fff}
+.tchip{align-self:center;background:none;border:1px solid var(--line);border-radius:var(--radius-xs);padding:2px 8px;font-size:11px;color:var(--muted);cursor:pointer}
+
+.content{flex:1;overflow:auto;padding:14px 16px}
+.view{display:none}.view.show{display:block}
+
+/* Knöpfe */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:28px;padding:0 11px;background:var(--card-2);border:1px solid var(--line);border-radius:var(--radius-sm);cursor:pointer;white-space:nowrap;min-width:72px;transition:border-color .15s,background .15s}
+.btn:hover:not(:disabled){border-color:var(--border)}
+.btn:active:not(:disabled){transform:translateY(1px)}
+.btn.primary{background:var(--acc);border-color:var(--acc);color:var(--on-acc);font-weight:600}
+.btn.quiet{background:none;border-color:transparent;min-width:0}
+.btn.quiet:hover:not(:disabled){border-color:var(--line)}
+.btn.danger{color:var(--bad);border-color:color-mix(in srgb,var(--bad) 45%,transparent)}
+.btn.danger:hover:not(:disabled){background:color-mix(in srgb,var(--bad) 12%,transparent)}
+.btn:disabled{opacity:.45;cursor:default}
+.btn.busy{opacity:1;cursor:progress;background:color-mix(in srgb,var(--acc) 10%,var(--card-2));border-color:var(--border);color:var(--ink)}
+.btn.icon{min-width:28px;width:28px;padding:0}
+.spin{width:12px;height:12px;border-radius:50%;border:2px solid color-mix(in srgb,currentColor 25%,transparent);border-top-color:currentColor;animation:spin .8s linear infinite;flex:none}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* Status-Chips */
+.chip{display:inline-flex;align-items:center;gap:6px;padding:1px 8px;border:1px solid var(--line);border-radius:var(--radius-xs);font-size:11px;color:var(--muted);white-space:nowrap;font-weight:600}
+.chip::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+.chip.run{color:var(--good);border-color:color-mix(in srgb,var(--good) 45%,transparent)}
+.chip.upd{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 45%,transparent)}
+.chip.err{color:var(--bad);border-color:color-mix(in srgb,var(--bad) 45%,transparent)}
+.chip.busy{color:var(--acc-t);border-color:var(--border)}
+.chip.busy::before{animation:pulse 1s ease-in-out infinite}
+@keyframes pulse{50%{opacity:.2}}
+.chip.off::before{background:none;border:1px solid currentColor}
+
+/* Pause vor dem Start */
+.startup{display:flex;align-items:center;gap:10px;padding:9px 12px;margin-bottom:12px;border:1px solid var(--border);border-radius:var(--radius-md);background:color-mix(in srgb,var(--acc) 8%,transparent)}
+.startup b{color:var(--acc-t);font-size:15px}
+.startup .spin{color:var(--acc)}
+
+/* Kopf der Liste */
+.listhead{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+
+/* Programm-Zeile */
+.apps{display:grid;gap:8px}
+.app{position:relative;background:var(--card-2);border:1px solid var(--line);border-radius:var(--radius-md);overflow:hidden;transition:border-color .2s}
+.app.working{border-color:var(--border)}
+.app .main{display:grid;grid-template-columns:36px minmax(0,1fr) auto;gap:12px;align-items:center;padding:10px 12px}
+.ico{width:36px;height:36px;border-radius:var(--radius-sm);display:grid;place-items:center;font-family:var(--font-mono);font-weight:700;background:color-mix(in srgb,var(--acc) 14%,transparent);color:var(--acc-t)}
+.app h3{font-size:14px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.app h3 .ver{font-family:var(--font-mono);font-size:12px;color:var(--muted);font-weight:400}
+.path{font-family:var(--font-mono);font-size:11.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.acts{display:flex;gap:6px;align-items:center}
+.progress{height:3px;background:var(--track)}
+.progress i{display:block;height:100%;background:var(--acc);box-shadow:0 0 8px var(--acc);transition:width .2s}
+.progress.indet i{width:30%;animation:slide 1.1s ease-in-out infinite}
+@keyframes slide{0%{margin-left:-30%}100%{margin-left:100%}}
+.det{border-top:1px solid var(--line);padding:10px 12px 10px 60px;font-size:12px;display:grid;gap:8px}
+.det .kv{display:grid;grid-template-columns:auto 1fr;gap:3px 14px}
+.det dt{color:var(--muted)}.det dd{margin:0;font-family:var(--font-mono)}
+.steps{list-style:none;margin:0;padding:0;display:grid;gap:4px}
+.steps li{display:flex;gap:8px;align-items:center}
+.steps li::before{content:"";width:10px;height:10px;border-radius:50%;border:1.5px solid var(--na)}
+.steps li.done::before{background:var(--good);border-color:var(--good)}
+.steps li.now::before{border-color:var(--acc);border-top-color:transparent;animation:spin .8s linear infinite}
+.steps li:not(.done){color:var(--muted)}
+.moremenu{position:absolute;right:12px;top:44px;z-index:5;background:var(--card);border:1px solid var(--border);border-radius:var(--radius-sm);box-shadow:var(--shadow-menu);padding:4px;display:grid;min-width:170px}
+.moremenu button{background:none;border:0;text-align:left;padding:6px 10px;border-radius:var(--radius-xs);cursor:pointer}
+.moremenu button:hover{background:color-mix(in srgb,var(--ink) 8%,transparent)}
+.moremenu .bad{color:var(--bad)}
+
+/* Fußzeile */
+.foot{display:flex;align-items:center;gap:14px;padding:8px 16px;border-top:1px solid var(--line);color:var(--muted);font-size:12px;background:var(--bg-top)}
+
+/* Einstellungen */
+.form{display:grid;gap:14px;max-width:560px}
+.field{display:grid;gap:5px}
+.field input,.field select{background:var(--card-2);border:1px solid var(--line);border-radius:var(--radius-sm);padding:6px 9px}
+.inline{display:flex;gap:6px}.inline input{flex:1;min-width:0}
+.check{display:flex;gap:8px;align-items:flex-start}.check input{margin-top:3px}
+fieldset{border:1px solid var(--line);border-radius:var(--radius-md);padding:12px 14px;margin:0;display:grid;gap:10px}
+legend{padding:0 6px}
+
+/* Unterfenster (Dialog) */
+.scrim{position:absolute;inset:40px 0 0 0;z-index:20;display:grid;place-items:center;padding:16px;background:color-mix(in srgb,var(--bg) 70%,transparent)}
+.dlg{width:min(560px,100%);background:var(--card);border:1px solid var(--border);border-radius:var(--radius-md);box-shadow:var(--shadow-menu);overflow:hidden}
+.dlg .head{display:flex;align-items:center;padding:10px 14px;background:var(--bg-top);border-bottom:1px solid var(--line);font-family:var(--font-mono);font-weight:700;letter-spacing:.12em;font-size:12px}
+.dlg .head b{color:var(--acc);margin-right:6px}
+.dlg .body{padding:14px;display:grid;gap:12px}
+.dlg .bottom{display:flex;gap:8px;justify-content:flex-end;padding:10px 14px;border-top:1px solid var(--line)}
+.found{padding:9px 11px;border:1px dashed var(--line);border-radius:var(--radius-sm);font-size:12px;display:grid;gap:3px}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:var(--radius-sm);overflow:hidden}
+.seg button{background:none;border:0;padding:5px 12px;cursor:pointer;color:var(--muted)}
+.seg button[aria-pressed="true"]{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var(--ink);font-weight:600}
+
+/* Meldungen */
+.toasts{position:absolute;right:14px;bottom:48px;display:grid;gap:6px;z-index:30}
+.toast{background:var(--card);border:1px solid var(--line);border-left:3px solid var(--good);border-radius:var(--radius-sm);padding:8px 12px;box-shadow:var(--shadow-menu);font-size:12px;animation:in .2s ease-out}
+.toast.bad{border-left-color:var(--bad)}
+@keyframes in{from{opacity:0;transform:translateY(6px)}}
+</style>
+</head>
+<body>
+<p class="note">Mockup v2 · Klickbar: Stop, Restart, Update, Start, ⋯, Details, „+ Add a program“, X oben rechts. Alles erfunden.</p>
+
+<div class="win" id="win">
+  <div class="tbar">
+    <span class="brand"><b>◆</b> STYKKER <b>STARTER</b></span>
+    <nav class="tabs">
+      <button data-v="apps" aria-current="page">Programs<span class="count">3</span></button>
+      <button data-v="settings">Settings</button>
+    </nav>
+    <span class="sp"></span>
+    <button class="tchip" id="theme">Titan</button>
+    <span class="wbtns"><button class="wbtn">–</button><button class="wbtn">□</button><button class="wbtn x" id="x">✕</button></span>
+  </div>
+
+  <div class="content">
+    <!-- Programme -->
+    <section class="view show" id="v-apps">
+      <div class="startup" id="startup">
+        <span class="spin"></span>
+        <span>Starting 2 programs in <b class="mono" id="left">3</b> s</span>
+        <span class="sp"></span>
+        <button class="btn quiet" id="skip">Don't start</button>
+        <button class="btn primary" id="now">Start now</button>
+      </div>
+      <div class="listhead">
+        <h2>Programs</h2><span class="muted small">checked 22:42</span>
+        <span class="sp"></span>
+        <button class="btn" id="check">Check now</button>
+        <button class="btn primary" id="add">+ Add a program</button>
+      </div>
+      <div class="apps" id="apps"></div>
+    </section>
+
+    <!-- Einstellungen -->
+    <section class="view" id="v-settings">
+      <div class="form">
+        <fieldset><legend class="label">Updates</legend>
+          <div class="field"><span class="label">Check the sources every</span><select><option>5 min</option><option selected>10 min</option><option>30 min</option><option>hour</option></select></div>
+          <label class="check"><input type="checkbox" checked><span>Ask before updating a running program</span></label>
+          <label class="check"><input type="checkbox"><span>Update stopped programs without asking</span></label>
+          <div class="field"><span class="label">Versions kept per program</span><select><option>1</option><option selected>2</option><option>3</option></select></div>
+        </fieldset>
+        <fieldset><legend class="label">Window and start</legend>
+          <label class="check"><input type="checkbox" checked><span>Start the Starter with Windows (in the tray)</span></label>
+          <div class="field"><span class="label">Wait before starting the programs</span><select><option>0 s</option><option selected>3 s</option><option>10 s</option></select></div>
+          <div class="field"><span class="label">When the window is closed</span><select><option selected>Ask</option><option>Keep running in the tray</option><option>Quit the Starter</option></select></div>
+        </fieldset>
+        <fieldset><legend class="label">Local copies</legend>
+          <div class="inline"><input class="mono" value="C:\Users\someone\AppData\Local\Stykker\Starter" readonly><button class="btn">Open</button></div>
+          <div class="row"><span class="muted small">18 MB in copies · 6 MB unused</span><span class="sp"></span><button class="btn danger" id="cleanup">Remove unused copies</button></div>
+        </fieldset>
+        <div class="row"><span class="muted small">Changes are saved at once.</span></div>
+      </div>
+    </section>
+  </div>
+
+  <div class="foot"><span>3 programs · 1 running</span><span class="sp"></span><span>Checks every 10 min · next at 22:52</span></div>
+
+  <!-- Unterfenster: Programm hinzufügen -->
+  <div class="scrim" id="dlg-add" hidden>
+    <div class="dlg" role="dialog" aria-modal="true">
+      <div class="head"><b>◆</b> ADD A PROGRAM<span class="sp"></span><button class="wbtn" style="width:28px;height:22px" data-close>✕</button></div>
+      <div class="body">
+        <div class="field"><span class="label">Program file</span>
+          <div class="inline"><input class="mono" value="\\share\builds\StykkerUI\StykkerUI.exe"><button class="btn">Browse…</button></div></div>
+        <div class="found"><div><b>Found:</b> StykkerUI · version <b>0.4.0.0</b></div><div class="muted">Folder: 76 files, 11 MB</div></div>
+        <div class="row">
+          <div class="field" style="flex:1"><span class="label">Name</span><input value="StykkerUI"></div>
+          <div class="field" style="flex:1"><span class="label">Arguments</span><input class="mono" placeholder="none"></div>
+        </div>
+        <div class="field"><span class="label">Run from</span>
+          <span class="seg"><button aria-pressed="true">A copy on this PC</button><button aria-pressed="false">The source folder</button></span>
+          <span class="muted small">With a copy the source can be rebuilt while the program runs.</span></div>
+        <label class="check"><input type="checkbox" checked><span>Start with the Starter</span></label>
+        <label class="check"><input type="checkbox"><span>Update without asking</span></label>
+        <label class="check"><input type="checkbox" checked><span>Keep the previous version</span></label>
+      </div>
+      <div class="bottom"><button class="btn quiet" data-close>Cancel</button><button class="btn primary" id="add-go">Copy and start</button></div>
+    </div>
+  </div>
+
+  <!-- Unterfenster: Schließen / Beenden -->
+  <div class="scrim" id="dlg-close" hidden>
+    <div class="dlg" style="width:min(440px,100%)">
+      <div class="head"><b>◆</b> CLOSE THE WINDOW</div>
+      <div class="body"><p style="margin:0">Keep the Starter running in the tray, or quit it?</p>
+        <label class="check"><input type="checkbox"><span>Don't ask again (change it in Settings)</span></label></div>
+      <div class="bottom"><button class="btn quiet" data-close>Cancel</button><button class="btn" id="to-quit">Quit</button><button class="btn primary" data-close>Keep in tray</button></div>
+    </div>
+  </div>
+  <div class="scrim" id="dlg-quit" hidden>
+    <div class="dlg" style="width:min(440px,100%)">
+      <div class="head"><b>◆</b> QUIT THE STARTER</div>
+      <div class="body"><p style="margin:0">This program is running. Stop it too?</p><ul class="mono small muted" style="margin:0"><li>StykkerUI</li></ul></div>
+      <div class="bottom"><button class="btn quiet" data-close>Cancel</button><button class="btn" data-close>Quit, keep running</button><button class="btn danger" data-close>Stop and quit</button></div>
+    </div>
+  </div>
+
+  <div class="toasts" id="toasts"></div>
+</div>
+
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  // Erfundene Programme; state: running | stopped | update | busy
+  var apps = [
+    { id: 'ui', name: 'StykkerUI', ver: '0.4.0.0', path: 'S:\\builds\\StykkerLLM\\StykkerUI.exe', state: 'running', pids: '13884, 22928', upd: '0.4.1.0' },
+    { id: 'home', name: 'StykkerHome', ver: '1.0.0.0', path: 'S:\\builds\\StykkerHome\\stykker-home.exe', state: 'stopped' },
+    { id: 'mtx', name: 'MediaMTX', ver: '1.9.1', path: 'S:\\builds\\MediaMTX\\mediamtx.exe', state: 'stopped', source: true },
+  ];
+  var open = {}, menu = null;
+
+  function chip(a) {
+    if (a.busy) return '<span class="chip busy">' + a.busy.chip + '</span>';
+    var c = a.state === 'running' ? '<span class="chip run">Running</span>' : '<span class="chip off">Stopped</span>';
+    if (a.upd) c += ' <span class="chip upd">Update ' + a.upd + '</span>';
+    return c;
+  }
+  function buttons(a) {
+    if (a.busy) return '<button class="btn busy" disabled><span class="spin"></span>' + a.busy.label + '</button>';
+    var b = '';
+    if (a.upd) b += '<button class="btn primary" data-act="update" data-id="' + a.id + '">' + (a.state === 'running' ? 'Update and restart' : 'Update') + '</button>';
+    if (a.state === 'running') b += '<button class="btn" data-act="restart" data-id="' + a.id + '">Restart</button><button class="btn danger" data-act="stop" data-id="' + a.id + '">Stop</button>';
+    else b += '<button class="btn primary" data-act="start" data-id="' + a.id + '">Start</button>';
+    return b + '<button class="btn quiet icon" title="More" data-act="more" data-id="' + a.id + '">⋯</button>';
+  }
+  function render() {
+    $('apps').innerHTML = apps.map(function (a) {
+      var meta = (a.source ? 'runs from source' : 'local copy') + (a.pids && a.state === 'running' ? ' · PID ' + a.pids : '');
+      var det = open[a.id] ? '<div class="det">' + (a.steps ? '<ol class="steps">' + a.steps.map(function (s) {
+          return '<li class="' + s[1] + '">' + s[0] + '</li>'; }).join('') + '</ol>' : '') +
+        '<dl class="kv"><dt>Source</dt><dd>' + a.path + '</dd><dt>Copy</dt><dd>%LOCALAPPDATA%\\Stykker\\Starter\\' + a.id + '\\' + a.ver + '</dd><dt>Last</dt><dd>' + (a.last || 'started 22:42') + '</dd></dl></div>' : '';
+      return '<div class="app' + (a.busy ? ' working' : '') + '"><div class="main">' +
+        '<div class="ico">' + a.name.slice(0, 2).toUpperCase() + '</div>' +
+        '<div style="min-width:0"><h3>' + a.name + ' <span class="ver">' + a.ver + '</span> ' + chip(a) + '</h3>' +
+        '<div class="path">' + a.path + ' · ' + meta + ' · <a href="#" data-act="det" data-id="' + a.id + '" style="color:var(--acc-t)">' + (open[a.id] ? 'Hide details' : 'Details') + '</a></div></div>' +
+        '<div class="acts">' + buttons(a) + '</div></div>' +
+        (a.busy ? '<div class="progress' + (a.busy.pct == null ? ' indet' : '') + '"><i style="width:' + (a.busy.pct || 0) + '%"></i></div>' : '') +
+        det + (menu === a.id ? '<div class="moremenu"><button>Open folder</button><button>Show the log</button><button class="bad">Remove…</button></div>' : '') +
+        '</div>';
+    }).join('');
+  }
+  function toast(text, bad) {
+    var t = document.createElement('div');
+    t.className = 'toast' + (bad ? ' bad' : '');
+    t.textContent = text;
+    $('toasts').appendChild(t);
+    setTimeout(function () { t.remove(); }, 3500);
+  }
+  function find(id) { return apps.filter(function (a) { return a.id === id; })[0]; }
+
+  // Ein Vorgang in Schritten: Knopf wird Fortschritt, Zeile zeigt Status und Balken, Ende → Meldung
+  function run(a, steps, done) {
+    var i = 0;
+    a.steps = steps.map(function (s) { return [s[0], '']; });
+    open[a.id] = open[a.id] || false;
+    (function next() {
+      if (i > 0) a.steps[i - 1][1] = 'done';
+      if (i === steps.length) { a.busy = null; done(); render(); return; }
+      a.steps[i][1] = 'now';
+      var s = steps[i], t0 = Date.now(), dur = s[2];
+      a.busy = { chip: s[1], label: s[0], pct: s[3] ? 0 : null };
+      var tick = setInterval(function () {
+        var el = Date.now() - t0;
+        if (s[3]) a.busy.pct = Math.min(100, el / dur * 100);
+        if (s[4]) a.busy.label = s[0] + ' ' + Math.ceil((dur - el) / 1000) + ' s';
+        render();
+        if (el >= dur) { clearInterval(tick); i++; next(); }
+      }, 150);
+    })();
+  }
+
+  document.addEventListener('click', function (ev) {
+    var t = ev.target.closest('[data-act],[data-v],[data-close]');
+    if (!t) { if (menu) { menu = null; render(); } return; }
+    if (t.dataset.close !== undefined) { t.closest('.scrim').hidden = true; return; }
+    if (t.dataset.v) {
+      document.querySelectorAll('.tabs button').forEach(function (b) { b.toggleAttribute('aria-current', b === t); if (b === t) b.setAttribute('aria-current', 'page'); });
+      document.querySelectorAll('.view').forEach(function (v) { v.classList.toggle('show', v.id === 'v-' + t.dataset.v); });
+      return;
+    }
+    ev.preventDefault();
+    var a = find(t.dataset.id), act = t.dataset.act;
+    if (act === 'det') { open[a.id] = !open[a.id]; render(); return; }
+    if (act === 'more') { menu = menu === a.id ? null : a.id; render(); ev.stopPropagation(); return; }
+    if (act === 'stop') run(a, [['Closing…', 'Stopping', 2500, false, true], ['Ending…', 'Stopping', 1200]], function () {
+      a.state = 'stopped'; a.last = 'stopped 22:44 (2 processes)'; toast(a.name + ' stopped · 2 processes'); });
+    if (act === 'start') run(a, [['Starting…', 'Starting', 1500], ['Checking…', 'Starting', 1500]], function () {
+      a.state = 'running'; a.pids = '24608'; toast(a.name + ' is running'); });
+    if (act === 'restart') run(a, [['Closing…', 'Restarting', 2000, false, true], ['Starting…', 'Restarting', 1500]], function () {
+      a.state = 'running'; toast(a.name + ' restarted'); });
+    if (act === 'update') run(a, [['Copying…', 'Copying 0.4.1.0', 3000, true], ['Checking files…', 'Checking', 1000, true], ['Closing…', 'Updating', 2000, false, true], ['Starting…', 'Updating', 1200]], function () {
+      a.ver = a.upd; a.upd = null; a.state = 'running'; toast(a.name + ' updated to ' + a.ver); });
+  });
+
+  $('add').onclick = function () { $('dlg-add').hidden = false; };
+  $('add-go').onclick = function () { $('dlg-add').hidden = true; toast('StykkerUI added · copying…'); };
+  $('x').onclick = function () { $('dlg-close').hidden = false; };
+  $('to-quit').onclick = function () { $('dlg-close').hidden = true; $('dlg-quit').hidden = false; };
+  $('check').onclick = function () { var b = this; b.disabled = true; b.innerHTML = '<span class="spin"></span>Checking…'; setTimeout(function () { b.disabled = false; b.textContent = 'Check now'; toast('Checked · 1 update'); }, 1500); };
+  $('cleanup').onclick = function () { toast('Removed 2 unused copies · 6 MB'); };
+  $('theme').onclick = function () { var r = document.documentElement, t = r.dataset.theme === 'titan' ? 'dark' : 'titan'; r.dataset.theme = t; this.textContent = t === 'titan' ? 'Dark' : 'Titan'; };
+
+  // Countdown
+  var left = 3;
+  function hideStartup(msg) { clearInterval(cd); $('startup').hidden = true; if (msg) toast(msg); }
+  var cd = setInterval(function () { left--; $('left').textContent = left; if (left <= 0) hideStartup('Started 2 programs'); }, 1000);
+  $('now').onclick = function () { hideStartup('Started 2 programs'); };
+  $('skip').onclick = function () { hideStartup('Programs not started'); };
+  render();
+})();
+</script>
+</body>
+</html>

@@ -20,6 +20,7 @@ public enum UpdateKind
     Updated,       // neue Version läuft, alte ist beendet
     Restarted,     // ohne Kopie: der neue Stand läuft aus dem Quellordner, der alte ist beendet
     RolledBack,    // neue Version startete nicht; die alte läuft wieder
+    WentBack,      // auf Wunsch zurück zur vorigen Kopie (Rollback); die neuere Kopie bleibt liegen
     Failed,        // Kopieren fehlgeschlagen, oder auch die alte startet nicht mehr; Stand bleibt der alte
 }
 
@@ -235,6 +236,66 @@ public sealed class ProgramService
             _log?.Write($"cleanup {program.Id}: removed {copy.Folder}");
         }
         return new CleanupReport(removed, kept);
+    }
+
+    // Ohne Start: die Quelle in eine neue Kopie, und die Kopie wird die aktuelle. Das Programm darf nicht laufen (sonst
+    // würde es umgeschaltet, ohne dass es neu startet). Für „Copy to this PC“ beim Bearbeiten.
+    public UpdateOutcome CopyOnly(ProgramEntry program, SourceTree source, CopyPlan plan, IProgress<CopyProgress>? progress = null,
+        CancellationToken ct = default)
+    {
+        if (CopyNew(program, source, plan, progress, ct) is { } failed) return failed;
+        program.CurrentFolder = plan.Folder;
+        _log?.Write($"copy {program.Id}: {plan.Version} is the current copy; it runs from it the next time it starts");
+        return new UpdateOutcome(UpdateKind.Switched,
+            $"{plan.Version} copied; the program runs from the copy the next time it starts", Array.Empty<int>(), plan.Folder);
+    }
+
+    // Die vorige Version: die jüngste behaltene Kopie, die älter ist als die laufende und auf der Platte liegt. Nur mit
+    // Kopie; null, wenn es keine gibt.
+    public CopyRecord? PreviousCopy(ProgramEntry program)
+    {
+        if (!program.CopyToLocal) return null;
+        var current = program.Current;
+        return program.Copies
+            .Where(c => c.Folder != program.CurrentFolder && (current == null || c.CopiedUtc < current.CopiedUtc))
+            .Where(c => Directory.Exists(_layout.VersionDir(program.Id, c.Folder)))
+            .OrderByDescending(c => c.CopiedUtc)
+            .FirstOrDefault();
+    }
+
+    // Zurück zur vorigen Kopie: beendet, was läuft, startet die vorige und setzt sie als aktuell. Die neuere Kopie bleibt
+    // liegen (das Aufräumen entfernt sie später). Danach übernimmt die Prüfung nichts ohne Rückfrage (HeldAfterRollback).
+    // Startet die vorige nicht, läuft die aktuelle wieder, und der Stand bleibt.
+    public UpdateOutcome Rollback(ProgramEntry program)
+    {
+        var previous = PreviousCopy(program);
+        if (previous == null)
+            return new UpdateOutcome(UpdateKind.Failed, "there is no earlier version to go back to", Array.Empty<int>(), null);
+
+        var oldDir = CurrentDir(program);
+        var stopped = Stop(program);
+        var stoppedPids = stopped.Closed.Concat(stopped.Killed).Distinct().ToList();
+        if (!stopped.AllGone)
+        {
+            _log?.Write($"rollback {program.Id}: {stopped.Left.Count} process(es) still run; not switching");
+            return new UpdateOutcome(UpdateKind.Failed, "the running version did not stop; nothing was switched", stoppedPids, null);
+        }
+
+        var prevDir = _layout.VersionDir(program.Id, previous.Folder);
+        var started = StartFrom(program, prevDir);
+        _log?.Write($"rollback {program.Id} to {previous.Version}: {(started.Ok ? "ok" : "failed")}, pid {started.Pid}, {started.Message}");
+        if (!started.Ok)
+        {
+            var back = oldDir != null && Directory.Exists(oldDir) ? StartFrom(program, oldDir) : new StartOutcome(false, null, "no current version");
+            return new UpdateOutcome(UpdateKind.Failed,
+                $"{previous.Version} did not start ({started.Message})" +
+                (back.Ok ? "; the current version runs again" : " and the current version did not start either"),
+                stoppedPids, null);
+        }
+
+        program.CurrentFolder = previous.Folder;
+        program.HeldAfterRollback = true;
+        return new UpdateOutcome(UpdateKind.WentBack, $"back to {previous.Version}", stoppedPids, previous.Folder);
     }
 
     private StartOutcome StartFrom(ProgramEntry program, string dir)
