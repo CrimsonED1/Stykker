@@ -397,44 +397,54 @@
                     {
                         <button class="ib txt primary" disabled="@(ro || !CanWrite)" title="@(CanWrite ? StartTip(p) : Strings.ViewerOnly)" @onclick="() => Start(pr)"><Icon Name="play" />@Strings.BtnStart</button>
                     }
-                    <details class="pf-cmd">
-                        <summary title="@Strings.PfCmdLine">@Strings.PfCmdLine</summary>
-                        <code>@p.Program @string.Join(" ", p.Args)</code>
-                    </details>
-                    @if (CanWrite && !ro)
-                    {
-                    <details class="menu" style="margin-left:auto">
-                        <summary title="@Strings.BtnMore" aria-label="@Strings.BtnMore"><Icon Name="more" /></summary>
-                        <div>
-                            <a href="@($"bench?target={p.Id:N}")">@Strings.BtnBench</a>
-                            <button @onclick="() => Edit(pr)">@Strings.BtnEdit</button>
-                            <button @onclick="() => SetRestart(pr, !pr.RestartOnCrash)">@(p.RestartOnCrash ? Strings.PfRestartTurnOff : Strings.PfRestartTurnOn)</button>
-                            <span class="grp">@Strings.PfIdle</span>
-                            <div class="seg">
-                                @foreach (var min in new[] { 0, 15, 30, 60 })
-                                {
-                                    var mm = min;
-                                    <button class="@(p.UnloadAfterIdleMin == mm ? "on" : "")" @onclick="() => SetIdle(pr, mm)">@(mm == 0 ? Strings.PfOff : mm + "m")</button>
-                                }
-                            </div>
-                            <button class="bad" @onclick="() => Remove(pr)">@Strings.BtnRemove</button>
-                        </div>
-                    </details>
-                    }
+                    @* Kommandozeile, Bearbeiten und Optionen in einem Fenster statt aufgeklappt (auf dem Handy schob das die Kacheln weg) *@
+                    <button class="ib" style="margin-left:auto" title="@Strings.BtnMore" aria-label="@Strings.BtnMore" aria-haspopup="dialog" @onclick="() => Edit(pr)"><Icon Name="more" /></button>
                 </div>
             </div>
         }
     </div>
-    @if (_edit != null)
+    @if (_edit != null && e.Library.Profiles.FirstOrDefault(x => x.Id == _edit.Id) is { } dp)
     {
-        <div style="margin-top:12px;border-top:1px solid var(--line);padding-top:10px">
-            <div class="row"><b>@Strings.BtnEdit</b> <span class="muted small">@_edit.Name</span>
-                <span style="margin-left:auto"><button class="good" disabled="@ro" @onclick="SaveEdit">@Strings.BtnSaved</button> <button @onclick="() => _edit = null">@Strings.Close</button></span></div>
-            <div class="row" style="margin-top:8px">
-                <input placeholder="@Strings.FieldName" @bind="_editName" @bind:event="oninput" style="flex:1" />
+        bool dw = CanWrite && !ro;
+        var cmd = dp.Program + " " + string.Join(" ", dp.Args);
+        <div class="modal-back" @onclick="() => _edit = null">
+            <div class="modal pfd" role="dialog" aria-modal="true" aria-labelledby="pfd-title" tabindex="-1"
+                 @onclick:stopPropagation="true" @onkeydown='k => { if (k.Key == "Escape") _edit = null; }'>
+                <div class="cdlg-hd">
+                    <h2 id="pfd-title" class="pfd-t">@dp.Name</h2>
+                    <button class="ib quiet" title="@Strings.Close" aria-label="@Strings.Close" @onclick="() => _edit = null"><Icon Name="x" /></button>
+                </div>
+                <div class="grp pfd-grp">@Strings.PfCmdLine</div>
+                <div class="pfd-cmd"><code>@cmd</code><button class="ib quiet" title="@Strings.MxCopyBlock" aria-label="@Strings.MxCopyBlock" @onclick="() => Copy(cmd)"><Icon Name="@(_copied ? "r-ok" : "file")" /></button></div>
+                @if (dw)
+                {
+                    <div class="grp pfd-grp">@Strings.BtnEdit</div>
+                    <input placeholder="@Strings.FieldName" @bind="_editName" @bind:event="oninput" style="width:100%" />
+                    <textarea placeholder="@Strings.FieldNote" @bind="_editNote" @bind:event="oninput" rows="2" style="width:100%;margin-top:8px"></textarea>
+                    <textarea @bind="_editArgs" @bind:event="oninput" rows="4" style="width:100%;margin-top:8px;font-family:Consolas,monospace"></textarea>
+                    <div class="grp pfd-grp">@Strings.PfIdle</div>
+                    <div class="seg">
+                        @foreach (var min in new[] { 0, 15, 30, 60 })
+                        {
+                            var mm = min;
+                            <button class="@(dp.UnloadAfterIdleMin == mm ? "on" : "")" @onclick="() => SetIdle(dp, mm)">@(mm == 0 ? Strings.PfOff : mm + "m")</button>
+                        }
+                    </div>
+                    <div class="row pfd-opts">
+                        <button @onclick="() => SetRestart(dp, !dp.RestartOnCrash)">@(dp.RestartOnCrash ? Strings.PfRestartTurnOff : Strings.PfRestartTurnOn)</button>
+                        <a class="btn" href="@($"bench?target={dp.Id:N}")">@Strings.BtnBench</a>
+                    </div>
+                    <div class="row end">
+                        <button class="bad" style="margin-right:auto" @onclick="() => Remove(dp)">@Strings.BtnRemove</button>
+                        <button @onclick="() => _edit = null">@Strings.Close</button>
+                        <button class="good" @onclick="SaveEdit">@Strings.PfSave</button>
+                    </div>
+                }
+                else
+                {
+                    <div class="small muted" style="margin-top:10px">@(ro ? WriteReason : Strings.ViewerOnly)</div>
+                }
             </div>
-            <textarea placeholder="@Strings.FieldNote" @bind="_editNote" @bind:event="oninput" rows="2" style="width:100%;margin-top:8px"></textarea>
-            <textarea @bind="_editArgs" @bind:event="oninput" rows="3" style="width:100%;margin-top:8px;font-family:Consolas,monospace"></textarea>
         </div>
     }
 </div>
