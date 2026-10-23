@@ -22,6 +22,12 @@ public sealed class ServerCardModel
     public string Key { get; init; } = "";
     public string Name { get; init; } = "";
     public string Model { get; init; } = "";
+    // Name des gemerkten Profils, dessen Programm und Argumente genau zu diesem Server passen (Library.FindProfile:
+    // derselbe Schlüssel wie für „läuft“ auf der Profil-Kachel), sonst null. Die Karte zeigt ihn statt des Alias.
+    public string? ProfileName { get; init; }
+    // Zeile 1 der Karte (groß): Profilname, sonst Alias/Modell; Zeile 2 (klein): Modelldatei und womit es läuft
+    public string Title => ProfileName ?? Name;
+    public string Subtitle { get; init; } = "";
     public BackendKind Kind { get; init; }
     public int Port { get; init; }
     public string Url { get; init; } = "";
@@ -78,14 +84,19 @@ public sealed class ServerCardModel
     public PromptReading? Reading => Slots.Select(s => s.Reading).OfType<PromptReading>()
         .OrderByDescending(r => r.SecondsLeft ?? 0).FirstOrDefault();
 
-    public static ServerCardModel From(ServerWatcher s, RecordingSession? rec, HistoryEntry? usual = null)
+    public static ServerCardModel From(ServerWatcher s, RecordingSession? rec, HistoryEntry? usual = null, Profile? profile = null)
     {
         var slots = s.Slots.Select(Slot).ToList();
         var hist = new double[s.HistoryCount];
         for (int i = 0; i < hist.Length; i++) hist[i] = s.HistoryAt(i);
+        string? profileName = profile?.Name is { Length: > 0 } pn ? pn : null;
+        string? modelPath = s.Info.Params?.Model ?? s.Props?.ModelPath;
         return new ServerCardModel
         {
-            Key = s.Key, Name = s.Name, Model = s.Model, Kind = s.Kind, Port = s.Info.Port, Url = s.Url,
+            Key = s.Key, Name = s.Name, Model = s.Model, ProfileName = profileName,
+            Subtitle = ServerSubtitle.Of(profileName ?? s.Name, ServerSubtitle.BackendOf(s.Info.Program, s.Kind),
+                modelPath is { Length: > 0 } mp ? ServerInfo.ModelName(mp) : s.Model),
+            Kind = s.Kind, Port = s.Info.Port, Url = s.Url,
             Online = s.Online, Loading = s.Loading, Manual = s.Info.Manual,
             Current = s.Current, Peak = s.Peak, Avg = s.AverageActive(), GeneratedTotal = s.GeneratedTotal,
             VramGb = s.VramGb, RamGb = s.RamGb, CpuPercent = s.CpuPercent, ModelFileGb = s.ModelFileGb,
@@ -106,6 +117,7 @@ public sealed class ServerCardModel
         return new ServerCardModel
         {
             Key = rs.Key, Name = rs.Name, Model = rs.Model, Kind = KindOf(rs.Backend), Port = rs.Port, Url = rs.Url,
+            Subtitle = ServerSubtitle.Of(rs.Name, BackendProbes.DisplayName(KindOf(rs.Backend)), rs.Model),
             HostId = hostId, HostName = hostName,
             Online = rs.Online, Loading = rs.Loading, Manual = rs.Manual,
             Current = rs.Current, Peak = rs.Peak, Avg = rs.AverageActive, GeneratedTotal = rs.GeneratedTotal,

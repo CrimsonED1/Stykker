@@ -10,7 +10,10 @@
 <article class="card srv @(st == "gen" || st == "read" ? "busy" : "") @(st == "off" ? "off" : "") @(m.SlowerPct != null || m.SpillGb != null ? "warnstripe" : "")" style="--b:var(@m.BackendVar)">
     <div class="hd5">
         <span class="bk" title="@m.Backend"><Icon Name="@m.BackendIcon" Title="@m.Backend" /></span>
-        <span class="name" title="@m.Model">@m.Name</span>
+        <span class="ttl" title="@(m.ProfileName is { } pn ? Strings.CardProfileTip(pn, m.Name, m.Model) : m.Model)">
+            <span class="name">@m.Title</span>
+            @if (m.Subtitle.Length > 0) { <span class="sub">@m.Subtitle</span> }
+        </span>
         <span class="st" data-s="@st" title="@Strings.StateText(st)"><Icon Name="@("s-" + st)" Title="@Strings.StateText(st)" Class="@(st == "load" ? "spin" : null)" /></span>
         @if (st == "read" && m.Reading is { } rd)
         {
@@ -62,7 +65,8 @@
                 }
                 @if (CanWrite && m.Online && !m.Manual && m.Kind == BackendKind.LlamaCpp)
                 {
-                    <button class="ib" title="@Strings.CardSave" aria-label="@Strings.CardSave" @onclick="OnSave"><Icon Name="save" /></button>
+                    @* Schon als Profil gemerkt: der Knopf zeigt es an und ist gesperrt (ein zweites Merken legte nichts Neues an) *@
+                    <button class="ib @(m.ProfileName != null ? "saved" : "")" disabled="@(m.ProfileName != null)" title="@(m.ProfileName != null ? Strings.BtnSaved : Strings.CardSave)" aria-label="@(m.ProfileName != null ? Strings.BtnSaved : Strings.CardSave)" @onclick="OnSave"><Icon Name="save" /></button>
                     <button class="ib rec @(m.Recording ? "on" : "")" title="@(m.Recording ? Strings.CardStopRecord : Strings.CardRecord)" aria-label="@(m.Recording ? Strings.CardStopRecord : Strings.CardRecord)" @onclick="OnRecord"><Icon Name="rec" /></button>
                 }
             }

@@ -50,7 +50,7 @@
 @foreach (var s in e.Registry.Servers)
 {
     var sv = s;
-    <ServerCard Model="ServerCardModel.From(sv, e.Recorder.Sessions.FirstOrDefault(r => r.Target == sv.Key), UsualFor(sv))" CanWrite="CanWrite && !ro"
+    <ServerCard Model="ServerCardModel.From(sv, e.Recorder.Sessions.FirstOrDefault(r => r.Target == sv.Key), UsualFor(sv), e.Library.FindProfile(sv.Info))" CanWrite="CanWrite && !ro"
                 Served="px.IsServed(sv.Key)" ProxyRunning="px.Running" SparkAgo="@SparkAgo"
                 OnServe="() => Serve(sv)" OnSave='() => Act("save", sv.Key, sv.Name)'
                 OnRecord='() => Act(e.Recorder.Sessions.Any(r => r.Target == sv.Key) ? "record.stop" : "record.start", sv.Key)'
@@ -319,7 +319,11 @@
             <div class="pf @(running != null ? "on" : "") @(starting != null ? "starting" : "") @(tight ? "tight" : "")" style="--b:var(--b-llama)">
                 <div class="pf-hd">
                     <span class="bk" title="llama.cpp"><Icon Name="b-llama" Title="llama.cpp" /></span>
-                    <span class="name" title="@NameTip(p, a.Model)">@p.Name</span>
+                    @{ var pfSub = ServerSubtitle.Of(p.Name, ServerSubtitle.BackendOf(p.Program, BackendKind.LlamaCpp), a.Model is { Length: > 0 } am ? ServerInfo.ModelName(am) : null); }
+                    <span class="ttl" title="@NameTip(p, a.Model)">
+                        <span class="name">@p.Name</span>
+                        @if (pfSub.Length > 0) { <span class="sub">@pfSub</span> }
+                    </span>
                     <span class="st" data-s="@(running != null ? (running.Current > 0 ? "gen" : "idle") : starting != null ? "load" : "off")" title="@(running != null ? Strings.RunningTag : starting != null ? Strings.StartingShort : Strings.CardStateOff)">
                         <Icon Name="@(running != null ? (running.Current > 0 ? "s-gen" : "s-idle") : starting != null ? "s-load" : "s-off")" Class="@(starting != null ? "spin" : null)" />
                     </span>

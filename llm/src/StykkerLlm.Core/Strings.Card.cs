@@ -15,6 +15,9 @@ public static partial class Strings
     public const string CardRecord = "Record requests", CardStopRecord = "Stop recording", CardRecording = "Recording requests";
     public const string CardSave = "Save as profile", CardDetails = "Details", CardStop = "Stop", CardOpenHost = "Open on the Hosts page";
     public static string CardPort(int port) => $"Port {port}";
+    // Tooltip des Namens, wenn die Karte den Namen des passenden Profils zeigt: dazu Alias und Modell des Servers
+    public static string CardProfileTip(string profile, string alias, string model) =>
+        $"Saved profile \"{profile}\" · {alias}" + (model.Length > 0 && model != alias && model != "–" ? $" · {model}" : "");
     public static string CardSpill(double gb) => $"{N1(gb)} GB spill into shared RAM – slower than it could be";
     public const string CardStateIdle = "idle", CardStateRead = "reading prompt", CardStateGen = "generating", CardStateLoad = "loading", CardStateOff = "offline";
     public const string CardModelCol = "loaded model", CardOnGpu = "on GPU", CardCtxCol = "ctx", CardUnloads = "unloads";
