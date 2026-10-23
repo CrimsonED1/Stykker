@@ -50,7 +50,7 @@
 @foreach (var s in e.Registry.Servers)
 {
     var sv = s;
-    <ServerCard Model="ServerCardModel.From(sv, e.Recorder.Sessions.FirstOrDefault(r => r.Target == sv.Key), UsualFor(sv))" CanWrite="CanWrite && !ro"
+    <ServerCard Model="ServerCardModel.From(sv, e.Recorder.Sessions.FirstOrDefault(r => r.Target == sv.Key), UsualFor(sv), e.Library.FindProfile(sv.Info))" CanWrite="CanWrite && !ro"
                 Served="px.IsServed(sv.Key)" ProxyRunning="px.Running" SparkAgo="@SparkAgo"
                 OnServe="() => Serve(sv)" OnSave='() => Act("save", sv.Key, sv.Name)'
                 OnRecord='() => Act(e.Recorder.Sessions.Any(r => r.Target == sv.Key) ? "record.stop" : "record.start", sv.Key)'
@@ -319,7 +319,11 @@
             <div class="pf @(running != null ? "on" : "") @(starting != null ? "starting" : "") @(tight ? "tight" : "")" style="--b:var(--b-llama)">
                 <div class="pf-hd">
                     <span class="bk" title="llama.cpp"><Icon Name="b-llama" Title="llama.cpp" /></span>
-                    <span class="name" title="@NameTip(p, a.Model)">@p.Name</span>
+                    @{ var pfSub = ServerSubtitle.Of(p.Name, ServerSubtitle.BackendOf(p.Program, BackendKind.LlamaCpp), a.Model is { Length: > 0 } am ? ServerInfo.ModelName(am) : null); }
+                    <span class="ttl" title="@NameTip(p, a.Model)">
+                        <span class="name">@p.Name</span>
+                        @if (pfSub.Length > 0) { <span class="sub">@pfSub</span> }
+                    </span>
                     <span class="st" data-s="@(running != null ? (running.Current > 0 ? "gen" : "idle") : starting != null ? "load" : "off")" title="@(running != null ? Strings.RunningTag : starting != null ? Strings.StartingShort : Strings.CardStateOff)">
                         <Icon Name="@(running != null ? (running.Current > 0 ? "s-gen" : "s-idle") : starting != null ? "s-load" : "s-off")" Class="@(starting != null ? "spin" : null)" />
                     </span>
@@ -393,44 +397,54 @@
                     {
                         <button class="ib txt primary" disabled="@(ro || !CanWrite)" title="@(CanWrite ? StartTip(p) : Strings.ViewerOnly)" @onclick="() => Start(pr)"><Icon Name="play" />@Strings.BtnStart</button>
                     }
-                    <details class="pf-cmd">
-                        <summary title="@Strings.PfCmdLine">@Strings.PfCmdLine</summary>
-                        <code>@p.Program @string.Join(" ", p.Args)</code>
-                    </details>
-                    @if (CanWrite && !ro)
-                    {
-                    <details class="menu" style="margin-left:auto">
-                        <summary title="@Strings.BtnMore" aria-label="@Strings.BtnMore"><Icon Name="more" /></summary>
-                        <div>
-                            <a href="@($"bench?target={p.Id:N}")">@Strings.BtnBench</a>
-                            <button @onclick="() => Edit(pr)">@Strings.BtnEdit</button>
-                            <button @onclick="() => SetRestart(pr, !pr.RestartOnCrash)">@(p.RestartOnCrash ? Strings.PfRestartTurnOff : Strings.PfRestartTurnOn)</button>
-                            <span class="grp">@Strings.PfIdle</span>
-                            <div class="seg">
-                                @foreach (var min in new[] { 0, 15, 30, 60 })
-                                {
-                                    var mm = min;
-                                    <button class="@(p.UnloadAfterIdleMin == mm ? "on" : "")" @onclick="() => SetIdle(pr, mm)">@(mm == 0 ? Strings.PfOff : mm + "m")</button>
-                                }
-                            </div>
-                            <button class="bad" @onclick="() => Remove(pr)">@Strings.BtnRemove</button>
-                        </div>
-                    </details>
-                    }
+                    @* Kommandozeile, Bearbeiten und Optionen in einem Fenster statt aufgeklappt (auf dem Handy schob das die Kacheln weg) *@
+                    <button class="ib" style="margin-left:auto" title="@Strings.BtnMore" aria-label="@Strings.BtnMore" aria-haspopup="dialog" @onclick="() => Edit(pr)"><Icon Name="more" /></button>
                 </div>
             </div>
         }
     </div>
-    @if (_edit != null)
+    @if (_edit != null && e.Library.Profiles.FirstOrDefault(x => x.Id == _edit.Id) is { } dp)
     {
-        <div style="margin-top:12px;border-top:1px solid var(--line);padding-top:10px">
-            <div class="row"><b>@Strings.BtnEdit</b> <span class="muted small">@_edit.Name</span>
-                <span style="margin-left:auto"><button class="good" disabled="@ro" @onclick="SaveEdit">@Strings.BtnSaved</button> <button @onclick="() => _edit = null">@Strings.Close</button></span></div>
-            <div class="row" style="margin-top:8px">
-                <input placeholder="@Strings.FieldName" @bind="_editName" @bind:event="oninput" style="flex:1" />
+        bool dw = CanWrite && !ro;
+        var cmd = dp.Program + " " + string.Join(" ", dp.Args);
+        <div class="modal-back" @onclick="() => _edit = null">
+            <div class="modal pfd" role="dialog" aria-modal="true" aria-labelledby="pfd-title" tabindex="-1"
+                 @onclick:stopPropagation="true" @onkeydown='k => { if (k.Key == "Escape") _edit = null; }'>
+                <div class="cdlg-hd">
+                    <h2 id="pfd-title" class="pfd-t">@dp.Name</h2>
+                    <button class="ib quiet" title="@Strings.Close" aria-label="@Strings.Close" @onclick="() => _edit = null"><Icon Name="x" /></button>
+                </div>
+                <div class="grp pfd-grp">@Strings.PfCmdLine</div>
+                <div class="pfd-cmd"><code>@cmd</code><button class="ib quiet" title="@Strings.MxCopyBlock" aria-label="@Strings.MxCopyBlock" @onclick="() => Copy(cmd)"><Icon Name="@(_copied ? "r-ok" : "file")" /></button></div>
+                @if (dw)
+                {
+                    <div class="grp pfd-grp">@Strings.BtnEdit</div>
+                    <input placeholder="@Strings.FieldName" @bind="_editName" @bind:event="oninput" style="width:100%" />
+                    <textarea placeholder="@Strings.FieldNote" @bind="_editNote" @bind:event="oninput" rows="2" style="width:100%;margin-top:8px"></textarea>
+                    <textarea @bind="_editArgs" @bind:event="oninput" rows="4" style="width:100%;margin-top:8px;font-family:Consolas,monospace"></textarea>
+                    <div class="grp pfd-grp">@Strings.PfIdle</div>
+                    <div class="seg">
+                        @foreach (var min in new[] { 0, 15, 30, 60 })
+                        {
+                            var mm = min;
+                            <button class="@(dp.UnloadAfterIdleMin == mm ? "on" : "")" @onclick="() => SetIdle(dp, mm)">@(mm == 0 ? Strings.PfOff : mm + "m")</button>
+                        }
+                    </div>
+                    <div class="row pfd-opts">
+                        <button @onclick="() => SetRestart(dp, !dp.RestartOnCrash)">@(dp.RestartOnCrash ? Strings.PfRestartTurnOff : Strings.PfRestartTurnOn)</button>
+                        <a class="btn" href="@($"bench?target={dp.Id:N}")">@Strings.BtnBench</a>
+                    </div>
+                    <div class="row end">
+                        <button class="bad" style="margin-right:auto" @onclick="() => Remove(dp)">@Strings.BtnRemove</button>
+                        <button @onclick="() => _edit = null">@Strings.Close</button>
+                        <button class="good" @onclick="SaveEdit">@Strings.PfSave</button>
+                    </div>
+                }
+                else
+                {
+                    <div class="small muted" style="margin-top:10px">@(ro ? WriteReason : Strings.ViewerOnly)</div>
+                }
             </div>
-            <textarea placeholder="@Strings.FieldNote" @bind="_editNote" @bind:event="oninput" rows="2" style="width:100%;margin-top:8px"></textarea>
-            <textarea @bind="_editArgs" @bind:event="oninput" rows="3" style="width:100%;margin-top:8px;font-family:Consolas,monospace"></textarea>
         </div>
     }
 </div>
@@ -460,43 +474,33 @@
     </div>
     @if (_flash.Length > 0) { <div class="small pxp-flash">@_flash</div> }
 
-    <div class="pxp-row">
-        <span class="pxp-l">@Strings.PxTarget</span>
-        <span class="pxp-v">@px.TargetName()</span>
+    @* Kompakt: Symbol + Wert in zwei Spalten, die Bezeichnung steht im Tooltip *@
+    @{ var cls = ProxyPanel.ClassifierLabel(px.ClassifierValue(), models); var vis = ProxyPanel.ClassifierLabel(px.VisionValue(), models); }
+    <div class="pxp-grid">
+        <span class="mc wide" title="@Strings.PxTarget: @px.TargetName()"><Icon Name="proxy" Title="@Strings.PxTarget" /><b>@px.TargetName()</b></span>
+        <span class="mc" title="@Strings.PxPort: @px.Port.ToString(CultureInfo.InvariantCulture)"><Icon Name="port" Title="@Strings.PxPort" /><b>@px.Port.ToString(CultureInfo.InvariantCulture)</b></span>
+        <span class="mc @(px.BindLan ? "" : "na")" title="@Strings.PxLan: @(px.BindLan ? Strings.PxLanOn : Strings.PxLanOff)"><Icon Name="host" Title="@Strings.PxLan" /><b>@(px.BindLan ? Strings.PxLanOn : Strings.PxLanOff)</b></span>
+        <span class="mc @(machines + clouds == 0 ? "na" : "")" title="@Strings.PxSources: @Strings.PxSourceCounts(machines, clouds)"><Icon Name="layers" Title="@Strings.PxSources" /><b>@Strings.PxSourceCounts(machines, clouds)</b></span>
+        <span class="mc" title="@Strings.PxRouted: @Strings.PxRoutedText(routes.Auto, routes.Image, routes.Cloud)&#10;@Strings.PxRoutedTip"><Icon Name="queue" Title="@Strings.PxRouted" /><b>@routes.Auto · @routes.Image · @routes.Cloud</b></span>
+        <span class="mc" title="@Strings.PxClassifier: @cls"><Icon Name="check" Title="@Strings.PxClassifier" /><b>@cls</b></span>
+        <span class="mc" title="@Strings.ProxyVisionLabel: @vis"><Icon Name="eye" Title="@Strings.ProxyVisionLabel" /><b>@vis</b></span>
     </div>
-    <div class="pxp-row">
-        <span class="pxp-l">@Strings.PxPort</span>
-        <b class="pxp-v">@px.Port.ToString(CultureInfo.InvariantCulture)</b>
-    </div>
-    <div class="pxp-row">
-        <span class="pxp-l">@Strings.PxLan</span>
-        <span class="pxp-v">@(px.BindLan ? Strings.PxLanOn : Strings.PxLanOff)</span>
-    </div>
-    <div class="pxp-row">
-        <span class="pxp-l">@Strings.PxSources</span>
-        <span class="pxp-v">@Strings.PxSourceCounts(machines, clouds)</span>
-    </div>
-    <div class="pxp-row">
-        <span class="pxp-l">@Strings.PxClassifier</span>
-        <span class="pxp-v">@ProxyPanel.ClassifierLabel(px.ClassifierValue(), models)</span>
-    </div>
-    <div class="pxp-row">
-        <span class="pxp-l">@Strings.ProxyVisionLabel</span>
-        <span class="pxp-v">@ProxyPanel.ClassifierLabel(px.VisionValue(), models)</span>
-    </div>
-    <div class="pxp-row" title="@Strings.PxRoutedTip">
-        <span class="pxp-l">@Strings.PxRouted</span>
-        <span class="pxp-v">@Strings.PxRoutedText(routes.Auto, routes.Image, routes.Cloud)</span>
-    </div>
-    @* „Connect a client“: drei kopierbare Blöcke mit der Adresse dieses Proxys (Text aus Core, ClientSnippets) *@
+    @* „Connect a client“: drei kopierbare Blöcke mit der Adresse dieses Proxys (Text aus Core, ClientSnippets), als Fenster *@
     @if (px.Running)
     {
         <div class="mx-conn">
-            <button type="button" class="mx-conn-btn" aria-expanded="@(_clientOpen ? "true" : "false")" aria-controls="mx-conn-panel" @onclick="() => _clientOpen = !_clientOpen">@(_clientOpen ? Strings.MxConnectHide : Strings.MxConnectButton)</button>
-            @if (_clientOpen)
-            {
-                var blocks = ClientSnippets.Build(baseUrl, _shellPs ? ClientSnippets.Shell.PowerShell : ClientSnippets.Shell.Bash);
-                <div id="mx-conn-panel" class="mx-conn-panel">
+            <button type="button" class="mx-conn-btn" aria-haspopup="dialog" @onclick="() => _clientOpen = true">@Strings.MxConnectButton</button>
+        </div>
+        @if (_clientOpen)
+        {
+            var blocks = ClientSnippets.Build(baseUrl, _shellPs ? ClientSnippets.Shell.PowerShell : ClientSnippets.Shell.Bash);
+            <div class="modal-back" @onclick="() => _clientOpen = false">
+                <div class="modal pfd" role="dialog" aria-modal="true" aria-labelledby="mxc-title" tabindex="-1"
+                     @onclick:stopPropagation="true" @onkeydown='k => { if (k.Key == "Escape") _clientOpen = false; }'>
+                    <div class="cdlg-hd">
+                        <h2 id="mxc-title" class="pfd-t">@Strings.MxConnectButton</h2>
+                        <button class="ib quiet" title="@Strings.Close" aria-label="@Strings.Close" @onclick="() => _clientOpen = false"><Icon Name="x" /></button>
+                    </div>
                     <div class="fchips mx-shell" role="group" aria-label="@Strings.MxShellLabel">
                         <button class="fchip @(_shellPs ? "on" : "")" aria-pressed="@(_shellPs ? "true" : "false")" @onclick="() => _shellPs = true">@Strings.MxShellPowerShell</button>
                         <button class="fchip @(_shellPs ? "" : "on")" aria-pressed="@(_shellPs ? "false" : "true")" @onclick="() => _shellPs = false">@Strings.MxShellBash</button>
@@ -513,8 +517,8 @@
                         </div>
                     }
                 </div>
-            }
-        </div>
+            </div>
+        }
     }
 </div>
 </div>
@@ -525,7 +529,7 @@
 @code {
     private Timer? _t;
     private string _q = "", _flash = "";
-    // Monitor-Erweiterungen: Client-Blöcke (Ausklappfläche und Shell-Form), Modellfilter der Anfragen, aufgeklappte Anfragen
+    // Monitor-Erweiterungen: Client-Blöcke (Fenster und Shell-Form), Modellfilter der Anfragen, aufgeklappte Anfragen
     private bool _clientOpen, _shellPs = true;
     private string _reqModel = "";
     private readonly HashSet<string> _openReqs = new();

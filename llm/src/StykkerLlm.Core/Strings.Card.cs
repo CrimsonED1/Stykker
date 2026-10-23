@@ -15,6 +15,9 @@ public static partial class Strings
     public const string CardRecord = "Record requests", CardStopRecord = "Stop recording", CardRecording = "Recording requests";
     public const string CardSave = "Save as profile", CardDetails = "Details", CardStop = "Stop", CardOpenHost = "Open on the Hosts page";
     public static string CardPort(int port) => $"Port {port}";
+    // Tooltip des Namens, wenn die Karte den Namen des passenden Profils zeigt: dazu Alias und Modell des Servers
+    public static string CardProfileTip(string profile, string alias, string model) =>
+        $"Saved profile \"{profile}\" · {alias}" + (model.Length > 0 && model != alias && model != "–" ? $" · {model}" : "");
     public static string CardSpill(double gb) => $"{N1(gb)} GB spill into shared RAM – slower than it could be";
     public const string CardStateIdle = "idle", CardStateRead = "reading prompt", CardStateGen = "generating", CardStateLoad = "loading", CardStateOff = "offline";
     public const string CardModelCol = "loaded model", CardOnGpu = "on GPU", CardCtxCol = "ctx", CardUnloads = "unloads";
@@ -34,7 +37,7 @@ public static partial class Strings
     public const string PfNgl = "GPU layers (-ngl)", PfIdle = "Unload when idle", PfDraft = "Draft model", PfRestart = "Restart after a crash";
     public const string PfDraftOn = "Speculative decoding with a draft model", PfDraftOff = "No draft model";
     public const string PfRestartOn = "Restarts after a crash", PfRestartOff = "No restart after a crash";
-    public const string PfOn = "on", PfOff = "off", PfCmdLine = "command line";
+    public const string PfOn = "on", PfOff = "off", PfCmdLine = "command line", PfSave = "Save";
     // Die Balken: „needs 10.3 · 14.6 free“. needs = höchster Wert aus früheren Läufen (sonst Schätzung), free = jetzt frei
     public const string PfNeeds = "needs", PfFree = "free", PfForecastDef = "needs = highest use seen in earlier runs (or estimate from the model file); free = free right now";
     public static string PfNeedsFree(double need, double free) => $"{PfNeeds} {N1(need)} · {N1(free)} {PfFree}";
