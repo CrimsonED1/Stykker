@@ -21,6 +21,12 @@ public static partial class Strings
     public static string CardSlotTip(int id, string state, double tps, long gen, int used, int max) =>
         $"Slot {id}: {state}" + (state == CardStateIdle ? "" : $" · {N1(tps)} t/s · {gen:N0} tokens") + (max > 0 ? $" · ctx {used:N0} / {max:N0}" : "");
     public static string CardSparkAgo(int minutes) => $"−{minutes} min";
+    // Lesen des Prompts (Prefill): kurz im Kartenkopf neben dem Zustand, ausführlich im Tooltip
+    public static string CardReading(PromptReading r) =>
+        $"{(r.Frac * 100).ToString("0", Inv)} %" + (r.SecondsLeft is double s && s >= 1 ? $" · {Fmt(s)}" : "");
+    public static string CardReadingTip(PromptReading r) =>
+        $"Reading the prompt: {N0(r.Done)} of {N0(r.ToRead)} new tokens" + (r.Cached > 0 ? $" ({N0(r.Cached)} from the cache)" : "") +
+        (r.Tps > 0 ? $" · {N0(r.Tps)} t/s" : "") + (r.SecondsLeft is double s && s >= 1 ? $" · about {Fmt(s)} left" : "");
     // Hardware-Karte (U5)
     public const string SectionHardware = "Hardware", HwDetails = "details";
     public static string HwFree(double gb) => $"{N1(gb)} free";

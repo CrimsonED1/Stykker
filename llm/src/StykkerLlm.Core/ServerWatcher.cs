@@ -5,9 +5,11 @@ using System.Text.RegularExpressions;
 namespace StykkerLlm.Core;
 
 // CtxUsed = Token im Kontext des Slots (Prompt + bisher Erzeugtes); MaxTokens <= 0: unbegrenzt.
-// PromptProgress 0..1 aus dem Log (oder -1, solange noch keine Fortschrittszeile kam).
+// PromptProgress 0..1: meldet der Server den Cache, der Anteil der neu zu lesenden Token, sonst aus dem Log (oder -1,
+// solange noch keine Fortschrittszeile kam). PromptDone = neu gelesene Token, PromptCached = Token aus dem Prompt-Cache
+// (-1 = der Server meldet es nicht), PromptTps = Lesegeschwindigkeit dieser Anfrage (0 = noch unbekannt).
 public sealed record SlotView(int Id, bool Busy, bool ReadingPrompt, double Tps, int Generated, int CtxUsed, int CtxMax,
-    int MaxTokens, int PromptDone, double PromptProgress, long Task);
+    int MaxTokens, int PromptDone, double PromptProgress, long Task, int PromptCached = -1, double PromptTps = 0);
 
 public enum ReqStatus { Done, Truncated, Cancelled }
 
@@ -148,6 +150,7 @@ public sealed class ServerWatcher : IDisposable
     private readonly Dictionary<int, Pending> _pending = new();
     private readonly HashSet<int> _cancelled = new();
     private readonly Dictionary<int, (long Task, double Frac, DateTime At)> _progress = new();   // Prompt-Fortschritt je Slot
+    private readonly Dictionary<int, (long Task, int Done, DateTime At)> _readStart = new();     // erster Blick auf das Lesen je Slot (für die Lesegeschwindigkeit)
     private readonly Dictionary<int, int> _maxTok = new();                                      // max_tokens je Aufgabe
     private readonly Dictionary<int, int> _promptTotal = new();                                 // Prompt-Länge je Aufgabe (aus /slots, solange sie eingelesen wird)
     private readonly HashSet<int> _doneTasks = new();
@@ -433,6 +436,7 @@ public sealed class ServerWatcher : IDisposable
                 int ctxMax = JInt(s, "n_ctx");
                 int ctxNow = JInt(s, "n_prompt_tokens");   // Token im Kontext (Prompt + Erzeugtes)
                 int promptDone = JInt(s, "n_prompt_tokens_processed");
+                int promptCached = JInt(s, "n_prompt_tokens_cache", -1);   // neuere llama.cpp; zählt nicht zu promptDone
                 int n = 0, remain = -1;
                 if (s.TryGetProperty("next_token", out var nt))
                 {
@@ -462,9 +466,22 @@ public sealed class ServerWatcher : IDisposable
                     if (n == 0 && ctxNow > 0) { _promptTotal[(int)task] = ctxNow; if (_promptTotal.Count > 64) _promptTotal.Clear(); }
                 }
                 _prev[id] = (task, n, now);
-                double frac = -1;
-                if (busy && n == 0 && _progress.TryGetValue(id, out var pg) && pg.Task == task) frac = pg.Frac;
-                list.Add(new SlotView(id, busy, busy && n == 0, tps, n, ctxNow, ctxMax, busy ? maxTok : 0, promptDone, frac, task));
+                double frac = -1, promptTps = 0;
+                bool reading = busy && n == 0;
+                if (reading && _progress.TryGetValue(id, out var pg) && pg.Task == task) frac = pg.Frac;
+                if (reading)
+                {
+                    // Mit Cache-Angabe: Anteil der neu zu lesenden Token (der Log-Wert zählt den Cache mit und stünde bei
+                    // einem fast ganz gecachten Prompt sofort bei 90 %). Geschwindigkeit seit dem ersten Blick auf diese Anfrage.
+                    if (promptCached >= 0 && ctxNow - promptCached > 0)
+                        frac = Math.Clamp((double)promptDone / (ctxNow - promptCached), 0, 1);
+                    if (!_readStart.TryGetValue(id, out var rs) || rs.Task != task) _readStart[id] = rs = (task, promptDone, now);
+                    double sec = (now - rs.At).TotalSeconds;
+                    if (sec >= 1 && promptDone > rs.Done) promptTps = (promptDone - rs.Done) / sec;
+                }
+                else _readStart.Remove(id);
+                list.Add(new SlotView(id, busy, reading, tps, n, ctxNow, ctxMax, busy ? maxTok : 0, promptDone, frac, task,
+                    promptCached, promptTps));
             }
         }
         Slots = list;
