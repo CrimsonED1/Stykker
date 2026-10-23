@@ -238,6 +238,7 @@ internal sealed class Model : IDisposable
             }
             else
             {
+                if (program.CopyToLocal) UpdateBeforeStart(program);
                 var started = StartNow(program, manual: false);
                 _log.Write($"start {program.Id} at start: {(started.Ok ? "ok" : "failed")}, {started.Message}");
             }
@@ -245,6 +246,37 @@ internal sealed class Model : IDisposable
         catch (Exception ex) when (ex is SourceUnreachableException or InvalidOperationException or IOException)
         {
             _log.Write($"install {program.Id} at start: {ex.Message}");
+        }
+    }
+
+    // Beim Start zuerst prüfen: ein neuer Stand der Quelle wird kopiert und eingetragen, bevor das Programm startet
+    // (es läuft noch nicht, also wird nichts beendet; nach einem Zurückgehen bleibt es beim gewählten Stand).
+    // Klappt das nicht, startet die bisherige Kopie.
+    private void UpdateBeforeStart(ProgramEntry program)
+    {
+        var cts = new CancellationTokenSource();
+        _cancel = cts;
+        _busy[program.Id] = new BusyState("updating", NowMs(), null);
+        Publish();
+        try
+        {
+            var result = _engine.Check(program, _config.Settings, new CopyProgressSink(p => ReportCopy(program.Id, program.Name, p)), cts.Token, atStart: true);
+            _checks[program.Id] = result;
+            if (result.Kind == CheckKind.Updated)
+            {
+                _service.Cleanup(program, _config.Settings.VersionsKept);
+                SaveConfig();
+            }
+        }
+        catch (Exception ex) when (ex is SourceUnreachableException or InvalidOperationException or IOException or OperationCanceledException)
+        {
+            _log.Write($"update {program.Id} at start: {ex.Message}; the current copy starts");
+        }
+        finally
+        {
+            _cancel = null;
+            _copy = null;
+            _busy.TryRemove(program.Id, out _);
         }
     }
 
