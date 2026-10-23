@@ -15,11 +15,14 @@ public enum PolicyDecision
 
 // Wann ein neuer Stand ohne Rückfrage übernommen wird. Laufende Programme werden nur ohne Rückfrage aktualisiert,
 // wenn die Einstellung „Ask before updating a running program“ aus ist oder das Programm es selbst so will.
+// atStart: der Starter startet gerade und will das (gestoppte) Programm gleich starten. Dann wird der neue Stand
+// immer übernommen: es wird nichts beendet, und sonst liefe bis zum nächsten Klick auf „Update“ der alte Stand.
 public static class UpdatePolicy
 {
-    public static PolicyDecision Decide(StarterSettings settings, ProgramEntry program, bool running)
+    public static PolicyDecision Decide(StarterSettings settings, ProgramEntry program, bool running, bool atStart = false)
     {
         if (program.UpdateWithoutAsking) return PolicyDecision.UpdateNow;
+        if (atStart && !running) return PolicyDecision.UpdateNow;
         if (running) return settings.AskBeforeUpdate ? PolicyDecision.Ask : PolicyDecision.UpdateNow;
         return settings.UpdateStoppedWithoutAsking ? PolicyDecision.UpdateNow : PolicyDecision.Ask;
     }
@@ -60,9 +63,10 @@ public sealed class StarterEngine
         _log = log;
     }
 
-    // forceUpdate: der Benutzer hat „Update“ gedrückt; dann wird übernommen, egal was die Einstellungen sagen
+    // forceUpdate: der Benutzer hat „Update“ gedrückt; dann wird übernommen, egal was die Einstellungen sagen.
+    // atStart: Prüfung beim Start des Starters, bevor das Programm gestartet wird (siehe UpdatePolicy)
     public CheckResult Check(ProgramEntry program, StarterSettings settings, IProgress<CopyProgress>? progress = null,
-        CancellationToken ct = default, bool forceUpdate = false)
+        CancellationToken ct = default, bool forceUpdate = false, bool atStart = false)
     {
         if (!program.CopyToLocal) return CheckInPlace(program, settings, forceUpdate);
 
@@ -96,7 +100,7 @@ public sealed class StarterEngine
         // Nach einem Zurückgehen fragt die Prüfung, bis der Benutzer selbst aktualisiert hat (auch bei „ohne Rückfrage“)
         var decision = forceUpdate ? PolicyDecision.UpdateNow
             : program.HeldAfterRollback ? PolicyDecision.Ask
-            : UpdatePolicy.Decide(settings, program, running);
+            : UpdatePolicy.Decide(settings, program, running, atStart);
         var text = NewBuildText(plan.Version, VersionPlanner.IsNewBuild(plan.Version, program.Current?.Version));
         if (decision != PolicyDecision.UpdateNow)
         {
