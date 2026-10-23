@@ -74,6 +74,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `requests.csv` has a `PromptReused` column at the end (-1 = unknown). The header differs from the existing file, so on an
   existing install the rows go to `requests.v2.csv`; the old file stays as it is.
 
+### Fixed
+- **Several tool calls at once through the proxy.** llama-server allows only one tool call per answer unless the request
+  sets `parallel_tool_calls`, and stopped with 400 "This model only supports single tool-calls at once!" when a model
+  called several (seen with pi, which does not send the field). For local llama.cpp targets the proxy now sets it to true
+  on requests with tools, unless the client chose a value itself.
+
 ## 0.4.0
 
 ### Changed

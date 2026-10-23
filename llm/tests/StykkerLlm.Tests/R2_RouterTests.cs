@@ -133,4 +133,28 @@ public class R2_RouterTests
         StringAssert.Contains(rewritten, "\"content\":\"hi\"");
         Assert.AreEqual("alpha", RouterProxy.ReadModel(Encoding.UTF8.GetBytes(rewritten)));
     }
+
+    [TestMethod]
+    public void AllowParallelToolCalls_OnlyWithToolsAndOnlyIfTheClientLeftItOut()
+    {
+        string Run(string json) => Encoding.UTF8.GetString(RouterProxy.AllowParallelToolCalls(Encoding.UTF8.GetBytes(json)));
+
+        StringAssert.Contains(Run("{\"model\":\"a\",\"tools\":[{\"type\":\"function\"}]}"), "\"parallel_tool_calls\":true");
+        StringAssert.Contains(Run("{\"tools\":[{\"type\":\"function\"}],\"parallel_tool_calls\":false}"), "\"parallel_tool_calls\":false");
+        Assert.IsFalse(Run("{\"model\":\"a\",\"messages\":[]}").Contains("parallel_tool_calls"));
+        Assert.IsFalse(Run("{\"tools\":[]}").Contains("parallel_tool_calls"));
+        Assert.AreEqual("kein json", Run("kein json"));
+    }
+
+    [TestMethod]
+    public async Task LlamaCppTarget_GetsParallelToolCalls()
+    {
+        byte[]? seen = null;
+        using var a = Echo("A", b => seen = b);
+        using var proxy = new RouterProxy(0);
+        proxy.SetTargets(new[] { new ProxyTarget("ka", a.Url, "alpha", BackendKind.LlamaCpp, true, false) }, "ka");
+        proxy.Start();
+        await Post(proxy.ListenPort, "/v1/chat/completions", "{\"model\":\"stykker\",\"messages\":[],\"tools\":[{\"type\":\"function\"}]}");
+        StringAssert.Contains(Encoding.UTF8.GetString(seen!), "\"parallel_tool_calls\":true");
+    }
 }

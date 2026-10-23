@@ -322,6 +322,7 @@ public class RouterProxy : RequestProxy
 
         // model auf den Namen setzen, den das Ziel erwartet (bei „stykker" → Modell des Ziels)
         var rewritten = t.Model != null ? RewriteModel(body, t.Model) : body;
+        if (t.Kind == BackendKind.LlamaCpp && !t.Cloud && rewritten != null) rewritten = AllowParallelToolCalls(rewritten);
         var own = t.Cloud && AuthFor?.Invoke(t) is { Length: > 0 } key
             ? new[] { ("Authorization", "Bearer " + key) } : null;
         if (t.HostId.Length == 0) return new ProxyRoute(t.Url, t.RouteKey, rewritten, Headers: own, Route: route);
@@ -466,6 +467,7 @@ public class RouterProxy : RequestProxy
         if (t == null) return AnthropicError(status, error!);
 
         var openAi = AnthropicBridge.ToOpenAi(body ?? Array.Empty<byte>(), t.Model ?? "", noThinking: IsSafetyCheck(body));
+        if (t.Kind == BackendKind.LlamaCpp && !t.Cloud) openAi = AllowParallelToolCalls(openAi);
         var own = t.Cloud && AuthFor?.Invoke(t) is { Length: > 0 } key ? new[] { ("Authorization", "Bearer " + key) } : null;
         HttpClient? via = null;
         if (t.HostId.Length > 0)
@@ -735,6 +737,24 @@ public class RouterProxy : RequestProxy
             }
         }
         catch { }
+        return body;
+    }
+
+    // llama.cpp erlaubt ohne „parallel_tool_calls“ nur einen Werkzeugaufruf je Antwort. Ruft das Modell mehrere auf, bricht
+    // llama-server mit 400 „This model only supports single tool-calls at once!“ ab (pi und andere OpenAI-Clients schicken das
+    // Feld nicht mit). Deshalb bei Anfragen mit Werkzeugen auf true setzen – nur wenn der Client es nicht selbst festgelegt hat.
+    internal static byte[] AllowParallelToolCalls(byte[] body)
+    {
+        if (body.Length == 0) return body;
+        try
+        {
+            if (JsonNode.Parse(body) is JsonObject obj && obj["tools"] is JsonArray { Count: > 0 } && !obj.ContainsKey("parallel_tool_calls"))
+            {
+                obj["parallel_tool_calls"] = true;
+                return Encoding.UTF8.GetBytes(obj.ToJsonString());
+            }
+        }
+        catch (JsonException) { }
         return body;
     }
 
