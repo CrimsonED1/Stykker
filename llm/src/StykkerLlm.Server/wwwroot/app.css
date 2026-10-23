@@ -794,9 +794,9 @@ html[data-card-labels=on] .mc .mlbl{display:block}
 .slot .cbar.warn i{background:var(--warn)}
 .slot .cbar.full i{background:var(--bad)}
 
-/* Handy (bis 640 px): zuerst, was läuft, dann die letzten Anfragen, dann der Proxy, Saved, Hardware und der Verlauf.
-   Breiter (641–1100 px) bleibt es bei der Reihenfolge von docs/ui.md darüber. */
-@media(max-width:640px){.mon-run{order:1}.mon-rec{order:2}.mon-proxy{order:3}.mon-saved{order:4}.mon-hw{order:5}.mon-hist{order:6}}
+/* Handy (bis 640 px): zuerst, was läuft, direkt darunter Saved (zum Starten), dann die letzten Anfragen, der Proxy,
+   Hardware und der Verlauf. Breiter (641–1100 px) bleibt es bei der Reihenfolge von docs/ui.md darüber. */
+@media(max-width:640px){.mon-run{order:1}.mon-saved{order:2}.mon-rec{order:3}.mon-proxy{order:4}.mon-hw{order:5}.mon-hist{order:6}}
 
 /* Laufwerke: die Karte „Disks“ im Monitor und die Seite /disks (Zahlen in der Schrift der Karten, nie breiter als die Karte) */
 .dsk-list{display:grid;gap:8px}
