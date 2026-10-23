@@ -392,6 +392,8 @@ html.shell .hchip .mini i{transition:none;box-shadow:none}
 .chipi{display:inline-flex;align-items:center;gap:4px;height:22px;padding:0 7px;border-radius:5px;font-size:11px;color:var(--muted);border:1px solid var(--line);white-space:nowrap}
 .chipi .ic{width:14px;height:14px}.chipi.host{color:var(--ink);border-color:color-mix(in srgb,var(--b-host) 55%,var(--line))}.chipi.host .ic{color:var(--b-host)}
 .chipi.local{opacity:.8}.chipi.warnc{color:var(--warn);border-color:rgb(var(--warn-rgb)/.45)}
+/* Lesen des Prompts: Fortschritt und Restzeit neben dem Zustand, in der Farbe des Zustands „read“ */
+.chipi.readc{color:var(--st-read);border-color:color-mix(in srgb,var(--st-read) 45%,var(--line));font-variant-numeric:tabular-nums}
 .pxs{display:inline-flex;align-items:center;color:var(--muted)}.pxs.on{color:var(--good)}
 .recchip{display:inline-flex;align-items:center;gap:4px;color:var(--bad);font:12px var(--font-mono)}
 .recchip .ic{animation:rec-blink 1.2s ease-in-out infinite}@keyframes rec-blink{50%{opacity:.3}}

@@ -208,6 +208,7 @@ public sealed class SimHandler : HttpMessageHandler
                 int inCtx = sl.Prompting ? sl.PromptTokens : sl.PromptTokens + gen;
                 sb.Append(",\"id_task\":").Append(sl.Task).Append(",\"n_prompt_tokens\":").Append(inCtx)
                   .Append(",\"n_prompt_tokens_processed\":").Append((int)sl.PromptDone)
+                  .Append(",\"n_prompt_tokens_cache\":").Append(sl.Reused)
                   .Append(",\"next_token\":{\"n_decoded\":").Append(gen).Append(",\"n_remain\":").Append(Math.Max(0, sl.MaxTokens - gen)).Append('}')
                   .Append(",\"params\":{\"n_predict\":").Append(sl.MaxTokens).Append(",\"max_tokens\":").Append(sl.MaxTokens).Append('}');
             }

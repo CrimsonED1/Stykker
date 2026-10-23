@@ -6,7 +6,9 @@ namespace StykkerLlm.Server.Components;
 // Was eine Serverkarte zeigt (docs/plan-ui-redesign.md, U4), gleich für Server auf diesem PC (ServerWatcher) und auf
 // einem Model-Host (RemoteServer aus dem Stand des Hosts). Ein Wert, den das Backend nicht meldet, bleibt null – die
 // Karte zeigt dann ein gedämpftes „–“ an seinem festen Platz.
-public sealed record CardSlot(int Id, string State, double Frac, double Tps, long Generated, int CtxUsed, int CtxMax, bool Full = false)
+// Reading: Fortschritt beim Lesen des Prompts, solange der Slot liest und der Server den Cache meldet (sonst null)
+public sealed record CardSlot(int Id, string State, double Frac, double Tps, long Generated, int CtxUsed, int CtxMax, bool Full = false,
+    PromptReading? Reading = null)
 {
     // Kontext-Balken des Slots (Stufe, Anteil, Tooltip); die Rechnung steht in Core (SlotContextFill)
     public CtxFill Ctx => SlotContextFill.Of(CtxUsed, CtxMax);
@@ -72,6 +74,10 @@ public sealed class ServerCardModel
 
     public int SlotsBusy => Slots.Count(s => s.State != "idle");
 
+    // Der Slot, der gerade den Prompt liest (der mit der längsten Restzeit, wenn es mehrere sind), für den Kartenkopf
+    public PromptReading? Reading => Slots.Select(s => s.Reading).OfType<PromptReading>()
+        .OrderByDescending(r => r.SecondsLeft ?? 0).FirstOrDefault();
+
     public static ServerCardModel From(ServerWatcher s, RecordingSession? rec, HistoryEntry? usual = null)
     {
         var slots = s.Slots.Select(Slot).ToList();
@@ -113,10 +119,15 @@ public sealed class ServerCardModel
         };
     }
 
-    // Eine Slot-Kachel; Full = Kontext fast voll (dieselbe Regel wie überall: CtxPressure)
-    private static CardSlot Slot(SlotView v) => new(v.Id, SlotState(v.Busy, v.ReadingPrompt),
-        v.Busy && v.CtxMax > 0 ? Math.Clamp((double)v.CtxUsed / v.CtxMax, 0, 1) : 0, v.Tps, v.Generated, v.CtxUsed, v.CtxMax,
-        v.Busy && CtxPressure.IsNearlyFull(v));
+    // Eine Slot-Kachel; Full = Kontext fast voll (dieselbe Regel wie überall: CtxPressure). Beim Lesen des Prompts füllt
+    // sich die Kachel mit dem Lesefortschritt, sonst zeigt sie den belegten Kontext.
+    private static CardSlot Slot(SlotView v)
+    {
+        var reading = PromptReading.Of(v);
+        double frac = reading?.Frac ?? (v.Busy && v.CtxMax > 0 ? Math.Clamp((double)v.CtxUsed / v.CtxMax, 0, 1) : 0);
+        return new(v.Id, SlotState(v.Busy, v.ReadingPrompt), frac, v.Tps, v.Generated, v.CtxUsed, v.CtxMax,
+            v.Busy && CtxPressure.IsNearlyFull(v), reading);
+    }
 
     public static string SlotState(bool busy, bool reading) => !busy ? "idle" : reading ? "read" : "gen";
 

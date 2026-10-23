@@ -12,6 +12,10 @@
         <span class="bk" title="@m.Backend"><Icon Name="@m.BackendIcon" Title="@m.Backend" /></span>
         <span class="name" title="@m.Model">@m.Name</span>
         <span class="st" data-s="@st" title="@Strings.StateText(st)"><Icon Name="@("s-" + st)" Title="@Strings.StateText(st)" Class="@(st == "load" ? "spin" : null)" /></span>
+        @if (st == "read" && m.Reading is { } rd)
+        {
+            <span class="chipi readc" title="@Strings.CardReadingTip(rd)"><b>@Strings.CardReading(rd)</b></span>
+        }
         <span class="mc port" title="@Strings.CardPort(m.Port)"><Icon Name="port" /><b>@m.Port</b></span>
         @if (m.IsLocal)
         {
@@ -168,7 +172,8 @@
     [Parameter] public EventCallback<string> OnUnload { get; set; }
 
     private static string SlotTip(CardSlot v) =>
-        Strings.CardSlotTip(v.Id, Strings.StateText(v.State), v.Tps, v.Generated, v.CtxUsed, v.CtxMax) + (v.Full ? " · " + Strings.CtxAlmostFull : "");
+        Strings.CardSlotTip(v.Id, Strings.StateText(v.State), v.Tps, v.Generated, v.CtxUsed, v.CtxMax) + (v.Full ? " · " + Strings.CtxAlmostFull : "")
+        + (v.Reading is { } r ? "\n" + Strings.CardReadingTip(r) : "");
 
     private string PromptHref => Model.IsLocal ? $"prompt?server={Uri.EscapeDataString(Model.Key)}" : "prompt";
 
