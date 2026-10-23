@@ -122,14 +122,21 @@ public class RouterProxy : RequestProxy
     public const string DescribePrompt = "Describe this image for an assistant that cannot see it. Copy all visible text exactly "
         + "(code, error messages, labels, numbers). Then describe layout, UI elements, charts and anything unusual. Be complete but concise.";
 
-    // Jeden Bild-Block (Anthropic „image“, auch in Werkzeugergebnissen) durch „[Image: …]“ ersetzen. describe bekommt die
-    // Bild-Adresse (data:-URL oder http-URL) und einen Schlüssel (Hash des Inhalts) und liefert den Text.
+    // Jeden Bild-Block (Anthropic „image“, OpenAI „image_url“, auch in Werkzeugergebnissen) durch „[Image: …]“ ersetzen.
+    // describe bekommt die Bild-Adresse (data:-URL oder http-URL) und einen Schlüssel (Hash des Inhalts) und liefert den Text.
     internal static async Task<byte[]> ReplaceImagesAsync(byte[] body, Func<string, string, Task<string>> describe)
     {
         JsonObject? root;
         try { root = JsonNode.Parse(body) as JsonObject; } catch (JsonException) { return body; }
         if (root?["messages"] is not JsonArray msgs) return body;
         bool changed = false;
+        async Task Replace(JsonArray content, int i, string url)
+        {
+            string text = url.Length == 0 ? "an image (it has no address)"
+                : await describe(url, Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(url)))).ConfigureAwait(false);
+            content[i] = new JsonObject { ["type"] = "text", ["text"] = "[Image: " + text + "]" };
+            changed = true;
+        }
         async Task Walk(JsonArray content)
         {
             for (int i = 0; i < content.Count; i++)
@@ -141,10 +148,18 @@ public class RouterProxy : RequestProxy
                     string srcType = src["type"]?.GetValue<string>() ?? "";
                     string url = srcType == "url" ? src["url"]?.GetValue<string>() ?? ""
                         : $"data:{src["media_type"]?.GetValue<string>() ?? "image/png"};base64,{src["data"]?.GetValue<string>() ?? ""}";
-                    string key = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(url)));
-                    string text = await describe(url, key).ConfigureAwait(false);
-                    content[i] = new JsonObject { ["type"] = "text", ["text"] = "[Image: " + text + "]" };
-                    changed = true;
+                    await Replace(content, i, url).ConfigureAwait(false);
+                }
+                else if (type == "image_url")
+                {
+                    // OpenAI: „image_url": {"url": …}; manche Clients schicken die Adresse direkt als Text
+                    string url = b["image_url"] switch
+                    {
+                        JsonObject o => o["url"] is JsonValue u && u.TryGetValue<string>(out var s) ? s : "",
+                        JsonValue v => v.TryGetValue<string>(out var s) ? s : "",
+                        _ => "",
+                    };
+                    await Replace(content, i, url).ConfigureAwait(false);
                 }
                 else if (b["content"] is JsonArray inner) await Walk(inner).ConfigureAwait(false);
             }
@@ -153,6 +168,19 @@ public class RouterProxy : RequestProxy
             if (m?["content"] is JsonArray c) await Walk(c).ConfigureAwait(false);
         return changed ? Encoding.UTF8.GetBytes(root.ToJsonString()) : body;
     }
+
+    // „Describe images only“: enthält die Anfrage ein Bild und ist das Vision-Ziel bereit, werden die Bilder durch seine
+    // Beschreibung ersetzt. Das Gespräch (mit Werkzeugen und langem Verlauf) bleibt so beim Standardziel; ein kleines
+    // Vision-Modell lehnt Agent-Aufgaben oft ab. Gilt für die Claude-App (Anthropic) und für OpenAI-Clients.
+    internal async Task<byte[]?> DescribeImagesAsync(IReadOnlyList<ProxyTarget> targets, byte[]? body, Func<ProxyTarget, string, string, Task<string>> describe)
+    {
+        if (!VisionDescribe || body == null || _visionKey is not { Length: > 0 } vk || !HasImage(body)) return body;
+        if (targets.FirstOrDefault(x => x.Key == vk) is not { Ready: true } vt) return body;
+        return await ReplaceImagesAsync(body, (url, key) => describe(vt, url, key)).ConfigureAwait(false);
+    }
+
+    private Task<byte[]?> DescribeImagesAsync(IReadOnlyList<ProxyTarget> targets, byte[]? body, CancellationToken ct) =>
+        DescribeImagesAsync(targets, body, (vt, url, key) => DescribeImageAsync(vt, url, key, ct));
 
     // Ein Bild vom Vision-Ziel beschreiben lassen (OpenAI-Form, ein Bild je Anfrage); gemerkt nach Inhalt
     private async Task<string> DescribeImageAsync(ProxyTarget vt, string url, string key, CancellationToken ct)
@@ -317,6 +345,7 @@ public class RouterProxy : RequestProxy
         if (method == "POST" && AnthropicBridge.IsMessagesPath(path))
             return await RouteAnthropicAsync(targets, headers, body, ct).ConfigureAwait(false);
 
+        if (method == "POST") body = await DescribeImagesAsync(targets, body, ct).ConfigureAwait(false);
         var (t, error, errorStatus, route) = await ResolveAsync(targets, body, ct).ConfigureAwait(false);
         if (t == null) return Local(errorStatus, errorStatus == 400 ? TooLongJson(error!) : ErrorJson(error!));
 
@@ -458,11 +487,8 @@ public class RouterProxy : RequestProxy
     private async Task<ProxyRoute> RouteAnthropicAsync(ProxyTarget[] targets, IReadOnlyList<(string Name, string Value)> headers, byte[]? body, CancellationToken ct)
     {
         string requested = ReadModel(body) ?? VirtualModel;
-        // Bilder beschreiben lassen statt das ganze Gespräch an das Vision-Modell zu geben: das Vision-Modell sagt nur, was
-        // auf dem Bild ist; das Gespräch beantwortet das Standardziel (ein kleines Vision-Modell lehnt Agent-Aufgaben oft ab)
-        if (VisionDescribe && body != null && _visionKey is { Length: > 0 } vk && HasImage(body)
-            && targets.FirstOrDefault(x => x.Key == vk) is { Ready: true } vt)
-            body = await ReplaceImagesAsync(body, (url, k) => DescribeImageAsync(vt, url, k, ct)).ConfigureAwait(false);
+        // Bilder beschreiben lassen statt das ganze Gespräch an das Vision-Modell zu geben (DescribeImagesAsync)
+        body = await DescribeImagesAsync(targets, body, ct).ConfigureAwait(false);
         var (t, error, status, route) = await ResolveAsync(targets, body, ct).ConfigureAwait(false);
         if (t == null) return AnthropicError(status, error!);
 
