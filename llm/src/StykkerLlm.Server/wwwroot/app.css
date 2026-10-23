@@ -886,3 +886,7 @@ html[data-theme=titan] .bench-chart .dot{stroke:var(--card)}
 .pfd-opts{margin-top:12px;gap:8px;flex-wrap:wrap}
 @media(max-width:640px){.modal-back:has(.pfd){align-items:flex-end}.modal.pfd{width:100%;max-width:none;border-radius:var(--radius) var(--radius) 0 0;max-height:88vh}}
 [data-view=small] .top:has(details.menu[open]){backdrop-filter:none}
+/* Proxy-Karte kompakt: Symbol + Wert in zwei Spalten, Ziel über die ganze Breite */
+.pxp-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 12px;margin-top:10px}
+.pxp-grid .mc{font-size:12px}.pxp-grid .mc.wide{grid-column:1/-1}
+.pxp-grid .mc b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}

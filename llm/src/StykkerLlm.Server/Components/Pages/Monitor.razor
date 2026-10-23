@@ -474,43 +474,33 @@
     </div>
     @if (_flash.Length > 0) { <div class="small pxp-flash">@_flash</div> }
 
-    <div class="pxp-row">
-        <span class="pxp-l">@Strings.PxTarget</span>
-        <span class="pxp-v">@px.TargetName()</span>
+    @* Kompakt: Symbol + Wert in zwei Spalten, die Bezeichnung steht im Tooltip *@
+    @{ var cls = ProxyPanel.ClassifierLabel(px.ClassifierValue(), models); var vis = ProxyPanel.ClassifierLabel(px.VisionValue(), models); }
+    <div class="pxp-grid">
+        <span class="mc wide" title="@Strings.PxTarget: @px.TargetName()"><Icon Name="proxy" Title="@Strings.PxTarget" /><b>@px.TargetName()</b></span>
+        <span class="mc" title="@Strings.PxPort: @px.Port.ToString(CultureInfo.InvariantCulture)"><Icon Name="port" Title="@Strings.PxPort" /><b>@px.Port.ToString(CultureInfo.InvariantCulture)</b></span>
+        <span class="mc @(px.BindLan ? "" : "na")" title="@Strings.PxLan: @(px.BindLan ? Strings.PxLanOn : Strings.PxLanOff)"><Icon Name="host" Title="@Strings.PxLan" /><b>@(px.BindLan ? Strings.PxLanOn : Strings.PxLanOff)</b></span>
+        <span class="mc @(machines + clouds == 0 ? "na" : "")" title="@Strings.PxSources: @Strings.PxSourceCounts(machines, clouds)"><Icon Name="layers" Title="@Strings.PxSources" /><b>@Strings.PxSourceCounts(machines, clouds)</b></span>
+        <span class="mc" title="@Strings.PxRouted: @Strings.PxRoutedText(routes.Auto, routes.Image, routes.Cloud)&#10;@Strings.PxRoutedTip"><Icon Name="queue" Title="@Strings.PxRouted" /><b>@routes.Auto · @routes.Image · @routes.Cloud</b></span>
+        <span class="mc" title="@Strings.PxClassifier: @cls"><Icon Name="check" Title="@Strings.PxClassifier" /><b>@cls</b></span>
+        <span class="mc" title="@Strings.ProxyVisionLabel: @vis"><Icon Name="eye" Title="@Strings.ProxyVisionLabel" /><b>@vis</b></span>
     </div>
-    <div class="pxp-row">
-        <span class="pxp-l">@Strings.PxPort</span>
-        <b class="pxp-v">@px.Port.ToString(CultureInfo.InvariantCulture)</b>
-    </div>
-    <div class="pxp-row">
-        <span class="pxp-l">@Strings.PxLan</span>
-        <span class="pxp-v">@(px.BindLan ? Strings.PxLanOn : Strings.PxLanOff)</span>
-    </div>
-    <div class="pxp-row">
-        <span class="pxp-l">@Strings.PxSources</span>
-        <span class="pxp-v">@Strings.PxSourceCounts(machines, clouds)</span>
-    </div>
-    <div class="pxp-row">
-        <span class="pxp-l">@Strings.PxClassifier</span>
-        <span class="pxp-v">@ProxyPanel.ClassifierLabel(px.ClassifierValue(), models)</span>
-    </div>
-    <div class="pxp-row">
-        <span class="pxp-l">@Strings.ProxyVisionLabel</span>
-        <span class="pxp-v">@ProxyPanel.ClassifierLabel(px.VisionValue(), models)</span>
-    </div>
-    <div class="pxp-row" title="@Strings.PxRoutedTip">
-        <span class="pxp-l">@Strings.PxRouted</span>
-        <span class="pxp-v">@Strings.PxRoutedText(routes.Auto, routes.Image, routes.Cloud)</span>
-    </div>
-    @* „Connect a client“: drei kopierbare Blöcke mit der Adresse dieses Proxys (Text aus Core, ClientSnippets) *@
+    @* „Connect a client“: drei kopierbare Blöcke mit der Adresse dieses Proxys (Text aus Core, ClientSnippets), als Fenster *@
     @if (px.Running)
     {
         <div class="mx-conn">
-            <button type="button" class="mx-conn-btn" aria-expanded="@(_clientOpen ? "true" : "false")" aria-controls="mx-conn-panel" @onclick="() => _clientOpen = !_clientOpen">@(_clientOpen ? Strings.MxConnectHide : Strings.MxConnectButton)</button>
-            @if (_clientOpen)
-            {
-                var blocks = ClientSnippets.Build(baseUrl, _shellPs ? ClientSnippets.Shell.PowerShell : ClientSnippets.Shell.Bash);
-                <div id="mx-conn-panel" class="mx-conn-panel">
+            <button type="button" class="mx-conn-btn" aria-haspopup="dialog" @onclick="() => _clientOpen = true">@Strings.MxConnectButton</button>
+        </div>
+        @if (_clientOpen)
+        {
+            var blocks = ClientSnippets.Build(baseUrl, _shellPs ? ClientSnippets.Shell.PowerShell : ClientSnippets.Shell.Bash);
+            <div class="modal-back" @onclick="() => _clientOpen = false">
+                <div class="modal pfd" role="dialog" aria-modal="true" aria-labelledby="mxc-title" tabindex="-1"
+                     @onclick:stopPropagation="true" @onkeydown='k => { if (k.Key == "Escape") _clientOpen = false; }'>
+                    <div class="cdlg-hd">
+                        <h2 id="mxc-title" class="pfd-t">@Strings.MxConnectButton</h2>
+                        <button class="ib quiet" title="@Strings.Close" aria-label="@Strings.Close" @onclick="() => _clientOpen = false"><Icon Name="x" /></button>
+                    </div>
                     <div class="fchips mx-shell" role="group" aria-label="@Strings.MxShellLabel">
                         <button class="fchip @(_shellPs ? "on" : "")" aria-pressed="@(_shellPs ? "true" : "false")" @onclick="() => _shellPs = true">@Strings.MxShellPowerShell</button>
                         <button class="fchip @(_shellPs ? "" : "on")" aria-pressed="@(_shellPs ? "false" : "true")" @onclick="() => _shellPs = false">@Strings.MxShellBash</button>
@@ -527,8 +517,8 @@
                         </div>
                     }
                 </div>
-            }
-        </div>
+            </div>
+        }
     }
 </div>
 </div>
@@ -539,7 +529,7 @@
 @code {
     private Timer? _t;
     private string _q = "", _flash = "";
-    // Monitor-Erweiterungen: Client-Blöcke (Ausklappfläche und Shell-Form), Modellfilter der Anfragen, aufgeklappte Anfragen
+    // Monitor-Erweiterungen: Client-Blöcke (Fenster und Shell-Form), Modellfilter der Anfragen, aufgeklappte Anfragen
     private bool _clientOpen, _shellPs = true;
     private string _reqModel = "";
     private readonly HashSet<string> _openReqs = new();
