@@ -30,7 +30,19 @@ else
         <div class="card">
             <h2>@Strings.RemoteCodeLabel</h2>
             <div class="row">
-                <div class="qr @(Host.Access.RemoteEnabled ? "" : "off")">@((MarkupString)Qr)</div>
+                <div class="qr-pair">
+                    <div class="qr-col">
+                        <div class="qr @(Host.Access.RemoteEnabled ? "" : "off")">@((MarkupString)Qr)</div>
+                        <span class="muted small">@Strings.RemoteQrLan</span>
+                    </div>
+                    @if (Host.Access.RemoteEnabled && TailscalePairUrl is { } tail)
+                    {
+                        <div class="qr-col">
+                            <div class="qr">@((MarkupString)QrSvg(tail))</div>
+                            <span class="muted small">@Strings.RemoteQrTailscale</span>
+                        </div>
+                    }
+                </div>
                 <div class="qr-info">
                     <p class="code">@AccessControl.Pretty(Host.Access.Code)</p>
                     <p class="muted small">@Strings.CodeValidFor(Host.Access.CodeExpires - DateTime.Now)</p>
@@ -65,9 +77,12 @@ else
             {
                 <p><span class="pill wait">@Strings.RemoteThisPcOnly</span> <span class="muted small">@Url</span></p>
             }
-            else if (!string.IsNullOrEmpty(LanAddress))
+            else
             {
-                <p><span class="pill ok">@NetAddr.Url(LanAddress, Port)</span></p>
+                @foreach (var ip in NetAddresses)
+                {
+                    <p><span class="pill ok">@NetAddr.Url(ip, Port)</span> @if (NetInfo.IsTailscale(ip)) { <span class="muted small">@Strings.RemoteTailscale</span> }</p>
+                }
             }
         </div>
     </div>
@@ -116,14 +131,16 @@ else
     private int Port => Actions.ServerPort;
     private string Url => NetAddr.Url("127.0.0.1", Port);
     private string PairUrl => NetInfo.PairUrl(Port, Host.Access.Code);
-    private string LanAddress => NetInfo.LanAddress() ?? "";
-    private string Qr
+    private IReadOnlyList<string> NetAddresses => NetInfo.Ipv4Addresses();
+    private string Qr => QrSvg(PairUrl);
+
+    // Der Code für unterwegs: dieselbe Adresse über Tailscale (null, wenn Tailscale nicht läuft)
+    private string? TailscalePairUrl => NetInfo.TailscaleAddress() is { } ip ? NetInfo.PairUrl(Port, Host.Access.Code, ip) : null;
+
+    private string QrSvg(string url)
     {
-        get
-        {
-            var th = ThemeCatalog.Find(Host.Engine.Settings.Theme);   // Muster und Kartenfläche aus dem Theme
-            return QrCode.Encode(PairUrl, QrCode.Ecc.M).ToSvg(6, 3, th.Ink, th.Card);
-        }
+        var th = ThemeCatalog.Find(Host.Engine.Settings.Theme);   // Muster und Kartenfläche aus dem Theme
+        return QrCode.Encode(url, QrCode.Ecc.M).ToSvg(6, 3, th.Ink, th.Card);
     }
 
     protected override void OnInitialized() => _t = new Timer(_ => InvokeAsync(StateHasChanged), null, 1000, 1000);

@@ -198,7 +198,7 @@ public sealed class TuiApp
         string web = " " + _p.Muted(Strings.TuiWebLabel + "  ") + _p.Accent(local, true);
         if (st.Access.Remote && Addresses(st.Access).Count > 0)
             web += _p.Muted("   " + Strings.TuiNetwork + "  ") + string.Join(_p.Muted("  ·  "),
-                Addresses(st.Access).Select(ip => _p.Ink(NetAddr.Url(ip, _source.Port)) + (IsTailscale(ip) ? _p.Muted(" (Tailscale)") : "")));
+                Addresses(st.Access).Select(ip => _p.Ink(NetAddr.Url(ip, _source.Port)) + (NetInfo.IsTailscale(ip) ? _p.Muted(" (Tailscale)") : "")));
         else if (!st.Simulated) web += _p.Muted("   " + Strings.RemoteThisPcOnly);
         lines.Add(web);
         if (st.Notice is { } n) lines.Add(" " + (n.Alarm ? _p.Warn(n.Text) : _p.Second(n.Text)));
@@ -212,13 +212,6 @@ public sealed class TuiApp
         foreach (var ip in a.AllAddresses.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
             if (!list.Contains(ip)) list.Add(ip);
         return list;
-    }
-
-    // Tailscale vergibt Adressen aus 100.64.0.0/10 (CGNAT)
-    internal static bool IsTailscale(string ip)
-    {
-        var parts = ip.Split('.');
-        return parts.Length == 4 && parts[0] == "100" && int.TryParse(parts[1], out var b) && b is >= 64 and <= 127;
     }
 
     private string ServerLine(RemoteServer s, int w, int sparkW, bool selected)

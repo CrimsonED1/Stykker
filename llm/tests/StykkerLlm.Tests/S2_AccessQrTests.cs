@@ -188,6 +188,13 @@ public class S2_AccessQrTests
         StringAssert.Contains(NetInfo.PairUrl(8078, "482913", "10.1.2.3"), "/pair?code=482913");
     }
 
+    [TestMethod]
+    public void NetInfo_TailscaleAddress_IsNullOrTailscale()
+    {
+        var ip = NetInfo.TailscaleAddress();   // ohne Tailscale auf einer Maschine gern null
+        Assert.IsTrue(ip is null || NetInfo.IsTailscale(ip));
+    }
+
     // Temporärer Ordner für die Dateien von access.dat
     private sealed class TempDir : IDisposable
     {

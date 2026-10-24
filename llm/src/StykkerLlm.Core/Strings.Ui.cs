@@ -314,6 +314,8 @@ public static partial class Strings
     public const string RemoteOn = "Home/VPN on: reachable in the network";
     public const string RemoteOff = "Home/VPN off: only this PC can open the web interface";
     public const string RemoteThisPcOnly = "Only this PC";
+    public const string RemoteTailscale = "Tailscale";
+    public const string RemoteQrLan = "Home network", RemoteQrTailscale = "Tailscale, away from home";
     public const string RemoteHint = "Switch on Home/VPN to reach the web interface from your phone or another computer in the network. Windows asks once for the firewall.";
     public const string WrongHostName = "Wrong host name. Open Stykker LLM by the PC's address.";
     public const string RemoteCodeLabel = "Access code";

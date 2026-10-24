@@ -36,6 +36,16 @@ public static class NetInfo
 
     public static string LanAddressOrLoopback() => LanAddress() ?? "127.0.0.1";
 
+    // Tailscale vergibt Adressen aus 100.64.0.0/10 (CGNAT). Unterwegs erreicht ein Handy den Server nur über diese Adresse.
+    public static bool IsTailscale(string ip)
+    {
+        var parts = ip.Split('.');
+        return parts.Length == 4 && parts[0] == "100" && int.TryParse(parts[1], out var b) && b is >= 64 and <= 127;
+    }
+
+    // Die erste Tailscale-Adresse dieses PCs, null wenn keine da ist
+    public static string? TailscaleAddress() => Ipv4Addresses().FirstOrDefault(IsTailscale);
+
     // http://192.0.2.10:17401/pair?code=ABCD2345
     public static string PairUrl(int port, string code, string? address = null)
     {

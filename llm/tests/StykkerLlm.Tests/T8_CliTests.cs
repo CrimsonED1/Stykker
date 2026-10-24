@@ -160,10 +160,12 @@ public class T8_DisplayTests
     [TestMethod]
     public void TailscaleAddresses_AreRecognized()
     {
-        Assert.IsTrue(TuiApp.IsTailscale("100.101.102.103"));
-        Assert.IsTrue(TuiApp.IsTailscale("100.64.0.1"));
-        Assert.IsFalse(TuiApp.IsTailscale("100.128.0.1"));
-        Assert.IsFalse(TuiApp.IsTailscale("192.168.1.20"));
+        Assert.IsTrue(NetInfo.IsTailscale("100.101.102.103"));
+        Assert.IsTrue(NetInfo.IsTailscale("100.64.0.1"));
+        Assert.IsTrue(NetInfo.IsTailscale("100.127.255.254"));
+        Assert.IsFalse(NetInfo.IsTailscale("100.63.255.255"));
+        Assert.IsFalse(NetInfo.IsTailscale("100.128.0.1"));
+        Assert.IsFalse(NetInfo.IsTailscale("192.168.1.20"));
     }
 
     [TestMethod]
