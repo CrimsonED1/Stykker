@@ -148,6 +148,14 @@ There is no HTTPS yet: use it in your own network or over a VPN such as Tailscal
   request) and other Stykker machines, and cloud providers you add
   with name, URL and key (stored with Windows DPAPI, never shown again). Requests are routed by the `model` field.
 - The proxy forwards requests unchanged and only counts numbers and names. Prompt and answer texts are never stored.
+- **Failover** (proxy dialog, tab *Routing*): up to two fallback models for the default model. When the default model is
+  offline, crashes, still loads, answers 503, has too little context for a request, or a cloud provider is rate-limited
+  (429/5xx), the request goes to the first fallback that can take it, before the client sees any error. Without a fallback
+  the proxy waits up to 30 s for a crashed model to come back (crash restart) and sends the request again. A model asked
+  for by name never jumps to another model. The request list marks such requests `fallback` or `retry`; the proxy card
+  counts them as *rescued*.
+- `GET /health` on the proxy port answers 200 while the default model or a fallback can take requests (status `ok` or
+  `fallback`), otherwise 503 (`loading`, `unavailable`). Good for start scripts and readiness checks.
 
 ## Model tests
 

@@ -203,6 +203,24 @@
                     @foreach (var c in models) { <option value="@c.Value">@c.Display@(passedVision.Contains(c.Value) ? Strings.PxPassedMark : "")</option> }
                 </select>
                 <label class="cdlg-dbg small"><input type="checkbox" checked="@px.VisionDescribe" disabled="@(!CanWrite)" @onchange="OnVisionDescribe" /> @Strings.ProxyVisionDescribeLabel</label>
+
+                @* Failover: Ersatzziele für das Standardziel und das Warten auf einen abgestürzten Server *@
+                <h3 class="sec">@Strings.ProxyFallbackSection</h3>
+                <div class="small muted">@Strings.ProxyFallbackHint</div>
+                @for (int i = 0; i < ProxyManager.FallbackSlots; i++)
+                {
+                    int slot = i;
+                    var current = px.FallbackValue(slot);
+                    // Platz 2 erst, wenn Platz 1 belegt ist (die Liste rückt nach)
+                    if (slot > 0 && px.FallbackValue(slot - 1).Length == 0) break;
+                    <div class="small">@Strings.ProxyFallbackLabel(slot + 1)</div>
+                    <select class="cdlg-sel" aria-label="@Strings.ProxyFallbackLabel(slot + 1)" title="@Strings.ProxyFallbackLabel(slot + 1)" disabled="@(!CanWrite)"
+                            value="@current" @onchange="e => OnFallback(slot, e)">
+                        <option value="">@Strings.ProxyFallbackNone</option>
+                        @foreach (var c in models) { <option value="@c.Value">@c.Display</option> }
+                    </select>
+                }
+                <label class="cdlg-dbg small"><input type="checkbox" checked="@px.RestartWait" disabled="@(!CanWrite)" @onchange="OnRestartWait" /> @Strings.ProxyRestartWaitLabel</label>
             }
 
             @* Modelltest der Sicherheitsprüfung: jedes Modell eines Anbieters bekommt eine Prüfung und zeigt, ob es schnell und
@@ -564,6 +582,20 @@
     {
         if (!CanWrite) return;
         var r = await Web.RunAsync(new ActionRequest { Action = "proxy.vision", Arg = e.Value?.ToString() ?? "" });
+        if (r.Ok) { _flash = ""; Toast.Show(r.Message); } else _flash = r.Message;
+    }
+
+    private async Task OnFallback(int slot, ChangeEventArgs e)
+    {
+        if (!CanWrite) return;
+        var r = await Web.RunAsync(new ActionRequest { Action = "proxy.fallback", Number = slot, Arg = e.Value?.ToString() ?? "" });
+        if (r.Ok) { _flash = ""; Toast.Show(r.Message); } else _flash = r.Message;
+    }
+
+    private async Task OnRestartWait(ChangeEventArgs e)
+    {
+        if (!CanWrite) return;
+        var r = await Web.RunAsync(new ActionRequest { Action = "proxy.restartwait", Flag = e.Value is true });
         if (r.Ok) { _flash = ""; Toast.Show(r.Message); } else _flash = r.Message;
     }
 

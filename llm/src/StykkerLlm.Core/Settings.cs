@@ -200,6 +200,11 @@ public sealed class AppSettings
     public string ProxyVision { get; set; } = "";
     // true: das Vision-Modell beschreibt nur die Bilder, das Gespräch bleibt beim Standardziel; false: Anfragen mit Bild gehen ganz an das Vision-Modell
     public bool ProxyVisionDescribe { get; set; } = true;
+    // Ersatzziele für das Standardziel, in dieser Reihenfolge (Werte wie ProxyClassifier): sie übernehmen, wenn das Standardziel
+    // offline ist, abstürzt, lädt oder die Anfrage nicht in seinen Kontext passt
+    public List<string> ProxyFallbacks { get; set; } = new();
+    // Bei einem abgestürzten Ziel bis zu 30 s auf den Neustart warten, statt dem Client sofort einen Fehler zu geben
+    public bool ProxyRestartWait { get; set; } = true;
     // Zur Fehlersuche: den vollen Text jeder Proxy-Anfrage nach logs\proxy-debug schreiben (die letzten 100 Dateien)
     public bool ProxyDebug { get; set; }
     // Andere Rechner mit Stykker: ihre Proxy-Modelle werden mit eingesammelt
@@ -272,6 +277,7 @@ public sealed class AppSettings
         s.PromptWorkdir ??= "";
         s.ProxyClassifier ??= "";
         s.ProxyVision ??= "";
+        s.ProxyFallbacks ??= new();
         if (s.GpuTopCount <= 0) s.GpuTopCount = 8;
         // Nur noch Dark, Spacepunk Titan und System: ein früheres Thema (Deep Sea, Obsidian …) wird zu Dark
         s.Theme = ThemeCatalog.Normalize(s.Theme);

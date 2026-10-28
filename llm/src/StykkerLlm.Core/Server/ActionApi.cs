@@ -270,6 +270,13 @@ public static class ActionApi
                 case "proxy.vision":
                     e.Proxies.SetVisionValue(req.Arg ?? "");
                     return Ok(e.Proxies.VisionValue().Length == 0 ? Strings.ClientAutoSame : Strings.ProxyVisionSet);
+                // Ersatzziel: Number = Platz (0, 1), Arg = Auswahlwert, leer = Platz frei
+                case "proxy.fallback":
+                    e.Proxies.SetFallbackValue(req.Number, req.Arg ?? "");
+                    return Ok((req.Arg ?? "").Trim().Length == 0 ? Strings.ProxyFallbackCleared : Strings.ProxyFallbackSet);
+                case "proxy.restartwait":
+                    e.Proxies.SetRestartWait(req.Flag);
+                    return Ok(req.Flag ? Strings.ProxyRestartWaitOn : Strings.ProxyRestartWaitOff);
                 case "proxy.classifier":
                     e.Proxies.SetClassifierValue(req.Arg ?? "");
                     return Ok(e.Proxies.ClassifierValue().Length == 0 ? Strings.ClientAutoSame : Strings.ClientAutoSet);

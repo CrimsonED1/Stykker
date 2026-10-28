@@ -11,6 +11,9 @@ public sealed class ProxyTap
     private readonly StringBuilder _line = new();
     private readonly StringBuilder _all = new();   // nur für Antworten ohne Stream (ein JSON-Dokument)
     public bool Stream { get; set; }
+    // Failover in der Anthropic-Brücke: das Ziel, das tatsächlich antwortete, und sein Weg (null = wie geroutet)
+    public string? RoutedServerKey { get; set; }
+    public string? RoutedRoute { get; set; }
     public DateTime? FirstToken { get; private set; }
     public DateTime? FirstContent { get; private set; }
     public DateTime? FirstReasoning { get; private set; }

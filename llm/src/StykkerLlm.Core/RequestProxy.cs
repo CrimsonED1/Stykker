@@ -12,10 +12,24 @@ namespace StykkerLlm.Core;
 // Clients wird dann nicht weitergereicht. Client: ein eigener Weg zum Ziel (Tunnel zu einem Model-Host), sonst der des Proxys.
 // LocalStream: der Proxy antwortet selbst, schreibt die Antwort aber Stück für Stück (Anthropic-Brücke). Der Handler bekommt
 // den Ausgabestrom und den Mitschreiber, schreibt Kopfzeilen und Rumpf selbst und liefert den Status für die Aufzeichnung.
+// TargetKey: die Kennung des Router-Ziels (ProxyTarget.Key), damit ein Fehlschlag diesem Ziel zugeordnet werden kann (Failover).
 public sealed record ProxyRoute(string Upstream, string ServerKey, byte[]? Body,
     string? LocalContentType = null, byte[]? LocalBody = null, int LocalStatus = 200,
     IReadOnlyList<(string Name, string Value)>? Headers = null, HttpClient? Client = null,
-    Func<Stream, ProxyTap, CancellationToken, Task<int>>? LocalStream = null, string? Route = null);
+    Func<Stream, ProxyTap, CancellationToken, Task<int>>? LocalStream = null, string? Route = null, string? TargetKey = null);
+
+// Warum eine Weiterleitung scheiterte, bevor ein Byte an den Client ging (dann darf der Router ein anderes Ziel nennen):
+// Unreachable = keine Verbindung (Server abgestürzt, startet neu), Unavailable = 503 (lädt noch), ContextOverflow = 400 „Kontext zu klein“,
+// Overloaded = 429 oder 500/502/529 (bei Cloud-Anbietern: Rate-Limit oder Störung; der Router leitet das nur bei Cloud-Zielen um).
+public enum ProxyFailure { Unreachable, Unavailable, ContextOverflow, Overloaded }
+
+// Ein Versuch einer Anfrage: welche Ziele schon scheiterten und seit wann gewartet wird (Failover und Warten auf den Neustart)
+public sealed class ProxyAttempts
+{
+    public DateTime Started { get; } = DateTime.UtcNow;
+    public int Count { get; set; }
+    public HashSet<string> Failed { get; } = new(StringComparer.Ordinal);
+}
 
 // Kleiner lokaler Durchreich-Proxy (nur Loopback) vor einem llama-server. Reicht alle Anfragen unverändert weiter (auch Streaming/SSE),
 // liest bei Generierungs-Anfragen mit (ProxyTap) und meldet je Anfrage einen ProxyRecord. Aus: Server bleibt direkt erreichbar.
@@ -115,6 +129,14 @@ public class RequestProxy : IDisposable
     // noch ladendes Ziel zu warten.
     protected virtual Task<ProxyRoute> RouteAsync(string method, string target, IReadOnlyList<(string Name, string Value)> headers, byte[]? body, CancellationToken ct)
         => Task.FromResult(new ProxyRoute(Upstream, ServerKey, body));
+
+    // Eine Generierungs-Anfrage ist gescheitert, bevor ein Byte an den Client ging. Der Router darf ein anderes Ziel (oder
+    // dasselbe nach seinem Neustart) nennen; body ist der unveränderte Anfragetext des Clients. null = Fehler wie bisher melden.
+    protected virtual Task<ProxyRoute?> RerouteAsync(ProxyRoute failed, ProxyFailure failure, byte[]? body, ProxyAttempts attempts, CancellationToken ct)
+        => Task.FromResult<ProxyRoute?>(null);
+
+    // Größte Fehlerantwort, die zum Prüfen auf „Kontext zu klein" gelesen wird (der Rest bleibt im Strom)
+    private const int OverflowProbeBytes = 64 * 1024;
 
     // Freier Port für einen Proxy: Serverport + 1000, dann weiter hinauf; null, wenn nichts frei ist
     public static int? PickPort(int serverPort, Func<int, bool> isUsed)
@@ -365,6 +387,7 @@ public class RequestProxy : IDisposable
         Task? watcher = null;
         ParsedRequest? req = null;
         ProxyRoute? route = null;
+        HttpRequestMessage? upMsg = null;
         var tap = new ProxyTap();
         var start = DateTime.Now;
         bool track = false, stream = false, aborted = false;
@@ -425,34 +448,58 @@ public class RequestProxy : IDisposable
                 return;
             }
             track = req.Method == "POST" && IsGenerationPath(pathOnly);
-            var body = route.Body ?? Array.Empty<byte>();
-            if (track && req.Header("Content-Encoding") == null) stream = BodyWantsStream(body);
-            tap.Stream = stream;
-
-            using var up = new HttpRequestMessage(new HttpMethod(req.Method), NetAddr.JoinUpstream(route.Upstream, req.Target));
-            if (body.Length > 0 || req.Method is "POST" or "PUT" or "PATCH") up.Content = new ByteArrayContent(body);
-            var own = route.Headers;
-            foreach (var (name, value) in req.Headers)
-            {
-                if (HopHeaders.Contains(name)) continue;
-                // Setzt der Proxy selbst eine Authorization (Cloud-Ziel), gehört der Wert des Clients zu stykker und darf nicht mit
-                if (own != null && name.Equals("Authorization", StringComparison.OrdinalIgnoreCase)) continue;
-                if (ContentHeaders.Contains(name)) up.Content?.Headers.TryAddWithoutValidation(name, value);
-                else up.Headers.TryAddWithoutValidation(name, value);
-            }
-            if (own != null)
-                foreach (var (name, value) in own) up.Headers.TryAddWithoutValidation(name, value);
-
+            // Failover: scheitert eine Generierungs-Anfrage, bevor ein Byte an den Client ging (keine Verbindung, 503, Kontext
+            // zu klein), darf der Router ein anderes Ziel nennen. Der Anfragetext liegt im Speicher, ein zweiter Versuch ist sicher.
+            var attempts = new ProxyAttempts();
             HttpResponseMessage resp;
-            try
+            while (true)
             {
-                using var hdr = CancellationTokenSource.CreateLinkedTokenSource(conn.Token);
-                hdr.CancelAfter(HeaderTimeout);
-                resp = await (route.Client ?? _http).SendAsync(up, HttpCompletionOption.ResponseHeadersRead, hdr.Token);
+                var body = route.Body ?? Array.Empty<byte>();
+                if (track && req.Header("Content-Encoding") == null) stream = BodyWantsStream(body);
+                tap.Stream = stream;
+                upMsg?.Dispose();
+                upMsg = BuildUpstreamRequest(req, route, body);
+
+                HttpResponseMessage got;
+                try
+                {
+                    using var hdr = CancellationTokenSource.CreateLinkedTokenSource(conn.Token);
+                    hdr.CancelAfter(HeaderTimeout);
+                    got = await (route.Client ?? _http).SendAsync(upMsg, HttpCompletionOption.ResponseHeadersRead, hdr.Token);
+                }
+                catch (OperationCanceledException) when (conn.IsCancellationRequested) { aborted = true; return; }   // Client weg (oder Proxy beendet): Upstream ist abgebrochen
+                catch (OperationCanceledException) { status = 504; await WriteSimpleAsync(net, 504, "The server did not answer in time"); return; }
+                catch (Exception)
+                {
+                    if (track && await NextRouteAsync(route, ProxyFailure.Unreachable, req.Body, attempts, conn.Token) is { } next) { route = next; continue; }
+                    status = 502; await WriteSimpleAsync(net, 502, "Upstream server not reachable"); return;
+                }
+
+                int code = (int)got.StatusCode;
+                ProxyFailure? busyKind = code == 503 ? ProxyFailure.Unavailable : code is 429 or 500 or 502 or 529 ? ProxyFailure.Overloaded : null;
+                if (track && busyKind is { } bk && await NextRouteAsync(route, bk, req.Body, attempts, conn.Token) is { } busy)
+                {
+                    got.Dispose();
+                    route = busy;
+                    continue;
+                }
+                if (track && code == 400 && got.Content.Headers.ContentEncoding.Count == 0)
+                {
+                    // Kontext zu klein? Den Anfang der Fehlerantwort lesen; ohne neues Ziel geht die Antwort unverändert weiter
+                    var (prefix, rest) = await ReadPrefixAsync(got, OverflowProbeBytes, conn.Token);
+                    if (RouterProxy.IsContextOverflow(Encoding.UTF8.GetString(prefix))
+                        && await NextRouteAsync(route, ProxyFailure.ContextOverflow, req.Body, attempts, conn.Token) is { } bigger)
+                    {
+                        await rest.DisposeAsync();
+                        got.Dispose();
+                        route = bigger;
+                        continue;
+                    }
+                    Replay(got, prefix, rest);
+                }
+                resp = got;
+                break;
             }
-            catch (OperationCanceledException) when (conn.IsCancellationRequested) { aborted = true; return; }   // Client weg (oder Proxy beendet): Upstream ist abgebrochen
-            catch (OperationCanceledException) { status = 504; await WriteSimpleAsync(net, 504, "The server did not answer in time"); return; }
-            catch (Exception) { status = 502; await WriteSimpleAsync(net, 502, "Upstream server not reachable"); return; }
 
             using (resp)
             {
@@ -528,6 +575,7 @@ public class RequestProxy : IDisposable
         catch (Exception) { aborted = true; }
         finally
         {
+            upMsg?.Dispose();
             Volatile.Write(ref done, 1);
             if (Volatile.Read(ref clientGone) != 0) aborted = true;
             // Sauber schließen: erst Senden beenden, dem Client einen Moment zum Lesen lassen (sonst kann ein RST die Antwort verschlucken)
@@ -550,12 +598,116 @@ public class RequestProxy : IDisposable
                 int reasoning = tap.Reasoning, content = tap.Content;
                 bool known = stream || tap.Stream || reasoning + content > 0;
                 int q2 = req.Target.IndexOf('?');
-                var rec = new ProxyRecord(route?.ServerKey ?? ServerKey, q2 >= 0 ? req.Target[..q2] : req.Target, start, end, tap.FirstToken, tap.FirstContent,
+                // Hat die Anthropic-Brücke das Ziel gewechselt (Failover), steht das tatsächliche Ziel im Mitschreiber
+                var rec = new ProxyRecord(tap.RoutedServerKey ?? route?.ServerKey ?? ServerKey, q2 >= 0 ? req.Target[..q2] : req.Target, start, end, tap.FirstToken, tap.FirstContent,
                     known ? reasoning : -1, known ? content : -1, tap.Tools.ToArray(), tap.FinishReason, ua, stream || tap.Stream, status, aborted,
-                    RouterProxy.ReadModel(req.Body), RequestShape.Read(req.Body), route?.Route);
+                    RouterProxy.ReadModel(req.Body), RequestShape.Read(req.Body), tap.RoutedRoute ?? route?.Route);
                 try { Recorded?.Invoke(rec); } catch { }
                 if (req.Body is { Length: > 0 } dbgBody && DebugBody is { } dbg) { try { dbg(rec, dbgBody); } catch { } }
             }
+        }
+    }
+
+    // Höchstzahl der Versuche einer Anfrage (Schutz vor einer Schleife, falls ein Router immer wieder ein Ziel nennt)
+    public const int MaxAttempts = 8;
+
+    private async Task<ProxyRoute?> NextRouteAsync(ProxyRoute failed, ProxyFailure failure, byte[]? body, ProxyAttempts attempts, CancellationToken ct)
+    {
+        if (attempts.Count >= MaxAttempts) return null;
+        attempts.Count++;
+        return await RerouteAsync(failed, failure, body, attempts, ct);
+    }
+
+    // Die Anfrage an das Ziel: Kopfzeilen des Clients ohne Verbindungs-Kopfzeilen; eine eigene Authorization des Proxys
+    // (Cloud-Ziel) ersetzt die des Clients
+    private static HttpRequestMessage BuildUpstreamRequest(ParsedRequest req, ProxyRoute route, byte[] body)
+    {
+        var up = new HttpRequestMessage(new HttpMethod(req.Method), NetAddr.JoinUpstream(route.Upstream, req.Target));
+        if (body.Length > 0 || req.Method is "POST" or "PUT" or "PATCH") up.Content = new ByteArrayContent(body);
+        var own = route.Headers;
+        foreach (var (name, value) in req.Headers)
+        {
+            if (HopHeaders.Contains(name)) continue;
+            // Setzt der Proxy selbst eine Authorization (Cloud-Ziel), gehört der Wert des Clients zu stykker und darf nicht mit
+            if (own != null && name.Equals("Authorization", StringComparison.OrdinalIgnoreCase)) continue;
+            if (ContentHeaders.Contains(name)) up.Content?.Headers.TryAddWithoutValidation(name, value);
+            else up.Headers.TryAddWithoutValidation(name, value);
+        }
+        if (own != null)
+            foreach (var (name, value) in own) up.Headers.TryAddWithoutValidation(name, value);
+        return up;
+    }
+
+    // Die ersten Bytes einer Antwort lesen (höchstens limit, höchstens 10 s); der Strom bleibt für den Rest offen
+    private static async Task<(byte[] Prefix, Stream Remainder)> ReadPrefixAsync(HttpResponseMessage resp, int limit, CancellationToken ct)
+    {
+        var rest = await resp.Content.ReadAsStreamAsync(ct);
+        var buf = new byte[limit];
+        int got = 0;
+        using var slow = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        slow.CancelAfter(TimeSpan.FromSeconds(10));
+        try
+        {
+            int n;
+            while (got < limit && (n = await rest.ReadAsync(buf.AsMemory(got), slow.Token)) > 0) got += n;
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested) { /* langsames Ziel: mit dem Gelesenen weiter */ }
+        return (buf[..got], rest);
+    }
+
+    // Die schon gelesenen Bytes wieder vor den Rest setzen, damit die Antwort unverändert weitergeht (Kopfzeilen bleiben)
+    private static void Replay(HttpResponseMessage resp, byte[] prefix, Stream rest)
+    {
+        var old = resp.Content;
+        var content = new StreamContent(new PrefixedStream(prefix, rest));
+        foreach (var h in old.Headers) content.Headers.TryAddWithoutValidation(h.Key, h.Value);
+        resp.Content = content;
+    }
+
+    // Lesestrom: erst die Bytes aus prefix, dann der Rest aus inner
+    internal sealed class PrefixedStream : Stream
+    {
+        private readonly byte[] _prefix;
+        private readonly Stream _inner;
+        private int _pos;
+        public PrefixedStream(byte[] prefix, Stream inner) { _prefix = prefix; _inner = inner; }
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => throw new NotSupportedException();
+        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+        public override void Flush() { }
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+        public override int Read(byte[] buffer, int offset, int count) => Read(buffer.AsSpan(offset, count));
+        public override int Read(Span<byte> buffer)
+        {
+            if (_pos < _prefix.Length)
+            {
+                int n = Math.Min(buffer.Length, _prefix.Length - _pos);
+                _prefix.AsSpan(_pos, n).CopyTo(buffer);
+                _pos += n;
+                return n;
+            }
+            return _inner.Read(buffer);
+        }
+        public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken ct) => ReadAsync(buffer.AsMemory(offset, count), ct).AsTask();
+        public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken ct = default)
+        {
+            if (_pos < _prefix.Length)
+            {
+                int n = Math.Min(buffer.Length, _prefix.Length - _pos);
+                _prefix.AsMemory(_pos, n).CopyTo(buffer);
+                _pos += n;
+                return ValueTask.FromResult(n);
+            }
+            return _inner.ReadAsync(buffer, ct);
+        }
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing) _inner.Dispose();
+            base.Dispose(disposing);
         }
     }
 

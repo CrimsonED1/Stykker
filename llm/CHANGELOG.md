@@ -7,6 +7,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## Unreleased
 
 ### Added
+- **Proxy failover.** The default model can have up to two fallback models (proxy dialog, tab *Routing*). A request goes
+  to the first fallback that can take it when the default model is offline, still loading, just crashed (no connection),
+  answers 503, has too little context (checked before sending, and the backend's "exceeds the available context" 400), or
+  when a cloud default answers 429 or 5xx. This happens before a byte reaches the client, for OpenAI clients and for the
+  Anthropic bridge (Claude Code) alike; the client gets the fallback's answer instead of an error. A target that failed is
+  skipped for 20 s, so the next requests go straight to the fallback. Without a fallback the proxy waits up to 30 s for a
+  crashed model to come back (crash restart) and sends the request again (setting *Wait for a crashed model*, on by
+  default; a model that loads again is waited for like a loading one). A model asked for by name never jumps to another
+  model, and a local 500 (for example a tool-call parse error) is passed on unchanged. New routes `fallback` and `retry` in
+  the request list and `proxy.csv`; the proxy card's *Routed* line counts *rescued* requests. Actions `proxy.fallback`
+  (Number = slot, Arg = choice value) and `proxy.restartwait`.
+- **`GET /health` on the proxy.** The proxy answers it itself: 200 with status `ok` (default model ready) or `fallback`
+  (only a fallback ready), 503 with `loading` or `unavailable`; names, models, context and readiness of the default model
+  and the fallbacks, no provider addresses and no keys.
 - **Benchmark page reworked.** Each result shows two small charts, read and write t/s by context size (log scale, one
   line per result). Up to four results can be ticked and compared side by side: overlaid charts, one table and a
   Markdown export of all of them (`/api/bench/compare?ids=`). The tool call reads as passed or failed instead of

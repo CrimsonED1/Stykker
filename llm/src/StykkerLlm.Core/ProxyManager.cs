@@ -170,6 +170,37 @@ public sealed class ProxyManager : IDisposable
 
     public string VisionValue() => _settings.ProxyVision;
 
+    // Ersatzziele: so viele Plätze bietet die Oberfläche an
+    public const int FallbackSlots = 2;
+
+    // Ersatzziel an Platz index (0-basiert) setzen: derselbe Wert wie bei SetChoiceValue, leer = Platz frei.
+    // Leere Plätze rücken nach, ein schon eingetragenes Ziel steht nur einmal in der Liste.
+    public void SetFallbackValue(int index, string value)
+    {
+        if (index < 0 || index >= FallbackSlots) return;
+        var list = FallbackValues().ToList();
+        while (list.Count <= index) list.Add("");
+        list[index] = (value ?? "").Trim();
+        _settings.ProxyFallbacks = list.Where(v => v.Length > 0).Distinct(StringComparer.Ordinal).Take(FallbackSlots).ToList();
+        _settings.Save();
+        PushTargets();
+    }
+
+    // Die eingetragenen Ersatzziele (Auswahlwerte) in ihrer Reihenfolge
+    public IReadOnlyList<string> FallbackValues() => _settings.ProxyFallbacks.Where(v => !string.IsNullOrWhiteSpace(v)).ToList();
+
+    // Ersatzziel an Platz index, "" = frei
+    public string FallbackValue(int index) => FallbackValues() is var l && index >= 0 && index < l.Count ? l[index] : "";
+
+    public bool RestartWait => _settings.ProxyRestartWait;
+
+    public void SetRestartWait(bool on)
+    {
+        _settings.ProxyRestartWait = on;
+        _settings.Save();
+        PushTargets();
+    }
+
     public bool VisionDescribe => _settings.ProxyVisionDescribe;
 
     public void SetVisionDescribe(bool on)
@@ -181,6 +212,10 @@ public sealed class ProxyManager : IDisposable
 
     // Die Zielkennung der Sicherheitsprüfung, oder null (nicht gesetzt oder das Ziel läuft gerade nicht)
     private string? ClassifierKey(IReadOnlyList<ProxyTarget> targets) => KeyOf(_settings.ProxyClassifier, targets);
+
+    // Die Zielkennungen der Ersatzziele, die es gerade gibt (ein Ziel, dessen Server nicht läuft, fällt weg, bis er wieder da ist)
+    internal static IReadOnlyList<string> FallbackKeys(IEnumerable<string> values, IReadOnlyList<ProxyTarget> targets) =>
+        values.Select(v => KeyOf(v, targets)).Where(k => k != null).Select(k => k!).Distinct(StringComparer.Ordinal).ToList();
 
     // Zielkennung zu einem Auswahlwert („<Server-Key>|<Modell>“ oder Cloud-Zielkennung), oder null
     private static string? KeyOf(string? v, IReadOnlyList<ProxyTarget> targets)
@@ -548,6 +583,8 @@ public sealed class ProxyManager : IDisposable
         foreach (var t in targets) names[t.Key] = t.DisplayName.Length > 0 ? t.DisplayName : t.Key;
         _names = names;
         _proxy.SetTargets(targets, DefaultKey(targets), ClassifierKey(targets), KeyOf(_settings.ProxyVision, targets));
+        _proxy.SetFallbacks(FallbackKeys(_settings.ProxyFallbacks, targets));
+        _proxy.RestartWait = _settings.ProxyRestartWait ? TimeSpan.FromSeconds(30) : TimeSpan.Zero;
         _proxy.VisionDescribe = _settings.ProxyVisionDescribe;
     }
 
