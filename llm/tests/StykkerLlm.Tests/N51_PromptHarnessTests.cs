@@ -69,7 +69,7 @@ public class N51_PromptHarnessTests
     }
 
     [TestMethod]
-    public async Task WithoutStream_TheSimulatorAnswerIsReadWhole()
+    public async Task TheSimulatorAnswerIsRead()
     {
         var world = new SimWorld(seed: 1);
         var sim = world.Add(new SimServerSpec

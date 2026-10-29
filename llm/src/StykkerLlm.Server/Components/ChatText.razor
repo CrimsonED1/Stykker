@@ -1,0 +1,83 @@
+@* Antwort eines Modells als Markdown (ChatMarkdown im Core): die Seite baut Elemente aus Blöcken und Textstücken, kein
+   HTML aus der Antwort gelangt in die Seite. Code-Blöcke mit Sprache und Knopf zum Kopieren; ein noch offener Block
+   (die Antwort läuft) trägt den Hinweis „still writing“. *@
+@inject IJSRuntime JS
+
+<div class="md">
+    @{ int index = 0; }
+    @foreach (var b in ChatMarkdown.Parse(Text))
+    {
+        var at = index++;
+        switch (b.Kind)
+        {
+            case MdKind.Paragraph:
+                <p>@Spans(b.Spans)</p>
+                break;
+            case MdKind.Heading:
+                <div class="md-h md-h@(Math.Min(b.Level, 4))" role="heading" aria-level="@Math.Min(b.Level + 2, 6)">@Spans(b.Spans)</div>
+                break;
+            case MdKind.Quote:
+                <blockquote>@Spans(b.Spans)</blockquote>
+                break;
+            case MdKind.Rule:
+                <hr />
+                break;
+            case MdKind.List:
+                if (b.Ordered)
+                {
+                    <ol start="@b.Start">@foreach (var it in b.Items) { <li class="d@(it.Depth)">@Spans(it.Spans)</li> }</ol>
+                }
+                else
+                {
+                    <ul>@foreach (var it in b.Items) { <li class="d@(it.Depth)">@Spans(it.Spans)</li> }</ul>
+                }
+                break;
+            case MdKind.Table:
+                <div class="md-table">
+                    <table>
+                        <thead><tr>@foreach (var h in b.Header) { <th>@Spans(h)</th> }</tr></thead>
+                        <tbody>@foreach (var row in b.Rows) { <tr>@foreach (var cell in row) { <td>@Spans(cell)</td> }</tr> }</tbody>
+                    </table>
+                </div>
+                break;
+            case MdKind.Code:
+                var src = b.Text;
+                <div class="md-code">
+                    <div class="md-code-hd">
+                        <span>@(b.Language.Length > 0 ? b.Language : "code")@(b.Open ? " · " + Strings.ChatCodeOpen : "")</span>
+                        <button class="ib quiet txt" title="@Strings.ChatCopyCode" aria-label="@Strings.ChatCopyCode" @onclick="() => Copy(src, at)">
+                            <Icon Name="@(_copied == at ? "r-ok" : "file")" />@(_copied == at ? Strings.ChatCopied : Strings.ChatCopy)</button>
+                    </div>
+                    <pre><code>@src</code></pre>
+                </div>
+                break;
+        }
+    }
+</div>
+
+@code {
+    [Parameter] public string Text { get; set; } = "";
+    private int _copied = -1;
+
+    private RenderFragment Spans(IReadOnlyList<MdSpan> spans) => __builder =>
+    {
+        foreach (var s in spans)
+        {
+            switch (s.Kind)
+            {
+                case MdSpanKind.Code: <code>@s.Text</code> break;
+                case MdSpanKind.Bold: <b>@s.Text</b> break;
+                case MdSpanKind.Italic: <em>@s.Text</em> break;
+                case MdSpanKind.Link: <a href="@s.Href" target="_blank" rel="noopener noreferrer">@s.Text</a> break;
+                default: <text>@s.Text</text> break;
+            }
+        }
+    };
+
+    private async Task Copy(string text, int at)
+    {
+        try { await JS.InvokeVoidAsync("navigator.clipboard.writeText", text); _copied = at; }
+        catch (Exception ex) when (ex is JSException or InvalidOperationException) { return; }
+        _ = Task.Delay(1500).ContinueWith(_ => InvokeAsync(() => { _copied = -1; StateHasChanged(); }));
+    }
+}

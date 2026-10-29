@@ -2,6 +2,7 @@
 @rendermode InteractiveServer
 @inject EngineHost Host
 @inject ViewerSession Viewer
+@inject IJSRuntime JS
 @implements IDisposable
 
 @* Mini-Harness: ein geladenes Modell direkt anprompten (Knopf „Prompt“ an der Serverkarte). Das Gespräch gehört
@@ -22,8 +23,14 @@ else
     <div class="grid2">
         <div class="card">
             <div class="chat">
+                @if (_session.Turns.Count == 0 && !_session.Busy)
+                {
+                    <p class="muted small chat-empty">@Strings.ChatEmpty</p>
+                }
+                @{ int turnNo = 0; }
                 @foreach (var t in _session.Turns)
                 {
+                    var no = turnNo++;
                     if (t.Role == "tool")
                     {
                         <div class="turn tool"><div class="msg tool-out">@Cut(t.Content)</div></div>
@@ -31,13 +38,27 @@ else
                     else if (t.ToolCalls is { Count: > 0 } calls)
                     {
                         <div class="turn assistant">
-                            @if (t.Content.Length > 0) { <div class="msg">@t.Content</div> }
+                            @if (t.Content.Length > 0) { <div class="msg md-msg"><ChatText Text="@t.Content" /></div> }
                             @foreach (var c in calls) { <div class="msg tool-call">⚙ @c.Summary</div> }
+                        </div>
+                    }
+                    else if (t.Role == "assistant")
+                    {
+                        @* Antwort als Markdown; darunter die Messwerte und Kopieren (der Text so, wie das Modell ihn schrieb) *@
+                        var answer = t.Content;
+                        <div class="turn assistant">
+                            <div class="who">@Strings.PromptModelSays</div>
+                            <div class="msg md-msg"><ChatText Text="@answer" /></div>
+                            <div class="turn-ft">
+                                @if (t.Stats is { Length: > 0 } st) { <span class="muted small">@st</span> }
+                                <button class="ib quiet txt" title="@Strings.ChatCopyAnswer" aria-label="@Strings.ChatCopyAnswer" @onclick="() => CopyText(answer, no)">
+                                    <Icon Name="@(_copiedTurn == no ? "r-ok" : "file")" />@(_copiedTurn == no ? Strings.ChatCopied : Strings.ChatCopy)</button>
+                            </div>
                         </div>
                     }
                     else
                     {
-                        <div class="turn @t.Role"><div class="who">@(t.Role == "user" ? Strings.PromptYou : Strings.PromptModelSays)</div><div class="msg">@t.Content</div></div>
+                        <div class="turn @t.Role"><div class="who">@Strings.PromptYou</div><div class="msg">@t.Content</div></div>
                     }
                 }
                 @if (_session.Waiting is { } w)
@@ -55,7 +76,7 @@ else
                     <div class="turn assistant">
                         <div class="who">@Strings.PromptModelSays …</div>
                         @if (_session.LiveReasoning.Length > 0) { <div class="msg think">@_session.LiveReasoning</div> }
-                        <div class="msg">@_session.LiveText</div>
+                        <div class="msg md-msg"><ChatText Text="@_session.LiveText" /></div>
                     </div>
                 }
                 else if (_session.Last is { } last)
@@ -64,7 +85,11 @@ else
                     {
                         <details class="small"><summary class="muted">@Strings.PromptThinking</summary><div class="msg think">@last.Reasoning</div></details>
                     }
-                    <p class="small @(last.Ok ? "muted" : "warn")">@(last.Ok ? PromptHarness.Stats(last) : last.Error)</p>
+                    @if (!last.Ok)
+                    {
+                        <p class="small warn">@last.Error</p>
+                        @if (_restored) { <p class="small muted">@Strings.ChatRestored</p> }
+                    }
                 }
             </div>
             <textarea class="prompt-in" rows="3" @bind="_input" @bind:event="oninput" @onkeydown="Key" placeholder="@Strings.PromptInput"></textarea>
@@ -78,6 +103,11 @@ else
                     <button class="good" disabled="@(!CanSend || _input.Trim().Length == 0)" @onclick="Send">@Strings.BtnSend</button>
                 }
                 <button disabled="@_session.Busy" @onclick="Clear">@Strings.BtnClear</button>
+                @if (_session.Turns.Count > 0)
+                {
+                    <button class="ib quiet txt" style="margin-left:auto" title="@Strings.ChatCopyAllTip" aria-label="@Strings.ChatCopyAllTip"
+                            @onclick="() => CopyText(ChatMarkdown.Conversation(_session.Turns), -2)"><Icon Name="@(_copiedTurn == -2 ? "r-ok" : "file")" />@(_copiedTurn == -2 ? Strings.ChatCopied : Strings.ChatCopyAll)</button>
+                }
             </div>
             @if (_proxyMsg.Length > 0) { <p class="small warn">@_proxyMsg</p> }
         </div>
@@ -155,7 +185,12 @@ else
     // Eine Verbindung für alle Seiten: lange Antworten dürfen dauern, gestoppt wird über den Knopf
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromMinutes(10) };
 
+    // Im Simulator (nur Debug) antworten die Server über dessen eigenen Weg statt über das Netz – so lässt sich die Seite dort ausprobieren
+    private HttpClient Client => Host.Sim?.Http ?? Http;
+
     private readonly PromptSession _session = new();
+    private int _copiedTurn = -1;   // welcher Knopf gerade „Copied“ zeigt (-2 = ganze Unterhaltung)
+    private bool _restored;         // nach einem Fehlschlag steht die Nachricht wieder im Eingabefeld
     // Die Auswahl: ein laufender lokaler Server (sein Key) oder ein Eintrag „Via Stykker-Proxy“ (PromptTargets)
     private string _input = "", _serverKey = "", _proxyMsg = "";
     private CancellationTokenSource? _cts;
@@ -276,8 +311,10 @@ else
         else _session.Options.Tools = null;
         var text = _input.Trim();
         _input = "";
+        _restored = false;
+        int before = _session.Turns.Count;
         _cts = new CancellationTokenSource();
-        var task = _session.SendAsync(Http, baseUrl, text, () =>
+        var task = _session.SendAsync(Client, baseUrl, text, () =>
         {
             // höchstens zehnmal je Sekunde neu zeichnen, sonst kommt die Leitung zum Browser nicht nach
             if ((DateTime.Now - _lastPaint).TotalMilliseconds < 100) return;
@@ -285,14 +322,27 @@ else
             _ = InvokeAsync(StateHasChanged);
         }, _cts.Token, AskAsync);
         StateHasChanged();
-        await task;
+        var result = await task;
         _cts.Dispose();
         _cts = null;
+        // Nichts zurückgekommen (Server weg, Zeitlimit): die Frage steht nicht im Verlauf – dann zurück ins Feld, statt sie zu verlieren
+        if (!result.Ok && _session.Turns.Count == before && _input.Length == 0)
+        {
+            _input = text;
+            _restored = true;
+        }
+    }
+
+    private async Task CopyText(string text, int which)
+    {
+        try { await JS.InvokeVoidAsync("navigator.clipboard.writeText", text); _copiedTurn = which; }
+        catch (Exception ex) when (ex is JSException or InvalidOperationException) { return; }
+        _ = Task.Delay(1500).ContinueWith(_ => InvokeAsync(() => { _copiedTurn = -1; StateHasChanged(); }));
     }
 
     private void Stop() { _approval?.TrySetResult(false); _cts?.Cancel(); }
 
-    private void Clear() { if (!_session.Busy) _session.Clear(); }
+    private void Clear() { if (!_session.Busy) { _session.Clear(); _restored = false; } }
 
     public void Dispose() { _approval?.TrySetResult(false); _cts?.Cancel(); }
 }

@@ -139,6 +139,17 @@
     }
     new MutationObserver(status).observe(document.head, { childList: true, subtree: true, attributes: true, attributeFilter: ['content', 'data-alert-id'] });
 
+    // Gespräch auf /prompt (.chat): beim Streamen wächst die Antwort unten. Wer unten ist, bleibt unten; wer hochgescrollt hat,
+    // um etwas nachzulesen, wird nicht weggerissen.
+    const follow = new WeakMap();
+    document.addEventListener('scroll', function (e) {
+        const el = e.target;
+        if (el && el.classList && el.classList.contains('chat')) follow.set(el, el.scrollTop + el.clientHeight >= el.scrollHeight - 48);
+    }, true);
+    new MutationObserver(function () {
+        document.querySelectorAll('.chat').forEach(function (el) { if (follow.get(el) !== false) el.scrollTop = el.scrollHeight; });
+    }).observe(document.documentElement, { childList: true, subtree: true, characterData: true });
+
     // Tastatur (U10): Ctrl+K öffnet das Befehlsfenster, „/“ springt in die Suche der History (sonst Befehlsfenster);
     // im offenen Befehlsfenster bleibt der Fokus im Eingabefeld (Tab springt nicht hinaus)
     let lastFocus = null;

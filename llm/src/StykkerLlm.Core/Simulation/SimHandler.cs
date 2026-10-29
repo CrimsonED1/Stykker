@@ -152,14 +152,21 @@ public sealed class SimHandler : HttpMessageHandler
     {
         var spec = s.Spec;
         int promptTokens = Math.Max(8, (int)Math.Ceiling(ContentLength(body) / 3.2) + 12);
-        int maxTokens = 128; bool tools = false;
+        int maxTokens = 128; bool tools = false, stream = false;
+        string ask = "";
         try
         {
             using var doc = JsonDocument.Parse(body ?? "{}");
             if (doc.RootElement.TryGetProperty("max_tokens", out var mt) && mt.TryGetInt32(out var m) && m > 0) maxTokens = m;
             tools = doc.RootElement.TryGetProperty("tools", out var t) && t.ValueKind == JsonValueKind.Array && t.GetArrayLength() > 0;
+            stream = doc.RootElement.TryGetProperty("stream", out var st) && st.ValueKind == JsonValueKind.True;
+            if (doc.RootElement.TryGetProperty("messages", out var msgs) && msgs.ValueKind == JsonValueKind.Array && msgs.GetArrayLength() > 0
+                && msgs[msgs.GetArrayLength() - 1].TryGetProperty("content", out var last) && last.ValueKind == JsonValueKind.String)
+                ask = last.GetString() ?? "";
         }
         catch { }
+        // Gestreamt (Seite /prompt): eine Antwort in Markdown, Stück für Stück im Takt der simulierten Geschwindigkeit
+        if (stream && !tools) return StreamChat(s, SimAnswers.For(ask), promptTokens, ct);
         double fill = Math.Min(0.6, promptTokens / (double)Math.Max(1, spec.Context) * 0.6);   // je voller der Kontext, desto langsamer
         double genTps = (spec.TpsMin + spec.TpsMax) / 2 * (1 - fill);
         double promptTps = genTps * 11;
@@ -172,6 +179,43 @@ public sealed class SimHandler : HttpMessageHandler
         return Json("{\"choices\":[{\"index\":0,\"finish_reason\":\"" + (tools ? "tool_calls" : pred >= maxTokens ? "length" : "stop") + "\",\"message\":" + message + "}]," +
                     "\"usage\":{\"prompt_tokens\":" + promptTokens + ",\"completion_tokens\":" + pred + "}," +
                     "\"timings\":{\"cache_n\":0,\"prompt_n\":" + promptTokens + ",\"prompt_ms\":" + N(pms) + ",\"predicted_n\":" + pred + ",\"predicted_ms\":" + N(gms) + "}}");
+    }
+
+    // SSE wie bei llama-server: data: {choices:[{delta:{content}}]} je Stück, am Ende usage und [DONE]. Die Stücke laufen über
+    // eine anonyme Pipe, damit der Leser sie wirklich nacheinander bekommt (sonst käme alles auf einmal an).
+    private static HttpResponseMessage StreamChat(SimWorld.Server s, string answer, int promptTokens, CancellationToken ct)
+    {
+        var spec = s.Spec;
+        double genTps = Math.Max(5, (spec.TpsMin + spec.TpsMax) / 2);
+        var pieces = SimAnswers.Pieces(answer);
+        var writer = new System.IO.Pipes.AnonymousPipeServerStream(System.IO.Pipes.PipeDirection.Out);
+        var reader = new System.IO.Pipes.AnonymousPipeClientStream(System.IO.Pipes.PipeDirection.In, writer.ClientSafePipeHandle);
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(Math.Min(400, 60 + promptTokens / 4), ct);   // Prompt lesen
+                foreach (var p in pieces)
+                {
+                    await Write("{\"choices\":[{\"index\":0,\"delta\":{\"content\":" + Q(p) + "}}]}");
+                    await Task.Delay((int)Math.Clamp(1000 / genTps, 4, 40), ct);
+                }
+                await Write("{\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":" + promptTokens +
+                            ",\"completion_tokens\":" + pieces.Count + "},\"timings\":{\"predicted_per_second\":" + N(genTps) + "}}");
+                await writer.WriteAsync(Encoding.UTF8.GetBytes("data: [DONE]\n\n"), ct);
+            }
+            catch { /* Leser hat aufgehört (Stopp, Seite zu): nichts mehr schreiben */ }
+            finally { writer.Dispose(); }
+
+            async Task Write(string json)
+            {
+                await writer.WriteAsync(Encoding.UTF8.GetBytes("data: " + json + "\n\n"), ct);
+                await writer.FlushAsync(ct);
+            }
+        }, CancellationToken.None);
+        var resp = new HttpResponseMessage(HttpStatusCode.OK) { Content = new StreamContent(reader) };
+        resp.Content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("text/event-stream");
+        return resp;
     }
 
     // Strata-/metrics (Ausschnitt): "live" für die laufende Anfrage, "requests" neueste zuerst

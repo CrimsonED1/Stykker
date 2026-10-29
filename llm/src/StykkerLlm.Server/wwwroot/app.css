@@ -904,3 +904,22 @@ html[data-theme=titan] .bench-chart .dot{stroke:var(--card)}
 .act-t{font:12px var(--font-mono);color:var(--muted);padding-top:1px;white-space:nowrap}
 .act-row .ic{width:15px;height:15px;color:var(--muted);margin-top:2px}.act-row.bad .ic{color:var(--bad)}
 .act-x{display:flex;flex-direction:column;min-width:0}.act-x b{font-weight:500;overflow-wrap:anywhere}.act-x small{font-size:12px;overflow-wrap:anywhere}
+/* Antworten als Markdown (ChatText auf /prompt): Blöcke statt rohem Text; Code-Blöcke im Anzeigefenster-Stil mit Kopieren */
+.turn .msg.md-msg{white-space:normal}
+.md{display:flex;flex-direction:column;gap:8px;min-width:0}
+.md p,.md li,.md blockquote,.md td,.md th{white-space:pre-wrap;overflow-wrap:anywhere;margin:0}
+.md .md-h{font-weight:600;color:var(--ink);margin-top:4px}.md .md-h1{font-size:18px}.md .md-h2{font-size:16px}.md .md-h3,.md .md-h4{font-size:14px}
+.md ul,.md ol{margin:0;padding-left:22px;display:flex;flex-direction:column;gap:3px}
+.md li.d1{margin-left:18px}.md li.d2{margin-left:36px}.md li.d3{margin-left:54px}
+.md blockquote{border-left:2px solid var(--line);padding-left:10px;color:var(--muted)}
+.md hr{border:0;border-top:1px solid var(--line);width:100%;margin:2px 0}
+.md code{font:12.5px var(--font-mono);background:var(--card-2);border:1px solid var(--line);border-radius:4px;padding:0 4px}
+.md a{color:var(--acc)}
+.md-table{overflow-x:auto}.md-table table{border-collapse:collapse;font-size:13px}.md-table th,.md-table td{border:1px solid var(--line);padding:4px 8px;text-align:left;vertical-align:top}.md-table th{color:var(--muted);font-weight:600}
+.md-code{border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;background:var(--card-2)}
+.md-code-hd{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:2px 4px 2px 10px;font:11px var(--font-mono);color:var(--muted);border-bottom:1px solid var(--line)}
+.md-code-hd .ib{height:24px;font-size:11px}
+.md-code pre{margin:0;padding:8px 10px;overflow-x:auto;white-space:pre;font:12.5px/1.45 var(--font-mono);color:var(--ink)}
+.md-code pre code{background:none;border:0;padding:0;font:inherit}
+.turn-ft{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:4px}.turn-ft .ib{height:24px;font-size:11px;margin-left:auto}
+.chat-empty{margin:4px 0 12px}
