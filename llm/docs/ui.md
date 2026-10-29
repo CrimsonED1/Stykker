@@ -21,9 +21,10 @@ only**: it shows the state and sends the user to the web UI for anything that ch
 | 10 | Benchmarks, recordings, compare | `/bench`, `/recordings`, `/compare` |
 | 11 | Phone access: Home/VPN switch, six-digit code + QR, approve a device that shows a code, devices and roles | `/phone`, `/approve` |
 | 12 | Model hosts: pairing code, per-host cards (GPU, servers, model files, start/stop), host servers on the monitor | `/hosts`, Monitor |
-| 13 | Prompt tester with tools (read, list, write, edit, cmd/PowerShell; approve per call) | `/prompt` |
+| 13 | Prompt tester with tools (read, list, write, edit, cmd/PowerShell; approve per call); answers as Markdown with copy, figures per answer, compare two models side by side | `/prompt` |
 | 14 | Settings: theme, limits, *Keep the server running*, servers by URL, about | `/settings` |
 | 15 | Bug report: zip with logs, settings, state (no secrets) + GitHub issue link | `/bugreport` |
+| 16 | Keyboard shortcuts (`?`), empty pages with the next step | everywhere |
 
 ## Terminal display (`stykker`)
 
@@ -43,6 +44,7 @@ feed it from the simulator (`SimSource`).
 ## Rules
 
 - All text from `src/StykkerLlm.Core/Strings*.cs` (English).
+- Every form field has a name: a label connected with `for`/`id`, an enclosing label or `aria-label` (test N111). An empty page says what will appear there and the next step (`EmptyState`).
 - No logic in pages: actions (`ActionApi`) and state (`StateJson`) only. A new function goes into the web UI; the terminal
   display only gets it if it is something to *look at*.
 - Themes: *Dark* and *Spacepunk Titan* in `Core/ThemeCatalog.cs` (the terminal's colors and the window's login and dialog pages),

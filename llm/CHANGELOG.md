@@ -7,6 +7,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## Unreleased
 
 ### Added
+- **Prompt page: answers as Markdown.** Code blocks with language and a Copy button, tables, lists, quotes, bold and
+  links; only blocks and spans are rendered, no HTML from the answer. Every answer keeps its figures (TTFT, tokens, t/s,
+  time, finish) and a Copy button; *Copy chat* copies the conversation as Markdown. The chat follows a streaming answer
+  unless you scrolled up. When nothing came back, the message goes back into the box.
+- **Prompt page: compare two models.** *Compare with a second model* sends every message to two targets at the same time;
+  the answers stream side by side, and a line above says which one started and wrote faster (equal below 5 %).
+- **Empty pages show the next step**: model tests (three steps to a ranking), runs, models (*Find models*), benchmarks,
+  recordings and hosts.
+- **Keyboard shortcuts window** on `?` (also in Ctrl+K).
+- Simulator (Debug, `--sim`): the prompt page reaches the simulated servers, which stream a Markdown answer.
 - **Proxy failover.** The default model can have up to two fallback models (proxy dialog, tab *Routing*). A request goes
   to the first fallback that can take it when the default model is offline, still loading, just crashed (no connection),
   answers 503, has too little context (checked before sending, and the backend's "exceeds the available context" 400), or
@@ -113,6 +123,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **Pairing page and the close dialog of StykkerUI were unstyled** (black text on white): since the theme rework the
   theme variables were written without their `:root{}` selector, so the browser dropped the first rule with `body`.
 - Recent requests on a phone cut model names to a few letters; the number columns are narrower now.
+- **Prompt page errors** read in English with the address ("connection refused – is the server running on this port?")
+  instead of the system's own text, and a time-out of the request is an error message instead of an exception in the page.
+- **Recordings**: the card of running recordings was headed "No recording is running.", the empty list said the same, and
+  the MB column was unformatted.
+- **Form fields without a name for screen readers**: 26 fields on 10 pages had a label that was not connected or only a
+  placeholder; all have a name now (test N111 checks every page).
 
 ## 0.4.0
 
