@@ -2,6 +2,7 @@
 @rendermode InteractiveServer
 @inject EngineHost Host
 @inject ViewerSession Viewer
+@inject IJSRuntime JS
 @implements IDisposable
 
 @* Mini-Harness: ein geladenes Modell direkt anprompten (Knopf „Prompt“ an der Serverkarte). Das Gespräch gehört
@@ -21,55 +22,26 @@ else
 {
     <div class="grid2">
         <div class="card">
-            <div class="chat">
-                @foreach (var t in _session.Turns)
+            @if (_compare)
+            {
+                @* Vergleich: dieselbe Frage an zwei Modelle, die Antworten nebeneinander; darüber, wer schneller anfing und schrieb *@
+                @if (!Busy && PromptCompare.Of(_session.Last, _sessionB.Last, NameOf(ServerKey), NameOf(_bKey)) is { } cmp)
                 {
-                    if (t.Role == "tool")
-                    {
-                        <div class="turn tool"><div class="msg tool-out">@Cut(t.Content)</div></div>
-                    }
-                    else if (t.ToolCalls is { Count: > 0 } calls)
-                    {
-                        <div class="turn assistant">
-                            @if (t.Content.Length > 0) { <div class="msg">@t.Content</div> }
-                            @foreach (var c in calls) { <div class="msg tool-call">⚙ @c.Summary</div> }
-                        </div>
-                    }
-                    else
-                    {
-                        <div class="turn @t.Role"><div class="who">@(t.Role == "user" ? Strings.PromptYou : Strings.PromptModelSays)</div><div class="msg">@t.Content</div></div>
-                    }
+                    <div class="cmp-sum small"><Icon Name="peak" />@cmp.Text</div>
                 }
-                @if (_session.Waiting is { } w)
-                {
-                    <div class="approve">
-                        <div class="small"><b>@Strings.ToolApproveTitle</b></div>
-                        <div class="msg tool-call">⚙ @w.Summary</div>
-                        <pre class="small">@w.Arguments</pre>
-                        <button class="good" @onclick="() => Answer(true)">@Strings.BtnAllow</button>
-                        <button class="bad" @onclick="() => Answer(false)">@Strings.BtnRefuse</button>
-                    </div>
-                }
-                @if (_session.Busy && _session.Waiting == null)
-                {
-                    <div class="turn assistant">
-                        <div class="who">@Strings.PromptModelSays …</div>
-                        @if (_session.LiveReasoning.Length > 0) { <div class="msg think">@_session.LiveReasoning</div> }
-                        <div class="msg">@_session.LiveText</div>
-                    </div>
-                }
-                else if (_session.Last is { } last)
-                {
-                    @if (last.Reasoning.Trim().Length > 0)
-                    {
-                        <details class="small"><summary class="muted">@Strings.PromptThinking</summary><div class="msg think">@last.Reasoning</div></details>
-                    }
-                    <p class="small @(last.Ok ? "muted" : "warn")">@(last.Ok ? PromptHarness.Stats(last) : last.Error)</p>
-                }
-            </div>
-            <textarea class="prompt-in" rows="3" @bind="_input" @bind:event="oninput" @onkeydown="Key" placeholder="@Strings.PromptInput"></textarea>
+                <div class="chat-cols">
+                    <div class="chat-col"><div class="chat-hd">@NameOf(ServerKey)</div><div class="chat">@Conversation(_session, 0)</div></div>
+                    <div class="chat-col"><div class="chat-hd">@NameOf(_bKey)</div><div class="chat">@Conversation(_sessionB, 1)</div></div>
+                </div>
+                @if (_restored) { <p class="small muted">@Strings.ChatRestored</p> }
+            }
+            else
+            {
+                <div class="chat">@Conversation(_session, 0)</div>
+            }
+            <textarea class="prompt-in" rows="3" aria-label="@Strings.PromptInput" @bind="_input" @bind:event="oninput" @onkeydown="Key" placeholder="@Strings.PromptInput"></textarea>
             <div class="row" style="margin-top:8px">
-                @if (_session.Busy)
+                @if (Busy)
                 {
                     <button class="bad" @onclick="Stop">@Strings.BtnStopAnswer</button>
                 }
@@ -77,14 +49,19 @@ else
                 {
                     <button class="good" disabled="@(!CanSend || _input.Trim().Length == 0)" @onclick="Send">@Strings.BtnSend</button>
                 }
-                <button disabled="@_session.Busy" @onclick="Clear">@Strings.BtnClear</button>
+                <button disabled="@Busy" @onclick="Clear">@Strings.BtnClear</button>
+                @if (_session.Turns.Count > 0)
+                {
+                    <button class="ib quiet txt" style="margin-left:auto" title="@Strings.ChatCopyAllTip" aria-label="@Strings.ChatCopyAllTip"
+                            @onclick="() => CopyText(_compare ? PromptCompare.Markdown(NameOf(ServerKey), _session.Turns, NameOf(_bKey), _sessionB.Turns) : ChatMarkdown.Conversation(_session.Turns), -2)"><Icon Name="@(_copiedTurn == -2 ? "r-ok" : "file")" />@(_copiedTurn == -2 ? Strings.ChatCopied : Strings.ChatCopyAll)</button>
+                }
             </div>
             @if (_proxyMsg.Length > 0) { <p class="small warn">@_proxyMsg</p> }
         </div>
 
         <div class="card opts">
-            <label>@Strings.ColServer</label>
-            <select @bind="ServerKey">
+            <label for="pr-server">@Strings.ColServer</label>
+            <select id="pr-server" @bind="ServerKey">
                 @foreach (var s in Servers) { <option value="@s.Key">@s.Name · @s.Url.Replace("http://", "")</option> }
                 <optgroup label="@Strings.PromptViaGroup">
                     @foreach (var o in ProxyOptions) { <option value="@o.Value">@o.Label</option> }
@@ -92,14 +69,32 @@ else
             </select>
             @if (IsVia) { <p class="muted small">@Strings.PromptViaHint</p> }
             @if (Servers.Count == 0 && !IsVia) { <p class="small warn">@Strings.PromptNoServer</p> }
-            <label>@Strings.PromptModel</label>
-            <input @bind="_session.Options.Model" />
-            <label style="color:var(--ink);margin-top:14px"><input type="checkbox" @bind="ToolsOn" /> @Strings.PromptToolsOn</label>
-            @if (_tools)
+            <label for="pr-model">@Strings.PromptModel</label>
+            <input id="pr-model" @bind="_session.Options.Model" />
+            @* Zweites Modell: dieselbe Frage parallel an ein zweites Ziel (lokaler Server oder über den Proxy) *@
+            <label style="color:var(--ink);margin-top:14px"><input type="checkbox" @bind="CompareOn" disabled="@Busy" /> @Strings.CmpToggle</label>
+            @if (_compare)
             {
-                <label>@Strings.PromptWorkdir</label>
+                <label for="pr-server-b">@Strings.CmpSecond</label>
+                <select id="pr-server-b" @bind="ServerKeyB" disabled="@Busy">
+                    @foreach (var s in Servers) { <option value="@s.Key">@s.Name · @s.Url.Replace("http://", "")</option> }
+                    <optgroup label="@Strings.PromptViaGroup">
+                        @foreach (var o in ProxyOptions) { <option value="@o.Value">@o.Label</option> }
+                    </optgroup>
+                </select>
+                <label for="pr-model-b">@Strings.PromptModel</label>
+                <input id="pr-model-b" @bind="_sessionB.Options.Model" />
+                <p class="muted small">@Strings.CmpHint</p>
+            }
+            else
+            {
+                <label style="color:var(--ink);margin-top:8px"><input type="checkbox" @bind="ToolsOn" /> @Strings.PromptToolsOn</label>
+            }
+            @if (_tools && !_compare)
+            {
+                <label for="pr-workdir">@Strings.PromptWorkdir</label>
                 <div class="row" style="flex-wrap:nowrap">
-                    <input @bind="Workdir" placeholder="C:\…" style="flex:1;min-width:0" />
+                    <input id="pr-workdir" @bind="Workdir" placeholder="C:\…" style="flex:1;min-width:0" />
                     <button @onclick="OpenPicker">@Strings.PromptChooseFolder</button>
                 </div>
                 @if (_picker is { } pick)
@@ -133,16 +128,16 @@ else
             }
             <details class="small" style="margin-top:14px">
                 <summary class="muted">@Strings.PromptAdvanced</summary>
-                <label>@Strings.PromptSystem</label>
-                <textarea rows="4" @bind="_session.Options.System"></textarea>
+                <label for="pr-system">@Strings.PromptSystem</label>
+                <textarea id="pr-system" rows="4" @bind="_session.Options.System"></textarea>
                 <div class="row">
-                    <label style="margin:0">@Strings.PromptTemperature</label><input type="number" step="0.1" min="0" max="2" style="width:80px" @bind="_session.Options.Temperature" />
-                    <label style="margin:0">@Strings.PromptMaxTokens</label><input type="number" min="1" max="32768" style="width:90px" @bind="_session.Options.MaxTokens" />
+                    <label for="pr-temp" style="margin:0">@Strings.PromptTemperature</label><input id="pr-temp" type="number" step="0.1" min="0" max="2" style="width:80px" @bind="_session.Options.Temperature" />
+                    <label for="pr-max" style="margin:0">@Strings.PromptMaxTokens</label><input id="pr-max" type="number" min="1" max="32768" style="width:90px" @bind="_session.Options.MaxTokens" />
                 </div>
                 @if (!IsVia)
                 {
-                    <label>@Strings.PromptApiKey</label>
-                    <input type="password" autocomplete="off" @bind="_session.Options.ApiKey" />
+                    <label for="pr-key">@Strings.PromptApiKey</label>
+                    <input id="pr-key" type="password" autocomplete="off" @bind="_session.Options.ApiKey" />
                 }
             </details>
         </div>
@@ -155,7 +150,129 @@ else
     // Eine Verbindung für alle Seiten: lange Antworten dürfen dauern, gestoppt wird über den Knopf
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromMinutes(10) };
 
+    // Im Simulator (nur Debug) antworten die Server über dessen eigenen Weg statt über das Netz – so lässt sich die Seite dort ausprobieren
+    private HttpClient Client => Host.Sim?.Http ?? Http;
+
     private readonly PromptSession _session = new();
+    private readonly PromptSession _sessionB = new();   // zweites Modell im Vergleich
+    private bool _compare;
+    private string _bKey = "";
+    private int _copiedTurn = -1;   // welcher Knopf gerade „Copied“ zeigt (-2 = ganze Unterhaltung; Seite B: + 10000)
+    private bool _restored;         // nach einem Fehlschlag steht die Nachricht wieder im Eingabefeld
+
+    private bool Busy => _session.Busy || _sessionB.Busy;
+
+    // Vergleich ein: als zweites Ziel das nächste laufende Modell vorschlagen; beide Gespräche fangen neu an
+    private bool CompareOn
+    {
+        get => _compare;
+        set
+        {
+            _compare = value;
+            _session.Clear();
+            _sessionB.Clear();
+            _restored = false;
+            if (value && (_bKey.Length == 0 || _bKey == ServerKey))
+                ServerKeyB = Servers.FirstOrDefault(s => s.Key != ServerKey)?.Key ?? ProxyOptions.FirstOrDefault().Value ?? ServerKey;
+        }
+    }
+
+    private string ServerKeyB
+    {
+        get => _bKey;
+        set { _bKey = value; _sessionB.Clear(); _sessionB.Options.Model = ModelFor(value); }
+    }
+
+    private string ModelFor(string key) =>
+        PromptTargets.IsVia(key) ? PromptTargets.ModelOf(key, ProxyChoices) ?? ""
+        : Servers.FirstOrDefault(s => s.Key == key) is { } sv ? PromptHarness.ModelFor(sv) : "";
+
+    private string NameOf(string key) =>
+        PromptTargets.IsVia(key) ? ProxyOptions.FirstOrDefault(o => o.Value == key).Label ?? key
+        : Servers.FirstOrDefault(s => s.Key == key)?.Name ?? key;
+
+    // Adresse eines Ziels: lokaler Server direkt, sonst über den Proxy (der setzt den Schlüssel selbst)
+    private (string? Url, string Error) UrlFor(string key)
+    {
+        if (PromptTargets.IsVia(key))
+        {
+            var (target, error) = PromptTargets.Resolve(key, ProxyChoices, Host.Engine.Proxies.Port, Host.Engine.Proxies.Running);
+            return (target?.Url, error ?? "");
+        }
+        return Servers.FirstOrDefault(s => s.Key == key) is { } sv ? (sv.Url, "") : (null, Strings.PromptNoServer);
+    }
+
+    // Ein Gespräch (Seite A oder B im Vergleich): Fragen, Antworten als Markdown mit Messwerten, Werkzeuge, laufende Antwort
+    private RenderFragment Conversation(PromptSession s, int side) => __builder =>
+    {
+        if (s.Turns.Count == 0 && !s.Busy)
+        {
+            <p class="muted small chat-empty">@(side == 0 ? Strings.ChatEmpty : Strings.CmpNoAnswerYet)</p>
+        }
+        int turnNo = 0;
+        foreach (var t in s.Turns)
+        {
+            var no = side * 10000 + turnNo++;
+            if (t.Role == "tool")
+            {
+                <div class="turn tool"><div class="msg tool-out">@Cut(t.Content)</div></div>
+            }
+            else if (t.ToolCalls is { Count: > 0 } calls)
+            {
+                <div class="turn assistant">
+                    @if (t.Content.Length > 0) { <div class="msg md-msg"><ChatText Text="@t.Content" /></div> }
+                    @foreach (var c in calls) { <div class="msg tool-call">⚙ @c.Summary</div> }
+                </div>
+            }
+            else if (t.Role == "assistant")
+            {
+                var answer = t.Content;
+                <div class="turn assistant">
+                    <div class="who">@Strings.PromptModelSays</div>
+                    <div class="msg md-msg"><ChatText Text="@answer" /></div>
+                    <div class="turn-ft">
+                        @if (t.Stats is { Length: > 0 } st) { <span class="muted small">@st</span> }
+                        <button class="ib quiet txt" title="@Strings.ChatCopyAnswer" aria-label="@Strings.ChatCopyAnswer" @onclick="() => CopyText(answer, no)">
+                            <Icon Name="@(_copiedTurn == no ? "r-ok" : "file")" />@(_copiedTurn == no ? Strings.ChatCopied : Strings.ChatCopy)</button>
+                    </div>
+                </div>
+            }
+            else
+            {
+                <div class="turn @t.Role"><div class="who">@Strings.PromptYou</div><div class="msg">@t.Content</div></div>
+            }
+        }
+        if (s.Waiting is { } w)
+        {
+            <div class="approve">
+                <div class="small"><b>@Strings.ToolApproveTitle</b></div>
+                <div class="msg tool-call">⚙ @w.Summary</div>
+                <pre class="small">@w.Arguments</pre>
+                <button class="good" @onclick="() => Answer(true)">@Strings.BtnAllow</button>
+                <button class="bad" @onclick="() => Answer(false)">@Strings.BtnRefuse</button>
+            </div>
+        }
+        if (s.Busy && s.Waiting == null)
+        {
+            <div class="turn assistant">
+                <div class="who">@Strings.PromptModelSays …</div>
+                @if (s.LiveReasoning.Length > 0) { <div class="msg think">@s.LiveReasoning</div> }
+                <div class="msg md-msg"><ChatText Text="@s.LiveText" /></div>
+            </div>
+        }
+        else if (s.Last is { } last)
+        {
+            if (last.Reasoning.Trim().Length > 0)
+            {
+                <details class="small"><summary class="muted">@Strings.PromptThinking</summary><div class="msg think">@last.Reasoning</div></details>
+            }
+            if (!last.Ok)
+            {
+                <p class="small warn">@last.Error</p>
+                @if (_restored && !_compare) { <p class="small muted">@Strings.ChatRestored</p> }
+            }
+        }
+    };
     // Die Auswahl: ein laufender lokaler Server (sein Key) oder ein Eintrag „Via Stykker-Proxy“ (PromptTargets)
     private string _input = "", _serverKey = "", _proxyMsg = "";
     private CancellationTokenSource? _cts;
@@ -229,6 +346,7 @@ else
             _serverKey = value;
             _proxyMsg = "";
             _session.Clear();
+            _sessionB.Clear();   // im Vergleich laufen beide Gespräche gleich: neues Ziel, beide neu
             if (IsVia)
             {
                 _session.Options.ApiKey = null;
@@ -249,12 +367,12 @@ else
 
     private async Task Key(KeyboardEventArgs e)
     {
-        if (e.Key == "Enter" && e.CtrlKey && !_session.Busy) await Send();
+        if (e.Key == "Enter" && e.CtrlKey && !Busy) await Send();
     }
 
     private async Task Send()
     {
-        if (!CanSend || _input.Trim().Length == 0 || _session.Busy) return;
+        if (!CanSend || _input.Trim().Length == 0 || Busy) return;
         _toolMsg = "";
         _proxyMsg = "";
         // Adresse: für ein Cloud-Modell der lokale Proxy (er hat den Schlüssel), sonst der Server selbst
@@ -268,7 +386,21 @@ else
         }
         else if (Server is { } s) baseUrl = s.Url;
         else return;
-        if (_tools)
+        // Vergleich: das zweite Ziel bekommt dieselben Einstellungen (System, Temperatur, Länge), Werkzeuge sind aus
+        string? urlB = null;
+        if (_compare)
+        {
+            var (u, err) = UrlFor(_bKey);
+            if (u == null) { _proxyMsg = err; return; }
+            urlB = u;
+            var o = _sessionB.Options;
+            o.System = _session.Options.System;
+            o.Temperature = _session.Options.Temperature;
+            o.MaxTokens = _session.Options.MaxTokens;
+            o.ApiKey = PromptTargets.IsVia(_bKey) ? null : _session.Options.ApiKey;
+            o.Tools = null;
+        }
+        if (_tools && !_compare)
         {
             if (!Directory.Exists(_workdir.Trim())) { _toolMsg = Strings.PromptNoWorkdir; return; }
             if (_session.Options.Tools?.Root.TrimEnd('\\') != Path.GetFullPath(_workdir.Trim()).TrimEnd('\\')) _session.Options.Tools = new PromptTools(_workdir.Trim());
@@ -276,23 +408,43 @@ else
         else _session.Options.Tools = null;
         var text = _input.Trim();
         _input = "";
+        _restored = false;
+        int before = _session.Turns.Count, beforeB = _sessionB.Turns.Count;
         _cts = new CancellationTokenSource();
-        var task = _session.SendAsync(Http, baseUrl, text, () =>
+        Action paint = () =>
         {
             // höchstens zehnmal je Sekunde neu zeichnen, sonst kommt die Leitung zum Browser nicht nach
             if ((DateTime.Now - _lastPaint).TotalMilliseconds < 100) return;
             _lastPaint = DateTime.Now;
             _ = InvokeAsync(StateHasChanged);
-        }, _cts.Token, AskAsync);
+        };
+        var task = _session.SendAsync(Client, baseUrl, text, paint, _cts.Token, AskAsync);
+        var taskB = urlB != null ? _sessionB.SendAsync(Client, urlB, text, paint, _cts.Token) : null;
         StateHasChanged();
-        await task;
+        var result = await task;
+        var resultB = taskB != null ? await taskB : null;
         _cts.Dispose();
         _cts = null;
+        // Nichts zurückgekommen (Server weg, Zeitlimit): die Frage steht nicht im Verlauf – dann zurück ins Feld, statt sie zu
+        // verlieren. Im Vergleich nur, wenn beide nichts geliefert haben (sonst stünde sie auf einer Seite doppelt).
+        bool lostB = resultB == null || (!resultB.Ok && _sessionB.Turns.Count == beforeB);
+        if (!result.Ok && _session.Turns.Count == before && lostB && _input.Length == 0)
+        {
+            _input = text;
+            _restored = true;
+        }
+    }
+
+    private async Task CopyText(string text, int which)
+    {
+        try { await JS.InvokeVoidAsync("navigator.clipboard.writeText", text); _copiedTurn = which; }
+        catch (Exception ex) when (ex is JSException or InvalidOperationException) { return; }
+        _ = Task.Delay(1500).ContinueWith(_ => InvokeAsync(() => { _copiedTurn = -1; StateHasChanged(); }));
     }
 
     private void Stop() { _approval?.TrySetResult(false); _cts?.Cancel(); }
 
-    private void Clear() { if (!_session.Busy) _session.Clear(); }
+    private void Clear() { if (!Busy) { _session.Clear(); _sessionB.Clear(); _restored = false; } }
 
     public void Dispose() { _approval?.TrySetResult(false); _cts?.Cancel(); }
 }

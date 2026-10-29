@@ -9,7 +9,7 @@
             <div style="white-space:pre-wrap">@p.Text</div>
             @if (p.Kind == "secret")
             {
-                <input type="password" style="width:100%;margin-top:10px" @bind="_secret" placeholder="@Strings.SecretPlaceholder" />
+                <input type="password" style="width:100%;margin-top:10px" @bind="_secret" placeholder="@Strings.SecretPlaceholder" aria-label="@Strings.SecretPlaceholder" />
             }
             <div class="row" style="margin-top:14px;justify-content:flex-end">
                 @if (p.Kind == "confirm")

@@ -1,0 +1,33 @@
+@* Leerer Zustand einer Seite: ein Symbol, was hier erscheinen wird, und der nächste Schritt – als nummerierte Schritte
+   (Steps) und/oder Knöpfe und Links (ChildContent). Dasselbe Aussehen wie der leere Verlauf im Monitor (.empty). *@
+<div class="empty es">
+    <Icon Name="@Icon" Class="lg" />
+    <div class="es-body">
+        <b>@Title</b>
+        @if (Text.Length > 0)
+        {
+            <div class="muted small">@Text</div>
+        }
+        @if (Steps.Count > 0)
+        {
+            <ol class="es-steps small">
+                @foreach (var s in Steps)
+                {
+                    <li>@s</li>
+                }
+            </ol>
+        }
+        @if (ChildContent != null)
+        {
+            <div class="es-acts">@ChildContent</div>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string Icon { get; set; } = "info";
+    [Parameter, EditorRequired] public string Title { get; set; } = "";
+    [Parameter] public string Text { get; set; } = "";
+    [Parameter] public IReadOnlyList<string> Steps { get; set; } = Array.Empty<string>();
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

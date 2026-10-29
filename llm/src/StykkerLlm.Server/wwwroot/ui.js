@@ -139,6 +139,17 @@
     }
     new MutationObserver(status).observe(document.head, { childList: true, subtree: true, attributes: true, attributeFilter: ['content', 'data-alert-id'] });
 
+    // Gespräch auf /prompt (.chat): beim Streamen wächst die Antwort unten. Wer unten ist, bleibt unten; wer hochgescrollt hat,
+    // um etwas nachzulesen, wird nicht weggerissen.
+    const follow = new WeakMap();
+    document.addEventListener('scroll', function (e) {
+        const el = e.target;
+        if (el && el.classList && el.classList.contains('chat')) follow.set(el, el.scrollTop + el.clientHeight >= el.scrollHeight - 48);
+    }, true);
+    new MutationObserver(function () {
+        document.querySelectorAll('.chat').forEach(function (el) { if (follow.get(el) !== false) el.scrollTop = el.scrollHeight; });
+    }).observe(document.documentElement, { childList: true, subtree: true, characterData: true });
+
     // Tastatur (U10): Ctrl+K öffnet das Befehlsfenster, „/“ springt in die Suche der History (sonst Befehlsfenster);
     // im offenen Befehlsfenster bleibt der Fokus im Eingabefeld (Tab springt nicht hinaus)
     let lastFocus = null;
@@ -153,7 +164,13 @@
             e.preventDefault();
             if (document.getElementById('hsearch')) window.stykkerFocus('hsearch'); else open();
         }
+        // ? zeigt die Tastenkürzel (auf deutscher Tastatur Umschalt+ß – e.key ist trotzdem „?“)
+        if (!typing && e.key === '?' && !e.ctrlKey && !e.metaKey && !e.altKey && !document.querySelector('.cmdk')) {
+            e.preventDefault();
+            keys();
+        }
     });
+    function keys() { const b = document.getElementById('keys-open'); if (b) b.click(); }
 
     // Im Fenster StykkerUI gibt es keine Browser-Knöpfe und -Tasten: Photino baut in jede Seite
     // window.external ein – daran ist die Hülle zu erkennen.
@@ -226,6 +243,7 @@
         setCardLabels: function (on) { try { localStorage.setItem(LABELS_KEY, on ? 'on' : 'off'); } catch (e) { /* egal: dann eben nur diese Sitzung */ } applyLabels(); },
         proxyTab: function () { try { return localStorage.getItem(TAB_KEY) || ''; } catch (e) { return ''; } },
         setProxyTab: function (t) { try { localStorage.setItem(TAB_KEY, t); } catch (e) { /* egal: dann eben nur diese Sitzung */ } },
+        keys: keys,             // Fenster „Keyboard shortcuts“ (auch aus dem Befehlsfenster)
         notify: notifyState,    // Absturz-Meldung: on | off | blocked | unsupported
         setNotify: setNotify,
         askClose: askClose,     // auch zum Ansehen ohne Hülle (Bilder, Prüfung)

@@ -12,8 +12,8 @@ namespace StykkerLlm.Core;
 // Ausprobieren sehen will: Zeit bis zum ersten Token, Tokens, t/s und warum die Antwort endete.
 
 // Eine Nachricht im Gespräch. Mit Werkzeugen: die Antwort des Modells trägt ToolCalls, das Ergebnis kommt als
-// Rolle "tool" mit der Id des Aufrufs zurück.
-public sealed record ChatTurn(string Role, string Content, IReadOnlyList<ToolCall>? ToolCalls = null, string? ToolCallId = null);
+// Rolle "tool" mit der Id des Aufrufs zurück. Stats: die Messwerte einer Antwort („TTFT 312 ms · 128 tok · …“), nur zur Anzeige.
+public sealed record ChatTurn(string Role, string Content, IReadOnlyList<ToolCall>? ToolCalls = null, string? ToolCallId = null, string? Stats = null);
 
 public sealed class PromptOptions
 {
@@ -103,7 +103,7 @@ public sealed class PromptSession
                     break;
                 }
             }
-            if (result.Ok || result.Text.Length > 0) Turns.Add(new ChatTurn("assistant", result.Text));
+            if (result.Ok || result.Text.Length > 0) Turns.Add(new ChatTurn("assistant", result.Text, Stats: result.Ok ? PromptHarness.Stats(result) : null));
             else if (Turns.Count == start + 1) Turns.RemoveAt(start);   // nichts gekommen: die Frage nicht doppelt im Verlauf
             Last = result;
             return result;
@@ -198,8 +198,9 @@ public static class PromptHarness
             }
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { finish = "stopped"; }
-        catch (HttpRequestException ex) { return Fail(Strings.PromptNotReachable(ex.Message)); }
-        catch (IOException ex) { return Fail(Strings.PromptNotReachable(ex.Message)); }
+        catch (OperationCanceledException) { return Fail(Strings.PromptTimedOut(http.Timeout)); }   // Zeitlimit des HttpClient, nicht Stopp
+        catch (HttpRequestException ex) { return Fail(Strings.PromptNotReachable(Reason(ex))); }
+        catch (IOException ex) { return Fail(Strings.PromptNotReachable(Reason(ex))); }
 
         sw.Stop();
         double total = sw.Elapsed.TotalMilliseconds;
@@ -272,6 +273,38 @@ public static class PromptHarness
             }
             catch (JsonException) { /* halbe Zeile oder Kommentar: überspringen */ }
         }
+    }
+
+    // Warum keine Verbindung zustande kam, in der Sprache der Oberfläche: ex.Message kommt vom Betriebssystem in dessen Sprache
+    // („Es konnte keine Verbindung hergestellt werden …“). Die Adresse aus der Meldung bleibt, sie hilft beim Suchen.
+    public static string Reason(Exception ex)
+    {
+        var socket = Inner<System.Net.Sockets.SocketException>(ex);
+        string why = socket?.SocketErrorCode switch
+        {
+            System.Net.Sockets.SocketError.ConnectionRefused => Strings.NetRefused,
+            System.Net.Sockets.SocketError.HostNotFound or System.Net.Sockets.SocketError.NoData => Strings.NetNoHost,
+            System.Net.Sockets.SocketError.TimedOut => Strings.NetTimedOut,
+            System.Net.Sockets.SocketError.ConnectionReset or System.Net.Sockets.SocketError.ConnectionAborted => Strings.NetReset,
+            System.Net.Sockets.SocketError.NetworkUnreachable or System.Net.Sockets.SocketError.HostUnreachable => Strings.NetUnreachable,
+            _ => ex is HttpRequestException h ? h.HttpRequestError switch
+            {
+                HttpRequestError.NameResolutionError => Strings.NetNoHost,
+                HttpRequestError.SecureConnectionError => Strings.NetTls,
+                HttpRequestError.ResponseEnded or HttpRequestError.InvalidResponse => Strings.NetReset,
+                HttpRequestError.ConnectionError => Strings.NetRefused,
+                _ => "",
+            } : ex is IOException ? Strings.NetReset : "",
+        };
+        if (why.Length == 0) return ex.Message;
+        var where = System.Text.RegularExpressions.Regex.Match(ex.Message + " " + ex.InnerException?.Message, @"\(([^()\s]+:\d+)\)");
+        return where.Success ? why + " (" + where.Groups[1].Value + ")" : why;
+    }
+
+    private static T? Inner<T>(Exception? ex) where T : Exception
+    {
+        for (var e = ex; e != null; e = e.InnerException) if (e is T t) return t;
+        return null;
     }
 
     // {"error":{"message":"…"}} oder {"error":"…"} → nur der Satz

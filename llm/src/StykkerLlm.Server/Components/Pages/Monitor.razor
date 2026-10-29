@@ -458,9 +458,9 @@
                         <a class="btn ib txt" href="@($"api/profile/{dp.Id:N}/script?kind=cmd")" download><Icon Name="file" />Batch</a>
                     </div>
                     <div class="grp pfd-grp">@Strings.BtnEdit</div>
-                    <input placeholder="@Strings.FieldName" @bind="_editName" @bind:event="oninput" style="width:100%" />
-                    <textarea placeholder="@Strings.FieldNote" @bind="_editNote" @bind:event="oninput" rows="2" style="width:100%;margin-top:8px"></textarea>
-                    <textarea @bind="_editArgs" @bind:event="oninput" rows="4" style="width:100%;margin-top:8px;font-family:Consolas,monospace"></textarea>
+                    <input placeholder="@Strings.FieldName" aria-label="@Strings.FieldName" @bind="_editName" @bind:event="oninput" style="width:100%" />
+                    <textarea placeholder="@Strings.FieldNote" aria-label="@Strings.FieldNote" @bind="_editNote" @bind:event="oninput" rows="2" style="width:100%;margin-top:8px"></textarea>
+                    <textarea aria-label="@Strings.PfCmdLine" @bind="_editArgs" @bind:event="oninput" rows="4" style="width:100%;margin-top:8px;font-family:Consolas,monospace"></textarea>
                     <div class="grp pfd-grp">@Strings.PfIdle</div>
                     <div class="seg">
                         @foreach (var min in new[] { 0, 15, 30, 60 })

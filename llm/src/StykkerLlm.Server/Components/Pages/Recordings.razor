@@ -24,7 +24,7 @@
 @if (e.Recorder.Sessions.Count > 0)
 {
     <div class="card">
-        <h2>@Strings.NoActiveRecording</h2>
+        <h2>@Strings.RecRunningTitle</h2>
         <table>
             <tr><th>@Strings.ColServer</th><th>@Strings.ColStarted</th><th class="num">@Strings.ColReqTime</th><th class="num">@Strings.ColTps</th><th class="num">MB</th><th></th></tr>
             @foreach (var sess in e.Recorder.Sessions)
@@ -35,7 +35,7 @@
                     <td class="muted">@sess.Started.ToString("HH:mm:ss")</td>
                     <td class="num">@Fmt.Dur(sess.ElapsedSec)</td>
                     <td class="num">@sess.LastTps.ToString("0.0", CultureInfo.InvariantCulture)</td>
-                    <td class="num">@(sess.Bytes / 1048576.0)</td>
+                    <td class="num">@((sess.Bytes / 1048576.0).ToString("0.0", CultureInfo.InvariantCulture))</td>
                     <td class="num"><button class="bad" disabled="@ro" @onclick="() => Stop(sess.Target)">@Strings.Stop</button></td>
                 </tr>
             }
@@ -46,13 +46,17 @@
 <h3 class="sec">@Strings.RecordingsTitle</h3>
 @if (recs.Count == 0)
 {
-    <div class="card"><span class="muted small">@Strings.NoActiveRecording</span></div>
+    <div class="card">
+        <EmptyState Icon="rec" Title="@Strings.EmptyRecTitle" Text="@Strings.EmptyRecText">
+            <a class="btn" href="">@Strings.EmptyOpenMonitor</a>
+        </EmptyState>
+    </div>
 }
 @foreach (var r in recs.Take(40))
 {
     <div class="card">
         <div class="row">
-            <input type="checkbox" checked="@_sel.Contains(r.File)" @onchange='() => Pick(r.File)' />
+            <input type="checkbox" aria-label="@Strings.A11yPickRecording" checked="@_sel.Contains(r.File)" @onchange='() => Pick(r.File)' />
             <b>@(r.Target.Length > 0 ? r.Target : "–")</b>
             <span class="muted small">@r.Started.ToString("yyyy-MM-dd HH:mm") · @Fmt.Dur(r.DurationSec) · @r.Model</span>
             <span class="pill @(r.Proxy ? "ok" : "wait")" title="@(r.Proxy ? Strings.ModeProxy : Strings.ModeLogOnly)">@(r.Proxy ? Strings.ModeProxyShort : Strings.ModeLogShort)</span>

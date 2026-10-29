@@ -13,16 +13,21 @@
         }
         <span class="muted small" style="margin-left:auto">@_msg</span>
     </div>
-    <label>@Strings.EvalLlamaServer</label>
-    <input style="width:100%" @bind="LlamaServer" disabled="@(!Web.CanWrite)" />
-    <label>@Strings.EvalModelRoots</label>
-    <textarea style="min-height:56px" @bind="Roots" disabled="@(!Web.CanWrite)"></textarea>
+    <label for="ev-llama">@Strings.EvalLlamaServer</label>
+    <input id="ev-llama" style="width:100%" @bind="LlamaServer" disabled="@(!Web.CanWrite)" />
+    <label for="ev-roots">@Strings.EvalModelRoots</label>
+    <textarea id="ev-roots" style="min-height:56px" @bind="Roots" disabled="@(!Web.CanWrite)"></textarea>
 </div>
 
 <div class="card">
     @if (Queue.Models.Count == 0)
     {
-        <p class="muted">@Strings.EvalNoModels</p>
+        <EmptyState Icon="layers" Title="@Strings.EmptyModelsTitle" Text="@Strings.EvalNoModels">
+            @if (Web.CanWrite)
+            {
+                <button class="primary" @onclick="Discover">@Strings.EvalFindModels</button>
+            }
+        </EmptyState>
     }
     else
     {
@@ -32,11 +37,11 @@
             {
                 var w = Web.CanWrite;
                 <tr>
-                    <td><input type="checkbox" checked="@m.Enabled" disabled="@(!w)" @onchange="e => Change(() => { m.Enabled = e.Value is true; Queue.SaveModels(); })" /></td>
-                    <td><input style="width:100%" value="@m.Name" disabled="@(!w)" @onchange="e => Change(() => { m.Name = e.Value?.ToString() ?? m.Name; Queue.SaveModels(); })" /></td>
+                    <td><input type="checkbox" aria-label="@Strings.EvalTest" checked="@m.Enabled" disabled="@(!w)" @onchange="e => Change(() => { m.Enabled = e.Value is true; Queue.SaveModels(); })" /></td>
+                    <td><input style="width:100%" aria-label="@Strings.ColName" value="@m.Name" disabled="@(!w)" @onchange="e => Change(() => { m.Name = e.Value?.ToString() ?? m.Name; Queue.SaveModels(); })" /></td>
                     <td class="muted small">@m.Source</td>
                     <td class="num">@m.SizeGb.ToString("0.0", CultureInfo.InvariantCulture) GB</td>
-                    <td class="num"><input type="number" style="width:80px" value="@m.Port" disabled="@(!w)" @onchange="e => Change(() => { if (int.TryParse(e.Value?.ToString(), out var p)) { m.Port = p; Queue.SaveModels(); } })" /></td>
+                    <td class="num"><input type="number" style="width:80px" aria-label="@Strings.EvalPort" value="@m.Port" disabled="@(!w)" @onchange="e => Change(() => { if (int.TryParse(e.Value?.ToString(), out var p)) { m.Port = p; Queue.SaveModels(); } })" /></td>
                     <td style="white-space:nowrap">
                         @if (w)
                         {
@@ -48,9 +53,9 @@
                 @if (_edit == m.Id)
                 {
                     <tr><td colspan="6">
-                        <label>@Strings.EvalProgram</label><input style="width:100%" value="@m.Exe" @onchange="e => Change(() => { m.Exe = e.Value?.ToString() ?? m.Exe; Queue.SaveModels(); })" />
+                        <label>@Strings.EvalProgram</label><input style="width:100%" aria-label="@Strings.EvalProgram" value="@m.Exe" @onchange="e => Change(() => { m.Exe = e.Value?.ToString() ?? m.Exe; Queue.SaveModels(); })" />
                         <label>@Strings.EvalArgsHint</label>
-                        <textarea @onchange="e => Change(() => { m.Args = e.Value?.ToString() ?? m.Args; Queue.SaveModels(); })">@m.Args</textarea>
+                        <textarea aria-label="@Strings.EvalArgsHint" @onchange="e => Change(() => { m.Args = e.Value?.ToString() ?? m.Args; Queue.SaveModels(); })">@m.Args</textarea>
                         <div class="muted small">@Strings.EvalModelFile(m.ModelFile)</div>
                     </td></tr>
                 }

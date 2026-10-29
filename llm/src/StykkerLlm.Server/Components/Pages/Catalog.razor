@@ -17,7 +17,7 @@
         </div>
         @if (Web.CanWrite)
         {
-            <div class="row" style="margin-top:10px"><input placeholder="@Strings.EvalNewSuiteName" @bind="_newSuite" style="flex:1" /><button @onclick="NewSuite">@Strings.EvalNewSuite</button></div>
+            <div class="row" style="margin-top:10px"><input placeholder="@Strings.EvalNewSuiteName" aria-label="@Strings.EvalNewSuiteName" @bind="_newSuite" style="flex:1" /><button @onclick="NewSuite">@Strings.EvalNewSuite</button></div>
         }
         @if (_cur != null)
         {
@@ -43,30 +43,30 @@
             bool ro = !Editable(_cur!) || !Web.CanWrite;
             <h2>@(ro ? Strings.EvalReadOnlyTest : Strings.EvalEditTest)</h2>
             <div class="row">
-                <div style="flex:2"><label>@Strings.EvalTitle2</label><input style="width:100%" @bind="_task.Title" disabled="@ro" /></div>
-                <div style="flex:1"><label>@Strings.EvalCategory</label>
-                    <select style="width:100%" @bind="_task.Category" disabled="@ro">
+                <div style="flex:2"><label for="ct-title">@Strings.EvalTitle2</label><input id="ct-title" style="width:100%" @bind="_task.Title" disabled="@ro" /></div>
+                <div style="flex:1"><label for="ct-cat">@Strings.EvalCategory</label>
+                    <select id="ct-cat" style="width:100%" @bind="_task.Category" disabled="@ro">
                         @foreach (var c in new[] { "coding", "reasoning", "format", "tools", "context", "creative", "custom" }) { <option>@c</option> }
                     </select></div>
-                <div><label>@Strings.EvalMaxTokens</label><input type="number" style="width:100px" @bind="_task.MaxTokens" disabled="@ro" /></div>
+                <div><label for="ct-max">@Strings.EvalMaxTokens</label><input id="ct-max" type="number" style="width:100px" @bind="_task.MaxTokens" disabled="@ro" /></div>
             </div>
-            <label>@Strings.EvalPrompt</label>
-            <textarea style="min-height:120px" @bind="_task.Prompt" disabled="@ro"></textarea>
+            <label for="ct-prompt">@Strings.EvalPrompt</label>
+            <textarea id="ct-prompt" style="min-height:120px" @bind="_task.Prompt" disabled="@ro"></textarea>
             <div class="row">
-                <div><label>@Strings.EvalCheck</label>
-                    <select @bind="_task.Check.Type" disabled="@ro">
+                <div><label for="ct-check">@Strings.EvalCheck</label>
+                    <select id="ct-check" @bind="_task.Check.Type" disabled="@ro">
                         @foreach (var c in new[] { "contains", "exact", "number", "regex", "json", "pycheck", "python" }) { <option>@c</option> }
                     </select></div>
-                <div style="flex:1"><label>@ExpectedLabel()</label><input style="width:100%" @bind="Expected" disabled="@ro" /></div>
+                <div style="flex:1"><label for="ct-expected">@ExpectedLabel()</label><input id="ct-expected" style="width:100%" @bind="Expected" disabled="@ro" /></div>
             </div>
             @if (_task.Check.Type is "regex")
             {
-                <label>@Strings.EvalPattern</label><input style="width:100%" @bind="_task.Check.Pattern" disabled="@ro" />
+                <label for="ct-pattern">@Strings.EvalPattern</label><input id="ct-pattern" style="width:100%" @bind="_task.Check.Pattern" disabled="@ro" />
             }
             @if (_task.Check.Type is "pycheck" or "python")
             {
-                <label>@(_task.Check.Type == "pycheck" ? Strings.EvalPythonChecks : Strings.EvalPythonTests)</label>
-                <textarea @bind="_task.Check.Tests" disabled="@ro"></textarea>
+                <label for="ct-tests">@(_task.Check.Type == "pycheck" ? Strings.EvalPythonChecks : Strings.EvalPythonTests)</label>
+                <textarea id="ct-tests" @bind="_task.Check.Tests" disabled="@ro"></textarea>
             }
             <div class="row" style="margin-top:12px">
                 @if (!ro)
@@ -74,7 +74,7 @@
                     <button class="good" @onclick="Save">@Strings.BtnSave</button>
                     <button class="bad" @onclick="Delete">@Strings.BtnRemove</button>
                 }
-                <select @bind="_tryModel" style="margin-left:auto">
+                <select @bind="_tryModel" style="margin-left:auto" aria-label="@Strings.A11yTryModel">
                     @foreach (var m in Queue.Models.Where(m => m.Enabled)) { <option value="@m.Id">@m.Name</option> }
                 </select>
                 @if (Web.CanWrite)

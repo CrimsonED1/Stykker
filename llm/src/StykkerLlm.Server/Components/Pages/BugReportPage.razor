@@ -9,7 +9,7 @@
 
 <div class="card">
     <p class="muted small">@Strings.BugReportHint</p>
-    <textarea class="prompt-in" rows="7" placeholder="@Strings.BugReportPlaceholder" @bind="_text" @bind:event="oninput" disabled="@Viewer.IsViewer"></textarea>
+    <textarea class="prompt-in" rows="7" placeholder="@Strings.BugReportPlaceholder" aria-label="@Strings.BugReportPlaceholder" @bind="_text" @bind:event="oninput" disabled="@Viewer.IsViewer"></textarea>
     <div class="row" style="margin-top:10px">
         <button class="primary" disabled="@(Viewer.IsViewer || _busy)" @onclick="Create">@Strings.BtnBugReportCreate</button>
         @if (_error.Length > 0) { <span class="small" style="color:var(--bad)">@_error</span> }

@@ -55,7 +55,9 @@
         <label>@Strings.EvalModels</label>
         @if (Choices.Count == 0)
         {
-            <p class="muted small">@Strings.EvalNoModelsRuns</p>
+            <EmptyState Icon="layers" Title="@Strings.EmptyRunsModelsTitle" Text="@Strings.EvalNoModelsRuns">
+                <a class="btn" href="models">@Strings.EmptyOpenModels</a>
+            </EmptyState>
         }
         @foreach (var m in Choices)
         {
@@ -67,7 +69,7 @@
             <label style="display:inline-block;color:var(--ink);font-size:14px;margin-right:14px"><input type="checkbox" checked="@_pick.Contains(s.Name)" @onchange="e => Toggle(_pick, s.Name, e)" /> @s.Name <span class="muted small">(@s.Tasks.Count)</span></label>
         }
         <div class="row" style="margin-top:10px">
-            <label style="margin:0">@Strings.EvalRepeat</label><input type="number" min="1" max="10" style="width:70px" @bind="_repeat" disabled="@(!CanWrite)" />
+            <label for="ev-repeat" style="margin:0">@Strings.EvalRepeat</label><input id="ev-repeat" type="number" min="1" max="10" style="width:70px" @bind="_repeat" disabled="@(!CanWrite)" />
             <label style="margin:0;color:var(--ink)"><input type="checkbox" @bind="AllowCode" disabled="@(!CanWrite)" /> @Strings.EvalAllowCode</label>
         </div>
         @if (AllowCode && Queue.Python == null)
