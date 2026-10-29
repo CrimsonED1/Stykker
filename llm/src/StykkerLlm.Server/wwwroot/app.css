@@ -928,3 +928,9 @@ html[data-theme=titan] .bench-chart .dot{stroke:var(--card)}
 .es-body{display:flex;flex-direction:column;gap:6px;min-width:0;max-width:68ch}
 .es-steps{margin:2px 0 0;padding-left:20px;display:flex;flex-direction:column;gap:4px;color:var(--ink)}
 .es-acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:4px}
+/* Zwei Modelle vergleichen (/prompt): zwei Gesprächsspalten mit dem Namen darüber, darüber wer schneller war; schmal untereinander */
+.chat-cols{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px}
+.chat-col{min-width:0;border:1px solid var(--line);border-radius:var(--radius);padding:8px 10px}
+.chat-hd{font:600 12px var(--font-mono);color:var(--acc);margin-bottom:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cmp-sum{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:8px;color:var(--ink)}.cmp-sum .ic{color:var(--good)}
+@media(max-width:900px){.chat-cols{grid-template-columns:minmax(0,1fr)}}
