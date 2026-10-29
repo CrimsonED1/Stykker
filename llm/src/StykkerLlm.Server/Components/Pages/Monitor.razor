@@ -475,13 +475,15 @@
     @if (_flash.Length > 0) { <div class="small pxp-flash">@_flash</div> }
 
     @* Kompakt: Symbol + Wert in zwei Spalten, die Bezeichnung steht im Tooltip *@
-    @{ var cls = ProxyPanel.ClassifierLabel(px.ClassifierValue(), models); var vis = ProxyPanel.ClassifierLabel(px.VisionValue(), models); }
+    @{ var cls = ProxyPanel.ClassifierLabel(px.ClassifierValue(), models); var vis = ProxyPanel.ClassifierLabel(px.VisionValue(), models); var rescued = e.RouteCounts.Rescued;
+       var routedTip = Strings.PxRouted + ": " + Strings.PxRoutedText(routes.Auto, routes.Image, routes.Cloud) + (rescued > 0 ? Strings.PxRescued(rescued) : "") + "\n" + Strings.PxRoutedTip + (rescued > 0 ? " " + Strings.PxRescuedTip : "");
+       var routedShown = $"{routes.Auto} · {routes.Image} · {routes.Cloud}" + (rescued > 0 ? " · " + rescued.ToString(Strings.Inv) : ""); }
     <div class="pxp-grid">
         <span class="mc wide" title="@Strings.PxTarget: @px.TargetName()"><Icon Name="proxy" Title="@Strings.PxTarget" /><b>@px.TargetName()</b></span>
         <span class="mc" title="@Strings.PxPort: @px.Port.ToString(CultureInfo.InvariantCulture)"><Icon Name="port" Title="@Strings.PxPort" /><b>@px.Port.ToString(CultureInfo.InvariantCulture)</b></span>
         <span class="mc @(px.BindLan ? "" : "na")" title="@Strings.PxLan: @(px.BindLan ? Strings.PxLanOn : Strings.PxLanOff)"><Icon Name="host" Title="@Strings.PxLan" /><b>@(px.BindLan ? Strings.PxLanOn : Strings.PxLanOff)</b></span>
         <span class="mc @(machines + clouds == 0 ? "na" : "")" title="@Strings.PxSources: @Strings.PxSourceCounts(machines, clouds)"><Icon Name="layers" Title="@Strings.PxSources" /><b>@Strings.PxSourceCounts(machines, clouds)</b></span>
-        <span class="mc" title="@Strings.PxRouted: @Strings.PxRoutedText(routes.Auto, routes.Image, routes.Cloud)&#10;@Strings.PxRoutedTip"><Icon Name="queue" Title="@Strings.PxRouted" /><b>@routes.Auto · @routes.Image · @routes.Cloud</b></span>
+        <span class="mc" title="@routedTip"><Icon Name="queue" Title="@Strings.PxRouted" /><b>@routedShown</b></span>
         <span class="mc" title="@Strings.PxClassifier: @cls"><Icon Name="check" Title="@Strings.PxClassifier" /><b>@cls</b></span>
         <span class="mc" title="@Strings.ProxyVisionLabel: @vis"><Icon Name="eye" Title="@Strings.ProxyVisionLabel" /><b>@vis</b></span>
     </div>

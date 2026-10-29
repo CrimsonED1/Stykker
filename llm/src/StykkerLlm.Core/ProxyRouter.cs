@@ -31,10 +31,21 @@ public static class ProxyRoutes
     public const string Classifier = "classifier";  // Sicherheitsprüfung von Claude Code (Modus „auto“)
     public const string Vision = "vision";          // Anfrage mit Bild
     public const string Named = "named";            // ausdrücklich angefragter Modellname
+    public const string Fallback = "fallback";      // das Standardziel fiel aus oder war zu klein, ein Ersatzziel antwortete
+    public const string Retry = "retry";            // das Ziel antwortete erst nicht (Absturz, Neustart), der Proxy wartete und schickte erneut
 
-    // Kennzeichen in der Liste: nur für die beiden Sonderwege, Standard und ausdrücklicher Name bekommen keins
-    public static string Label(string? route) => route switch { Classifier => Strings.ReqRouteAuto, Vision => Strings.ReqRouteImage, _ => "" };
-    public static string Tip(string? route) => route switch { Classifier => Strings.ReqRouteAutoTip, Vision => Strings.ReqRouteImageTip, _ => "" };
+    // Kennzeichen in der Liste: nur für die Sonderwege, Standard und ausdrücklicher Name bekommen keins
+    public static string Label(string? route) => route switch
+    {
+        Classifier => Strings.ReqRouteAuto, Vision => Strings.ReqRouteImage, Fallback => Strings.ReqRouteFallback, Retry => Strings.ReqRouteRetry, _ => "",
+    };
+    public static string Tip(string? route) => route switch
+    {
+        Classifier => Strings.ReqRouteAutoTip, Vision => Strings.ReqRouteImageTip, Fallback => Strings.ReqRouteFallbackTip, Retry => Strings.ReqRouteRetryTip, _ => "",
+    };
+
+    // Ein Weg, auf dem der Proxy eine sonst gescheiterte Anfrage gerettet hat
+    public static bool IsRescue(string? route) => route is Fallback or Retry;
 }
 
 // Der „Stykker-Proxy": genau ein Proxy auf einem festen Port. Er beantwortet /v1/models selbst (alle Backends zusammen plus den
@@ -76,6 +87,135 @@ public class RouterProxy : RequestProxy
         _defaultKey = defaultKey;
         _classifierKey = classifierKey;
         _visionKey = visionKey;
+    }
+
+    // ── Failover ──
+
+    private volatile string[] _fallbackKeys = Array.Empty<string>();
+    // Ziele, die eben keine Verbindung annahmen oder 503 meldeten: bis zu diesem Zeitpunkt geht das Standardziel an ein Ersatzziel
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, DateTime> _down = new(StringComparer.Ordinal);
+
+    // So lange gilt ein gescheitertes Ziel als ausgefallen (der Beobachter merkt einen Absturz erst nach einigen Takten)
+    public TimeSpan DownFor { get; set; } = TimeSpan.FromSeconds(20);
+    // So lange wartet eine Anfrage auf den Neustart ihres Ziels, wenn kein Ersatzziel bereit ist (Absturz-Neustart, Server
+    // wird neu gestartet); 0 = nicht warten, der Fehler geht sofort an den Client. Lädt das Ziel wieder, gilt LoadingWait.
+    public TimeSpan RestartWait { get; set; } = TimeSpan.FromSeconds(30);
+    // Kleinste Pause vor einem neuen Versuch beim selben Ziel (Tests setzen sie kürzer)
+    public TimeSpan RetryPause { get; set; } = TimeSpan.FromSeconds(1);
+
+    // Ersatzziele für das Standardziel, in dieser Reihenfolge (Zielkennungen wie bei SetTargets). Sie springen ein, wenn das
+    // Standardziel offline ist, lädt, abstürzt, 503 meldet oder die Anfrage nicht in seinen Kontext passt.
+    public void SetFallbacks(IReadOnlyList<string> keys) =>
+        _fallbackKeys = keys.Where(k => !string.IsNullOrEmpty(k)).Distinct(StringComparer.Ordinal).ToArray();
+
+    internal IReadOnlyList<string> FallbackKeys => _fallbackKeys;
+
+    internal bool IsDown(string key) => _down.TryGetValue(key, out var until) && until > DateTime.UtcNow;
+
+    private void MarkDown(string key) => _down[key] = DateTime.UtcNow + DownFor;
+
+    private void ClearDown(string key) => _down.TryRemove(key, out _);
+
+    // Kann dieses Ziel die Anfrage jetzt annehmen? (bereit, nicht eben ausgefallen, Schlüssel da, Kontext reicht)
+    private bool Usable(ProxyTarget? t, byte[]? body) =>
+        t is { Ready: true, Loading: false } && !IsDown(t.Key) && !(t.Cloud && AuthFor?.Invoke(t) is not { Length: > 0 })
+        && (t.HostId.Length == 0 || HostClient?.Invoke(t.HostId) != null) && TooLong(t, body) == null;
+
+    // Die Ersatzziele, die diese Anfrage jetzt annehmen können, in der eingestellten Reihenfolge (ohne die schon gescheiterten)
+    internal IEnumerable<ProxyTarget> FallbackCandidates(IReadOnlyList<ProxyTarget> targets, ICollection<string> exclude, byte[]? body)
+    {
+        foreach (var key in _fallbackKeys)
+        {
+            if (exclude.Contains(key)) continue;
+            var t = targets.FirstOrDefault(x => x.Key == key);
+            if (Usable(t, body)) yield return t!;
+        }
+    }
+
+    private static string NameOf(ProxyTarget? t) => t == null ? "?" : t.DisplayName.Length > 0 ? t.DisplayName : t.EffectiveModel ?? t.Key;
+
+    // Das nächste Ziel nach einem Fehlschlag, bevor ein Byte an den Client ging: zuerst ein bereites Ersatzziel (nur auf dem
+    // Standardweg), sonst – bei Absturz oder 503 – dasselbe Ziel, sobald es wieder da ist (höchstens RestartWait bzw. LoadingWait
+    // seit Beginn der Anfrage). null = aufgeben, der Fehler geht an den Client.
+    internal async Task<(ProxyTarget Target, string Route)?> NextTargetAsync(string? failedKey, string? route, ProxyFailure failure,
+        byte[]? body, ProxyAttempts attempts, CancellationToken ct)
+    {
+        if (string.IsNullOrEmpty(failedKey)) return null;
+        var failed = _targets.FirstOrDefault(x => x.Key == failedKey);
+        // 429/5xx eines lokalen Servers ist meist ein Fehler der Anfrage oder des Modells (kein Ausfall): unverändert weitergeben
+        if (failure == ProxyFailure.Overloaded && failed is not { Cloud: true }) return null;
+        attempts.Failed.Add(failedKey);
+        if (failure != ProxyFailure.ContextOverflow) MarkDown(failedKey);
+        bool mayFallback = route is null or ProxyRoutes.Default or ProxyRoutes.Fallback or ProxyRoutes.Retry;
+
+        if (mayFallback && FallbackCandidates(_targets, attempts.Failed, body).FirstOrDefault() is { } fb)
+        {
+            AppLog.Write($"proxy: {NameOf(failed)} {Describe(failure)} – fallback to {NameOf(fb)}");
+            return (fb, ProxyRoutes.Fallback);
+        }
+        // Ein Cloud-Anbieter startet nicht neu: dort wird nicht gewartet, nur umgeleitet
+        if (failure is ProxyFailure.ContextOverflow or ProxyFailure.Overloaded || failed is { Cloud: true } || RestartWait <= TimeSpan.Zero) return null;
+
+        // Kein Ersatz: warten, bis dasselbe Ziel wieder bereit ist (oder doch ein Ersatzziel), mit wachsender Pause
+        var pause = RetryPause * Math.Min(4, 1 << Math.Min(attempts.Count - 1, 2));
+        while (true)
+        {
+            var cur = _targets.FirstOrDefault(x => x.Key == failedKey);
+            var limit = cur is { Loading: true } && LoadingWait > RestartWait ? LoadingWait : RestartWait;
+            var left = attempts.Started + limit - DateTime.UtcNow;
+            if (left <= TimeSpan.Zero) return null;
+            await Task.Delay(pause < left ? pause : left, ct).ConfigureAwait(false);
+
+            if (mayFallback && FallbackCandidates(_targets, attempts.Failed, body).FirstOrDefault() is { } late)
+            {
+                AppLog.Write($"proxy: {NameOf(failed)} {Describe(failure)} – fallback to {NameOf(late)}");
+                return (late, ProxyRoutes.Fallback);
+            }
+            cur = _targets.FirstOrDefault(x => x.Key == failedKey);
+            if (cur is { Ready: true, Loading: false })
+            {
+                attempts.Failed.Remove(failedKey);
+                ClearDown(failedKey);
+                AppLog.Write($"proxy: {NameOf(cur)} {Describe(failure)} – sending again after {(DateTime.UtcNow - attempts.Started).TotalSeconds:0.0} s");
+                return (cur, ProxyRoutes.Retry);
+            }
+            if (cur == null && mayFallback && DefaultTarget(_targets) is { } other && other.Key != failedKey && Usable(other, body))
+            {
+                // Das Ziel ist verschwunden (Server beendet), ein anderes ist jetzt das Standardziel
+                AppLog.Write($"proxy: {NameOf(failed)} is gone – sending to {NameOf(other)}");
+                return (other, ProxyRoutes.Fallback);
+            }
+            pause = RetryPause;
+        }
+    }
+
+    private static string Describe(ProxyFailure f) => f switch
+    {
+        ProxyFailure.Unreachable => "did not answer",
+        ProxyFailure.Unavailable => "answered 503",
+        ProxyFailure.Overloaded => "is rate-limited or failing",
+        _ => "has too little context",
+    };
+
+    // Die Weiterleitung an ein bestimmtes Ziel (model auf den Namen des Ziels, Schlüssel eines Cloud-Ziels, Weg zu einem Host);
+    // null, wenn der Host gerade nicht verbunden ist
+    private ProxyRoute? RouteTo(ProxyTarget t, byte[]? body, string route)
+    {
+        var rewritten = t.Model != null ? RewriteModel(body, t.Model) : body;
+        if (t.Kind == BackendKind.LlamaCpp && !t.Cloud && rewritten != null) rewritten = AllowParallelToolCalls(rewritten);
+        var own = t.Cloud && AuthFor?.Invoke(t) is { Length: > 0 } key
+            ? new[] { ("Authorization", "Bearer " + key) } : null;
+        if (t.HostId.Length == 0) return new ProxyRoute(t.Url, t.RouteKey, rewritten, Headers: own, Route: route, TargetKey: t.Key);
+        var via = HostClient?.Invoke(t.HostId);
+        return via == null ? null : new ProxyRoute(t.Url, t.RouteKey, rewritten, Headers: own, Client: via, Route: route, TargetKey: t.Key);
+    }
+
+    protected override async Task<ProxyRoute?> RerouteAsync(ProxyRoute failed, ProxyFailure failure, byte[]? body, ProxyAttempts attempts, CancellationToken ct)
+    {
+        // Bilder wurden beim ersten Versuch beschrieben; die Beschreibung ist nach Inhalt gemerkt, das geht hier ohne neue Anfrage
+        body = await DescribeImagesAsync(_targets, body, ct).ConfigureAwait(false);
+        var next = await NextTargetAsync(failed.TargetKey, failed.Route, failure, body, attempts, ct).ConfigureAwait(false);
+        return next is { } n ? RouteTo(n.Target, body, n.Route) : null;
     }
 
     // Das Ziel für eine Anfrage mit Bild, oder null (kein Bild, nicht gesetzt oder Ziel nicht da)
@@ -341,6 +481,13 @@ public class RouterProxy : RequestProxy
                 : Local(200, ModelsJson(targets, StartableModels?.Invoke(), def));
         }
 
+        // Zustand des Proxys (wie /health bei llama.cpp): 200, wenn das Standardziel oder ein Ersatzziel jetzt annimmt, sonst 503
+        if (method == "GET" && (path.Equals("/health", StringComparison.OrdinalIgnoreCase) || path.Equals("/v1/health", StringComparison.OrdinalIgnoreCase)))
+        {
+            var (code, json) = HealthJson(targets);
+            return Local(code, json);
+        }
+
         // Die Claude-App schickt /v1/messages und erwartet Anthropic-Ereignisse zurück: übersetzen statt durchreichen
         if (method == "POST" && AnthropicBridge.IsMessagesPath(path))
             return await RouteAnthropicAsync(targets, headers, body, ct).ConfigureAwait(false);
@@ -350,13 +497,7 @@ public class RouterProxy : RequestProxy
         if (t == null) return Local(errorStatus, errorStatus == 400 ? TooLongJson(error!) : ErrorJson(error!));
 
         // model auf den Namen setzen, den das Ziel erwartet (bei „stykker" → Modell des Ziels)
-        var rewritten = t.Model != null ? RewriteModel(body, t.Model) : body;
-        if (t.Kind == BackendKind.LlamaCpp && !t.Cloud && rewritten != null) rewritten = AllowParallelToolCalls(rewritten);
-        var own = t.Cloud && AuthFor?.Invoke(t) is { Length: > 0 } key
-            ? new[] { ("Authorization", "Bearer " + key) } : null;
-        if (t.HostId.Length == 0) return new ProxyRoute(t.Url, t.RouteKey, rewritten, Headers: own, Route: route);
-        var via = HostClient?.Invoke(t.HostId);
-        return via == null ? Local(503, ErrorJson(Strings.HostNotConnected)) : new ProxyRoute(t.Url, t.RouteKey, rewritten, Headers: own, Client: via, Route: route);
+        return RouteTo(t, body, route) ?? Local(503, ErrorJson(Strings.HostNotConnected));
     }
 
     // Der Weg einer Anfrage ohne Zustandsprüfung: ausdrücklich genannter Modellname, dann Sicherheitsprüfung, dann Bild.
@@ -399,6 +540,16 @@ public class RouterProxy : RequestProxy
         {
             t = DefaultTarget(targets);   // stykker, leer, unbekannt oder nicht gefunden → Standardziel
             route = ProxyRoutes.Default;
+        }
+
+        // Failover vor dem Senden: kann das Standardziel die Anfrage nicht annehmen (offline, lädt, eben abgestürzt, ohne
+        // Schlüssel, Kontext zu klein), übernimmt das erste bereite Ersatzziel
+        if (route == ProxyRoutes.Default && !Usable(t, body)
+            && FallbackCandidates(targets, t != null ? new[] { t.Key } : Array.Empty<string>(), body).FirstOrDefault() is { } fb)
+        {
+            AppLog.Write($"proxy: {NameOf(t)} cannot take the request – fallback to {NameOf(fb)}");
+            t = fb;
+            route = ProxyRoutes.Fallback;
         }
 
         if (t == null) return (null, Strings.ProxyNoTarget, 503, route);
@@ -491,7 +642,24 @@ public class RouterProxy : RequestProxy
         body = await DescribeImagesAsync(targets, body, ct).ConfigureAwait(false);
         var (t, error, status, route) = await ResolveAsync(targets, body, ct).ConfigureAwait(false);
         if (t == null) return AnthropicError(status, error!);
+        var first = PrepareBridge(t, headers, body);
+        if (first == null) return AnthropicError(503, Strings.HostNotConnected);
 
+        var anthropicBody = body ?? Array.Empty<byte>();
+        bool clientStream = WantsStream(body);
+        var stops = StopsOf(body);
+        return new ProxyRoute("", t.RouteKey, null,
+            LocalStream: (net, tap, token) => BridgeWithFailoverAsync(net, headers, anthropicBody, requested, t, route, first, tap, token, clientStream, stops),
+            Route: route, TargetKey: t.Key);
+    }
+
+    // Was die Brücke für ein Ziel braucht: Adresse, übersetzter Anfragetext, Kopfzeilen, eigener Schlüssel, Weg zum Host.
+    // null, wenn das Ziel auf einem Host liegt, der gerade nicht verbunden ist.
+    private sealed record BridgePlan(string Url, byte[] OpenAi, List<(string Name, string Value)> Headers,
+        IReadOnlyList<(string Name, string Value)>? Own, HttpClient? Via);
+
+    private BridgePlan? PrepareBridge(ProxyTarget t, IReadOnlyList<(string Name, string Value)> headers, byte[]? body)
+    {
         var openAi = AnthropicBridge.ToOpenAi(body ?? Array.Empty<byte>(), t.Model ?? "", noThinking: IsSafetyCheck(body));
         if (t.Kind == BackendKind.LlamaCpp && !t.Cloud) openAi = AllowParallelToolCalls(openAi);
         var own = t.Cloud && AuthFor?.Invoke(t) is { Length: > 0 } key ? new[] { ("Authorization", "Bearer " + key) } : null;
@@ -499,7 +667,7 @@ public class RouterProxy : RequestProxy
         if (t.HostId.Length > 0)
         {
             via = HostClient?.Invoke(t.HostId);
-            if (via == null) return AnthropicError(503, Strings.HostNotConnected);
+            if (via == null) return null;
         }
 
         // Das Ziel bekommt die Kopfzeilen des Clients (ohne Verbindungs-Kopfzeilen); den Authorization-Kopf eines
@@ -511,13 +679,58 @@ public class RouterProxy : RequestProxy
             if (own != null && name.Equals("Authorization", StringComparison.OrdinalIgnoreCase)) continue;
             send.Add((name, value));
         }
-
-        string url = NetAddr.JoinUpstream(t.Url, "/v1/chat/completions");
         // Kennt der Proxy schon eine Bildgrenze dieses Ziels, gleich nur die letzten Bilder schicken
         if (_imageLimits.TryGetValue(t.Key, out var known)) openAi = TrimImages(openAi, known);
-        var targetKey = t.Key;
-        return new ProxyRoute("", t.RouteKey, null,
-            LocalStream: (net, tap, token) => BridgeAsync(net, url, send, openAi, requested, own, via, tap, token, targetKey, clientStream: WantsStream(body), stops: StopsOf(body)), Route: route);
+        return new BridgePlan(NetAddr.JoinUpstream(t.Url, "/v1/chat/completions"), openAi, send, own, via);
+    }
+
+    // Ein umleitbarer Fehlschlag der Brücke (noch nichts an den Client geschrieben): Art, Status und Meldung für den Client
+    private sealed class BridgeFailure
+    {
+        public ProxyFailure? Kind;
+        public int Status;
+        public string Message = "";
+        public void Set(ProxyFailure kind, int status, string message) { Kind = kind; Status = status; Message = message; }
+    }
+
+    // Die Brücke mit Failover: scheitert ein Ziel, bevor etwas geschrieben wurde (keine Verbindung, 503, Kontext zu klein),
+    // geht die Anfrage an ein Ersatzziel oder nach dem Neustart erneut an dasselbe; erst dann bekommt der Client den Fehler.
+    private async Task<int> BridgeWithFailoverAsync(Stream net, IReadOnlyList<(string Name, string Value)> headers, byte[] body,
+        string requested, ProxyTarget t, string route, BridgePlan? first, ProxyTap tap, CancellationToken ct, bool clientStream, IReadOnlyList<string> stops)
+    {
+        var attempts = new ProxyAttempts();
+        while (true)
+        {
+            var plan = attempts.Count == 0 && first != null ? first : PrepareBridge(t, headers, body);
+            if (plan == null)
+            {
+                await WriteJsonAsync(net, 503, AnthropicBridge.ErrorJson(503, Strings.HostNotConnected), ct).ConfigureAwait(false);
+                return 503;
+            }
+            var failure = new BridgeFailure();
+            int status = await BridgeAsync(net, plan.Url, plan.Headers, plan.OpenAi, requested, plan.Own, plan.Via, tap, ct, t.Key,
+                clientStream: clientStream, stops: stops, failure: failure).ConfigureAwait(false);
+            if (failure.Kind is not { } kind)
+            {
+                tap.RoutedServerKey = t.RouteKey;
+                tap.RoutedRoute = route;
+                return status;
+            }
+            if (attempts.Count < MaxAttempts)
+            {
+                attempts.Count++;
+                if (await NextTargetAsync(t.Key, route, kind, body, attempts, ct).ConfigureAwait(false) is { } next)
+                {
+                    t = next.Target;
+                    route = next.Route;
+                    continue;
+                }
+            }
+            tap.RoutedServerKey = t.RouteKey;
+            tap.RoutedRoute = route;
+            await WriteJsonAsync(net, failure.Status, AnthropicBridge.ErrorJson(failure.Status, failure.Message), ct).ConfigureAwait(false);
+            return failure.Status;
+        }
     }
 
     private static ProxyRoute AnthropicError(int status, string message)
@@ -527,8 +740,10 @@ public class RouterProxy : RequestProxy
     // Schreibt Kopfzeilen und Rumpf selbst; die Bytes des Ziels bekommt der Mitschreiber, damit die Anfrage gezählt wird.
     private async Task<int> BridgeAsync(Stream net, string url, IReadOnlyList<(string Name, string Value)> headers, byte[] body,
         string model, IReadOnlyList<(string Name, string Value)>? own, HttpClient? client, ProxyTap tap, CancellationToken ct,
-        string targetKey = "", bool retried = false, bool clientStream = true, IReadOnlyList<string>? stops = null)
+        string targetKey = "", bool retried = false, bool clientStream = true, IReadOnlyList<string>? stops = null, BridgeFailure? failure = null)
     {
+        // failure != null: ein umleitbarer Fehler (keine Verbindung, 503, Kontext zu klein) wird nicht geschrieben, sondern
+        // dort gemeldet – der Aufrufer versucht dann ein anderes Ziel oder schreibt den Fehler selbst
         using var req = new HttpRequestMessage(HttpMethod.Post, url) { Content = new ByteArrayContent(body) };
         foreach (var (name, value) in headers)
         {
@@ -553,6 +768,7 @@ public class RouterProxy : RequestProxy
         }
         catch (Exception)
         {
+            if (failure != null) { failure.Set(ProxyFailure.Unreachable, 502, Strings.ProxyAnthropicUnreachable); return 502; }
             await WriteJsonAsync(net, 502, AnthropicBridge.ErrorJson(502, Strings.ProxyAnthropicUnreachable), ct).ConfigureAwait(false);
             return 502;
         }
@@ -571,11 +787,17 @@ public class RouterProxy : RequestProxy
                     AppLog.Write($"proxy: {model} takes at most {limit} image(s) per request; older images are left out from now on");
                     var trimmed = TrimImages(body, limit);
                     if (!trimmed.AsSpan().SequenceEqual(body))
-                        return await BridgeAsync(net, url, headers, trimmed, model, own, client, tap, ct, targetKey, retried: true, clientStream: clientStream, stops: stops).ConfigureAwait(false);
+                        return await BridgeAsync(net, url, headers, trimmed, model, own, client, tap, ct, targetKey, retried: true, clientStream: clientStream, stops: stops, failure: failure).ConfigureAwait(false);
                 }
                 int code = status is 400 or 401 or 403 or 404 or 413 or 429 or 529 ? status : 502;
                 string message = ErrorMessage(text) ?? resp.ReasonPhrase ?? "error";
-                if (IsContextOverflow(message)) { code = 400; message = AnthropicOverflowMessage(message); }
+                bool overflow = IsContextOverflow(message);
+                if (overflow) { code = 400; message = AnthropicOverflowMessage(message); }
+                if (failure != null && (overflow || status is 503 or 429 or 500 or 502 or 529))
+                {
+                    failure.Set(overflow ? ProxyFailure.ContextOverflow : status == 503 ? ProxyFailure.Unavailable : ProxyFailure.Overloaded, code, message);
+                    return code;
+                }
                 await WriteJsonAsync(net, code, AnthropicBridge.ErrorJson(code, message), ct).ConfigureAwait(false);
                 return code;
             }
@@ -826,6 +1048,42 @@ public class RouterProxy : RequestProxy
         sb.Append("],\"has_more\":false,\"first_id\":\"").Append(JsonEscape(entries[0].Id))
           .Append("\",\"last_id\":\"").Append(JsonEscape(entries[^1].Id)).Append("\"}");
         return sb.ToString();
+    }
+
+    // /health: Zustand des Standardziels und der Ersatzziele (nur Namen und Zustände, keine Adressen von Anbietern, keine Schlüssel).
+    // status: ok (Standardziel nimmt an), fallback (nur ein Ersatzziel nimmt an), loading (Standardziel lädt), unavailable.
+    internal (int Status, string Json) HealthJson(IReadOnlyList<ProxyTarget> targets)
+    {
+        var def = DefaultTarget(targets);
+        bool defOk = Usable(def, null);
+        var fallbacks = _fallbackKeys.Select(k => targets.FirstOrDefault(t => t.Key == k)).Where(t => t != null).Select(t => t!).ToList();
+        bool anyFallback = fallbacks.Any(t => Usable(t, null));
+        string status = defOk ? "ok" : anyFallback ? "fallback" : def is { Loading: true } ? "loading" : "unavailable";
+
+        var sb = new StringBuilder();
+        sb.Append("{\"status\":\"").Append(status).Append('"');
+        if (def != null)
+        {
+            sb.Append(",\"target\":{\"name\":\"").Append(JsonEscape(NameOf(def))).Append("\",\"model\":\"").Append(JsonEscape(def.EffectiveModel ?? ""))
+              .Append("\",\"ready\":").Append(defOk ? "true" : "false").Append(",\"loading\":").Append(def.Loading ? "true" : "false")
+              .Append(",\"down\":").Append(IsDown(def.Key) ? "true" : "false");
+            if (def.ContextLength is > 0 and var ctx) sb.Append(",\"context_length\":").Append(ctx);
+            sb.Append('}');
+        }
+        sb.Append(",\"fallbacks\":[");
+        for (int i = 0; i < fallbacks.Count; i++)
+        {
+            var t = fallbacks[i];
+            if (i > 0) sb.Append(',');
+            sb.Append("{\"name\":\"").Append(JsonEscape(NameOf(t))).Append("\",\"model\":\"").Append(JsonEscape(t.EffectiveModel ?? ""))
+              .Append("\",\"ready\":").Append(Usable(t, null) ? "true" : "false").Append('}');
+        }
+        sb.Append(']');
+        if (!defOk && !anyFallback)
+            sb.Append(",\"error\":{\"code\":503,\"type\":\"unavailable_error\",\"message\":\"")
+              .Append(JsonEscape(def is { Loading: true } ? Strings.ProxyTargetLoading : def == null ? Strings.ProxyNoTarget : Strings.ProxyTargetOffline)).Append("\"}");
+        sb.Append('}');
+        return (defOk || anyFallback ? 200 : 503, sb.ToString());
     }
 
     private static string ErrorJson(string message)

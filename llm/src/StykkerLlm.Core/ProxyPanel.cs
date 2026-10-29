@@ -72,7 +72,7 @@ public static class ProxyDialogTabs
 public sealed class ProxyRouteCounts
 {
     private readonly object _lock = new();
-    private int _auto, _image, _cloud;
+    private int _auto, _image, _cloud, _rescued;
 
     public void Add(ProxyRecord px)
     {
@@ -82,7 +82,15 @@ public sealed class ProxyRouteCounts
             if (px.Route == ProxyRoutes.Classifier) _auto++;
             else if (px.Route == ProxyRoutes.Vision) _image++;
             if (ProxyTarget.IsCloudKey(px.ServerKey)) _cloud++;
+            // gerettet: ein Ersatzziel oder ein zweiter Versuch nach dem Neustart hat geantwortet
+            if (ProxyRoutes.IsRescue(px.Route) && px.HttpStatus is >= 200 and < 300) _rescued++;
         }
+    }
+
+    // Anfragen, die ohne Failover gescheitert wären (Ersatzziel oder Warten auf den Neustart)
+    public int Rescued
+    {
+        get { lock (_lock) return _rescued; }
     }
 
     public (int Auto, int Image, int Cloud) Snapshot()
