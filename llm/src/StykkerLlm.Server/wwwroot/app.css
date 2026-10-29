@@ -923,3 +923,8 @@ html[data-theme=titan] .bench-chart .dot{stroke:var(--card)}
 .md-code pre code{background:none;border:0;padding:0;font:inherit}
 .turn-ft{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:4px}.turn-ft .ib{height:24px;font-size:11px;margin-left:auto}
 .chat-empty{margin:4px 0 12px}
+/* Leere Seite mit dem nächsten Schritt (EmptyState): Symbol links, Text, nummerierte Schritte und Knöpfe */
+.empty.es{align-items:flex-start}.empty.es>.ic{margin-top:2px;flex:none}
+.es-body{display:flex;flex-direction:column;gap:6px;min-width:0;max-width:68ch}
+.es-steps{margin:2px 0 0;padding-left:20px;display:flex;flex-direction:column;gap:4px;color:var(--ink)}
+.es-acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:4px}

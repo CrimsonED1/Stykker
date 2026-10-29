@@ -4,14 +4,23 @@
 <div class="card">
     <div class="row">
         <h2 style="margin:0">@Strings.EvalRanking</h2>
-        <select @bind="Suite" style="margin-left:12px">
+        <select @bind="Suite" style="margin-left:12px" aria-label="@Strings.A11ySuite">
             <option value="">@Strings.EvalAllSuites</option>
             @foreach (var s in _suiteNames) { <option value="@s">@s</option> }
         </select>
         <button @onclick="Load">@Strings.EvalReload</button>
         <span class="muted small" style="margin-left:auto">@_runs.Count @Strings.EvalRunsSaved</span>
     </div>
-    @if (_rank.Count == 0)
+    @if (_rank.Count == 0 && _runs.Count == 0)
+    {
+        @* Noch nie getestet: die drei Schritte dorthin statt nur „No results yet“ *@
+        <EmptyState Icon="peak" Title="@Strings.EmptyResultsTitle" Text="@Strings.EmptyResultsText"
+                    Steps="@(new[] { Strings.EmptyResultsStep1, Strings.EmptyResultsStep2, Strings.EmptyResultsStep3 })">
+            <a class="btn" href="models">@Strings.EmptyOpenModels</a>
+            <a class="btn" href="runs">@Strings.EmptyOpenRuns</a>
+        </EmptyState>
+    }
+    else if (_rank.Count == 0)
     {
         <p class="muted">@Strings.EvalNoResults</p>
     }

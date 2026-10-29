@@ -48,26 +48,26 @@
     <h2>@Strings.SetLimitsTitle</h2>
     <div class="grid2">
         <div>
-            <label>@Strings.SetMaxRecordings</label>
-            <input type="number" min="0" max="10000" @bind="_maxRecordings" disabled="@ro" />
-            <label>@Strings.SetMaxRecordingsMb</label>
-            <input type="number" min="10" max="100000" @bind="_maxRecordingsMb" disabled="@ro" />
-            <label>@Strings.SetMaxRecordingMb</label>
-            <input type="number" min="1" max="100000" @bind="_maxRecordingMb" disabled="@ro" />
+            <label for="set-recs">@Strings.SetMaxRecordings</label>
+            <input id="set-recs" type="number" min="0" max="10000" @bind="_maxRecordings" disabled="@ro" />
+            <label for="set-recs-mb">@Strings.SetMaxRecordingsMb</label>
+            <input id="set-recs-mb" type="number" min="10" max="100000" @bind="_maxRecordingsMb" disabled="@ro" />
+            <label for="set-rec-mb">@Strings.SetMaxRecordingMb</label>
+            <input id="set-rec-mb" type="number" min="1" max="100000" @bind="_maxRecordingMb" disabled="@ro" />
         </div>
         <div>
-            <label>@Strings.SetMaxLogs</label>
-            <input type="number" min="1" max="1000" @bind="_maxLogFiles" disabled="@ro" />
-            <label>@Strings.SetMaxLogsMb</label>
-            <input type="number" min="1" max="100000" @bind="_maxLogsMb" disabled="@ro" />
-            <label>@Strings.SetMaxCsvMb</label>
-            <input type="number" min="1" max="100000" @bind="_maxCsvMb" disabled="@ro" />
+            <label for="set-logs">@Strings.SetMaxLogs</label>
+            <input id="set-logs" type="number" min="1" max="1000" @bind="_maxLogFiles" disabled="@ro" />
+            <label for="set-logs-mb">@Strings.SetMaxLogsMb</label>
+            <input id="set-logs-mb" type="number" min="1" max="100000" @bind="_maxLogsMb" disabled="@ro" />
+            <label for="set-csv-mb">@Strings.SetMaxCsvMb</label>
+            <input id="set-csv-mb" type="number" min="1" max="100000" @bind="_maxCsvMb" disabled="@ro" />
         </div>
     </div>
     <div class="grid2" style="margin-top:10px">
         <div>
-            <label>@Strings.SetBenchRegression</label>
-            <input type="number" min="0" max="100" @bind="_benchRegressionPct" disabled="@ro" />
+            <label for="set-bench">@Strings.SetBenchRegression</label>
+            <input id="set-bench" type="number" min="0" max="100" @bind="_benchRegressionPct" disabled="@ro" />
             <span class="muted small">@Strings.SetBenchRegressionHint</span>
         </div>
     </div>
@@ -80,9 +80,9 @@
 <div class="card">
     <h2>@Strings.MenuAddServer</h2>
     <div class="row">
-        <input placeholder="@Strings.ColName" @bind="_msName" style="width:180px" />
-        <input placeholder="http://127.0.0.1:8080" @bind="_msUrl" style="flex:1;max-width:340px" />
-        <select @bind="_msKind">
+        <input placeholder="@Strings.ColName" aria-label="@Strings.A11yServerName" @bind="_msName" style="width:180px" />
+        <input placeholder="http://127.0.0.1:8080" aria-label="@Strings.A11yServerUrl" @bind="_msUrl" style="flex:1;max-width:340px" />
+        <select aria-label="@Strings.A11yServerKind" @bind="_msKind">
             <option value="">@Strings.KindAuto</option>
             <option value="llama.cpp">llama.cpp</option>
             <option value="ollama">Ollama</option>

@@ -8,7 +8,7 @@
     <h2>@Strings.PairApproveTitle</h2>
     <p class="muted small">@Strings.PairApproveHint</p>
     <div class="row">
-        <input class="digits" @bind="_code" @bind:event="oninput" inputmode="numeric" maxlength="7" placeholder="@Strings.PairApprovePlaceholder" autocomplete="off" />
+        <input class="digits" @bind="_code" @bind:event="oninput" inputmode="numeric" maxlength="7" placeholder="@Strings.PairApprovePlaceholder" aria-label="@Strings.A11yApproveCode" autocomplete="off" />
         <label class="small muted"><input type="checkbox" @bind="_viewer" /> @Strings.PairApproveAsViewer</label>
         <button class="good" disabled="@(AccessControl.CleanCode(_code).Length != AccessControl.CodeLength)" @onclick="Approve">@Strings.BtnApprove</button>
     </div>

@@ -110,8 +110,8 @@
                     @if (_add == "remote")
                     {
                         <div class="pxs-form">
-                            <input placeholder="@Strings.ProxyRemoteNameLabel" @bind="_rName" @bind:event="oninput" />
-                            <input placeholder="@Strings.ProxyRemoteUrlLabel" @bind="_rUrl" @bind:event="oninput" />
+                            <input placeholder="@Strings.ProxyRemoteNameLabel" aria-label="@Strings.ProxyRemoteNameLabel" @bind="_rName" @bind:event="oninput" />
+                            <input placeholder="@Strings.ProxyRemoteUrlLabel" aria-label="@Strings.ProxyRemoteUrlLabel" @bind="_rUrl" @bind:event="oninput" />
                             <div class="row"><button class="primary" @onclick="AddRemote">@Strings.PxAdd</button><button class="ghost" @onclick="() => _add = null">@Strings.PxCancel</button></div>
                         </div>
                     }
@@ -151,7 +151,7 @@
                         @if (_keyFor == pv.Url)
                         {
                             <div class="pxs-form">
-                                <input type="password" placeholder="@Strings.ProxyProviderKeyLabel" value="@KeyFor(pv.Url)" @oninput="e => OnKeyInput(pp.Url, e)" autocomplete="off" />
+                                <input type="password" placeholder="@Strings.ProxyProviderKeyLabel" aria-label="@Strings.ProxyProviderKeyLabel" value="@KeyFor(pv.Url)" @oninput="e => OnKeyInput(pp.Url, e)" autocomplete="off" />
                                 <div class="row"><button class="primary" @onclick="() => { SaveKey(pp.Url); _keyFor = null; }">@Strings.BtnProxyProviderKey</button><button class="ghost" @onclick="() => _keyFor = null">@Strings.PxCancel</button></div>
                             </div>
                         }
@@ -166,9 +166,9 @@
                                     <button class="ghost" title="@Strings.ProxyProviderPresetHint" @onclick="() => UsePreset(preset)">@preset.Name</button>
                                 }
                             </div>
-                            <input placeholder="@Strings.ProxyProviderNameLabel" @bind="_pName" @bind:event="oninput" />
-                            <input placeholder="@Strings.ProxyProviderUrlLabel" @bind="_pUrl" @bind:event="oninput" />
-                            <input type="password" placeholder="@Strings.ProxyProviderKeyLabel" @bind="_pKey" @bind:event="oninput" autocomplete="off" />
+                            <input placeholder="@Strings.ProxyProviderNameLabel" aria-label="@Strings.ProxyProviderNameLabel" @bind="_pName" @bind:event="oninput" />
+                            <input placeholder="@Strings.ProxyProviderUrlLabel" aria-label="@Strings.ProxyProviderUrlLabel" @bind="_pUrl" @bind:event="oninput" />
+                            <input type="password" placeholder="@Strings.ProxyProviderKeyLabel" aria-label="@Strings.ProxyProviderKeyLabel" @bind="_pKey" @bind:event="oninput" autocomplete="off" />
                             <div class="row"><button class="primary" @onclick="AddProviderForm">@Strings.PxAdd</button><button class="ghost" @onclick="() => _add = null">@Strings.PxCancel</button></div>
                         </div>
                     }

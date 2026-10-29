@@ -45,7 +45,7 @@
 <h3 class="sec">@Strings.HostsTitle · @hosts.Count</h3>
 @if (hosts.Count == 0)
 {
-    <div class="card"><span class="muted small">@Strings.HostsNone</span></div>
+    <div class="card"><EmptyState Icon="host" Title="@Strings.EmptyHostsTitle" Text="@Strings.EmptyHostsText" /></div>
 }
 <div class="nodes">
 @foreach (var h in hosts)

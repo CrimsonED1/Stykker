@@ -92,7 +92,7 @@ else
                     }
                 }
             </div>
-            <textarea class="prompt-in" rows="3" @bind="_input" @bind:event="oninput" @onkeydown="Key" placeholder="@Strings.PromptInput"></textarea>
+            <textarea class="prompt-in" rows="3" aria-label="@Strings.PromptInput" @bind="_input" @bind:event="oninput" @onkeydown="Key" placeholder="@Strings.PromptInput"></textarea>
             <div class="row" style="margin-top:8px">
                 @if (_session.Busy)
                 {
@@ -113,8 +113,8 @@ else
         </div>
 
         <div class="card opts">
-            <label>@Strings.ColServer</label>
-            <select @bind="ServerKey">
+            <label for="pr-server">@Strings.ColServer</label>
+            <select id="pr-server" @bind="ServerKey">
                 @foreach (var s in Servers) { <option value="@s.Key">@s.Name · @s.Url.Replace("http://", "")</option> }
                 <optgroup label="@Strings.PromptViaGroup">
                     @foreach (var o in ProxyOptions) { <option value="@o.Value">@o.Label</option> }
@@ -122,14 +122,14 @@ else
             </select>
             @if (IsVia) { <p class="muted small">@Strings.PromptViaHint</p> }
             @if (Servers.Count == 0 && !IsVia) { <p class="small warn">@Strings.PromptNoServer</p> }
-            <label>@Strings.PromptModel</label>
-            <input @bind="_session.Options.Model" />
+            <label for="pr-model">@Strings.PromptModel</label>
+            <input id="pr-model" @bind="_session.Options.Model" />
             <label style="color:var(--ink);margin-top:14px"><input type="checkbox" @bind="ToolsOn" /> @Strings.PromptToolsOn</label>
             @if (_tools)
             {
-                <label>@Strings.PromptWorkdir</label>
+                <label for="pr-workdir">@Strings.PromptWorkdir</label>
                 <div class="row" style="flex-wrap:nowrap">
-                    <input @bind="Workdir" placeholder="C:\…" style="flex:1;min-width:0" />
+                    <input id="pr-workdir" @bind="Workdir" placeholder="C:\…" style="flex:1;min-width:0" />
                     <button @onclick="OpenPicker">@Strings.PromptChooseFolder</button>
                 </div>
                 @if (_picker is { } pick)
@@ -163,16 +163,16 @@ else
             }
             <details class="small" style="margin-top:14px">
                 <summary class="muted">@Strings.PromptAdvanced</summary>
-                <label>@Strings.PromptSystem</label>
-                <textarea rows="4" @bind="_session.Options.System"></textarea>
+                <label for="pr-system">@Strings.PromptSystem</label>
+                <textarea id="pr-system" rows="4" @bind="_session.Options.System"></textarea>
                 <div class="row">
-                    <label style="margin:0">@Strings.PromptTemperature</label><input type="number" step="0.1" min="0" max="2" style="width:80px" @bind="_session.Options.Temperature" />
-                    <label style="margin:0">@Strings.PromptMaxTokens</label><input type="number" min="1" max="32768" style="width:90px" @bind="_session.Options.MaxTokens" />
+                    <label for="pr-temp" style="margin:0">@Strings.PromptTemperature</label><input id="pr-temp" type="number" step="0.1" min="0" max="2" style="width:80px" @bind="_session.Options.Temperature" />
+                    <label for="pr-max" style="margin:0">@Strings.PromptMaxTokens</label><input id="pr-max" type="number" min="1" max="32768" style="width:90px" @bind="_session.Options.MaxTokens" />
                 </div>
                 @if (!IsVia)
                 {
-                    <label>@Strings.PromptApiKey</label>
-                    <input type="password" autocomplete="off" @bind="_session.Options.ApiKey" />
+                    <label for="pr-key">@Strings.PromptApiKey</label>
+                    <input id="pr-key" type="password" autocomplete="off" @bind="_session.Options.ApiKey" />
                 }
             </details>
         </div>

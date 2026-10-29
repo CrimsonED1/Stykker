@@ -18,7 +18,7 @@
 <div class="card bench-setup">
     <div class="row">
         <span class="muted small">@Strings.BenchTarget</span>
-        <select value="@_target" @onchange="e => PickTarget(e.Value as string ?? string.Empty)" style="max-width:440px">
+        <select value="@_target" aria-label="@Strings.A11yBenchTarget" @onchange="e => PickTarget(e.Value as string ?? string.Empty)" style="max-width:440px">
             <option value="">@(e.Servers.Count == 0 && e.Library.Profiles.Count == 0 ? Strings.BenchNoTarget : Strings.BenchPickTarget)</option>
             @foreach (var s in e.Servers)
             {
@@ -93,7 +93,7 @@
 <h3 class="sec">@Strings.BenchResults</h3>
 @if (all.Count == 0)
 {
-    <div class="card"><span class="muted small">@Strings.BenchNoResults</span></div>
+    <div class="card"><EmptyState Icon="avg" Title="@Strings.EmptyBenchTitle" Text="@Strings.EmptyBenchText" /></div>
 }
 else
 {
