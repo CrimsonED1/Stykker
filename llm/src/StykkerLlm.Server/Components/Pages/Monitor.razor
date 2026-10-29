@@ -97,14 +97,16 @@
     <div class="row"><h2 style="margin:0">@Strings.RecentRequests</h2>
         <span class="spdscale" title="@Strings.ReqSpeedScale">t/s <i class="sp1"></i><i class="sp2"></i><i class="sp3"></i><i class="sp4"></i></span>
         @* Das ganze Protokoll als CSV (B3): die Liste zeigt nur die letzten Anfragen *@
-        @if (e.Csv.Enabled)
-        {
-            <a class="btn ib txt quiet reqcsv" href="api/requests.csv" download title="@Strings.ReqCsvTip"><Icon Name="file" />requests.csv</a>
-        }
-        @if (e.ProxyCsv.Path != null)
-        {
-            <a class="btn ib txt quiet reqcsv" href="api/requests.csv?log=proxy" download title="@Strings.ReqProxyCsvTip"><Icon Name="proxy" />proxy.csv</a>
-        }
+        <span class="reqdl">
+            @if (e.Csv.Enabled)
+            {
+                <a class="btn ib txt quiet reqcsv" href="api/requests.csv" download title="@Strings.ReqCsvTip"><Icon Name="file" />requests.csv</a>
+            }
+            @if (e.ProxyCsv.Path != null)
+            {
+                <a class="btn ib txt quiet reqcsv" href="api/requests.csv?log=proxy" download title="@Strings.ReqProxyCsvTip"><Icon Name="proxy" />proxy.csv</a>
+            }
+        </span>
     </div>
     @{ var reqModels = RequestRows.Models(reqs); var shownReqs = RequestRows.ForModel(reqs, _reqModel); }
     @if (reqs.Count == 0) { <span class="muted small">@Strings.NoneYet</span> }

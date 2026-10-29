@@ -639,7 +639,7 @@ html[data-theme=titan] .pxs-ask{border-radius:0}
 .req .mdl .mname{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .req .rtag{flex:none;display:inline-flex;align-items:center;height:16px;padding:0 5px;border-radius:4px;border:1px solid var(--line);color:var(--muted);font:600 10px var(--font-mono);letter-spacing:.03em}
 .req .res{display:inline-flex}.res-ok{color:var(--good)}.res-full{color:var(--warn)}.res-abort{color:var(--muted)}.res-err{color:var(--bad)}
-@media(max-width:900px){.req{grid-template-columns:22px minmax(0,1fr) 56px 56px 34px 40px}.req>:nth-child(3),.req>:nth-child(4),.req>:nth-child(5),.req>:nth-child(6),.req>:nth-child(7),.req>:nth-child(10),.req>:nth-child(11){display:none}}
+@media(max-width:900px){.req{grid-template-columns:20px minmax(0,1fr) 46px 50px 22px 34px;gap:6px}.req>:nth-child(3),.req>:nth-child(4),.req>:nth-child(5),.req>:nth-child(6),.req>:nth-child(7),.req>:nth-child(10),.req>:nth-child(11){display:none}}
 html[data-theme=titan] .req .spd{text-shadow:none!important}
 html[data-theme=titan] .dbar,html[data-theme=titan] .dbar i,html[data-theme=titan] .spdscale i{border-radius:0}
 html[data-theme=titan] .dbar{background:var(--disp)}html[data-theme=titan] .dbar i{background:var(--disp-ink)}
@@ -887,7 +887,8 @@ html[data-theme=titan] .bench-chart .dot{stroke:var(--card)}
 .pfd-cmd{display:flex;gap:6px;align-items:flex-start}
 .pfd-cmd code{flex:1;min-width:0;font:11px var(--font-mono);color:var(--muted);background:var(--card-2);border-radius:6px;padding:6px 8px;overflow-wrap:anywhere;max-height:30vh;overflow-y:auto}
 .pfd-export{gap:8px;margin-top:8px}.pfd-export>span{margin-right:auto}
-.reqcsv{font-size:12px;height:26px}
+.reqcsv{font-size:12px;height:26px}.reqdl{display:inline-flex;gap:6px}
+@media(max-width:640px){.spdscale{display:none}.reqdl{margin-left:auto}}
 .pfd-opts{margin-top:12px;gap:8px;flex-wrap:wrap}
 @media(max-width:640px){.modal-back:has(.pfd){align-items:flex-end}.modal.pfd{width:100%;max-width:none;border-radius:var(--radius) var(--radius) 0 0;max-height:88vh}}
 [data-view=small] .top:has(details.menu[open]){backdrop-filter:none}
