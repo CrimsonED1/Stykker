@@ -203,7 +203,9 @@ else if (Viewer.Known && Viewer.IsViewer)
     // Absturz-Meldung ein/aus: ui.js fragt beim Einschalten nach der Erlaubnis des Browsers und sagt, was daraus wurde
     private async Task ToggleNotify()
     {
-        _notify = await Safe<string>("stykkerUi.setNotify", _notify != "on") ?? "unsupported";
+        // den Stand frisch lesen: das Befehlsfenster (Ctrl+K) kann ihn inzwischen umgeschaltet haben
+        var now = await Safe<string>("stykkerUi.notify") ?? _notify;
+        _notify = await Safe<string>("stykkerUi.setNotify", now != "on") ?? "unsupported";
         switch (_notify)
         {
             case "on": Toast.Show(Strings.NotifyOnToast); break;

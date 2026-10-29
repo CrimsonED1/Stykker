@@ -60,6 +60,16 @@ else
                 {
                     <p class="muted small">@Strings.SecretsHidden</p>
                 }
+                @* Startskript (B2): was hier lief, als Datei – Geheimnisse geschwärzt, nur mit Schreibrecht *@
+                @if (Web.CanWrite && h.Program.Length > 0)
+                {
+                    var sk = Uri.EscapeDataString(h.Key);
+                    <div class="row pfd-export" title="@Strings.PfExportTip">
+                        <span class="muted small">@Strings.PfExport</span>
+                        <a class="btn ib txt" href="@($"api/history/script?kind=ps1&key={sk}")" download><Icon Name="file" />PowerShell</a>
+                        <a class="btn ib txt" href="@($"api/history/script?kind=cmd&key={sk}")" download><Icon Name="file" />Batch</a>
+                    </div>
+                }
             </div>
 
             <div class="card">

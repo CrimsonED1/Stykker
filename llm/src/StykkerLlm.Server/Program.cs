@@ -344,12 +344,24 @@ app.MapGet("/api/profile/{id}/script", (string id, string? kind, HttpContext ctx
 {
     if (!AccessRole.CanWrite(AccessGate.RoleOf(ctx))) return Results.NotFound();
     var profile = host.Engine.Library.Profiles.FirstOrDefault(p => p.Id.ToString("N") == id);
-    if (profile == null || ScriptExport.ForProfile(profile, kind) is not { } script) return Results.NotFound();
+    return profile == null || ScriptExport.ForProfile(profile, kind) is not { } script ? Results.NotFound() : ScriptFile(script);
+});
+
+// Dasselbe für einen Eintrag des Verlaufs (Seite /history/{key}); der Schlüssel steht in der Abfrage (er enthält | und \)
+app.MapGet("/api/history/script", (string? key, string? kind, HttpContext ctx, EngineHost host) =>
+{
+    if (!AccessRole.CanWrite(AccessGate.RoleOf(ctx)) || string.IsNullOrEmpty(key)) return Results.NotFound();
+    var entry = host.Engine.Library.FindHistory(key);
+    return entry == null || ScriptExport.ForHistory(entry, kind) is not { } script ? Results.NotFound() : ScriptFile(script);
+});
+
+static IResult ScriptFile((string FileName, string Text) script)
+{
     var bytes = script.FileName.EndsWith(".ps1", StringComparison.Ordinal)
         ? Encoding.UTF8.GetPreamble().Concat(Encoding.UTF8.GetBytes(script.Text)).ToArray()
         : Encoding.UTF8.GetBytes(script.Text);
     return Results.File(bytes, "text/plain; charset=utf-8", script.FileName);
-});
+}
 
 // Anfragen-Log herunterladen (Idee B3): ?log=requests (Log der Server, requests.csv) oder ?log=proxy (proxy.csv).
 // Die Dateien wachsen weiter, während man sie liest – darum mit FileShare.ReadWrite.

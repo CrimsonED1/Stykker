@@ -53,4 +53,13 @@ public class N106_ProfileScriptTests
         p.Name = "";
         Assert.AreEqual("start-llama-server.ps1", ScriptExport.ForProfile(p, "ps1")!.Value.FileName);
     }
+
+    [TestMethod]
+    public void ForHistory_SameAsProfile()
+    {
+        var p = Qwen();
+        var h = new HistoryEntry { Name = p.Name, Program = p.Program, Args = p.Args.ToList(), WorkingDir = p.WorkingDir };
+        Assert.AreEqual(ScriptExport.ForProfile(p, "cmd"), ScriptExport.ForHistory(h, "cmd"));
+        Assert.IsFalse(ScriptExport.ForHistory(h, "ps1")!.Value.Text.Contains("sk-geheim-123"));
+    }
 }

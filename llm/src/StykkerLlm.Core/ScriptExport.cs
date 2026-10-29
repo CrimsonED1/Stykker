@@ -8,15 +8,23 @@ public static class ScriptExport
 {
     // Download im Profilfenster (Idee B2): „ps1“ oder „cmd“, Dateiname aus dem Profilnamen. Argumente werden noch einmal
     // geschwärzt (ein von Hand eingetragener Schlüssel soll nie in einer Datei landen). null = unbekannte Art.
-    public static (string FileName, string Text)? ForProfile(Profile p, string? kind)
+    public static (string FileName, string Text)? ForProfile(Profile p, string? kind) =>
+        For(p.Name, p.Program, p.Args, p.WorkingDir, p.Env, kind);
+
+    // Dasselbe für einen Eintrag des Verlaufs (Seite /history/{key}): was lief, lässt sich ohne Merken als Skript mitnehmen
+    public static (string FileName, string Text)? ForHistory(HistoryEntry h, string? kind) =>
+        For(h.Name, h.Program, h.Args, h.WorkingDir, h.Env, kind);
+
+    private static (string FileName, string Text)? For(string name, string program, IReadOnlyList<string> rawArgs, string? workingDir,
+        IReadOnlyDictionary<string, string> env, string? kind)
     {
-        var (args, _) = CmdLine.Redact(p.Args);
-        var title = p.Name.Length > 0 ? p.Name : null;
-        var name = FileStem(p.Name.Length > 0 ? p.Name : Path.GetFileNameWithoutExtension(p.Program));
+        var (args, _) = CmdLine.Redact(rawArgs);
+        var title = name.Length > 0 ? name : null;
+        var stem = FileStem(name.Length > 0 ? name : Path.GetFileNameWithoutExtension(program));
         return (kind ?? "ps1").ToLowerInvariant() switch
         {
-            "ps1" => (name + ".ps1", ToPowerShell(p.Program, args, p.WorkingDir, p.Env, title)),
-            "cmd" => (name + ".cmd", ToCmd(p.Program, args, p.WorkingDir, p.Env, title)),
+            "ps1" => (stem + ".ps1", ToPowerShell(program, args, workingDir, env, title)),
+            "cmd" => (stem + ".cmd", ToCmd(program, args, workingDir, env, title)),
             _ => null,
         };
     }

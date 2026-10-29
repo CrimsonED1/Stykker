@@ -103,6 +103,21 @@ else
                     <tr><td>@Strings.Ram</td><td class="muted">@Gb(s.RamGb)</td></tr>
                 </table>
             </div>
+
+            @* Antwortbeginn und Leerlauf (B1, B4): dieselben Werte wie auf der Karte, hier mit Erklärung *@
+            @{ var lat = ServerLatency.Of(s.Finished, Host.Engine.RecentProxy(), s.Key); var idle = IdleUnload.Idle(Host.Engine.Library.FindProfile(s.Info), s, DateTime.Now); }
+            <div class="card">
+                <h2>@Strings.SecLatency</h2>
+                <table>
+                    <tr><th>@Strings.ColProperty</th><th>@Strings.ColValue</th></tr>
+                    <tr title="@Strings.ReqPromptTip"><td>@Strings.MxPromptSpeed</td><td class="muted">@(lat.PromptTps is double pps ? pps.ToString("0", CultureInfo.InvariantCulture) + " t/s" : "–")</td></tr>
+                    <tr title="@(lat.TtftMeasured ? Strings.CardTtft(lat.Samples) : Strings.CardTtftEstimated(lat.Samples))">
+                        <td>@Strings.MxTtft</td>
+                        <td class="muted">@(lat.TtftSec is double tt ? (lat.TtftMeasured ? "" : "≈ ") + ServerLatency.Seconds(tt) + " s · " + (lat.TtftMeasured ? Strings.LatMeasured(lat.Samples) : Strings.LatEstimated(lat.Samples)) : "–")</td>
+                    </tr>
+                    <tr title="@(idle?.Tip ?? "")"><td>@Strings.LatIdle</td><td class="muted">@(idle?.Text ?? Strings.LatNotIdle)</td></tr>
+                </table>
+            </div>
         </div>
     </div>
 }

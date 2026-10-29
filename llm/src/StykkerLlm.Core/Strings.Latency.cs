@@ -8,7 +8,11 @@ public static partial class Strings
         ReqTtft = "ttft",
         ReqTtftTip = "Time to first token: from the start of the request to the first thinking or answer token, as the Stykker proxy saw it (includes waiting in the queue and reading the prompt).",
         ReqPromptTip = "Prompt processing in tokens per second (from the server's log)",
-        MxTtft = "Time to first token", MxPromptSpeed = "Prompt processing";
+        MxTtft = "Time to first token", MxPromptSpeed = "Prompt processing",
+        SecLatency = "Response start", LatIdle = "Idle", LatNotIdle = "working or only a short pause";
+
+    public static string LatMeasured(int samples) => $"median of {samples} through the proxy";
+    public static string LatEstimated(int samples) => $"prompt reading of {samples} from the log";
 
     public static string CardTtft(int samples) =>
         $"Time to first token: median of the last {samples} requests through the Stykker proxy (includes queue and prompt reading)";

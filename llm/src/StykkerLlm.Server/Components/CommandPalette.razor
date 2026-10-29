@@ -1,5 +1,5 @@
 @* Befehlsfenster (docs/plan-ui-redesign.md, U10): Ctrl+K öffnet es (ui.js klickt den unsichtbaren Knopf), Pfeile wählen,
-   Enter führt aus, Esc schließt. Seiten und Aktionen: Free VRAM, Proxy, Thema, Profil starten, Server stoppen.
+   Enter führt aus, Esc schließt. Seiten und Aktionen: Free VRAM, Proxy, Thema, Profil starten, Server stoppen, Downloads (CSV, Startskript), Meldungen.
    Der Fokus bleibt im Fenster, solange es offen ist. *@
 @implements IDisposable
 @inject EngineHost Host
@@ -66,7 +66,14 @@
         yield return Page(Strings.PairApproveTitle, "approve", "lock");
         foreach (var s in e.Registry.Servers.Where(s => s.Kind == BackendKind.LlamaCpp && !s.Info.Manual))
             yield return Page(Strings.CmdDetails(s.Name), $"serverdetail/{Uri.EscapeDataString(s.Key)}", "info");
+        // Downloads (B3) und die Browser-Meldung: die Datei kommt als Anhang, die Seite bleibt stehen
+        Item Download(string label, string href, string icon) => new(label, Strings.CmdAction, icon, () => { Nav.NavigateTo(href, forceLoad: true); return Task.CompletedTask; });
+        if (e.Csv.Enabled) yield return Download(Strings.CmdDownload("requests.csv"), "api/requests.csv", "file");
+        if (e.ProxyCsv.Path != null) yield return Download(Strings.CmdDownload("proxy.csv"), "api/requests.csv?log=proxy", "proxy");
+        yield return new(Strings.CmdAlerts, Strings.CmdAction, "e-crash", ToggleAlerts);
         if (!canWrite) yield break;
+        foreach (var p in e.Library.Profiles)
+            yield return Download(Strings.CmdScript(p.Name), $"api/profile/{p.Id:N}/script?kind=ps1", "file");
         yield return new(Strings.BtnFreeVram, Strings.CmdAction, "eject", () => Launcher.FreeVramAsync(), true);
         yield return new(e.Proxies.Running ? Strings.CmdProxyOff : Strings.CmdProxyOn, Strings.CmdAction, "proxy",
             () => { if (!e.Proxies.Toggle(out var err) && err != null) Toast.Show(err, warn: true); return Task.CompletedTask; }, true);
@@ -127,6 +134,25 @@
         await Close();
         StateHasChanged();
         await it.Run();
+    }
+
+    // Browser-Meldung umschalten wie im ☰-Menü (ui.js fragt nach der Erlaubnis und sagt, was daraus wurde)
+    private async Task ToggleAlerts()
+    {
+        string state;
+        try
+        {
+            var now = await JS.InvokeAsync<string>("stykkerUi.notify");
+            state = await JS.InvokeAsync<string>("stykkerUi.setNotify", now != "on");
+        }
+        catch (Exception ex) when (ex is JSException or InvalidOperationException) { state = "unsupported"; }
+        Toast.Show(state switch
+        {
+            "on" => Strings.NotifyOnToast,
+            "blocked" => Strings.NotifyBlocked,
+            "unsupported" => Strings.NotifyUnsupported,
+            _ => Strings.NotifyOffToast,
+        }, warn: state is "blocked" or "unsupported");
     }
 
     public void Dispose() { }
