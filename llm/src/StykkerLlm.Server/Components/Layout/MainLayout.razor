@@ -16,7 +16,7 @@
    /settings ist ohne Neuladen sichtbar, weil der Kopf jeden Takt neu gezeichnet wird. *@
 @* Tab-Zustand (TabStatus): Titel mit t/s oder Absturz vorn, die Stufe für den Punkt im Favicon und die Meldung für die
    Browser-Benachrichtigung. ui.js liest die Meta-Angabe bei jeder Änderung des Kopfs (wie beim Thema). *@
-@{ var tabTps = Host.Engine.Servers.Select(x => x.Current).ToList(); var tabLost = Host.LastLost; var tabAlert = TabStatus.Alert(tabLost); }
+@{ var tabTps = Host.Engine.Servers.Select(x => x.Current).ToList(); var tabLost = Host.LastLost; var tabAlert = TabStatus.Alert(tabLost, Host.Done.Last); }
 <PageTitle>@TabStatus.Title(PageName(), tabTps, tabLost)</PageTitle>
 <HeadContent>
     <meta name="stykker-theme" content="@ThemeCatalog.Mode(Host.Engine.Settings.Theme)" />
@@ -124,7 +124,7 @@
             </div>
             <div class="seg">
                 <button class="@(_cardLabels ? "on" : "")" title="@Strings.CardLabelsTip" aria-pressed="@(_cardLabels ? "true" : "false")" @onclick="ToggleCardLabels">@Strings.CardLabels</button>
-                @* Absturz-Meldung im Browser (je Gerät); im Fenster meldet schon das Tray-Symbol *@
+                @* Browser-Meldung (je Gerät): Absturz, fertige Modelltests, fertiger Benchmark; im Fenster meldet schon das Tray-Symbol *@
                 @if (!_shell)
                 {
                     <button class="@(_notify == "on" ? "on" : "")" title="@(_notify == "unsupported" ? Strings.NotifyUnsupported : Strings.NotifyTip)"

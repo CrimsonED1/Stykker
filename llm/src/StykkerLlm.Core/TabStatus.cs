@@ -39,9 +39,21 @@ public static class TabStatus
     public static TabAlert? Alert(ServerLost? lost)
     {
         if (lost == null) return null;
-        var at = new DateTimeOffset(lost.When.Kind == DateTimeKind.Unspecified ? DateTime.SpecifyKind(lost.When, DateTimeKind.Local) : lost.When)
-            .ToUnixTimeMilliseconds();
+        var at = UnixMs(lost.When);
         var body = !string.IsNullOrWhiteSpace(lost.Cause) ? lost.Cause! : Strings.LostBalloon(lost.Name);
         return new TabAlert("lost-" + at.ToString(CultureInfo.InvariantCulture) + "-" + lost.Name, Strings.TabLostTitle(lost.Name), body, at);
     }
+
+    // Absturz oder fertiger Lauf (DoneEvents): gemeldet wird das neuere von beiden – ui.js zeigt jede Id nur einmal
+    public static TabAlert? Alert(ServerLost? lost, DoneEvent? done)
+    {
+        var crash = Alert(lost);
+        if (done == null) return crash;
+        var at = UnixMs(done.When);
+        if (crash != null && crash.AtMs >= at) return crash;
+        return new TabAlert(done.Kind + "-" + at.ToString(CultureInfo.InvariantCulture), done.Title, done.Body, at);
+    }
+
+    private static long UnixMs(DateTime t) =>
+        new DateTimeOffset(t.Kind == DateTimeKind.Unspecified ? DateTime.SpecifyKind(t, DateTimeKind.Local) : t).ToUnixTimeMilliseconds();
 }

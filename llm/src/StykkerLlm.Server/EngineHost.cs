@@ -22,6 +22,8 @@ public sealed class EngineHost : IDisposable
     public AccessControl Access { get; }
     public string Key { get; }
     public BenchmarkService Benchmarks { get; } = new();
+    // Fertige lange Läufe (Testwarteschlange, Benchmark) für die Browser-Meldung (TabStatus)
+    public DoneEvents Done { get; } = new();
     // Die Modelltests des Servers gehören in den Zustand: Fenster, TUI und Telefon lesen sonst eine leere Warteschlange
     public EvalQueue? Queue { get; set; }
     // Die gekoppelten Nodes (dieser Server als Hub, docs/nodes.md)
@@ -68,6 +70,7 @@ public sealed class EngineHost : IDisposable
         Engine.Proxies.StartableModels = () => { HostScheduler.Refresh(); return HostScheduler.KnownModels(); };
         Key = ServerClient.ReadKey(paths, _platform) ?? ServerClient.WriteKey(paths, _platform);
         Engine.IdleUnloadDue += OnIdleUnload;
+        Benchmarks.Finished += (result, regression) => Done.Bench(result, regression, DateTime.Now);
     }
 
     // Zuletzt verschwundene Server ( Absturz, von außen beendet) für die Oberflächen
@@ -144,7 +147,13 @@ public sealed class EngineHost : IDisposable
         {
             while (!ct.IsCancellationRequested)
             {
-                try { await Engine.TickAsync(); Ticked?.Invoke(); } catch { }
+                try
+                {
+                    await Engine.TickAsync();
+                    if (Queue is { } q) Done.Queue(q.Running, q.Jobs, DateTime.Now);   // Ende der Testwarteschlange → Meldung
+                    Ticked?.Invoke();
+                }
+                catch { }
                 Access.Maintain();          // abgelaufenen Code ersetzen, alte Kopplungsanfragen aufräumen
                 try { await Task.Delay(Math.Max(500, Engine.Settings.IntervalMs), ct); } catch { break; }
             }

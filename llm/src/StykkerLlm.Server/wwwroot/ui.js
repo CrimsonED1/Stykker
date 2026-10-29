@@ -60,7 +60,7 @@
     new MutationObserver(theme).observe(document.head, { childList: true, subtree: true, attributes: true, attributeFilter: ['content'] });
 
     // Tab-Zustand (TabStatus im Server, <meta name="stykker-status">): ein Punkt im Favicon (grün = erzeugt Tokens, rot =
-    // Server verloren) und bei einem Absturz eine Browser-Benachrichtigung – nur wenn auf diesem Gerät eingeschaltet, nur
+    // Server verloren) und bei einem Absturz oder einem fertigen Lauf (Tests, Benchmark) eine Browser-Benachrichtigung – nur wenn auf diesem Gerät eingeschaltet, nur
     // einmal je Ereignis (über alle Tabs) und nicht, wenn der Tab vorn ist (dort steht das Banner).
     const NOTIFY_KEY = 'stykker.notify', SEEN_KEY = 'stykker.alertSeen';
     const canNotify = () => 'Notification' in window && window.isSecureContext;
