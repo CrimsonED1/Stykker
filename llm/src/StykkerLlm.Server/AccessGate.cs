@@ -367,7 +367,7 @@ public sealed class AccessGate(AccessControl access, string key, int port, Func<
         return $$"""
             <!doctype html><html lang="en"><head><meta charset="utf-8">
             <meta name="viewport" content="width=device-width,initial-scale=1"><title>Stykker LLM</title>
-            <style>{{th.CssVariables()}}
+            <style>{{th.CssRoot()}}
             body{margin:0;background:linear-gradient(180deg,var(--bg-top),var(--bg-bottom) 1200px);color:var(--ink);font:15px/1.6 var(--font);display:flex;align-items:center;justify-content:center;min-height:100vh}
             body[data-bg=space],body[data-bg=deep]{background-image:radial-gradient(60% 40% at 80% 10%,rgb(var(--acc-rgb)/.12),transparent 70%),linear-gradient(180deg,var(--bg-top),var(--bg-bottom) 1200px)}
             body[data-bg=cyber]{background-image:radial-gradient(circle,rgb(47 184 214/.3) 1px,transparent 1.4px);background-size:5px 5px}

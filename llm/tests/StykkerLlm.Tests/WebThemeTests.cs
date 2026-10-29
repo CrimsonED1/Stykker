@@ -73,6 +73,21 @@ public class WebThemeTests
         }
     }
 
+    // Anmeldeseite und Fenster-Dialog schreiben die Variablen in ein <style>: ohne :root{…} verwarf der Browser die erste
+    // Regel samt body und die Seite stand ungestylt da
+    [TestMethod]
+    public void CssRoot_IsOneCompleteRule()
+    {
+        foreach (var t in ThemeCatalog.All)
+        {
+            var css = t.CssRoot();
+            Assert.IsTrue(css.StartsWith(":root{color-scheme:", StringComparison.Ordinal), $"{t.Name}: {css[..20]}");
+            Assert.IsTrue(css.EndsWith('}'), t.Name);
+            Assert.AreEqual(1, css.Count(c => c == '{'), $"{t.Name}: genau eine Regel");
+            Assert.AreEqual(1, css.Count(c => c == '}'), $"{t.Name}: genau eine Regel");
+        }
+    }
+
     // ── Web und TUI zeigen dieselben Themen in derselben Reihenfolge ──
     [TestMethod]
     public void Themes_HaveTheSameNamesAndOrderAsTheTerminal()

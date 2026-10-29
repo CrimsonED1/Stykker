@@ -375,7 +375,7 @@ internal static class Html
     // Weboberfläche), damit sie genauso aussieht wie der Rest und keine zweite Oberfläche gebraucht wird.
     public static string AskClose(ThemeInfo theme, ShutdownHint? hint) => $$$"""
         <!doctype html><html lang="en"><head><meta charset="utf-8"><title>{{{Esc(Strings.AppName)}}}</title>
-        <style>{{{theme.CssVariables()}}}
+        <style>{{{theme.CssRoot()}}}
         body{margin:0;background:linear-gradient(180deg,var(--bg-top),var(--bg-bottom) 1200px);color:var(--ink);font:15px/1.6 var(--font);display:flex;align-items:center;justify-content:center;min-height:100vh}
         .box{background:linear-gradient(180deg,var(--card-top),var(--card-bottom));border:1px solid var(--card-border);border-radius:var(--radius);padding:24px 22px;max-width:440px;margin:16px;box-shadow:inset 0 1px 0 var(--top-line),0 18px 48px rgb(0 0 0/.5)}
         h1{font-size:16px;margin:0 0 10px;letter-spacing:.06em}.acc{color:var(--acc)}
