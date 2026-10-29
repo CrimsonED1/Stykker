@@ -263,7 +263,10 @@ else if (Viewer.Known && Viewer.IsViewer)
         "settings" => Strings.SettingsTitle,
         "bugreport" => Strings.BugReportTitle,
         "disks" => Strings.DisksPageTitle,
-        _ => RelPath().StartsWith("serverdetail", StringComparison.Ordinal) ? Strings.NavMonitor : RelPath(),
+        // Detailseiten tragen einen kodierten Schlüssel im Weg – der gehört weder neben die Marke noch in den Tab-Titel
+        _ when RelPath().StartsWith("serverdetail", StringComparison.Ordinal) => Strings.NavMonitor,
+        _ when RelPath().StartsWith("history/", StringComparison.Ordinal) => Strings.SectionHistory,
+        _ => RelPath(),
     };
 
     private bool InMore
