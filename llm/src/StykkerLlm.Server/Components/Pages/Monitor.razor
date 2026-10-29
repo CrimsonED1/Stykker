@@ -47,10 +47,11 @@
 {
     <div class="card"><b>@Strings.NoServersTitle</b><div class="muted small">@Strings.NoServersHint</div></div>
 }
+@{ var recentProxy = e.RecentProxy(); }
 @foreach (var s in e.Registry.Servers)
 {
     var sv = s;
-    <ServerCard Model="ServerCardModel.From(sv, e.Recorder.Sessions.FirstOrDefault(r => r.Target == sv.Key), UsualFor(sv), e.Library.FindProfile(sv.Info))" CanWrite="CanWrite && !ro"
+    <ServerCard Model="ServerCardModel.From(sv, e.Recorder.Sessions.FirstOrDefault(r => r.Target == sv.Key), UsualFor(sv), e.Library.FindProfile(sv.Info), recentProxy)" CanWrite="CanWrite && !ro"
                 Served="px.IsServed(sv.Key)" ProxyRunning="px.Running" SparkAgo="@SparkAgo"
                 OnServe="() => Serve(sv)" OnSave='() => Act("save", sv.Key, sv.Name)'
                 OnRecord='() => Act(e.Recorder.Sessions.Any(r => r.Target == sv.Key) ? "record.stop" : "record.start", sv.Key)'
@@ -94,7 +95,17 @@
 }
 <div class="card">
     <div class="row"><h2 style="margin:0">@Strings.RecentRequests</h2>
-        <span class="spdscale" title="@Strings.ReqSpeedScale">t/s <i class="sp1"></i><i class="sp2"></i><i class="sp3"></i><i class="sp4"></i></span></div>
+        <span class="spdscale" title="@Strings.ReqSpeedScale">t/s <i class="sp1"></i><i class="sp2"></i><i class="sp3"></i><i class="sp4"></i></span>
+        @* Das ganze Protokoll als CSV (B3): die Liste zeigt nur die letzten Anfragen *@
+        @if (e.Csv.Enabled)
+        {
+            <a class="btn ib txt quiet reqcsv" href="api/requests.csv" download title="@Strings.ReqCsvTip"><Icon Name="file" />requests.csv</a>
+        }
+        @if (e.ProxyCsv.Path != null)
+        {
+            <a class="btn ib txt quiet reqcsv" href="api/requests.csv?log=proxy" download title="@Strings.ReqProxyCsvTip"><Icon Name="proxy" />proxy.csv</a>
+        }
+    </div>
     @{ var reqModels = RequestRows.Models(reqs); var shownReqs = RequestRows.ForModel(reqs, _reqModel); }
     @if (reqs.Count == 0) { <span class="muted small">@Strings.NoneYet</span> }
     else
@@ -112,7 +123,7 @@
             </label>
         }
         <div class="reqs">
-            <div class="req head" aria-hidden="true"><span></span><span>@Strings.ReqModel</span><span>@Strings.ReqHost</span><span>@Strings.ReqTime</span><span class="r">@Strings.ReqPrompt</span><span class="r">@Strings.ReqCache</span><span class="r">t/s</span><span class="r">@Strings.ReqTokens</span><span class="c">@Strings.ReqTools</span><span class="c">@Strings.ReqThink</span><span class="c">@Strings.ReqResult</span><span class="r">@Strings.ReqAgo</span></div>
+            <div class="req head" aria-hidden="true"><span></span><span>@Strings.ReqModel</span><span>@Strings.ReqHost</span><span>@Strings.ReqTime</span><span class="r" title="@Strings.ReqTtftTip">@Strings.ReqTtft</span><span class="r">@Strings.ReqPrompt</span><span class="r">@Strings.ReqCache</span><span class="r">t/s</span><span class="r">@Strings.ReqTokens</span><span class="c">@Strings.ReqTools</span><span class="c">@Strings.ReqThink</span><span class="c">@Strings.ReqResult</span><span class="r">@Strings.ReqAgo</span></div>
             @foreach (var r in shownReqs)
             {
                 var kind = r.Host == null ? e.Registry.Servers.FirstOrDefault(x => x.Key == r.ServerKey)?.Kind ?? BackendKind.LlamaCpp : BackendKind.LlamaCpp;
@@ -124,7 +135,8 @@
                     <span class="mdl" title="@r.Model"><i style="background:var(@BackendColor(kind))"></i><span class="mname">@r.Server</span>@if (ProxyRoutes.Label(r.Route).Length > 0) { <span class="rtag" title="@ProxyRoutes.Tip(r.Route)">@ProxyRoutes.Label(r.Route)</span> }</span>
                     <span class="hostc">@if (r.Host != null) { <span class="chipi host"><Icon Name="host" />@r.Host</span> } else { <span class="muted small">@Strings.CardLocal</span> }</span>
                     <span class="dur" title="@r.Seconds.ToString("0.0", CultureInfo.InvariantCulture) s"><span class="dbar"><i style="width:@((int)(100 * r.Seconds / maxSec))%"></i></span><small>@(r.Seconds > 0 ? r.Seconds.ToString("0", CultureInfo.InvariantCulture) + "s" : "–")</small></span>
-                    <span class="r muted">@(r.PromptTps > 0 ? r.PromptTps.ToString("0", CultureInfo.InvariantCulture) : "–")</span>
+                    <span class="r ttft @(r.Ttft == null ? "muted" : "")" title="@(r.Ttft == null ? Strings.ReqNoProxy : Strings.ReqTtftTip)">@(r.Ttft is double tf ? ServerLatency.Seconds(tf) : "–")</span>
+                    <span class="r muted" title="@Strings.ReqPromptTip">@(r.PromptTps > 0 ? r.PromptTps.ToString("0", CultureInfo.InvariantCulture) : "–")</span>
                     <span class="r cache @(r.PromptReused == 0 ? "miss" : "")" title="@RequestRows.CacheTip(r.PromptReused, r.PromptRead, r.PromptReusedEstimated)">@RequestRows.CacheText(r.PromptReused)</span>
                     <span class="r spd sp@(RequestRows.SpeedLevel(r.GenTps))">@(r.GenTps > 0 ? r.GenTps.ToString("0.0", CultureInfo.InvariantCulture) : "–")</span>
                     <span class="r">@r.GenTokens.ToString("N0", CultureInfo.InvariantCulture)</span>
@@ -150,6 +162,8 @@
                         <div class="mx-kv"><span>@Strings.MxStarted</span><b>@(r.Start?.ToString("HH:mm:ss", CultureInfo.InvariantCulture) ?? Strings.MxNoValue)</b></div>
                         <div class="mx-kv"><span>@Strings.MxEnded</span><b>@(r.Seen?.ToString("HH:mm:ss", CultureInfo.InvariantCulture) ?? Strings.MxNoValue)</b></div>
                         <div class="mx-kv"><span>@Strings.MxDuration</span><b>@r.Seconds.ToString("0.0", CultureInfo.InvariantCulture) s</b></div>
+                        <div class="mx-kv" title="@Strings.ReqTtftTip"><span>@Strings.MxTtft</span><b>@(r.Ttft is double tf2 ? ServerLatency.Seconds(tf2) + " s" : Strings.ReqNoProxy)</b></div>
+                        <div class="mx-kv" title="@Strings.ReqPromptTip"><span>@Strings.MxPromptSpeed</span><b>@(r.PromptTps > 0 ? r.PromptTps.ToString("0", CultureInfo.InvariantCulture) + " t/s" : Strings.MxNoValue)</b></div>
                     </div>
                 }
             }
@@ -418,6 +432,12 @@
                 <div class="pfd-cmd"><code>@cmd</code><button class="ib quiet" title="@Strings.MxCopyBlock" aria-label="@Strings.MxCopyBlock" @onclick="() => Copy(cmd)"><Icon Name="@(_copied ? "r-ok" : "file")" /></button></div>
                 @if (dw)
                 {
+                    @* Startskript (B2): dieselbe Kommandozeile als Datei, Geheimnisse geschwärzt *@
+                    <div class="row pfd-export" title="@Strings.PfExportTip">
+                        <span class="muted small">@Strings.PfExport</span>
+                        <a class="btn ib txt" href="@($"api/profile/{dp.Id:N}/script?kind=ps1")" download><Icon Name="file" />PowerShell</a>
+                        <a class="btn ib txt" href="@($"api/profile/{dp.Id:N}/script?kind=cmd")" download><Icon Name="file" />Batch</a>
+                    </div>
                     <div class="grp pfd-grp">@Strings.BtnEdit</div>
                     <input placeholder="@Strings.FieldName" @bind="_editName" @bind:event="oninput" style="width:100%" />
                     <textarea placeholder="@Strings.FieldNote" @bind="_editNote" @bind:event="oninput" rows="2" style="width:100%;margin-top:8px"></textarea>

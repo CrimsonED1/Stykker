@@ -338,6 +338,31 @@ app.MapGet("/api/bench/{id}/csv", (string id, EngineHost host) =>
     return Results.Text(BenchmarkExport.Csv(new[] { found }), "text/csv; charset=utf-8");
 });
 
+// Gemerktes Profil als Startskript herunterladen (Idee B2), nur Admin: /api/profile/{id}/script?kind=ps1|cmd.
+// PowerShell 5 liest Skripte ohne BOM als ANSI – mit BOM überleben Umlaute in Pfaden.
+app.MapGet("/api/profile/{id}/script", (string id, string? kind, HttpContext ctx, EngineHost host) =>
+{
+    if (!AccessRole.CanWrite(AccessGate.RoleOf(ctx))) return Results.NotFound();
+    var profile = host.Engine.Library.Profiles.FirstOrDefault(p => p.Id.ToString("N") == id);
+    if (profile == null || ScriptExport.ForProfile(profile, kind) is not { } script) return Results.NotFound();
+    var bytes = script.FileName.EndsWith(".ps1", StringComparison.Ordinal)
+        ? Encoding.UTF8.GetPreamble().Concat(Encoding.UTF8.GetBytes(script.Text)).ToArray()
+        : Encoding.UTF8.GetBytes(script.Text);
+    return Results.File(bytes, "text/plain; charset=utf-8", script.FileName);
+});
+
+// Anfragen-Log herunterladen (Idee B3): ?log=requests (Log der Server, requests.csv) oder ?log=proxy (proxy.csv).
+// Die Dateien wachsen weiter, während man sie liest – darum mit FileShare.ReadWrite.
+app.MapGet("/api/requests.csv", (string? log, EngineHost host) =>
+{
+    var e = host.Engine;
+    e.Csv.Flush();
+    var path = log == "proxy" ? e.ProxyCsv.Path : e.Csv.Path;
+    if (path == null || !File.Exists(path)) return Results.NotFound();
+    var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+    return Results.File(stream, "text/csv; charset=utf-8", Path.GetFileName(path));
+});
+
 // Serverlog ansehen („Open log“ beim Hinweis, auf der Detailseite). Nur Dateien im Datenordner, sonst 404.
 app.MapGet("/api/log", (string? path, AppPaths data) =>
 {

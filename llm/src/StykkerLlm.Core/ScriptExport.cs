@@ -6,6 +6,31 @@ namespace StykkerLlm.Core;
 // das Skript weist darauf hin, statt einen Wert zu erfinden.
 public static class ScriptExport
 {
+    // Download im Profilfenster (Idee B2): „ps1“ oder „cmd“, Dateiname aus dem Profilnamen. Argumente werden noch einmal
+    // geschwärzt (ein von Hand eingetragener Schlüssel soll nie in einer Datei landen). null = unbekannte Art.
+    public static (string FileName, string Text)? ForProfile(Profile p, string? kind)
+    {
+        var (args, _) = CmdLine.Redact(p.Args);
+        var title = p.Name.Length > 0 ? p.Name : null;
+        var name = FileStem(p.Name.Length > 0 ? p.Name : Path.GetFileNameWithoutExtension(p.Program));
+        return (kind ?? "ps1").ToLowerInvariant() switch
+        {
+            "ps1" => (name + ".ps1", ToPowerShell(p.Program, args, p.WorkingDir, p.Env, title)),
+            "cmd" => (name + ".cmd", ToCmd(p.Program, args, p.WorkingDir, p.Env, title)),
+            _ => null,
+        };
+    }
+
+    // „qwen3 8B / q4“ → „start-qwen3-8B-q4“: nur Buchstaben, Ziffern, - _ . (für jedes Dateisystem und jeden Browser)
+    public static string FileStem(string name)
+    {
+        var sb = new StringBuilder("start-");
+        foreach (var c in name.Trim())
+            sb.Append(char.IsAsciiLetterOrDigit(c) || c is '-' or '_' or '.' ? c : '-');
+        var stem = string.Join('-', sb.ToString().Split('-', StringSplitOptions.RemoveEmptyEntries)).Trim('.');
+        return stem.Length > 64 ? stem[..64] : stem.Length > "start".Length ? stem : "start-server";
+    }
+
     public static string ToPowerShell(string program, IReadOnlyList<string> args, string? workingDir, IReadOnlyDictionary<string, string>? env, string? title = null)
     {
         var sb = new StringBuilder();
