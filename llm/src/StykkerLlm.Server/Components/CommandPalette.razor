@@ -71,6 +71,10 @@
         if (e.Csv.Enabled) yield return Download(Strings.CmdDownload("requests.csv"), "api/requests.csv", "file");
         if (e.ProxyCsv.Path != null) yield return Download(Strings.CmdDownload("proxy.csv"), "api/requests.csv?log=proxy", "proxy");
         yield return new(Strings.CmdAlerts, Strings.CmdAction, "e-crash", ToggleAlerts);
+        yield return new(Strings.KeysTitle + " (?)", Strings.CmdAction, "info", async () =>
+        {
+            try { await JS.InvokeVoidAsync("stykkerUi.keys"); } catch (Exception ex) when (ex is JSException or InvalidOperationException) { }
+        });
         if (!canWrite) yield break;
         foreach (var p in e.Library.Profiles)
             yield return Download(Strings.CmdScript(p.Name), $"api/profile/{p.Id:N}/script?kind=ps1", "file");

@@ -164,7 +164,13 @@
             e.preventDefault();
             if (document.getElementById('hsearch')) window.stykkerFocus('hsearch'); else open();
         }
+        // ? zeigt die Tastenkürzel (auf deutscher Tastatur Umschalt+ß – e.key ist trotzdem „?“)
+        if (!typing && e.key === '?' && !e.ctrlKey && !e.metaKey && !e.altKey && !document.querySelector('.cmdk')) {
+            e.preventDefault();
+            keys();
+        }
     });
+    function keys() { const b = document.getElementById('keys-open'); if (b) b.click(); }
 
     // Im Fenster StykkerUI gibt es keine Browser-Knöpfe und -Tasten: Photino baut in jede Seite
     // window.external ein – daran ist die Hülle zu erkennen.
@@ -237,6 +243,7 @@
         setCardLabels: function (on) { try { localStorage.setItem(LABELS_KEY, on ? 'on' : 'off'); } catch (e) { /* egal: dann eben nur diese Sitzung */ } applyLabels(); },
         proxyTab: function () { try { return localStorage.getItem(TAB_KEY) || ''; } catch (e) { return ''; } },
         setProxyTab: function (t) { try { localStorage.setItem(TAB_KEY, t); } catch (e) { /* egal: dann eben nur diese Sitzung */ } },
+        keys: keys,             // Fenster „Keyboard shortcuts“ (auch aus dem Befehlsfenster)
         notify: notifyState,    // Absturz-Meldung: on | off | blocked | unsupported
         setNotify: setNotify,
         askClose: askClose,     // auch zum Ansehen ohne Hülle (Bilder, Prüfung)

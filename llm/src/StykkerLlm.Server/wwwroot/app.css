@@ -934,3 +934,9 @@ html[data-theme=titan] .bench-chart .dot{stroke:var(--card)}
 .chat-hd{font:600 12px var(--font-mono);color:var(--acc);margin-bottom:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .cmp-sum{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:8px;color:var(--ink)}.cmp-sum .ic{color:var(--good)}
 @media(max-width:900px){.chat-cols{grid-template-columns:minmax(0,1fr)}}
+/* Fenster „Keyboard shortcuts“ (?): Tasten links als Kappen, Erklärung rechts */
+.modal.keys{max-width:520px}
+.keys-list{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:8px 14px;margin:6px 0 10px;align-items:baseline}
+.keys-list dt{display:flex;gap:4px;align-items:center;flex-wrap:wrap;margin:0}.keys-list dd{margin:0;font-size:13px}
+.keys-list .kbd{display:inline-block;min-width:20px;text-align:center;padding:1px 6px;border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;font:11px var(--font-mono);color:var(--ink);background:var(--card-2)}
+@media(max-width:520px){.keys-list{grid-template-columns:minmax(0,1fr)}.keys-list dd{margin-bottom:6px}}

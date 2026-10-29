@@ -1,0 +1,41 @@
+@* Fenster „Keyboard shortcuts“: ui.js klickt bei ? den unsichtbaren Knopf (wie beim Befehlsfenster). Die Liste steht im
+   Core (Shortcuts); im Browser ohne die Kürzel, die es nur im Fenster StykkerUI gibt. Esc oder ein Klick daneben schließt. *@
+<button id="keys-open" class="cmdk-hidden" tabindex="-1" aria-hidden="true" @onclick="Open"></button>
+@if (_open)
+{
+    <div class="modal-back" @onclick="Close">
+        <div class="modal keys" role="dialog" aria-modal="true" aria-labelledby="keys-title" tabindex="-1" @ref="_box"
+             @onclick:stopPropagation="true" @onkeydown='k => { if (k.Key == "Escape") Close(); }'>
+            <div class="cdlg-hd">
+                <h2 id="keys-title">@Strings.KeysTitle</h2>
+                <button class="ib quiet" title="@Strings.Close" aria-label="@Strings.Close" @onclick="Close"><Icon Name="x" /></button>
+            </div>
+            <dl class="keys-list">
+                @foreach (var s in Shortcuts.For(Shell))
+                {
+                    <dt>@foreach (var k in s.Keys.Split(' ')) { if (k is "/" && s.Keys.Contains("Alt")) { <span class="muted"> / </span> } else { <span class="kbd">@k</span> } }</dt>
+                    <dd>@s.What</dd>
+                }
+            </dl>
+            <p class="muted small">@Strings.KeysHint</p>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool Shell { get; set; }
+    private bool _open, _focus;
+    private ElementReference _box;
+
+    private void Open() { _open = true; _focus = true; }
+    private void Close() => _open = false;
+
+    protected override async Task OnAfterRenderAsync(bool first)
+    {
+        if (_open && _focus)
+        {
+            _focus = false;   // nur einmal nach dem Öffnen, sonst nähme jedes Zeichnen dem Schließen-Knopf den Fokus
+            try { await _box.FocusAsync(); } catch (Exception ex) when (ex is InvalidOperationException or Microsoft.JSInterop.JSException) { }
+        }
+    }
+}
