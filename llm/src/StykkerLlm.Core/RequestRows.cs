@@ -7,7 +7,7 @@ public sealed record RequestRow(
     string Server, string ServerKey, string? Host, string Model, DateTime? Seen, double Seconds,
     double PromptTps, double GenTps, int GenTokens, string Client, string ClientKind,
     int? Tools, int? ThinkTokens, string Result, int PromptRead = 0, int PromptReused = -1, bool PromptReusedEstimated = false, string? Route = null,
-    string UserAgent = "", DateTime? Start = null, int? HttpStatus = null);
+    string UserAgent = "", DateTime? Start = null, int? HttpStatus = null, double? Ttft = null);
 
 public static class RequestRows
 {
@@ -21,6 +21,23 @@ public static class RequestRows
     {
         if (string.IsNullOrEmpty(model) || !rows.Any(r => r.Model == model)) return rows;
         return rows.Where(r => r.Model == model).ToList();
+    }
+
+    // Wie viele Zeilen die Liste zeigt: kurz (Standard) oder lang („more“). Gebaut wird immer die lange Liste, damit der
+    // Filter „Problems“ auch ältere Fehler findet und die Zahl daneben stimmt.
+    public const int TakeShort = 8, TakeLong = 24;
+
+    // Ein Problem ist alles außer „ok“: Fehlerstatus, vom Client abgebrochen, Kontext/Längenlimit erreicht
+    public static bool IsProblem(RequestRow r) => r.Result != "ok";
+
+    // Die Ansicht der Liste: Modellfilter, dann nur Probleme, dann kurz oder lang. More = es gibt mehr als die kurze Liste.
+    public static (IReadOnlyList<RequestRow> Shown, int Problems, bool More) View(IReadOnlyList<RequestRow> rows, string? model, bool problemsOnly, bool longList)
+    {
+        var byModel = ForModel(rows, model);
+        int problems = byModel.Count(IsProblem);
+        var filtered = problemsOnly ? byModel.Where(IsProblem).ToList() : byModel;
+        var shown = longList ? filtered.Take(TakeLong).ToList() : filtered.Take(TakeShort).ToList();
+        return (shown, problems, filtered.Count > TakeShort);
     }
 
     // Beginn aus Ende und Dauer, wenn der Proxy den Beginn nicht kennt (Zeile aus dem Log)
@@ -51,7 +68,8 @@ public static class RequestRows
             rows.Add(new RequestRow(f.Server, f.ServerKey, host, f.Model, f.Seen, f.Seconds, f.PromptTps, f.GenTps, f.GenTokens,
                 client, ClientKind(client), px?.Tools.Length, px is { ReasoningTokens: > 0 } ? px.ReasoningTokens : px != null ? 0 : null,
                 Result(f, px), f.PromptTokens, f.PromptReused, f.PromptReusedEstimated, route,
-                px?.UserAgent ?? "", px?.Start ?? StartOf(f.Seen, f.Seconds), px is { HttpStatus: > 0 } ? px.HttpStatus : null));
+                px?.UserAgent ?? "", px?.Start ?? StartOf(f.Seen, f.Seconds), px is { HttpStatus: > 0 } ? px.HttpStatus : null,
+                px != null ? ServerLatency.Ttft(px) : null));
         }
         var cloud = proxy.Where(p => ProxyTarget.IsCloudKey(p.ServerKey)).OrderByDescending(p => p.End).Take(take)
             .Select(p => CloudRow(p, nameOf));
@@ -71,7 +89,7 @@ public static class RequestRows
         string client = ClientFromAgent(p.UserAgent);
         return new RequestRow(name, p.ServerKey, Strings.ReqCloud, model, p.End, (p.End - p.Start).TotalSeconds, 0, gen, tokens,
             client, ClientKind(client), p.Tools.Length, p.ReasoningTokens >= 0 ? p.ReasoningTokens : null, ResultOf(p), 0, -1, false, p.Route,
-            p.UserAgent, p.Start, p.HttpStatus > 0 ? p.HttpStatus : null);
+            p.UserAgent, p.Start, p.HttpStatus > 0 ? p.HttpStatus : null, ServerLatency.Ttft(p));
     }
 
     // Die Zuordnung zu einer lokalen Zeile ist eindeutig, wenn im Fenster kein zweiter Proxy-Eintrag und keine zweite

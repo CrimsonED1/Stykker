@@ -56,6 +56,8 @@ public sealed class ServerCardModel
     public DateTime? RecordingSince { get; init; }
     public double? SpillGb { get; init; }
     public int? SlowerPct { get; init; }          // „langsamer als sonst“ (U11), null = kein Hinweis
+    public LatencyStats? Latency { get; init; }   // Median Prompt-t/s und Zeit bis zum ersten Token (ServerLatency), null = Host
+    public IdleInfo? Idle { get; init; }          // Leerlauf und geplantes Entladen (IdleUnload), null = arbeitet, kurz still oder Host
 
     public bool IsLocal => HostId == null;
     // Ollama und LM Studio führen mehrere Modelle in einem Server: Tabelle der geladenen Modelle statt Slots
@@ -84,9 +86,11 @@ public sealed class ServerCardModel
     public PromptReading? Reading => Slots.Select(s => s.Reading).OfType<PromptReading>()
         .OrderByDescending(r => r.SecondsLeft ?? 0).FirstOrDefault();
 
-    public static ServerCardModel From(ServerWatcher s, RecordingSession? rec, HistoryEntry? usual = null, Profile? profile = null)
+    public static ServerCardModel From(ServerWatcher s, RecordingSession? rec, HistoryEntry? usual = null, Profile? profile = null,
+        IEnumerable<ProxyRecord>? proxy = null)
     {
         var slots = s.Slots.Select(Slot).ToList();
+        var latency = ServerLatency.Of(s.Finished, proxy ?? Array.Empty<ProxyRecord>(), s.Key);
         var hist = new double[s.HistoryCount];
         for (int i = 0; i < hist.Length; i++) hist[i] = s.HistoryAt(i);
         string? profileName = profile?.Name is { Length: > 0 } pn ? pn : null;
@@ -107,6 +111,8 @@ public sealed class ServerCardModel
             Recording = rec != null, RecordingSince = rec?.Started,
             SpillGb = ServerWatcher.SpillGb(s.Models, s.SharedGb),
             SlowerPct = usual == null ? null : SpeedHint.SlowerPercent(s.AverageActive(), hist.Count(v => v > 0), usual.MeanTps, usual.TpsCount),
+            Latency = latency,
+            Idle = IdleUnload.Idle(profile, s, DateTime.Now),
         };
     }
 

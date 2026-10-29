@@ -47,10 +47,11 @@
 {
     <div class="card"><b>@Strings.NoServersTitle</b><div class="muted small">@Strings.NoServersHint</div></div>
 }
+@{ var recentProxy = e.RecentProxy(); }
 @foreach (var s in e.Registry.Servers)
 {
     var sv = s;
-    <ServerCard Model="ServerCardModel.From(sv, e.Recorder.Sessions.FirstOrDefault(r => r.Target == sv.Key), UsualFor(sv), e.Library.FindProfile(sv.Info))" CanWrite="CanWrite && !ro"
+    <ServerCard Model="ServerCardModel.From(sv, e.Recorder.Sessions.FirstOrDefault(r => r.Target == sv.Key), UsualFor(sv), e.Library.FindProfile(sv.Info), recentProxy)" CanWrite="CanWrite && !ro"
                 Served="px.IsServed(sv.Key)" ProxyRunning="px.Running" SparkAgo="@SparkAgo"
                 OnServe="() => Serve(sv)" OnSave='() => Act("save", sv.Key, sv.Name)'
                 OnRecord='() => Act(e.Recorder.Sessions.Any(r => r.Target == sv.Key) ? "record.stop" : "record.start", sv.Key)'
@@ -89,13 +90,26 @@
     var finished = e.Registry.Servers.SelectMany(x => x.Finished.Select(f => (F: f, Host: (string?)null)))
         .Concat(Host.Hosts.List().Where(h => h.Connected && h.State != null)
             .SelectMany(h => h.State!.Servers.SelectMany(rs => rs.Finished.Select(f => (F: f, Host: (string?)(h.Name.Length > 0 ? h.Name : h.Entry.Name))))));
-    var reqs = RequestRows.Build(finished, e.RecentProxy(), nameOf: e.Proxies.DisplayName);
-    double maxSec = reqs.Count > 0 ? Math.Max(1, reqs.Max(r => r.Seconds)) : 1;
+    var reqs = RequestRows.Build(finished, recentProxy, take: RequestRows.TakeLong, nameOf: e.Proxies.DisplayName);
+    var reqView = RequestRows.View(reqs, _reqModel, _reqProblems, _reqMore);
+    double maxSec = reqView.Shown.Count > 0 ? Math.Max(1, reqView.Shown.Max(r => r.Seconds)) : 1;
 }
 <div class="card">
     <div class="row"><h2 style="margin:0">@Strings.RecentRequests</h2>
-        <span class="spdscale" title="@Strings.ReqSpeedScale">t/s <i class="sp1"></i><i class="sp2"></i><i class="sp3"></i><i class="sp4"></i></span></div>
-    @{ var reqModels = RequestRows.Models(reqs); var shownReqs = RequestRows.ForModel(reqs, _reqModel); }
+        <span class="spdscale" title="@Strings.ReqSpeedScale">t/s <i class="sp1"></i><i class="sp2"></i><i class="sp3"></i><i class="sp4"></i></span>
+        @* Das ganze Protokoll als CSV (B3): die Liste zeigt nur die letzten Anfragen *@
+        <span class="reqdl">
+            @if (e.Csv.Enabled)
+            {
+                <a class="btn ib txt quiet reqcsv" href="api/requests.csv" download title="@Strings.ReqCsvTip"><Icon Name="file" />requests.csv</a>
+            }
+            @if (e.ProxyCsv.Path != null)
+            {
+                <a class="btn ib txt quiet reqcsv" href="api/requests.csv?log=proxy" download title="@Strings.ReqProxyCsvTip"><Icon Name="proxy" />proxy.csv</a>
+            }
+        </span>
+    </div>
+    @{ var reqModels = RequestRows.Models(reqs); var shownReqs = reqView.Shown; }
     @if (reqs.Count == 0) { <span class="muted small">@Strings.NoneYet</span> }
     else
     {
@@ -111,8 +125,18 @@
                 </select>
             </label>
         }
+        @* Nur Probleme (Fehler, Abbruch, Kontext voll): fehlgeschlagene Anfragen eines Agents auf einen Blick *@
+        <span class="fchips reqf" role="group" aria-label="@Strings.ReqFilter">
+            <button class="fchip @(!_reqProblems ? "on" : "")" aria-pressed="@(!_reqProblems ? "true" : "false")" @onclick="() => _reqProblems = false">@Strings.HistAll</button>
+            <button class="fchip @(_reqProblems ? "on" : "") @(reqView.Problems > 0 ? "warnc" : "")" aria-pressed="@(_reqProblems ? "true" : "false")"
+                    title="@Strings.ReqProblemsTip" @onclick="() => _reqProblems = true">@Strings.ReqProblems(reqView.Problems)</button>
+        </span>
+        @if (_reqProblems && shownReqs.Count == 0)
+        {
+            <div class="muted small">@Strings.ReqNoProblems</div>
+        }
         <div class="reqs">
-            <div class="req head" aria-hidden="true"><span></span><span>@Strings.ReqModel</span><span>@Strings.ReqHost</span><span>@Strings.ReqTime</span><span class="r">@Strings.ReqPrompt</span><span class="r">@Strings.ReqCache</span><span class="r">t/s</span><span class="r">@Strings.ReqTokens</span><span class="c">@Strings.ReqTools</span><span class="c">@Strings.ReqThink</span><span class="c">@Strings.ReqResult</span><span class="r">@Strings.ReqAgo</span></div>
+            <div class="req head" aria-hidden="true"><span></span><span>@Strings.ReqModel</span><span>@Strings.ReqHost</span><span>@Strings.ReqTime</span><span class="r" title="@Strings.ReqTtftTip">@Strings.ReqTtft</span><span class="r">@Strings.ReqPrompt</span><span class="r">@Strings.ReqCache</span><span class="r">t/s</span><span class="r">@Strings.ReqTokens</span><span class="c">@Strings.ReqTools</span><span class="c">@Strings.ReqThink</span><span class="c">@Strings.ReqResult</span><span class="r">@Strings.ReqAgo</span></div>
             @foreach (var r in shownReqs)
             {
                 var kind = r.Host == null ? e.Registry.Servers.FirstOrDefault(x => x.Key == r.ServerKey)?.Kind ?? BackendKind.LlamaCpp : BackendKind.LlamaCpp;
@@ -124,7 +148,8 @@
                     <span class="mdl" title="@r.Model"><i style="background:var(@BackendColor(kind))"></i><span class="mname">@r.Server</span>@if (ProxyRoutes.Label(r.Route).Length > 0) { <span class="rtag" title="@ProxyRoutes.Tip(r.Route)">@ProxyRoutes.Label(r.Route)</span> }</span>
                     <span class="hostc">@if (r.Host != null) { <span class="chipi host"><Icon Name="host" />@r.Host</span> } else { <span class="muted small">@Strings.CardLocal</span> }</span>
                     <span class="dur" title="@r.Seconds.ToString("0.0", CultureInfo.InvariantCulture) s"><span class="dbar"><i style="width:@((int)(100 * r.Seconds / maxSec))%"></i></span><small>@(r.Seconds > 0 ? r.Seconds.ToString("0", CultureInfo.InvariantCulture) + "s" : "–")</small></span>
-                    <span class="r muted">@(r.PromptTps > 0 ? r.PromptTps.ToString("0", CultureInfo.InvariantCulture) : "–")</span>
+                    <span class="r ttft @(r.Ttft == null ? "muted" : "")" title="@(r.Ttft == null ? Strings.ReqNoProxy : Strings.ReqTtftTip)">@(r.Ttft is double tf ? ServerLatency.Seconds(tf) : "–")</span>
+                    <span class="r muted" title="@Strings.ReqPromptTip">@(r.PromptTps > 0 ? r.PromptTps.ToString("0", CultureInfo.InvariantCulture) : "–")</span>
                     <span class="r cache @(r.PromptReused == 0 ? "miss" : "")" title="@RequestRows.CacheTip(r.PromptReused, r.PromptRead, r.PromptReusedEstimated)">@RequestRows.CacheText(r.PromptReused)</span>
                     <span class="r spd sp@(RequestRows.SpeedLevel(r.GenTps))">@(r.GenTps > 0 ? r.GenTps.ToString("0.0", CultureInfo.InvariantCulture) : "–")</span>
                     <span class="r">@r.GenTokens.ToString("N0", CultureInfo.InvariantCulture)</span>
@@ -150,10 +175,18 @@
                         <div class="mx-kv"><span>@Strings.MxStarted</span><b>@(r.Start?.ToString("HH:mm:ss", CultureInfo.InvariantCulture) ?? Strings.MxNoValue)</b></div>
                         <div class="mx-kv"><span>@Strings.MxEnded</span><b>@(r.Seen?.ToString("HH:mm:ss", CultureInfo.InvariantCulture) ?? Strings.MxNoValue)</b></div>
                         <div class="mx-kv"><span>@Strings.MxDuration</span><b>@r.Seconds.ToString("0.0", CultureInfo.InvariantCulture) s</b></div>
+                        <div class="mx-kv" title="@Strings.ReqTtftTip"><span>@Strings.MxTtft</span><b>@(r.Ttft is double tf2 ? ServerLatency.Seconds(tf2) + " s" : Strings.ReqNoProxy)</b></div>
+                        <div class="mx-kv" title="@Strings.ReqPromptTip"><span>@Strings.MxPromptSpeed</span><b>@(r.PromptTps > 0 ? r.PromptTps.ToString("0", CultureInfo.InvariantCulture) + " t/s" : Strings.MxNoValue)</b></div>
                     </div>
                 }
             }
         </div>
+        @* Mehr Zeilen: die kurze Liste zeigt 8, die lange bis zu 24 (was die Server und der Proxy noch wissen) *@
+        @if (reqView.More)
+        {
+            <button class="ib txt quiet reqmore" aria-expanded="@(_reqMore ? "true" : "false")" @onclick="() => _reqMore = !_reqMore">
+                <Icon Name="@(_reqMore ? "x" : "plus")" />@(_reqMore ? Strings.ReqLess : Strings.ReqMore)</button>
+        }
     }
 </div>
 </div>
@@ -418,6 +451,12 @@
                 <div class="pfd-cmd"><code>@cmd</code><button class="ib quiet" title="@Strings.MxCopyBlock" aria-label="@Strings.MxCopyBlock" @onclick="() => Copy(cmd)"><Icon Name="@(_copied ? "r-ok" : "file")" /></button></div>
                 @if (dw)
                 {
+                    @* Startskript (B2): dieselbe Kommandozeile als Datei, Geheimnisse geschwärzt *@
+                    <div class="row pfd-export" title="@Strings.PfExportTip">
+                        <span class="muted small">@Strings.PfExport</span>
+                        <a class="btn ib txt" href="@($"api/profile/{dp.Id:N}/script?kind=ps1")" download><Icon Name="file" />PowerShell</a>
+                        <a class="btn ib txt" href="@($"api/profile/{dp.Id:N}/script?kind=cmd")" download><Icon Name="file" />Batch</a>
+                    </div>
                     <div class="grp pfd-grp">@Strings.BtnEdit</div>
                     <input placeholder="@Strings.FieldName" @bind="_editName" @bind:event="oninput" style="width:100%" />
                     <textarea placeholder="@Strings.FieldNote" @bind="_editNote" @bind:event="oninput" rows="2" style="width:100%;margin-top:8px"></textarea>
@@ -524,6 +563,27 @@
     }
 </div>
 </div>
+
+@* Ereignisse (ActivityLog): was passiert ist, während niemand hinsah – Absturz mit Ursache, Neustart, Leerlauf-Entladen,
+   fertige Modelltests und Benchmarks; das Banner oben zeigt nur den letzten verlorenen Server *@
+@{ var acts = Host.Activity.Recent(8); var actNow = DateTime.Now; }
+<div class="mon-area mon-act">
+<h3 class="sec" title="@Strings.ActivityTip">@Strings.ActivityTitle</h3>
+<div class="card act">
+    @if (acts.Count == 0)
+    {
+        <span class="muted small">@Strings.ActivityNone</span>
+    }
+    @foreach (var a in acts)
+    {
+        <div class="act-row @(a.Alarm ? "bad" : "")" title="@(a.Detail ?? a.Text)">
+            <span class="act-t">@ActivityLog.TimeText(a.When, actNow)</span>
+            <Icon Name="@a.Icon" />
+            <span class="act-x"><b>@a.Text</b>@if (a.Detail is { Length: > 0 } detail) { <small class="muted">@detail</small> }</span>
+        </div>
+    }
+</div>
+</div>
 </aside>
 </div>
 
@@ -534,6 +594,8 @@
     // Monitor-Erweiterungen: Client-Blöcke (Fenster und Shell-Form), Modellfilter der Anfragen, aufgeklappte Anfragen
     private bool _clientOpen, _shellPs = true;
     private string _reqModel = "";
+    private bool _reqProblems;   // nur Anfragen mit Fehler, Abbruch oder vollem Kontext
+    private bool _reqMore;       // lange Liste (RequestRows.TakeLong) statt der kurzen
     private readonly HashSet<string> _openReqs = new();
     private readonly HashSet<string> _openNotes = new();
     private void ToggleNote(string id) { if (!_openNotes.Add(id)) _openNotes.Remove(id); }

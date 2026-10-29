@@ -59,6 +59,10 @@ llama.cpp runs), host GPUs are not in the hardware card (they are on the Hosts p
 
 ## Not now
 
-From the reviews, left for later: failed start with cancel, state "sleeping", energy per 1k tokens, notifications,
-time to first token as a column. Ideas from the final feature review (TTFT and prompt processing per server, script export
-of a profile, downloadable request log, idle VRAM with unload-now, browser notification on a crash) are candidates for later.
+From the reviews, left for later: state "sleeping", energy per 1k tokens.
+
+Done on 2026-10-29 (branch `llm-ui`), the ideas B1–B6 of the final feature review: TTFT and prompt processing per server
+(card, column, server details), start script of a profile or history entry, downloadable request log with a problem
+filter and a longer list, idle time with unload countdown on the card (unloading itself stays *Stop* or ⏏), browser
+notifications for a crash, finished model tests and benchmarks (switch *Alerts*), plus the tab title and favicon state
+and the card *Activity*. Failed start with cancel was already done (B5).

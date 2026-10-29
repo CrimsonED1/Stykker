@@ -35,4 +35,37 @@ public static class IdleUnload
     /// <summary>Läuft gerade eine Anfrage? Dann wird nie entladen – auch nicht mitten im Prompt.</summary>
     public static bool IsBusy(ServerWatcher w) =>
         w.Slots.Any(x => x.Busy) || w.Current > 0.05;
+
+    // Ab wann die Karte „idle …“ zeigt: kurze Pausen zwischen zwei Anfragen eines Agents sind kein Leerlauf
+    public static readonly TimeSpan IdleShownAfter = TimeSpan.FromMinutes(2);
+
+    /// <summary>Leerlauf für die Karte (Idee B4): wie lange ohne Anfrage, und wann entladen wird (null = nie, Profil ohne
+    /// Leerlauf-Entladen). AtLeast: der Server lief schon, als der Monitor anfing zuzusehen – die Pause ist mindestens so lang.</summary>
+    public static IdleInfo? Idle(Profile? profile, bool online, bool busy, DateTime? lastBusyAt, DateTime since, DateTime now)
+    {
+        if (!online || busy) return null;
+        var idle = now - (lastBusyAt ?? since);
+        if (idle < IdleShownAfter) return null;
+        TimeSpan? left = DueAt(profile, lastBusyAt, since) is DateTime due ? (due > now ? due - now : TimeSpan.Zero) : null;
+        return new IdleInfo(idle, left, MinutesOf(profile), lastBusyAt == null);
+    }
+
+    public static IdleInfo? Idle(Profile? profile, ServerWatcher w, DateTime now) =>
+        Idle(profile, w.Online && !w.Loading, IsBusy(w), w.LastBusyAt, w.Since, now);
+
+    // „7 min“, „2 h 05 min“ – die Karte zeigt nur ganze Minuten
+    public static string Span(TimeSpan t) =>
+        t.TotalMinutes < 60 ? $"{(int)t.TotalMinutes} min" : $"{(int)t.TotalHours} h {t.Minutes:00} min";
+}
+
+public sealed record IdleInfo(TimeSpan Idle, TimeSpan? UnloadIn, int UnloadAfterMin, bool AtLeast)
+{
+    // Kurztext auf der Karte: „idle 40 min“, „idle ≥ 40 min · unload in 12 min“
+    public string Text => (AtLeast ? Strings.CardIdleAtLeast(IdleUnload.Span(Idle)) : Strings.CardIdle(IdleUnload.Span(Idle)))
+        + (UnloadIn is TimeSpan left ? " · " + Strings.CardUnloadIn(IdleUnload.Span(left)) : "");
+
+    public string Tip => UnloadIn != null ? Strings.CardIdleUnloadTip(UnloadAfterMin) : Strings.CardIdleTip;
+
+    // Gleich fällig: die Karte hebt den Hinweis hervor
+    public bool Soon => UnloadIn is TimeSpan left && left <= TimeSpan.FromMinutes(2);
 }

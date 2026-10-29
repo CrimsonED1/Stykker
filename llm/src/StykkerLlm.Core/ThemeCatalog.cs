@@ -104,6 +104,10 @@ public sealed record ThemeInfo
         return string.Join(';', vars);
     }
 
+    // Dieselben Variablen als vollständige Regel für ein <style> (Anmeldung, Fenster-Dialog). Ohne den Selektor verwirft der
+    // Browser die erste Regel samt body{…} und die Seite steht ungestylt da.
+    public string CssRoot() => ":root{" + CssVariables() + "}";
+
     private const string UiStack = "Segoe UI Variable Text,Segoe UI,system-ui,sans-serif";
     private const string MonoStack = "Cascadia Mono,Consolas,monospace";
 

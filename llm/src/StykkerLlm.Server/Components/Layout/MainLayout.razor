@@ -14,8 +14,14 @@
 @* Die Themen (Dark, Spacepunk Titan) stehen in shared/design-system/tokens.css (html[data-theme]); hier nur die Wahl als
    Meta-Angabe: ui.js setzt daraus html[data-theme] – bei „System“ nach dem Hell/Dunkel des Systems. Ein Wechsel über
    /settings ist ohne Neuladen sichtbar, weil der Kopf jeden Takt neu gezeichnet wird. *@
+@* Tab-Zustand (TabStatus): Titel mit t/s oder Absturz vorn, die Stufe für den Punkt im Favicon und die Meldung für die
+   Browser-Benachrichtigung. ui.js liest die Meta-Angabe bei jeder Änderung des Kopfs (wie beim Thema). *@
+@{ var tabTps = Host.Engine.Servers.Select(x => x.Current).ToList(); var tabLost = Host.LastLost; var tabAlert = TabStatus.Alert(tabLost, Host.Done.Last); }
+<PageTitle>@TabStatus.Title(PageName(), tabTps, tabLost)</PageTitle>
 <HeadContent>
     <meta name="stykker-theme" content="@ThemeCatalog.Mode(Host.Engine.Settings.Theme)" />
+    <meta name="stykker-status" content="@TabStatus.LevelName(TabStatus.Level(tabTps, tabLost))" data-alert-id="@(tabAlert?.Id ?? "")"
+          data-alert-title="@(tabAlert?.Title ?? "")" data-alert-body="@(tabAlert?.Body ?? "")" data-alert-at="@(tabAlert?.AtMs ?? 0)" />
 </HeadContent>
 
 <IconSprite />
@@ -118,6 +124,12 @@
             </div>
             <div class="seg">
                 <button class="@(_cardLabels ? "on" : "")" title="@Strings.CardLabelsTip" aria-pressed="@(_cardLabels ? "true" : "false")" @onclick="ToggleCardLabels">@Strings.CardLabels</button>
+                @* Browser-Meldung (je Gerät): Absturz, fertige Modelltests, fertiger Benchmark; im Fenster meldet schon das Tray-Symbol *@
+                @if (!_shell)
+                {
+                    <button class="@(_notify == "on" ? "on" : "")" title="@(_notify == "unsupported" ? Strings.NotifyUnsupported : Strings.NotifyTip)"
+                            aria-pressed="@(_notify == "on" ? "true" : "false")" disabled="@(_notify == "unsupported")" @onclick="ToggleNotify"><Icon Name="e-crash" Class="sm" /> @Strings.NotifyLabel</button>
+                }
             </div>
         </div>
     </details>
@@ -170,6 +182,7 @@ else if (Viewer.Known && Viewer.IsViewer)
     private bool _shell;                 // in der Fenster-Hülle: dort die Zurück/Vor-Knöpfe zeigen
     private string _density = DensityAuto;   // auto = nach Fensterbreite (der Umschalter im ☰ überstimmt sie)
     private bool _cardLabels;                // Kurznamen unter den Kennzahlen der Serverkarten (Schalter im ☰ → Ansicht)
+    private string _notify = "off";          // Absturz-Meldung im Browser: on | off | blocked | unsupported (ui.js)
     // Seiten, die nicht als Hauptpunkt in der Kopfzeile stehen, sondern im ☰
     private static readonly string[] MorePages = { "runs", "catalog", "models", "gpu", "compare", "hosts", "nodes", "phone", "settings", "bugreport", "serverdetail" };
 
@@ -183,7 +196,23 @@ else if (Viewer.Known && Viewer.IsViewer)
         _shell = await Safe<bool>("stykkerUi.shell");
         _density = await Safe<string>("stykkerUi.density") ?? "auto";
         _cardLabels = await Safe<bool>("stykkerUi.cardLabels");
+        _notify = await Safe<string>("stykkerUi.notify") ?? "unsupported";
         StateHasChanged();
+    }
+
+    // Absturz-Meldung ein/aus: ui.js fragt beim Einschalten nach der Erlaubnis des Browsers und sagt, was daraus wurde
+    private async Task ToggleNotify()
+    {
+        // den Stand frisch lesen: das Befehlsfenster (Ctrl+K) kann ihn inzwischen umgeschaltet haben
+        var now = await Safe<string>("stykkerUi.notify") ?? _notify;
+        _notify = await Safe<string>("stykkerUi.setNotify", now != "on") ?? "unsupported";
+        switch (_notify)
+        {
+            case "on": Toast.Show(Strings.NotifyOnToast); break;
+            case "blocked": Toast.Show(Strings.NotifyBlocked, warn: true); break;
+            case "unsupported": Toast.Show(Strings.NotifyUnsupported, warn: true); break;
+            default: Toast.Show(Strings.NotifyOffToast); break;
+        }
     }
 
     // Kurznamen auf den Serverkarten (je Browser gemerkt; ui.js setzt die Klasse am <html>)
@@ -194,9 +223,9 @@ else if (Viewer.Known && Viewer.IsViewer)
     }
 
     // Fehlt das Skript (alte Seite im Cache), bleibt die Oberfläche einfach ohne Hüllen-Knöpfe und in „auto“
-    private async Task<T> Safe<T>(string what)
+    private async Task<T> Safe<T>(string what, params object?[] args)
     {
-        try { return await JS.InvokeAsync<T>(what); }
+        try { return await JS.InvokeAsync<T>(what, args); }
         catch (Exception ex) when (ex is JSException or InvalidOperationException or NotSupportedException) { return default!; }
     }
 
@@ -233,7 +262,11 @@ else if (Viewer.Known && Viewer.IsViewer)
         "phone" => Strings.RemoteTitle,
         "settings" => Strings.SettingsTitle,
         "bugreport" => Strings.BugReportTitle,
-        _ => RelPath().StartsWith("serverdetail", StringComparison.Ordinal) ? Strings.NavMonitor : RelPath(),
+        "disks" => Strings.DisksPageTitle,
+        // Detailseiten tragen einen kodierten Schlüssel im Weg – der gehört weder neben die Marke noch in den Tab-Titel
+        _ when RelPath().StartsWith("serverdetail", StringComparison.Ordinal) => Strings.NavMonitor,
+        _ when RelPath().StartsWith("history/", StringComparison.Ordinal) => Strings.SectionHistory,
+        _ => RelPath(),
     };
 
     private bool InMore

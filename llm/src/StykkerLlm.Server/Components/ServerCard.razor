@@ -52,6 +52,11 @@
         {
             <span class="chipi warnc" title="@Strings.CardSpill(spill)"><Icon Name="vram" />@F1(spill) G</span>
         }
+        @* Leerlauf (B4): wie lange ohne Anfrage und wann das Profil entlädt – das Modell hält so lange seinen VRAM *@
+        @if (m.Idle is { } idle)
+        {
+            <span class="chipi idlechip @(idle.Soon ? "soon" : "")" title="@idle.Tip"><Icon Name="timer" />@idle.Text</span>
+        }
         <span class="acts3">
             @if (m.Online && CanWrite)
             {
@@ -158,6 +163,12 @@
         @Metric("peak", Strings.CardPeak, m.Peak > 0 ? F1(m.Peak) : null, "", sep: true, label: Strings.LblPeak)
         @Metric("avg", Strings.CardAvg, m.Avg > 0 ? F1(m.Avg) : null, "", label: Strings.LblAvg)
         @Metric("sum", Strings.CardSum, m.GeneratedTotal > 0 ? F1(m.GeneratedTotal / 1000.0) : null, "k", label: Strings.LblTokens)
+        @if (m.Latency is { } lat)
+        {
+            @Metric("s-read", Strings.CardPromptTps, lat.PromptTps is double pps ? pps.ToString("0", CultureInfo.InvariantCulture) : null, "", label: Strings.LblPromptTps)
+            @Metric("timer", lat.TtftMeasured ? Strings.CardTtft(lat.Samples) : Strings.CardTtftEstimated(lat.Samples),
+                lat.TtftSec is double tt ? (lat.TtftMeasured ? "" : "≈") + ServerLatency.Seconds(tt) : null, "s", label: Strings.LblTtft)
+        }
         @Metric("draft", Strings.CardDraft, m.DraftRate is double dr ? (dr * 100).ToString("0", CultureInfo.InvariantCulture) : null, "%", label: Strings.LblSpec)
         @Metric("users", Strings.CardClients + ": " + (m.Clients.Length == 0 ? Strings.CardNone : string.Join(", ", m.Clients)), m.Clients.Length.ToString(CultureInfo.InvariantCulture), "", label: Strings.LblClients)
     </div>
