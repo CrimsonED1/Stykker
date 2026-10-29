@@ -90,8 +90,9 @@
     var finished = e.Registry.Servers.SelectMany(x => x.Finished.Select(f => (F: f, Host: (string?)null)))
         .Concat(Host.Hosts.List().Where(h => h.Connected && h.State != null)
             .SelectMany(h => h.State!.Servers.SelectMany(rs => rs.Finished.Select(f => (F: f, Host: (string?)(h.Name.Length > 0 ? h.Name : h.Entry.Name))))));
-    var reqs = RequestRows.Build(finished, e.RecentProxy(), nameOf: e.Proxies.DisplayName);
-    double maxSec = reqs.Count > 0 ? Math.Max(1, reqs.Max(r => r.Seconds)) : 1;
+    var reqs = RequestRows.Build(finished, recentProxy, take: RequestRows.TakeLong, nameOf: e.Proxies.DisplayName);
+    var reqView = RequestRows.View(reqs, _reqModel, _reqProblems, _reqMore);
+    double maxSec = reqView.Shown.Count > 0 ? Math.Max(1, reqView.Shown.Max(r => r.Seconds)) : 1;
 }
 <div class="card">
     <div class="row"><h2 style="margin:0">@Strings.RecentRequests</h2>
@@ -108,7 +109,7 @@
             }
         </span>
     </div>
-    @{ var reqModels = RequestRows.Models(reqs); var shownReqs = RequestRows.ForModel(reqs, _reqModel); }
+    @{ var reqModels = RequestRows.Models(reqs); var shownReqs = reqView.Shown; }
     @if (reqs.Count == 0) { <span class="muted small">@Strings.NoneYet</span> }
     else
     {
@@ -123,6 +124,16 @@
                     }
                 </select>
             </label>
+        }
+        @* Nur Probleme (Fehler, Abbruch, Kontext voll): fehlgeschlagene Anfragen eines Agents auf einen Blick *@
+        <span class="fchips reqf" role="group" aria-label="@Strings.ReqFilter">
+            <button class="fchip @(!_reqProblems ? "on" : "")" aria-pressed="@(!_reqProblems ? "true" : "false")" @onclick="() => _reqProblems = false">@Strings.HistAll</button>
+            <button class="fchip @(_reqProblems ? "on" : "") @(reqView.Problems > 0 ? "warnc" : "")" aria-pressed="@(_reqProblems ? "true" : "false")"
+                    title="@Strings.ReqProblemsTip" @onclick="() => _reqProblems = true">@Strings.ReqProblems(reqView.Problems)</button>
+        </span>
+        @if (_reqProblems && shownReqs.Count == 0)
+        {
+            <div class="muted small">@Strings.ReqNoProblems</div>
         }
         <div class="reqs">
             <div class="req head" aria-hidden="true"><span></span><span>@Strings.ReqModel</span><span>@Strings.ReqHost</span><span>@Strings.ReqTime</span><span class="r" title="@Strings.ReqTtftTip">@Strings.ReqTtft</span><span class="r">@Strings.ReqPrompt</span><span class="r">@Strings.ReqCache</span><span class="r">t/s</span><span class="r">@Strings.ReqTokens</span><span class="c">@Strings.ReqTools</span><span class="c">@Strings.ReqThink</span><span class="c">@Strings.ReqResult</span><span class="r">@Strings.ReqAgo</span></div>
@@ -170,6 +181,12 @@
                 }
             }
         </div>
+        @* Mehr Zeilen: die kurze Liste zeigt 8, die lange bis zu 24 (was die Server und der Proxy noch wissen) *@
+        @if (reqView.More)
+        {
+            <button class="ib txt quiet reqmore" aria-expanded="@(_reqMore ? "true" : "false")" @onclick="() => _reqMore = !_reqMore">
+                <Icon Name="@(_reqMore ? "x" : "plus")" />@(_reqMore ? Strings.ReqLess : Strings.ReqMore)</button>
+        }
     }
 </div>
 </div>
@@ -554,6 +571,8 @@
     // Monitor-Erweiterungen: Client-Blöcke (Fenster und Shell-Form), Modellfilter der Anfragen, aufgeklappte Anfragen
     private bool _clientOpen, _shellPs = true;
     private string _reqModel = "";
+    private bool _reqProblems;   // nur Anfragen mit Fehler, Abbruch oder vollem Kontext
+    private bool _reqMore;       // lange Liste (RequestRows.TakeLong) statt der kurzen
     private readonly HashSet<string> _openReqs = new();
     private readonly HashSet<string> _openNotes = new();
     private void ToggleNote(string id) { if (!_openNotes.Add(id)) _openNotes.Remove(id); }

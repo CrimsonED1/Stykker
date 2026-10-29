@@ -23,6 +23,23 @@ public static class RequestRows
         return rows.Where(r => r.Model == model).ToList();
     }
 
+    // Wie viele Zeilen die Liste zeigt: kurz (Standard) oder lang („more“). Gebaut wird immer die lange Liste, damit der
+    // Filter „Problems“ auch ältere Fehler findet und die Zahl daneben stimmt.
+    public const int TakeShort = 8, TakeLong = 24;
+
+    // Ein Problem ist alles außer „ok“: Fehlerstatus, vom Client abgebrochen, Kontext/Längenlimit erreicht
+    public static bool IsProblem(RequestRow r) => r.Result != "ok";
+
+    // Die Ansicht der Liste: Modellfilter, dann nur Probleme, dann kurz oder lang. More = es gibt mehr als die kurze Liste.
+    public static (IReadOnlyList<RequestRow> Shown, int Problems, bool More) View(IReadOnlyList<RequestRow> rows, string? model, bool problemsOnly, bool longList)
+    {
+        var byModel = ForModel(rows, model);
+        int problems = byModel.Count(IsProblem);
+        var filtered = problemsOnly ? byModel.Where(IsProblem).ToList() : byModel;
+        var shown = longList ? filtered.Take(TakeLong).ToList() : filtered.Take(TakeShort).ToList();
+        return (shown, problems, filtered.Count > TakeShort);
+    }
+
     // Beginn aus Ende und Dauer, wenn der Proxy den Beginn nicht kennt (Zeile aus dem Log)
     private static DateTime? StartOf(DateTime? seen, double seconds) =>
         seen is DateTime end && seconds > 0 ? end.AddSeconds(-seconds) : null;
