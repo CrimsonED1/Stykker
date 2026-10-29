@@ -59,6 +59,86 @@
     setInterval(theme, 3000);
     new MutationObserver(theme).observe(document.head, { childList: true, subtree: true, attributes: true, attributeFilter: ['content'] });
 
+    // Tab-Zustand (TabStatus im Server, <meta name="stykker-status">): ein Punkt im Favicon (grün = erzeugt Tokens, rot =
+    // Server verloren) und bei einem Absturz eine Browser-Benachrichtigung – nur wenn auf diesem Gerät eingeschaltet, nur
+    // einmal je Ereignis (über alle Tabs) und nicht, wenn der Tab vorn ist (dort steht das Banner).
+    const NOTIFY_KEY = 'stykker.notify', SEEN_KEY = 'stykker.alertSeen';
+    const canNotify = () => 'Notification' in window && window.isSecureContext;
+    function notifyState() {
+        if (!canNotify()) return 'unsupported';
+        let on = false;
+        try { on = localStorage.getItem(NOTIFY_KEY) === 'on'; } catch (e) { /* ohne Speicher: aus */ }
+        if (Notification.permission === 'denied') return on ? 'blocked' : 'off';
+        return on && Notification.permission === 'granted' ? 'on' : 'off';
+    }
+    function show(title, body, tag) {
+        const icon = document.querySelector('link[rel="icon"]');
+        const n = new Notification(title, { body: body, tag: tag, icon: icon ? (icon.dataset.base || icon.href) : undefined });
+        n.onclick = function () { window.focus(); n.close(); };
+    }
+    async function setNotify(on) {
+        if (!canNotify()) return 'unsupported';
+        if (on && Notification.permission === 'default') {
+            try { await Notification.requestPermission(); } catch (e) { /* alte Browser: Rückruf statt Promise, dann eben ohne */ }
+        }
+        try { localStorage.setItem(NOTIFY_KEY, on ? 'on' : 'off'); } catch (e) { /* egal: dann eben nur diese Sitzung */ }
+        if (!on) return 'off';
+        if (Notification.permission === 'denied') return 'blocked';
+        if (Notification.permission !== 'granted') return 'off';
+        // Probe: Android-Chrome kennt Notification, wirft aber ohne Service Worker beim Anlegen – dann geht es hier nicht
+        try { show('Stykker LLM', document.title, 'stykker-test'); } catch (e) {
+            try { localStorage.setItem(NOTIFY_KEY, 'off'); } catch (e2) { /* egal */ }
+            return 'unsupported';
+        }
+        return 'on';
+    }
+    let iconImg = null, iconLevel = '';
+    function favicon(level) {
+        if (level === iconLevel) return;
+        iconLevel = level;
+        const link = document.querySelector('link[rel="icon"]');
+        if (!link) return;
+        if (!link.dataset.base) link.dataset.base = link.href;
+        if (level !== 'busy' && level !== 'alarm') { link.href = link.dataset.base; return; }
+        const draw = function () {
+            if (iconLevel !== 'busy' && iconLevel !== 'alarm') return;   // inzwischen wieder ruhig
+            const c = document.createElement('canvas');
+            c.width = c.height = 64;
+            const g = c.getContext('2d');
+            g.drawImage(iconImg, 0, 0, 64, 64);
+            g.beginPath();
+            g.arc(46, 46, 15, 0, 2 * Math.PI);
+            g.fillStyle = iconLevel === 'alarm' ? '#ff5c7a' : '#6cffb0';
+            g.fill();
+            g.lineWidth = 5;
+            g.strokeStyle = '#060916';
+            g.stroke();
+            try { link.href = c.toDataURL('image/png'); } catch (e) { /* Bild nicht lesbar: ohne Punkt */ }
+        };
+        if (iconImg && iconImg.complete && iconImg.naturalWidth > 0) { draw(); return; }
+        iconImg = new Image();
+        iconImg.onload = draw;
+        iconImg.src = link.dataset.base;
+    }
+    function status() {
+        const m = document.querySelector('meta[name="stykker-status"]');
+        if (!m) return;
+        favicon(m.content || 'idle');
+        const id = m.dataset.alertId;
+        if (!id) return;
+        let seen = '';
+        try { seen = localStorage.getItem(SEEN_KEY) || ''; } catch (e) { /* ohne Speicher: je Tab einmal */ }
+        if (seen === id || m.dataset.shown === id) return;
+        m.dataset.shown = id;
+        try { localStorage.setItem(SEEN_KEY, id); } catch (e) { /* egal */ }
+        // eine alte Meldung (Seite später geöffnet oder neu geladen) nur merken, nicht melden
+        if (Date.now() - (Number(m.dataset.alertAt) || 0) > 120000) return;
+        if (notifyState() !== 'on') return;
+        if (document.visibilityState === 'visible' && document.hasFocus()) return;
+        try { show(m.dataset.alertTitle || 'Stykker LLM', m.dataset.alertBody || '', id); } catch (e) { /* Browser lehnt ab: das Banner bleibt */ }
+    }
+    new MutationObserver(status).observe(document.head, { childList: true, subtree: true, attributes: true, attributeFilter: ['content', 'data-alert-id'] });
+
     // Tastatur (U10): Ctrl+K öffnet das Befehlsfenster, „/“ springt in die Suche der History (sonst Befehlsfenster);
     // im offenen Befehlsfenster bleibt der Fokus im Eingabefeld (Tab springt nicht hinaus)
     let lastFocus = null;
@@ -146,6 +226,8 @@
         setCardLabels: function (on) { try { localStorage.setItem(LABELS_KEY, on ? 'on' : 'off'); } catch (e) { /* egal: dann eben nur diese Sitzung */ } applyLabels(); },
         proxyTab: function () { try { return localStorage.getItem(TAB_KEY) || ''; } catch (e) { return ''; } },
         setProxyTab: function (t) { try { localStorage.setItem(TAB_KEY, t); } catch (e) { /* egal: dann eben nur diese Sitzung */ } },
+        notify: notifyState,    // Absturz-Meldung: on | off | blocked | unsupported
+        setNotify: setNotify,
         askClose: askClose,     // auch zum Ansehen ohne Hülle (Bilder, Prüfung)
         back: function () { window.history.back(); },
         forward: function () { window.history.forward(); }
