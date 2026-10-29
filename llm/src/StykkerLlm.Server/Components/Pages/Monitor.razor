@@ -561,6 +561,27 @@
     }
 </div>
 </div>
+
+@* Ereignisse (ActivityLog): was passiert ist, während niemand hinsah – Absturz mit Ursache, Neustart, Leerlauf-Entladen,
+   fertige Modelltests und Benchmarks; das Banner oben zeigt nur den letzten verlorenen Server *@
+@{ var acts = Host.Activity.Recent(8); var actNow = DateTime.Now; }
+<div class="mon-area mon-act">
+<h3 class="sec" title="@Strings.ActivityTip">@Strings.ActivityTitle</h3>
+<div class="card act">
+    @if (acts.Count == 0)
+    {
+        <span class="muted small">@Strings.ActivityNone</span>
+    }
+    @foreach (var a in acts)
+    {
+        <div class="act-row @(a.Alarm ? "bad" : "")" title="@(a.Detail ?? a.Text)">
+            <span class="act-t">@ActivityLog.TimeText(a.When, actNow)</span>
+            <Icon Name="@a.Icon" />
+            <span class="act-x"><b>@a.Text</b>@if (a.Detail is { Length: > 0 } detail) { <small class="muted">@detail</small> }</span>
+        </div>
+    }
+</div>
+</div>
 </aside>
 </div>
 

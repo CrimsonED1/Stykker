@@ -45,5 +45,12 @@ public sealed class DoneEvents
         Set(new DoneEvent("tests", Strings.DoneTestsTitle, Strings.DoneTestsBody(done, failed, scores.Count > 0 ? scores.Average() : null), now));
     }
 
-    private void Set(DoneEvent e) { lock (_gate) _last = e; }
+    // Jeder neue fertige Lauf (für die Ereignisliste ActivityLog)
+    public event Action<DoneEvent>? Added;
+
+    private void Set(DoneEvent e)
+    {
+        lock (_gate) _last = e;
+        Added?.Invoke(e);
+    }
 }

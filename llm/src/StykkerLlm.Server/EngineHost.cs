@@ -24,6 +24,8 @@ public sealed class EngineHost : IDisposable
     public BenchmarkService Benchmarks { get; } = new();
     // Fertige lange Läufe (Testwarteschlange, Benchmark) für die Browser-Meldung (TabStatus)
     public DoneEvents Done { get; } = new();
+    // Was passiert ist (Karte „Activity“): Absturz, Neustart, Leerlauf-Entladen, fertige Läufe
+    public ActivityLog Activity { get; } = new();
     // Die Modelltests des Servers gehören in den Zustand: Fenster, TUI und Telefon lesen sonst eine leere Warteschlange
     public EvalQueue? Queue { get; set; }
     // Die gekoppelten Nodes (dieser Server als Hub, docs/nodes.md)
@@ -51,6 +53,7 @@ public sealed class EngineHost : IDisposable
         Engine.ServerLost += lost =>
         {
             LastLost = lost;
+            Activity.Add(ActivityKind.Crash, Strings.TabLost(lost.Name), lost.Cause, lost.When);
             AppLog.Write($"server lost: {lost.Name} {lost.Url} {lost.Cause}");
             StateJson.Notice(Strings.LostBalloon(lost.Name));
             TryRestartAfterCrash(lost);
@@ -71,6 +74,7 @@ public sealed class EngineHost : IDisposable
         Key = ServerClient.ReadKey(paths, _platform) ?? ServerClient.WriteKey(paths, _platform);
         Engine.IdleUnloadDue += OnIdleUnload;
         Benchmarks.Finished += (result, regression) => Done.Bench(result, regression, DateTime.Now);
+        Done.Added += Activity.Add;
     }
 
     // Zuletzt verschwundene Server ( Absturz, von außen beendet) für die Oberflächen
@@ -96,6 +100,7 @@ public sealed class EngineHost : IDisposable
             bool ok = await UnloadServer(watcher).ConfigureAwait(false);
             StateJson.Notice(ok ? Strings.IdleUnloadDone(profile.Name)
                 : Strings.IdleUnloadQueued(profile.Name, IdleUnload.MinutesOf(profile)));
+            if (ok) Activity.Add(ActivityKind.Unload, Strings.IdleUnloadDone(profile.Name), Strings.ActivityUnloadDetail(IdleUnload.MinutesOf(profile)));
         }
         catch { /* beim nächsten Takt noch einmal */ }
     }
@@ -116,6 +121,7 @@ public sealed class EngineHost : IDisposable
         if (!CrashRestart.Allows(lost.Key, profile, DateTimeOffset.Now))        // Grenze erreicht
         {
             StateJson.Notice(Strings.RestartGaveUp(profile.Name, CrashRestart.MaxRestartsClamped));
+            Activity.Add(ActivityKind.RestartFailed, Strings.RestartGaveUp(profile.Name, CrashRestart.MaxRestartsClamped));
             return;
         }
         int attempt = CrashRestart.Count(lost.Key, DateTimeOffset.Now).Used;
@@ -127,6 +133,7 @@ public sealed class EngineHost : IDisposable
             try { ok = StartProfile?.Invoke(profile).GetAwaiter().GetResult() ?? false; }
             catch { }
             StateJson.Notice(ok ? Strings.RestartDone(profile.Name, attempt) : Strings.RestartFailed(profile.Name));
+            Activity.Add(ok ? ActivityKind.Restart : ActivityKind.RestartFailed, ok ? Strings.RestartDone(profile.Name, attempt) : Strings.RestartFailed(profile.Name));
         });
     }
 
