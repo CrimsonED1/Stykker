@@ -7,6 +7,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## Unreleased
 
 ### Added
+- **Tab status and browser alerts.** The tab title starts with the token rate ("▶ 94 t/s · Monitor · Stykker LLM") or
+  the lost server ("⚠ qwen3-8b stopped · …"), and the favicon gets a green dot while tokens flow and a red one after a
+  crash. The switch **Alerts** in the ☰ menu (per browser; not in the StykkerUI window, which has the tray) shows a
+  browser notification when a model server stops unexpectedly, when the model tests are finished and when a benchmark
+  is finished – once per event across tabs, only while the tab is in the background. Needs localhost or https; the
+  switch says when the browser cannot or does not allow it. Also in Ctrl+K.
+- **Activity card** on the monitor: crashes with their cause, restarts after a crash, failed restarts, idle unloads and
+  finished model tests or benchmarks, each with its time (last 100, kept until the server restarts).
+- **Time to first token and prompt processing.** Server cards show the median prompt speed and time to first token of
+  the last requests (measured by the proxy with the queue; without proxy data estimated from the log's prompt reading
+  time, marked "≈"). Recent requests get a column **ttft**; the server details a card **Response start**.
+- **Idle time on the server card**: "idle 40 min · unload in 12 min" after two quiet minutes, in warn colour shortly
+  before the profile unloads.
+- **Start script download.** The profile window and the history details offer the command line as PowerShell or batch
+  file (`/api/profile/{id}/script`, `/api/history/script`, admin only, keys stay redacted as `***`).
+- **Request log download and filter.** Recent requests offer `requests.csv` and `proxy.csv` (`/api/requests.csv`), a
+  filter **problems** (error status, aborted, context or length limit, with count) and **Show more** (up to 24 rows).
 - **Benchmark page reworked.** Each result shows two small charts, read and write t/s by context size (log scale, one
   line per result). Up to four results can be ticked and compared side by side: overlaid charts, one table and a
   Markdown export of all of them (`/api/bench/compare?ids=`). The tool call reads as passed or failed instead of
@@ -79,6 +96,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   sets `parallel_tool_calls`, and stopped with 400 "This model only supports single tool-calls at once!" when a model
   called several (seen with pi, which does not send the field). For local llama.cpp targets the proxy now sets it to true
   on requests with tools, unless the client chose a value itself.
+- **Pairing page and the close dialog of StykkerUI were unstyled** (black text on white): since the theme rework the
+  theme variables were written without their `:root{}` selector, so the browser dropped the first rule with `body`.
+- Recent requests on a phone cut model names to a few letters; the number columns are narrower now.
 
 ## 0.4.0
 

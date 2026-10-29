@@ -8,14 +8,15 @@ only**: it shows the state and sends the user to the web UI for anything that ch
 
 | # | Area | Where |
 |---|---|---|
-| 1 | Header: name, main pages, ☰ menu, free VRAM, stop server | header bar |
+| 1 | Header: name, main pages, ☰ menu (view, labels, **Alerts** per browser), free VRAM, stop server; tab title and favicon show t/s or a lost server | header bar |
 | 2 | Status line + notice line (proxy, persistent hints with *Dismiss*, *Open log*) | top of Monitor |
-| 3 | Saved profiles (start with pre-check, bench, edit, remove) | Monitor |
-| 4 | Running servers (t/s, slots, chips, proxy chip, record, details, save, stop, **Prompt**) | Monitor cards |
+| 3 | Saved profiles (start with pre-check, bench, edit, remove, start script download) | Monitor |
+| 4 | Running servers (t/s, slots, chips, proxy chip, record, details, save, stop, **Prompt**; prompt t/s and time to first token, idle time with unload countdown) | Monitor cards, `/serverdetail/{key}` |
 | 5 | GPU (load, VRAM, power, temp, clocks, throttling, VRAM per program) | Monitor, `/gpu` |
 | 6 | System (CPU, RAM per program) | Monitor |
-| 7 | Recent requests | Monitor |
-| 8 | History with search, start again, save, forget | Monitor, `/history/{key}` |
+| 7 | Recent requests (ttft column, filter *problems*, *Show more*, download `requests.csv` and `proxy.csv`) | Monitor |
+| 8 | History with search, start again, save, forget; start script download on the details page | Monitor, `/history/{key}` |
+| 8a | Activity: crashes with cause, restarts, idle unloads, finished model tests and benchmarks, with time | Monitor |
 | 9 | Model tests: Runs, Results, Catalog, Models | `/runs`, `/results`, `/catalog`, `/models` |
 | 10 | Benchmarks, recordings, compare | `/bench`, `/recordings`, `/compare` |
 | 11 | Phone access: Home/VPN switch, six-digit code + QR, approve a device that shows a code, devices and roles | `/phone`, `/approve` |
