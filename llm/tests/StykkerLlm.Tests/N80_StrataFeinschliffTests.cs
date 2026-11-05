@@ -107,6 +107,7 @@ public class N80_SavedFlagTests
     [TestMethod]
     public void The_venv_starter_and_the_base_python_have_the_same_comparison_key()
     {
+        if (!OperatingSystem.IsWindows()) Assert.Inconclusive(@"venv-Starter in .venv\Scripts gibt es nur unter Windows (Linux: .venv/bin, noch nicht unterstützt)");
         var dir = TempDir();
         try
         {
@@ -123,6 +124,7 @@ public class N80_SavedFlagTests
     [TestMethod]
     public void A_profile_saved_with_the_venv_starter_is_found_from_the_listening_base_python_and_not_saved_twice()
     {
+        if (!OperatingSystem.IsWindows()) Assert.Inconclusive(@"venv-Starter in .venv\Scripts gibt es nur unter Windows (Linux: .venv/bin, noch nicht unterstützt)");
         var dir = TempDir();
         try
         {

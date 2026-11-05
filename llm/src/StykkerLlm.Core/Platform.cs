@@ -149,14 +149,16 @@ public static class NetAddr
     public static string Key(string host, int port) => IsV6(host) ? $"[{host}]:{port}" : $"{host}:{port}";
 }
 
-// Programmname aus einem Prozesspfad. Trennt an '\' und '/', damit Windows-Pfade (auch die des Simulators) unter Linux
-// genauso gelesen werden wie unter Windows: "C:\llama\llama-server.exe" -> "llama-server"
+// Programm- und Dateiname aus einem Pfad. Trennt an '\' und '/', damit Windows-Pfade (auch die des Simulators und die
+// eines entfernten Servers) unter Linux genauso gelesen werden wie unter Windows: "C:\llama\llama-server.exe" -> "llama-server"
 public static class ProcPath
 {
-    public static string Stem(string? path)
+    public static string FileName(string? path)
     {
         if (string.IsNullOrEmpty(path)) return "";
         int cut = path.LastIndexOfAny(new[] { '\\', '/' });
-        return Path.GetFileNameWithoutExtension(cut >= 0 ? path[(cut + 1)..] : path);
+        return cut >= 0 ? path[(cut + 1)..] : path;
     }
+
+    public static string Stem(string? path) => Path.GetFileNameWithoutExtension(FileName(path));
 }

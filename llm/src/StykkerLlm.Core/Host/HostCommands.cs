@@ -39,10 +39,10 @@ public sealed class HostSettings
     public bool Allows(string program)
     {
         if (string.IsNullOrWhiteSpace(program)) return false;
-        var name = Path.GetFileNameWithoutExtension(program.Trim().Trim('"')).ToLowerInvariant();
+        var name = ProcPath.Stem(program.Trim().Trim('"')).ToLowerInvariant();
         if (Known.Any(k => name == k || name.StartsWith(k + "-", StringComparison.Ordinal) || name.StartsWith(k + "_", StringComparison.Ordinal))) return true;
         return AllowPrograms.Any(a => a.Equals(program, StringComparison.OrdinalIgnoreCase)
-                                      || Path.GetFileNameWithoutExtension(a).Equals(name, StringComparison.OrdinalIgnoreCase));
+                                      || ProcPath.Stem(a).Equals(name, StringComparison.OrdinalIgnoreCase));
     }
 }
 

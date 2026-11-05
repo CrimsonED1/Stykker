@@ -40,12 +40,17 @@ public class N52_PromptToolsTests
         Assert.IsFalse(twice.Ok, "nicht eindeutig");
         StringAssert.Contains(twice.Result, "2 times");
 
-        foreach (var outside in new[] { "../x.txt", "..\\..\\x.txt", Path.Combine(Path.GetTempPath(), "x.txt"), "C:\\Windows\\win.ini" })
+        // Unter Linux ist \ kein Trenner: ..\..\x.txt und C:\Windows\win.ini sind dort nur Dateinamen im Ordner
+        var outsides = new List<string> { "../x.txt", Path.Combine(Path.GetTempPath(), "x.txt") };
+        if (OperatingSystem.IsWindows()) outsides.AddRange(new[] { "..\\..\\x.txt", "C:\\Windows\\win.ini" });
+        foreach (var outside in outsides)
         {
             var r = await tools.RunAsync(Call("read_file", new { path = outside }));
             Assert.AreEqual(Strings.ToolOutside, r.Result, outside);
         }
-        Assert.IsNull(tools.Resolve(dir + "-nebenan\\x.txt"), "ein Ordner mit gleichem Anfang ist nicht drinnen");
+        Assert.IsNull(tools.Resolve(Path.Combine(dir + "-nebenan", "x.txt")), "ein Ordner mit gleichem Anfang ist nicht drinnen");
+        if (!OperatingSystem.IsWindows())
+            Assert.IsNull(tools.Resolve(Path.Combine(dir.ToUpperInvariant(), "x.txt")), "unter Linux ist ein anders geschriebener Ordner ein anderer");
         Assert.AreEqual(Strings.ToolBadArguments, (await tools.RunAsync(new ToolCall("c", "read_file", "{kaputt"))).Result);
     }
 
@@ -55,13 +60,16 @@ public class N52_PromptToolsTests
         var dir = TempDir();
         File.WriteAllText(Path.Combine(dir, "marker.txt"), "x");
         var tools = new PromptTools(dir);
-        var cmd = await tools.RunAsync(Call("run_command", new { command = "dir /b" }));
+        // Vorgabe ist cmd unter Windows und /bin/sh unter Linux; die PowerShell gibt es unter Linux nur nachinstalliert (pwsh)
+        var cmd = await tools.RunAsync(Call("run_command", new { command = OperatingSystem.IsWindows() ? "dir /b" : "ls" }));
         Assert.IsTrue(cmd.Ok, cmd.Result);
         StringAssert.Contains(cmd.Result, "marker.txt");
         StringAssert.StartsWith(cmd.Result, "exit code 0");
         Assert.AreEqual("run_command", cmd.Call.Name, "das Ergebnis gehört zum Aufruf");
 
-        var ps = await tools.RunAsync(Call("run_command", new { command = "Get-ChildItem -Name; exit 3", shell = "powershell" }));
+        var ps = OperatingSystem.IsWindows()
+            ? await tools.RunAsync(Call("run_command", new { command = "Get-ChildItem -Name; exit 3", shell = "powershell" }))
+            : await tools.RunAsync(Call("run_command", new { command = "ls; exit 3" }));
         Assert.IsFalse(ps.Ok);
         StringAssert.StartsWith(ps.Result, "exit code 3");
         StringAssert.Contains(ps.Result, "marker.txt");

@@ -17,7 +17,7 @@ public class N66_SharedPairingTests
     {
         // Nur der Pfad wird berechnet: die Datei selbst wird nicht angelegt
         var paths = new AppPaths(TempDir("default"), isDefault: true);
-        Assert.AreEqual(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Stykker", "pairing.dat"), paths.PairingFile());
+        Assert.AreEqual(Path.Combine(AppPaths.AppData(), "Stykker", "pairing.dat"), paths.PairingFile());
         Assert.AreEqual(PairingStore.DefaultFile(), paths.PairingFile());
     }
 
@@ -42,7 +42,7 @@ public class N66_SharedPairingTests
     public void FromDataDir_TheDefaultFolder_IsTheDefault_AndOtherFoldersAreNot()
     {
         // Das Fenster startet den Server mit --data-dir <Vorgabe>: auch dann gilt die gemeinsame Ablage (ohne Migration)
-        var defaultRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "StykkerLLM");
+        var defaultRoot = Path.Combine(AppPaths.AppData(), "StykkerLLM");
         var asDefault = AppPaths.FromDataDir(defaultRoot + Path.DirectorySeparatorChar);
         Assert.IsTrue(asDefault.IsDefault);
         Assert.AreEqual(PairingStore.DefaultFile(), asDefault.PairingFile());
@@ -56,7 +56,7 @@ public class N66_SharedPairingTests
     public void FromDataDir_TheDefaultFolderInOtherSpellings_IsTheDefault()
     {
         // Derselbe Ordner, anders geschrieben: Trenner am Ende (\ oder /), ein ..-Segment und auf Windows andere Groß-/Kleinschreibung
-        var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+        var appData = AppPaths.AppData();
         var defaultRoot = Path.Combine(appData, "StykkerLLM");
         var spellings = new List<string> { defaultRoot + "\\", defaultRoot + "/", Path.Combine(appData, "Other", "..", "StykkerLLM") };
         if (OperatingSystem.IsWindows()) spellings.Add(defaultRoot.ToUpperInvariant());
@@ -72,7 +72,7 @@ public class N66_SharedPairingTests
     public void FromDataDir_SimilarFolders_AreNotTheDefault()
     {
         // Nur der genaue Ordner zählt: Namensvetter, gleichnamiger Ordner anderswo, Unterordner und der übergeordnete Ordner nicht
-        var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+        var appData = AppPaths.AppData();
         var defaultRoot = Path.Combine(appData, "StykkerLLM");
         foreach (var dir in new[] { defaultRoot + "2", Path.Combine(appData, "Other", "StykkerLLM"), Path.Combine(defaultRoot, "sub"), appData })
         {
@@ -80,6 +80,15 @@ public class N66_SharedPairingTests
             Assert.IsFalse(paths.IsDefault, dir);
             Assert.AreEqual(Path.Combine(paths.Root, "pairing.dat"), paths.PairingFile(), dir);
         }
+    }
+
+    [TestMethod]
+    public void DefaultFiles_AreAbsolute_EvenWithoutTheConfigFolder()
+    {
+        // Unter Linux fehlt ~/.config bei einem frischen Benutzer oder Dienstkonto: die Ablagen dürfen trotzdem nicht relativ
+        // zum aktuellen Ordner werden (nachstellen mit XDG_CONFIG_HOME auf einen Ordner, den es nicht gibt)
+        foreach (var path in new[] { AppPaths.AppData(), PairingStore.DefaultFile(), HostNames.DefaultFile(), Stykker.Shared.Config.HubModules.DefaultFile() })
+            Assert.IsTrue(Path.IsPathRooted(path), path);
     }
 
     [TestMethod]
