@@ -35,11 +35,7 @@ public static class EvalTarget
             if (!resp.IsSuccessStatusCode) return new EvalTargetInfo(machine, "", "", "", "");
             if (LlamaProps.Parse(await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false)) is not { } p)
                 return new EvalTargetInfo(machine, "", "", "", "");
-            string file = "";
-            if (!string.IsNullOrWhiteSpace(p.ModelPath))
-            {
-                try { file = Path.GetFileName(p.ModelPath); } catch { file = p.ModelPath; }
-            }
+            var file = string.IsNullOrWhiteSpace(p.ModelPath) ? "" : ProcPath.FileName(p.ModelPath);
             var ctx = p.NCtx > 0 ? $"ctx {p.NCtx} · slots {Math.Max(1, p.TotalSlots)}" : "";
             return new EvalTargetInfo(machine, p.ModelAlias ?? "", file, ctx, p.ModelFtype ?? "");
         }

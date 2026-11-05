@@ -112,7 +112,7 @@ public class DiscoveryTests
     {
         var (p, h, d) = Make();
         var winDir = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
-        Assert.IsFalse(string.IsNullOrEmpty(winDir), "ohne Windows-Ordner lässt sich der Fall nicht nachstellen");
+        if (string.IsNullOrEmpty(winDir)) Assert.Inconclusive("ohne Windows-Ordner lässt sich der Fall nicht nachstellen");
 
         h.Routes["127.0.0.1:7010/props"] = (HttpStatusCode.OK, Samples.PropsJson);
         h.Routes["127.0.0.1:7011/props"] = (HttpStatusCode.OK, Samples.PropsJson);

@@ -20,7 +20,7 @@ public static class ScriptExport
     {
         var (args, _) = CmdLine.Redact(rawArgs);
         var title = name.Length > 0 ? name : null;
-        var stem = FileStem(name.Length > 0 ? name : Path.GetFileNameWithoutExtension(program));
+        var stem = FileStem(name.Length > 0 ? name : ProcPath.Stem(program));
         return (kind ?? "ps1").ToLowerInvariant() switch
         {
             "ps1" => (stem + ".ps1", ToPowerShell(program, args, workingDir, env, title)),

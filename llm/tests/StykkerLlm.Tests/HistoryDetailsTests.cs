@@ -64,8 +64,13 @@ public class HistoryDetailsTests
     [TestMethod]
     public void ModelPathResolvesRelativeToTheWorkingFolder()
     {
-        Assert.AreEqual(Path.Combine(@"C:\work", "m.gguf"), HistoryDetails.ModelPath(Entry()));
-        Assert.AreEqual("C:\\abs\\x.gguf", HistoryDetails.ModelPath(Entry(@"C:\abs\x.gguf")));
+        // Pfade des laufenden Systems: C:\work ist unter Linux kein absoluter Pfad
+        var work = Path.Combine(Path.GetTempPath(), "work");
+        var abs = Path.Combine(Path.GetTempPath(), "abs", "x.gguf");
+        var relative = Entry(); relative.WorkingDir = work;
+        var absolute = Entry(abs); absolute.WorkingDir = work;
+        Assert.AreEqual(Path.Combine(work, "m.gguf"), HistoryDetails.ModelPath(relative));
+        Assert.AreEqual(abs, HistoryDetails.ModelPath(absolute));
         Assert.IsNull(HistoryDetails.ModelPath(Entry(null)));
     }
 

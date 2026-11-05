@@ -46,9 +46,9 @@ public sealed class PairingStore
         _mutexName = (OperatingSystem.IsWindows() ? @"Local\" : "") + "Stykker.Pairing." + key;
     }
 
-    // %APPDATA%\Stykker\pairing.dat (unter Linux ~/.config/Stykker/pairing.dat)
+    // %APPDATA%\Stykker\pairing.dat (unter Linux ~/.config/Stykker/pairing.dat, auch wenn ~/.config noch fehlt)
     public static string DefaultFile() =>
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Stykker", FileName);
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData, Environment.SpecialFolderOption.DoNotVerify), "Stykker", FileName);
 
     // Der aktuelle Stand als eigene Kopie: der Aufrufer darf sie ändern, ohne die Ablage zu berühren.
     public PairingState Read()

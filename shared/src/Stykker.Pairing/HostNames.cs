@@ -12,9 +12,9 @@ public static class HostNames
     public const string ExtraField = "hostNames";
     public const int MaxLength = 253;
 
-    // %APPDATA%\Stykker\stykker.json: die Datei der Zentrale (unter Linux ~/.config/Stykker/stykker.json)
+    // %APPDATA%\Stykker\stykker.json: die Datei der Zentrale (unter Linux ~/.config/Stykker/stykker.json, auch wenn ~/.config noch fehlt)
     public static string DefaultFile() =>
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Stykker", "stykker.json");
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData, Environment.SpecialFolderOption.DoNotVerify), "Stykker", "stykker.json");
 
     // Der Host-Kopf der Anfrage muss der Name sein, unter dem dieser PC erreichbar ist: eine IP-Adresse, localhost, der
     // Rechnername oder der Rechnername mit der DNS-Endung dieses PCs (domainName, leer wenn keine). Dazu ein Zusatzname

@@ -93,7 +93,9 @@ public sealed class PromptTools
         try { full = Path.GetFullPath(Path.IsPathRooted(p) ? p : Path.Combine(Root, p)); }
         catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException) { return null; }
         var withSep = full.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
-        return withSep.StartsWith(Root, StringComparison.OrdinalIgnoreCase) ? full : null;
+        // Unter Linux sind /work und /Work zwei Ordner: dort zählt die genaue Schreibung
+        var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        return withSep.StartsWith(Root, comparison) ? full : null;
     }
 
     public async Task<ToolOutcome> RunAsync(ToolCall call, CancellationToken ct = default)

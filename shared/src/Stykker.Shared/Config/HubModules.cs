@@ -54,9 +54,9 @@ public static class HubModules
         new("llm", "LLM", StykkerPorts.Llm, null, false),
     ];
 
-    // %APPDATA%\Stykker\stykker.json (unter Linux ~/.config/Stykker/stykker.json)
+    // %APPDATA%\Stykker\stykker.json (unter Linux ~/.config/Stykker/stykker.json, auch wenn ~/.config noch fehlt)
     public static string DefaultFile() =>
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Stykker", FileName);
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData, Environment.SpecialFolderOption.DoNotVerify), "Stykker", FileName);
 
     // Fehlt die Datei, ist sie unlesbar oder nennt sie kein gültiges Modul, gilt die Vorgabe: ein Tippfehler in der
     // Konfiguration darf die Zentrale nicht leeren.

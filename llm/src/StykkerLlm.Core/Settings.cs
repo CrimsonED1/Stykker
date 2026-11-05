@@ -103,7 +103,7 @@ public sealed class AppPaths
         : Path.Combine(Root, Stykker.Pairing.PairingStore.FileName);
 
     public static AppPaths Default() =>
-        new(MigrateRoot(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData)), isDefault: true,
+        new(MigrateRoot(AppData()), isDefault: true,
             appDir: AppContext.BaseDirectory);
 
     // Der Datenordner aus --data-dir, oder die Vorgabe. Ein Pfad, der auf die Vorgabe zeigt, IST die Vorgabe: das Fenster
@@ -115,10 +115,14 @@ public sealed class AppPaths
         if (string.IsNullOrWhiteSpace(dataDir)) return Default();
         var full = Path.GetFullPath(dataDir);
         var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
-        var defaultRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "StykkerLLM");
+        var defaultRoot = Path.Combine(AppData(), "StykkerLLM");
         bool isDefault = string.Equals(full.TrimEnd('\\', '/'), Path.GetFullPath(defaultRoot).TrimEnd('\\', '/'), comparison);
         return new AppPaths(full, isDefault, isDefault ? AppContext.BaseDirectory : null);
     }
+
+    // %APPDATA% (unter Linux ~/.config). DoNotVerify: sonst liefert .NET unter Linux "", solange ~/.config noch fehlt
+    // (frischer Benutzer, Dienstkonto), und der Datenordner läge relativ zum aktuellen Ordner
+    internal static string AppData() => Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData, Environment.SpecialFolderOption.DoNotVerify);
 
     // %APPDATA%\StykkerLLM; alte Daten von %APPDATA%\StykkerSLM werden einmalig übernommen (Ordner wird umbenannt),
     // wenn der neue Ordner noch nicht existiert. Ein Fehler beim Verschieben darf den Start nie verhindern.

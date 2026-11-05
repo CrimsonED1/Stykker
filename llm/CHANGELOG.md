@@ -116,6 +116,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   existing install the rows go to `requests.v2.csv`; the old file stays as it is.
 
 ### Fixed
+- **Linux: data folder without `~/.config`.** For a fresh user or a service account without `~/.config`, .NET reports no
+  AppData folder, so the default data folder and the shared `pairing.dat` and `stykker.json` were relative to the current
+  folder. They are now under `~/.config` in any case (also in the shared code that HUD and SYS use).
+- **Linux: Windows paths from the simulator or a remote server** are split at `\` as well: the model file of a model-test
+  target (`/props`), the script name of a profile without a name, and the check of a model host that starts only model
+  servers.
+- **Linux: the prompt tools' working folder** is compared case-sensitively; a folder that differs only in case is outside.
 - **Several tool calls at once through the proxy.** llama-server allows only one tool call per answer unless the request
   sets `parallel_tool_calls`, and stopped with 400 "This model only supports single tool-calls at once!" when a model
   called several (seen with pi, which does not send the field). For local llama.cpp targets the proxy now sets it to true
