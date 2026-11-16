@@ -1,0 +1,16 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/StykkerFirewall.Core/StykkerFirewall.Core.csproj" />
+    <Project Path="src/StykkerFirewall.Backend.WindowsFirewall/StykkerFirewall.Backend.WindowsFirewall.csproj" />
+    <Project Path="src/StykkerFirewall.Backend.Simulator/StykkerFirewall.Backend.Simulator.csproj" />
+    <Project Path="src/StykkerFirewall.Service/StykkerFirewall.Service.csproj" />
+    <Project Path="src/StykkerFirewall.App/StykkerFirewall.App.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/StykkerFirewall.Tests/StykkerFirewall.Tests.csproj" />
+  </Folder>
+  <Folder Name="/shared/">
+    <Project Path="../shared/src/Stykker.Shared/Stykker.Shared.csproj" />
+    <Project Path="../shared/src/Stykker.Pairing/Stykker.Pairing.csproj" />
+  </Folder>
+</Solution>

@@ -10,6 +10,7 @@ Each tool builds on its own and has its own README and license.
 | **StykkerLLM** | [`llm/`](llm/) | Monitor and control center for local LLM servers (llama.cpp, Ollama, LM Studio, vLLM) | BUSL-1.1 |
 | **StykkerCmd** | [`cmd/`](cmd/) | Two-panel, keyboard-first file manager for Windows and Linux | Apache-2.0 |
 | **Stykker Starter** | [`starter/`](starter/) | Runs programs from a source folder as local copies and keeps them up to date | Apache-2.0 |
+| **StykkerFirewall** | [`firewall/`](firewall/) | Application firewall for Windows: asks before an app may connect, with an overview of all rules | Apache-2.0 |
 
 The license of a tool is the `LICENSE` file in its folder.
 
@@ -27,6 +28,7 @@ dotnet build hud/StykkerHud.slnx
 dotnet build sys/StykkerSys.slnx
 dotnet build llm/StykkerLlm.slnx
 dotnet build starter/StykkerStarter.slnx
+dotnet build firewall/StykkerFirewall.slnx
 dotnet build shared/Stykker.Shared.slnx
 ```
 

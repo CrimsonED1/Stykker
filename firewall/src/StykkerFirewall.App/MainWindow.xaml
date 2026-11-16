@@ -1,0 +1,8 @@
+<Window x:Class="StykkerFirewall.App.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:blazor="clr-namespace:Microsoft.AspNetCore.Components.WebView.Wpf;assembly=Microsoft.AspNetCore.Components.WebView.Wpf"
+        Title="StykkerFirewall" Width="1100" Height="720" MinWidth="640" MinHeight="420"
+        Background="#060916" WindowStartupLocation="CenterScreen">
+    <blazor:BlazorWebView x:Name="WebView" HostPage="wwwroot\index.html" />
+</Window>

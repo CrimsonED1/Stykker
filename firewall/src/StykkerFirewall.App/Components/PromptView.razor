@@ -1,0 +1,62 @@
+@implements IDisposable
+@inject FirewallClient Client
+@inject UiActions Ui
+
+@if (Current is { } p)
+{
+    var a = p.Attempt;
+    <div class="prompt">
+        <div class="prompt-head">
+            <span class="dir @(a.Direction == TrafficDirection.Inbound ? "dir-in" : "dir-out")">@(a.Direction == TrafficDirection.Inbound ? "Incoming" : "Outgoing")</span>
+            @if (Client.Pending.Count > 1)
+            {
+                <span class="muted">@(Client.Pending.Count - 1) more waiting</span>
+            }
+        </div>
+        <h1 title="@a.AppPath">@a.AppName</h1>
+        <div class="path mono" title="@a.AppPath">@a.AppPath</div>
+        <dl class="facts">
+            <dt>@(a.Direction == TrafficDirection.Inbound ? "From" : "To")</dt>
+            <dd class="mono">@Format.Endpoint(a.RemoteAddress, a.RemotePort, a.Protocol)</dd>
+            <dt>Protocol</dt>
+            <dd class="mono">@IpProtocol.Name(a.Protocol)@(a.Direction == TrafficDirection.Inbound && IpProtocol.HasPorts(a.Protocol) ? $" · local port {a.LocalPort}" : "")</dd>
+            <dt>Process</dt>
+            <dd class="mono">PID @a.ProcessId@(p.Repeats > 0 ? $" · tried {p.Repeats + 1}×" : "")</dd>
+        </dl>
+        <div class="choices">
+            <button class="btn btn-good" disabled="@_busy" @onclick="() => Decide(PromptDecision.AllowApp)">Allow all</button>
+            <button class="btn" disabled="@_busy" @onclick="() => Decide(PromptDecision.AllowTarget)">Allow this target only</button>
+            <button class="btn btn-bad" disabled="@_busy" @onclick="() => Decide(PromptDecision.BlockAlways)">Always block</button>
+            <button class="btn" disabled="@_busy" @onclick="() => Decide(PromptDecision.BlockOnce)">Block this time</button>
+        </div>
+        @if (Client.LastError is { } err)
+        {
+            <div class="notice notice-bad">@err</div>
+        }
+    </div>
+}
+else
+{
+    <div class="prompt empty muted">No connection is waiting for an answer.</div>
+}
+
+@code {
+    private bool _busy;
+
+    private PendingPrompt? Current => Client.Pending.Count > 0 ? Client.Pending[0] : null;
+
+    protected override void OnInitialized() => Client.Changed += OnChanged;
+
+    private void OnChanged() => InvokeAsync(() => { _busy = false; StateHasChanged(); });
+
+    private async Task Decide(PromptDecision decision)
+    {
+        if (Current is not { } p) return;
+        _busy = true;
+        await Client.DecideAsync(p.Id, decision);
+        // Der Dienst schickt danach einen neuen Snapshot; ist nichts mehr offen, versteckt App das Fenster.
+        if (Client.Pending.Count <= 1) Ui.HidePrompt();
+    }
+
+    public void Dispose() => Client.Changed -= OnChanged;
+}

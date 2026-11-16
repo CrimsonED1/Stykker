@@ -1,0 +1,15 @@
+<Project>
+
+  <!-- Gemeinsame Metadaten aller Projekte. Nur Metadaten: kein Verhalten. -->
+  <PropertyGroup>
+    <Version Condition="'$(Version)' == ''">0.1.0</Version>
+    <Authors>CrimsonED1</Authors>
+    <Company>CrimsonED1</Company>
+    <Product>StykkerFirewall</Product>
+    <Copyright>Copyright (c) CrimsonED1</Copyright>
+    <Description>Application firewall for Windows: asks before an app may connect, with an overview of all rules.</Description>
+    <Deterministic>true</Deterministic>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+  </PropertyGroup>
+
+</Project>

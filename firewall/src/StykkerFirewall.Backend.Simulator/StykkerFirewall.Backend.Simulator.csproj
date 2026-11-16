@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Backend ohne echte Firewall: erfindet Verbindungsversuche und hält Regeln im Speicher. Für Probeläufe der
+       Oberfläche ohne Admin-Rechte und als Beleg, dass sich das Backend austauschen lässt. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>StykkerFirewall.Backend.Simulator</AssemblyName>
+    <RootNamespace>StykkerFirewall.Backend.Simulator</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\StykkerFirewall.Core\StykkerFirewall.Core.csproj" />
+  </ItemGroup>
+
+</Project>

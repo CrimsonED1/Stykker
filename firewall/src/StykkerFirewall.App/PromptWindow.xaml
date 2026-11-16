@@ -1,0 +1,9 @@
+<Window x:Class="StykkerFirewall.App.PromptWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:blazor="clr-namespace:Microsoft.AspNetCore.Components.WebView.Wpf;assembly=Microsoft.AspNetCore.Components.WebView.Wpf"
+        Title="StykkerFirewall – connection request" Width="460" Height="360" ResizeMode="NoResize"
+        Topmost="True" ShowActivated="False" Background="#060916">
+    <!-- ShowActivated=False: das Fenster nimmt keinen Fokus weg, ein gerade getipptes Enter beantwortet nichts. -->
+    <blazor:BlazorWebView x:Name="WebView" HostPage="wwwroot\index.html" />
+</Window>

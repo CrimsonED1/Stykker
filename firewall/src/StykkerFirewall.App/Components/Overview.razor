@@ -1,0 +1,172 @@
+@implements IDisposable
+@inject FirewallClient Client
+
+<header class="top">
+    <div class="brand"><span class="acc">◆</span> STYKKER <span class="acc">FIREWALL</span></div>
+    @if (Status is { } s)
+    {
+        <span class="badge">@s.BackendName</span>
+        <span class="badge @(s.FirewallEnabled ? "b-good" : "b-bad")">@(s.FirewallEnabled ? "Firewall on" : "Firewall off")</span>
+        <span class="badge @(s.AuditEnabled ? "b-good" : "b-warn")">@(s.AuditEnabled ? "Blocked connections reported" : "No reports")</span>
+        <div class="seg" role="group" aria-label="Mode">
+            <button class="@(s.Mode == ProtectionMode.Monitor ? "on" : "")" @onclick="() => Client.SetModeAsync(ProtectionMode.Monitor)">Monitor</button>
+            <button class="@(s.Mode == ProtectionMode.Ask ? "on" : "")" @onclick="() => Client.SetModeAsync(ProtectionMode.Ask)">Ask for every app</button>
+        </div>
+    }
+</header>
+
+<main>
+    @if (!Client.Connected)
+    {
+        <div class="notice notice-bad">@(Client.LastError ?? "Connecting to the StykkerFirewall service …")</div>
+    }
+    else if (Client.LastError is { } err)
+    {
+        <div class="notice notice-bad">@err</div>
+    }
+
+    @if (Client.State?.ModeRevertAt is { } revert)
+    {
+        <div class="notice notice-warn">
+            <span>
+                <b>Ask mode is on for a trial.</b> Outgoing connections of apps without a rule are blocked now.
+                If you can still reach what you need, keep it. Otherwise it switches back to Monitor by itself
+                in <span class="mono">@SecondsLeft(revert) s</span>.
+            </span>
+            <button class="btn btn-good" @onclick="Client.ConfirmModeAsync">Keep ask mode</button>
+            <button class="btn" @onclick="() => Client.SetModeAsync(ProtectionMode.Monitor)">Back to monitor</button>
+        </div>
+    }
+
+    @if (Status?.Problem is { } problem)
+    {
+        <div class="notice notice-warn">@problem</div>
+    }
+
+    <nav class="tabs">
+        <button class="@(_tab == Tab.Rules ? "on" : "")" @onclick="() => _tab = Tab.Rules">Rules <span class="count">@Rules.Count</span></button>
+        <button class="@(_tab == Tab.Waiting ? "on" : "")" @onclick="() => _tab = Tab.Waiting">Waiting <span class="count">@Client.Pending.Count</span></button>
+        <button class="@(_tab == Tab.Activity ? "on" : "")" @onclick="() => _tab = Tab.Activity">Blocked connections</button>
+        <input class="search" placeholder="Filter by app or address" @bind="_filter" @bind:event="oninput" />
+    </nav>
+
+    @switch (_tab)
+    {
+        case Tab.Rules:
+            @if (Rules.Count == 0)
+            {
+                <div class="empty muted">No rules yet. Rules appear here when you answer a connection request.</div>
+            }
+            else
+            {
+                <table>
+                    <thead><tr><th>App</th><th>Dir</th><th>Action</th><th>Target</th><th>Created</th><th></th></tr></thead>
+                    <tbody>
+                        @foreach (var r in Rules.Where(r => Match(r.AppPath, r.RemoteAddress)).OrderBy(r => r.AppName, StringComparer.OrdinalIgnoreCase))
+                        {
+                            <tr>
+                                <td title="@r.AppPath"><div>@r.AppName</div><div class="path mono">@r.AppPath</div></td>
+                                <td class="mono">@Format.Direction(r.Direction)</td>
+                                <td><span class="badge @(r.Action == RuleAction.Allow ? "b-good" : "b-bad")">@(r.Action == RuleAction.Allow ? "allow" : "block")</span></td>
+                                <td class="mono">@Format.Target(r)</td>
+                                <td class="mono muted">@Format.Date(r.Created)</td>
+                                <td><button class="btn btn-small" title="Delete rule; the app will be asked again" @onclick="() => Client.DeleteRuleAsync(r.Id)">Delete</button></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+            break;
+
+        case Tab.Waiting:
+            @if (Client.Pending.Count == 0)
+            {
+                <div class="empty muted">Nothing is waiting for an answer.</div>
+            }
+            else
+            {
+                <table>
+                    <thead><tr><th>App</th><th>Dir</th><th>Remote</th><th>Since</th><th>Answer</th></tr></thead>
+                    <tbody>
+                        @foreach (var p in Client.Pending)
+                        {
+                            <tr>
+                                <td title="@p.Attempt.AppPath"><div>@p.Attempt.AppName</div><div class="path mono">@p.Attempt.AppPath</div></td>
+                                <td class="mono">@Format.Direction(p.Attempt.Direction)</td>
+                                <td class="mono">@Format.Endpoint(p.Attempt.RemoteAddress, p.Attempt.RemotePort, p.Attempt.Protocol) @IpProtocol.Name(p.Attempt.Protocol)</td>
+                                <td class="mono muted">@Format.Time(p.Attempt.Time)</td>
+                                <td class="actions">
+                                    <button class="btn btn-small btn-good" @onclick="() => Client.DecideAsync(p.Id, PromptDecision.AllowApp)">Allow all</button>
+                                    <button class="btn btn-small" @onclick="() => Client.DecideAsync(p.Id, PromptDecision.AllowTarget)">This target</button>
+                                    <button class="btn btn-small btn-bad" @onclick="() => Client.DecideAsync(p.Id, PromptDecision.BlockAlways)">Always block</button>
+                                    <button class="btn btn-small" @onclick="() => Client.DecideAsync(p.Id, PromptDecision.BlockOnce)">Once</button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+            break;
+
+        case Tab.Activity:
+            var recent = Client.Recent.Where(e => Match(e.Attempt.AppPath, e.Attempt.RemoteAddress)).Take(300).ToList();
+            @if (recent.Count == 0)
+            {
+                <div class="empty muted">No blocked connections reported yet.</div>
+            }
+            else
+            {
+                <table>
+                    <thead><tr><th>Time</th><th>App</th><th>Dir</th><th>Remote</th><th>Proto</th><th>Result</th></tr></thead>
+                    <tbody>
+                        @foreach (var e in recent)
+                        {
+                            <tr>
+                                <td class="mono muted">@Format.Time(e.Attempt.Time)</td>
+                                <td title="@e.Attempt.AppPath">@e.Attempt.AppName</td>
+                                <td class="mono">@Format.Direction(e.Attempt.Direction)</td>
+                                <td class="mono">@Format.Endpoint(e.Attempt.RemoteAddress, e.Attempt.RemotePort, e.Attempt.Protocol)</td>
+                                <td class="mono">@IpProtocol.Name(e.Attempt.Protocol)</td>
+                                <td class="muted">@Format.Verdict(e.Verdict)</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+            break;
+    }
+</main>
+
+@code {
+    private enum Tab { Rules, Waiting, Activity }
+
+    private Tab _tab = Tab.Rules;
+    private string _filter = "";
+    private Timer? _tick;
+
+    private BackendStatus? Status => Client.State?.Status;
+
+    private IReadOnlyList<FirewallRule> Rules => Client.State?.Rules ?? [];
+
+    protected override void OnInitialized()
+    {
+        Client.Changed += OnChanged;
+        // Countdown des Probelaufs von Ask
+        _tick = new Timer(_ => { if (Client.State?.ModeRevertAt is not null) OnChanged(); }, null, 1000, 1000);
+    }
+
+    private void OnChanged() => InvokeAsync(StateHasChanged);
+
+    private bool Match(string app, string? address) =>
+        _filter.Length == 0 ||
+        app.Contains(_filter, StringComparison.OrdinalIgnoreCase) ||
+        (address?.Contains(_filter, StringComparison.OrdinalIgnoreCase) ?? false);
+
+    private static int SecondsLeft(DateTimeOffset at) => Math.Max(0, (int)Math.Ceiling((at - DateTimeOffset.UtcNow).TotalSeconds));
+
+    public void Dispose()
+    {
+        Client.Changed -= OnChanged;
+        _tick?.Dispose();
+    }
+}

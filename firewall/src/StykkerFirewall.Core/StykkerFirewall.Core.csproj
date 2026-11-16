@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Kern ohne Windows: Regelmodell, Entscheidungen, Nachfrage-Logik, Pipe-Protokoll und die Schnittstelle
+       IFirewallBackend. Jedes Backend (Windows-Firewall, Simulator, später eigenes WFP) hängt nur hiervon ab. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>StykkerFirewall.Core</AssemblyName>
+    <RootNamespace>StykkerFirewall.Core</RootNamespace>
+  </PropertyGroup>
+
+</Project>

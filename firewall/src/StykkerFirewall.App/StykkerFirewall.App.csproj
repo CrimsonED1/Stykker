@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk.Razor">
+
+  <!-- Oberfläche im Nutzerkontext: Tray-Symbol, Nachfrage-Fenster und Übersicht. WPF liefert nur die Fenster,
+       alles Sichtbare ist Blazor (BlazorWebView, unter Windows WebView2). Spricht mit dem Dienst über die Pipe. -->
+  <PropertyGroup>
+    <!-- Mit Windows-SDK-Version: BlazorWebView 10 nutzt WebView2CompositionControl, das Microsoft.Windows.SDK.NET braucht. -->
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
+    <OutputType>WinExe</OutputType>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>StykkerFirewall</AssemblyName>
+    <RootNamespace>StykkerFirewall.App</RootNamespace>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebView.Wpf" Version="10.0.120" />
+    <ProjectReference Include="..\StykkerFirewall.Core\StykkerFirewall.Core.csproj" />
+    <!-- TrayIcon -->
+    <ProjectReference Include="..\..\..\shared\src\Stykker.Shared\Stykker.Shared.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Farben und Maße der Stykker-Familie aus shared/design-system, nicht kopiert. -->
+    <Content Include="..\..\..\shared\design-system\tokens.css" Link="wwwroot\ds\tokens.css" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Backend auf Basis der Windows-Firewall: Regeln über die COM-API (HNetCfg.FwPolicy2), blockierte Versuche aus
+       dem Security-Log (Ereignis 5157, Überwachung „Filterplattformverbindung“). Braucht Admin-Rechte. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>StykkerFirewall.Backend.WindowsFirewall</AssemblyName>
+    <RootNamespace>StykkerFirewall.Backend.WindowsFirewall</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- EventLogWatcher; dieselbe Version kommt in der Monorepo schon über Microsoft.Extensions.Hosting.WindowsServices. -->
+    <PackageReference Include="System.Diagnostics.EventLog" Version="10.0.12" />
+    <ProjectReference Include="..\StykkerFirewall.Core\StykkerFirewall.Core.csproj" />
+  </ItemGroup>
+
+</Project>
