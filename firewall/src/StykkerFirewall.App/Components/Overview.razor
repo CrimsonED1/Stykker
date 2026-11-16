@@ -1,8 +1,10 @@
 @implements IDisposable
 @inject FirewallClient Client
+@inject ThemeSettings Theme
 
+<ThemeSync />
 <header class="top">
-    <div class="brand"><span class="acc">◆</span> STYKKER <span class="acc">FIREWALL</span></div>
+    <div class="brand"><span class="logo">◆</span> STYKKER <span class="acc">FIREWALL</span></div>
     @if (Status is { } s)
     {
         <span class="badge">@s.BackendName</span>
@@ -13,6 +15,10 @@
             <button class="@(s.Mode == ProtectionMode.Ask ? "on" : "")" @onclick="() => Client.SetModeAsync(ProtectionMode.Ask)">Ask for every app</button>
         </div>
     }
+    <div class="seg" role="group" aria-label="Theme">
+        <button class="@(Theme.Current == ThemeSettings.Dark ? "on" : "")" @onclick="() => Theme.Set(ThemeSettings.Dark)">Dark</button>
+        <button class="@(Theme.Current == ThemeSettings.Titan ? "on" : "")" @onclick="() => Theme.Set(ThemeSettings.Titan)">Titan</button>
+    </div>
 </header>
 
 <main>

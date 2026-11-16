@@ -11,6 +11,7 @@ public partial class MainWindow : Window
     public MainWindow(IServiceProvider services)
     {
         InitializeComponent();
+        ThemeSettings.FollowBackground(this, services);
         WebView.Services = services;
         WebView.RootComponents.Add(new RootComponent { Selector = "#app", ComponentType = typeof(Overview) });
     }

@@ -9,6 +9,11 @@ body {
 .muted { color: var(--muted); }
 .acc { color: var(--acc); }
 
+/* Titan: Platten mit 1–2px Ecken, kein Leuchten (wie bundle.css im Design-System). */
+[data-theme="titan"] { --radius-md: 2px; --radius-sm: 2px; --radius-xs: 1px; }
+.brand .logo { color: var(--acc); text-shadow: 0 0 8px rgb(var(--acc-rgb) / .7); }
+[data-theme="titan"] .brand .logo { text-shadow: none; }
+
 /* Kopf */
 .top {
   display: flex; flex-wrap: wrap; align-items: center; gap: 8px;

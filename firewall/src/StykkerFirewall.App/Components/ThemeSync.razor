@@ -1,0 +1,20 @@
+@* Setzt data-theme am <html> dieser Seite und folgt jeder späteren Wahl – auch einer aus dem anderen Fenster. *@
+@implements IDisposable
+@inject ThemeSettings Theme
+@inject IJSRuntime JS
+
+@code {
+    protected override void OnInitialized() => Theme.Changed += OnChanged;
+
+    protected override Task OnAfterRenderAsync(bool firstRender) => firstRender ? Apply() : Task.CompletedTask;
+
+    private void OnChanged() => _ = InvokeAsync(Apply);
+
+    private async Task Apply()
+    {
+        try { await JS.InvokeVoidAsync("stykkerSetTheme", Theme.Current); }
+        catch (JSDisconnectedException) { }
+    }
+
+    public void Dispose() => Theme.Changed -= OnChanged;
+}

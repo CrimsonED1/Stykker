@@ -13,6 +13,8 @@
     <AssemblyName>StykkerFirewall</AssemblyName>
     <RootNamespace>StykkerFirewall.App</RootNamespace>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <!-- Das Familiensymbol (shared/design-system/assets/Logos/app-icon.png) als ico; Fenster und Tray nehmen es von der exe. -->
+    <ApplicationIcon>..\..\assets\app.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>

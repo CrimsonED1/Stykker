@@ -13,6 +13,7 @@ public partial class PromptWindow : Window
     public PromptWindow(IServiceProvider services)
     {
         InitializeComponent();
+        ThemeSettings.FollowBackground(this, services);
         WebView.Services = services;
         WebView.RootComponents.Add(new RootComponent { Selector = "#app", ComponentType = typeof(PromptView) });
     }

@@ -16,6 +16,7 @@ public partial class App : Application
 
     private Mutex? _single;
     private FirewallClient? _client;
+    private ThemeSettings? _theme;
     private ServiceProvider? _services;
     private TrayIcon? _tray;
     private MainWindow? _main;
@@ -33,9 +34,11 @@ public partial class App : Application
         Environment.SetEnvironmentVariable("WEBVIEW2_USER_DATA_FOLDER", webData);
 
         _client = new FirewallClient(PipeArg(e.Args));
+        _theme = new ThemeSettings(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Stykker", "Firewall", "ui.json"));
         var services = new ServiceCollection();
         services.AddWpfBlazorWebView();
         services.AddSingleton(_client);
+        services.AddSingleton(_theme);
         services.AddSingleton<UiActions>(new UiActions(HidePrompt));
         _services = services.BuildServiceProvider();
 
