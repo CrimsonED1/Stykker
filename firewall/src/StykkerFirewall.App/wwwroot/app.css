@@ -1,91 +1,31 @@
-/* StykkerFirewall – Farben und Maße kommen aus ds/tokens.css (shared/design-system). */
-* { box-sizing: border-box; }
-html, body { margin: 0; height: 100%; }
-body {
-  background: var(--bg); color: var(--ink);
-  font: 13px/1.45 var(--font-sans);
-}
-.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
-.muted { color: var(--muted); }
-.acc { color: var(--acc); }
+/* StykkerFirewall – nur was das Design-System nicht hergibt. Farben, Maße, Schriften, Knöpfe, Badges, Hinweise,
+   Tabellen und beide Themen kommen ausschließlich aus ds/tokens.css und ds/components/bundle.css. */
 
-/* Titan: Platten mit 1–2px Ecken, kein Leuchten (wie bundle.css im Design-System). */
-[data-theme="titan"] { --radius-md: 2px; --radius-sm: 2px; --radius-xs: 1px; }
-.brand .logo { color: var(--acc); text-shadow: 0 0 8px rgb(var(--acc-rgb) / .7); }
-[data-theme="titan"] .brand .logo { text-shadow: none; }
+/* Zähler hinter den Reitern im Kopf */
+nav a .n { font-family: var(--mono); font-size: var(--t-xs); color: var(--muted); margin-left: 4px; }
 
-/* Kopf */
-.top {
-  display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
-  padding: 10px var(--space-gutter); border-bottom: 1px solid var(--line); background: var(--card);
-}
-.brand { font-family: var(--font-mono); font-weight: 600; letter-spacing: .08em; margin-right: auto; }
-main { padding: var(--space-gutter); max-width: var(--page-max); margin: 0 auto; }
+/* Hinweise oben stehen untereinander und mit Abstand zur Liste */
+main > .notice { margin: 0 0 10px; }
 
-/* Badges und Hinweise */
-.badge {
-  display: inline-block; padding: 1px 7px; border-radius: var(--radius-xs);
-  border: 1px solid var(--line); color: var(--muted); font-size: 12px; white-space: nowrap;
-}
-.b-good { color: var(--good); border-color: rgb(var(--good-rgb) / .4); }
-.b-warn { color: var(--warn); border-color: rgb(var(--warn-rgb) / .4); }
-.b-bad { color: var(--bad); border-color: rgb(var(--bad-rgb) / .4); }
-.notice {
-  display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
-  padding: 10px 12px; margin-bottom: var(--gap); border-radius: var(--radius-sm); border: 1px solid var(--line);
-}
-.notice > span { flex: 1 1 320px; }
-.notice-warn { border-color: rgb(var(--warn-rgb) / .5); background: rgb(var(--warn-rgb) / .08); }
-.notice-bad { border-color: rgb(var(--bad-rgb) / .5); background: rgb(var(--bad-rgb) / .08); }
+/* Werkzeugzeile über der Liste */
+.fw-tools { margin: 0 0 8px; }
+.fw-tools .search { max-width: 360px; }
+.sec { margin-bottom: 6px; }
 
-/* Knöpfe */
-.btn {
-  font: inherit; color: var(--ink); background: var(--card-2); cursor: pointer;
-  border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 6px 12px;
-}
-.btn:hover:not(:disabled) { border-color: var(--acc); }
-.btn:disabled { opacity: .5; cursor: default; }
-.btn:focus-visible, .seg button:focus-visible, .tabs button:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
-.btn-good { border-color: rgb(var(--good-rgb) / .6); color: var(--good); }
-.btn-bad { border-color: rgb(var(--bad-rgb) / .6); color: var(--bad); }
-.btn-small { padding: 2px 8px; font-size: 12px; }
+/* Listen: Tabelle in einer card, ohne den Innenabstand der card doppelt zu haben */
+.fw-list { padding: 4px 6px; }
+.fw-list td { vertical-align: top; }
+.fw-acts { display: flex; flex-wrap: wrap; gap: 4px; justify-content: flex-end; }
+.fw-path { color: var(--muted); font-size: var(--t-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 420px; }
 
-.seg { display: inline-flex; border: 1px solid var(--line); border-radius: var(--radius-sm); overflow: hidden; }
-.seg button { font: inherit; background: transparent; color: var(--muted); border: 0; padding: 4px 10px; cursor: pointer; }
-.seg button.on { background: rgb(var(--acc-rgb) / .15); color: var(--acc); }
-
-/* Reiter */
-.tabs { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin: 4px 0 var(--gap); border-bottom: 1px solid var(--line); }
-.tabs button {
-  font: inherit; background: transparent; color: var(--muted); border: 0; border-bottom: 2px solid transparent;
-  padding: 6px 10px; cursor: pointer;
-}
-.tabs button.on { color: var(--ink); border-bottom-color: var(--acc); }
-.count { font-family: var(--font-mono); color: var(--muted); margin-left: 4px; }
-.search {
-  margin-left: auto; font: inherit; color: var(--ink); background: var(--input);
-  border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 4px 8px; min-width: 220px;
-}
-
-/* Tabellen */
-table { width: 100%; border-collapse: collapse; background: var(--card); border-radius: var(--radius-md); overflow: hidden; }
-th { text-align: left; font-weight: 600; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
-th, td { padding: 6px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
-tr:last-child td { border-bottom: 0; }
-.path { color: var(--muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 420px; }
-.actions { display: flex; flex-wrap: wrap; gap: 4px; }
-.empty { padding: 24px; text-align: center; background: var(--card); border-radius: var(--radius-md); }
-
-/* Nachfrage-Fenster */
-.prompt { padding: 14px 16px; height: 100vh; display: flex; flex-direction: column; gap: 6px; }
-.prompt.empty { align-items: center; justify-content: center; }
-.prompt-head { display: flex; justify-content: space-between; align-items: center; }
-.prompt h1 { margin: 2px 0 0; font-size: 18px; font-weight: 600; }
-.prompt .path { max-width: 100%; }
-.dir { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; font-weight: 600; }
-.dir-out { color: var(--acc); }
-.dir-in { color: var(--second); }
-.facts { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; margin: 6px 0; }
-.facts dt { color: var(--muted); }
-.facts dd { margin: 0; }
-.choices { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: auto; }
+/* Nachfrage-Fenster: füllt das kleine Fenster, die Antworten unten */
+html, body { height: 100%; }
+.fw-prompt { height: 100vh; padding: 12px 16px 14px; display: flex; flex-direction: column; gap: 4px; }
+.fw-prompt .sec { margin: 0 0 4px; }
+.fw-prompt .fw-path { max-width: 100%; }
+.fw-idle { justify-content: center; }
+.fw-facts { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; margin: 8px 0; }
+.fw-facts dt { color: var(--muted); }
+.fw-facts dd { margin: 0; }
+.fw-choices { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: auto; }
+.fw-choices button { justify-content: center; height: 32px; }

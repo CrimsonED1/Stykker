@@ -1,3 +1,5 @@
+@* Die Übersicht im Markup der Stykker-Bausteine (shared/design-system/components/bundle.css): Kopfleiste mit Marke,
+   Reitern als nav, Zustand als Badges, Hinweise als notice, Listen als Tabelle in einer card. *@
 @implements IDisposable
 @inject FirewallClient Client
 @inject ThemeSettings Theme
@@ -5,139 +7,167 @@
 <ThemeSync />
 <header class="top">
     <div class="brand"><span class="logo">◆</span> STYKKER <span class="acc">FIREWALL</span></div>
-    @if (Status is { } s)
-    {
-        <span class="badge">@s.BackendName</span>
-        <span class="badge @(s.FirewallEnabled ? "b-good" : "b-bad")">@(s.FirewallEnabled ? "Firewall on" : "Firewall off")</span>
-        <span class="badge @(s.AuditEnabled ? "b-good" : "b-warn")">@(s.AuditEnabled ? "Blocked connections reported" : "No reports")</span>
-        <div class="seg" role="group" aria-label="Mode">
-            <button class="@(s.Mode == ProtectionMode.Monitor ? "on" : "")" @onclick="() => Client.SetModeAsync(ProtectionMode.Monitor)">Monitor</button>
-            <button class="@(s.Mode == ProtectionMode.Ask ? "on" : "")" @onclick="() => Client.SetModeAsync(ProtectionMode.Ask)">Ask for every app</button>
+    <nav aria-label="Views">
+        <a href="" class="@Active(Tab.Rules)" aria-current="@Current(Tab.Rules)" @onclick="() => _tab = Tab.Rules" @onclick:preventDefault>Rules <span class="n">@Rules.Count</span></a>
+        <a href="" class="@Active(Tab.Waiting)" aria-current="@Current(Tab.Waiting)" @onclick="() => _tab = Tab.Waiting" @onclick:preventDefault>Waiting <span class="n">@Client.Pending.Count</span></a>
+        <a href="" class="@Active(Tab.Activity)" aria-current="@Current(Tab.Activity)" @onclick="() => _tab = Tab.Activity" @onclick:preventDefault>Blocked connections</a>
+    </nav>
+    <div class="strip">
+        @if (Status is { } s)
+        {
+            <span class="tag" title="Firewall backend">@s.BackendName</span>
+            <span class="badge @(s.FirewallEnabled ? "good" : "bad")">@(s.FirewallEnabled ? "Firewall on" : "Firewall off")</span>
+            <span class="badge @(s.AuditEnabled ? "good" : "warn")" title="Windows reports blocked connections (audit &quot;Filtering Platform Connection&quot;)">@(s.AuditEnabled ? "Reports on" : "No reports")</span>
+            <div class="seg" role="group" aria-label="Mode">
+                <button class="@(s.Mode == ProtectionMode.Monitor ? "on" : "")" title="Windows default: outgoing allowed, only blocked incoming is shown" @onclick="() => Client.SetModeAsync(ProtectionMode.Monitor)">Monitor</button>
+                <button class="@(s.Mode == ProtectionMode.Ask ? "on" : "")" title="Block outgoing without a rule and ask (a trial of 60 s first)" @onclick="() => Client.SetModeAsync(ProtectionMode.Ask)">Ask for every app</button>
+            </div>
+        }
+        <div class="seg" role="group" aria-label="Theme">
+            <button class="@(Theme.Current == ThemeSettings.Dark ? "on" : "")" @onclick="() => Theme.Set(ThemeSettings.Dark)">Dark</button>
+            <button class="@(Theme.Current == ThemeSettings.Titan ? "on" : "")" @onclick="() => Theme.Set(ThemeSettings.Titan)">Titan</button>
         </div>
-    }
-    <div class="seg" role="group" aria-label="Theme">
-        <button class="@(Theme.Current == ThemeSettings.Dark ? "on" : "")" @onclick="() => Theme.Set(ThemeSettings.Dark)">Dark</button>
-        <button class="@(Theme.Current == ThemeSettings.Titan ? "on" : "")" @onclick="() => Theme.Set(ThemeSettings.Titan)">Titan</button>
     </div>
 </header>
 
 <main>
     @if (!Client.Connected)
     {
-        <div class="notice notice-bad">@(Client.LastError ?? "Connecting to the StykkerFirewall service …")</div>
+        <div class="notice alarm">
+            <span class="badge bad">Service</span>
+            <span class="txt">@(Client.LastError ?? "Connecting to the StykkerFirewall service …")</span>
+        </div>
     }
     else if (Client.LastError is { } err)
     {
-        <div class="notice notice-bad">@err</div>
+        <div class="notice alarm"><span class="badge bad">Error</span><span class="txt">@err</span></div>
     }
 
     @if (Client.State?.ModeRevertAt is { } revert)
     {
-        <div class="notice notice-warn">
-            <span>
+        <div class="notice">
+            <span class="badge warn">Trial</span>
+            <span class="txt">
                 <b>Ask mode is on for a trial.</b> Outgoing connections of apps without a rule are blocked now.
                 If you can still reach what you need, keep it. Otherwise it switches back to Monitor by itself
                 in <span class="mono">@SecondsLeft(revert) s</span>.
             </span>
-            <button class="btn btn-good" @onclick="Client.ConfirmModeAsync">Keep ask mode</button>
-            <button class="btn" @onclick="() => Client.SetModeAsync(ProtectionMode.Monitor)">Back to monitor</button>
+            <span class="acts">
+                <button class="primary" @onclick="Client.ConfirmModeAsync">Keep ask mode</button>
+                <button class="quiet" @onclick="() => Client.SetModeAsync(ProtectionMode.Monitor)">Back to monitor</button>
+            </span>
         </div>
     }
 
     @if (Status?.Problem is { } problem)
     {
-        <div class="notice notice-warn">@problem</div>
+        <div class="notice"><span class="badge warn plain">Hint</span><span class="txt">@problem</span></div>
     }
 
-    <nav class="tabs">
-        <button class="@(_tab == Tab.Rules ? "on" : "")" @onclick="() => _tab = Tab.Rules">Rules <span class="count">@Rules.Count</span></button>
-        <button class="@(_tab == Tab.Waiting ? "on" : "")" @onclick="() => _tab = Tab.Waiting">Waiting <span class="count">@Client.Pending.Count</span></button>
-        <button class="@(_tab == Tab.Activity ? "on" : "")" @onclick="() => _tab = Tab.Activity">Blocked connections</button>
-        <input class="search" placeholder="Filter by app or address" @bind="_filter" @bind:event="oninput" />
-    </nav>
+    <div class="toolbar fw-tools">
+        <div class="search">
+            <input placeholder="Filter by app or address" aria-label="Filter by app or address" @bind="_filter" @bind:event="oninput" />
+        </div>
+    </div>
 
     @switch (_tab)
     {
         case Tab.Rules:
+            var rules = Rules.Where(r => Match(r.AppPath, r.RemoteAddress)).OrderBy(r => r.AppName, StringComparer.OrdinalIgnoreCase).ToList();
+            <div class="sec">Rules<span class="right mono">@Shown(rules.Count, Rules.Count)</span></div>
             @if (Rules.Count == 0)
             {
-                <div class="empty muted">No rules yet. Rules appear here when you answer a connection request.</div>
+                <div class="empty"><div><b>No rules yet</b>Rules appear here when you answer a connection request.</div></div>
             }
             else
             {
-                <table>
-                    <thead><tr><th>App</th><th>Dir</th><th>Action</th><th>Target</th><th>Created</th><th></th></tr></thead>
-                    <tbody>
-                        @foreach (var r in Rules.Where(r => Match(r.AppPath, r.RemoteAddress)).OrderBy(r => r.AppName, StringComparer.OrdinalIgnoreCase))
-                        {
-                            <tr>
-                                <td title="@r.AppPath"><div>@r.AppName</div><div class="path mono">@r.AppPath</div></td>
-                                <td class="mono">@Format.Direction(r.Direction)</td>
-                                <td><span class="badge @(r.Action == RuleAction.Allow ? "b-good" : "b-bad")">@(r.Action == RuleAction.Allow ? "allow" : "block")</span></td>
-                                <td class="mono">@Format.Target(r)</td>
-                                <td class="mono muted">@Format.Date(r.Created)</td>
-                                <td><button class="btn btn-small" title="Delete rule; the app will be asked again" @onclick="() => Client.DeleteRuleAsync(r.Id)">Delete</button></td>
-                            </tr>
-                        }
-                    </tbody>
-                </table>
+                <div class="card fw-list">
+                    <div class="tablewrap">
+                        <table class="stackable">
+                            <thead><tr><th>App</th><th>Dir</th><th>Action</th><th>Target</th><th>Created</th><th></th></tr></thead>
+                            <tbody>
+                                @foreach (var r in rules)
+                                {
+                                    <tr>
+                                        <td title="@r.AppPath"><div>@r.AppName</div><div class="fw-path mono">@r.AppPath</div></td>
+                                        <td data-l="Dir"><span class="tag">@Format.Direction(r.Direction)</span></td>
+                                        <td data-l="Action"><span class="badge @(r.Action == RuleAction.Allow ? "good" : "bad")">@(r.Action == RuleAction.Allow ? "allow" : "block")</span></td>
+                                        <td class="mono" data-l="Target">@Format.Target(r)</td>
+                                        <td class="mono dim" data-l="Created">@Format.Date(r.Created)</td>
+                                        <td class="fw-acts"><button class="danger" title="Delete rule; the app will be asked again" @onclick="() => Client.DeleteRuleAsync(r.Id)">Delete</button></td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
             }
             break;
 
         case Tab.Waiting:
+            <div class="sec">Waiting for an answer<span class="right mono">@Client.Pending.Count</span></div>
             @if (Client.Pending.Count == 0)
             {
-                <div class="empty muted">Nothing is waiting for an answer.</div>
+                <div class="empty"><div><b>Nothing is waiting</b>When an app without a rule tries to connect, it shows up here and in the small window.</div></div>
             }
             else
             {
-                <table>
-                    <thead><tr><th>App</th><th>Dir</th><th>Remote</th><th>Since</th><th>Answer</th></tr></thead>
-                    <tbody>
-                        @foreach (var p in Client.Pending)
-                        {
-                            <tr>
-                                <td title="@p.Attempt.AppPath"><div>@p.Attempt.AppName</div><div class="path mono">@p.Attempt.AppPath</div></td>
-                                <td class="mono">@Format.Direction(p.Attempt.Direction)</td>
-                                <td class="mono">@Format.Endpoint(p.Attempt.RemoteAddress, p.Attempt.RemotePort, p.Attempt.Protocol) @IpProtocol.Name(p.Attempt.Protocol)</td>
-                                <td class="mono muted">@Format.Time(p.Attempt.Time)</td>
-                                <td class="actions">
-                                    <button class="btn btn-small btn-good" @onclick="() => Client.DecideAsync(p.Id, PromptDecision.AllowApp)">Allow all</button>
-                                    <button class="btn btn-small" @onclick="() => Client.DecideAsync(p.Id, PromptDecision.AllowTarget)">This target</button>
-                                    <button class="btn btn-small btn-bad" @onclick="() => Client.DecideAsync(p.Id, PromptDecision.BlockAlways)">Always block</button>
-                                    <button class="btn btn-small" @onclick="() => Client.DecideAsync(p.Id, PromptDecision.BlockOnce)">Once</button>
-                                </td>
-                            </tr>
-                        }
-                    </tbody>
-                </table>
+                <div class="card fw-list">
+                    <div class="tablewrap">
+                        <table class="stackable">
+                            <thead><tr><th>App</th><th>Dir</th><th>Remote</th><th>Since</th><th>Answer</th></tr></thead>
+                            <tbody>
+                                @foreach (var p in Client.Pending)
+                                {
+                                    <tr>
+                                        <td title="@p.Attempt.AppPath"><div>@p.Attempt.AppName</div><div class="fw-path mono">@p.Attempt.AppPath</div></td>
+                                        <td data-l="Dir"><span class="tag">@Format.Direction(p.Attempt.Direction)</span></td>
+                                        <td class="mono" data-l="Remote">@Format.Endpoint(p.Attempt.RemoteAddress, p.Attempt.RemotePort, p.Attempt.Protocol) @IpProtocol.Name(p.Attempt.Protocol)</td>
+                                        <td class="mono dim" data-l="Since">@Format.Time(p.Attempt.Time)</td>
+                                        <td class="fw-acts">
+                                            <button @onclick="() => Client.DecideAsync(p.Id, PromptDecision.AllowApp)">Allow all</button>
+                                            <button @onclick="() => Client.DecideAsync(p.Id, PromptDecision.AllowTarget)">This target</button>
+                                            <button class="danger" @onclick="() => Client.DecideAsync(p.Id, PromptDecision.BlockAlways)">Always block</button>
+                                            <button class="quiet" @onclick="() => Client.DecideAsync(p.Id, PromptDecision.BlockOnce)">Block once</button>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
             }
             break;
 
         case Tab.Activity:
             var recent = Client.Recent.Where(e => Match(e.Attempt.AppPath, e.Attempt.RemoteAddress)).Take(300).ToList();
+            <div class="sec">Blocked connections<span class="right mono">@Shown(recent.Count, Client.Recent.Count)</span></div>
             @if (recent.Count == 0)
             {
-                <div class="empty muted">No blocked connections reported yet.</div>
+                <div class="empty"><div><b>No blocked connections</b>Windows reports a connection here when the firewall blocks it.</div></div>
             }
             else
             {
-                <table>
-                    <thead><tr><th>Time</th><th>App</th><th>Dir</th><th>Remote</th><th>Proto</th><th>Result</th></tr></thead>
-                    <tbody>
-                        @foreach (var e in recent)
-                        {
-                            <tr>
-                                <td class="mono muted">@Format.Time(e.Attempt.Time)</td>
-                                <td title="@e.Attempt.AppPath">@e.Attempt.AppName</td>
-                                <td class="mono">@Format.Direction(e.Attempt.Direction)</td>
-                                <td class="mono">@Format.Endpoint(e.Attempt.RemoteAddress, e.Attempt.RemotePort, e.Attempt.Protocol)</td>
-                                <td class="mono">@IpProtocol.Name(e.Attempt.Protocol)</td>
-                                <td class="muted">@Format.Verdict(e.Verdict)</td>
-                            </tr>
-                        }
-                    </tbody>
-                </table>
+                <div class="card fw-list">
+                    <div class="tablewrap">
+                        <table class="stackable">
+                            <thead><tr><th>Time</th><th>App</th><th>Dir</th><th>Remote</th><th>Proto</th><th>Result</th></tr></thead>
+                            <tbody>
+                                @foreach (var e in recent)
+                                {
+                                    <tr>
+                                        <td class="mono dim">@Format.Time(e.Attempt.Time)</td>
+                                        <td title="@e.Attempt.AppPath">@e.Attempt.AppName</td>
+                                        <td data-l="Dir"><span class="tag">@Format.Direction(e.Attempt.Direction)</span></td>
+                                        <td class="mono" data-l="Remote">@Format.Endpoint(e.Attempt.RemoteAddress, e.Attempt.RemotePort, e.Attempt.Protocol)</td>
+                                        <td class="mono" data-l="Proto">@IpProtocol.Name(e.Attempt.Protocol)</td>
+                                        <td class="dim" data-l="Result">@Format.Verdict(e.Verdict)</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
             }
             break;
     }
@@ -153,6 +183,12 @@
     private BackendStatus? Status => Client.State?.Status;
 
     private IReadOnlyList<FirewallRule> Rules => Client.State?.Rules ?? [];
+
+    private string Active(Tab tab) => _tab == tab ? "active" : "";
+
+    private string? Current(Tab tab) => _tab == tab ? "page" : null;
+
+    private string Shown(int shown, int total) => shown == total ? $"{total}" : $"{shown} of {total}";
 
     protected override void OnInitialized()
     {

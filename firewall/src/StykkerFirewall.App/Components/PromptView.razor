@@ -1,3 +1,5 @@
+@* Das Nachfrage-Fenster im Markup der Stykker-Bausteine: Abschnittszeile (sec), App-Name (name), Fakten,
+   vier gleichrangige Antworten – nur „Always block“ ist als danger abgesetzt. *@
 @implements IDisposable
 @inject FirewallClient Client
 @inject UiActions Ui
@@ -6,17 +8,17 @@
 @if (Current is { } p)
 {
     var a = p.Attempt;
-    <div class="prompt">
-        <div class="prompt-head">
-            <span class="dir @(a.Direction == TrafficDirection.Inbound ? "dir-in" : "dir-out")">@(a.Direction == TrafficDirection.Inbound ? "Incoming" : "Outgoing")</span>
+    <div class="fw-prompt">
+        <div class="sec">
+            @(a.Direction == TrafficDirection.Inbound ? "Incoming connection" : "Outgoing connection")
             @if (Client.Pending.Count > 1)
             {
-                <span class="muted">@(Client.Pending.Count - 1) more waiting</span>
+                <span class="right"><span class="badge acc">@(Client.Pending.Count - 1) more waiting</span></span>
             }
         </div>
-        <h1 title="@a.AppPath">@a.AppName</h1>
-        <div class="path mono" title="@a.AppPath">@a.AppPath</div>
-        <dl class="facts">
+        <div class="name" title="@a.AppPath">@a.AppName</div>
+        <div class="fw-path mono" title="@a.AppPath">@a.AppPath</div>
+        <dl class="fw-facts">
             <dt>@(a.Direction == TrafficDirection.Inbound ? "From" : "To")</dt>
             <dd class="mono">@Format.Endpoint(a.RemoteAddress, a.RemotePort, a.Protocol)</dd>
             <dt>Protocol</dt>
@@ -24,21 +26,21 @@
             <dt>Process</dt>
             <dd class="mono">PID @a.ProcessId@(p.Repeats > 0 ? $" · tried {p.Repeats + 1}×" : "")</dd>
         </dl>
-        <div class="choices">
-            <button class="btn btn-good" disabled="@_busy" @onclick="() => Decide(PromptDecision.AllowApp)">Allow all</button>
-            <button class="btn" disabled="@_busy" @onclick="() => Decide(PromptDecision.AllowTarget)">Allow this target only</button>
-            <button class="btn btn-bad" disabled="@_busy" @onclick="() => Decide(PromptDecision.BlockAlways)">Always block</button>
-            <button class="btn" disabled="@_busy" @onclick="() => Decide(PromptDecision.BlockOnce)">Block this time</button>
-        </div>
         @if (Client.LastError is { } err)
         {
-            <div class="notice notice-bad">@err</div>
+            <div class="notice alarm"><span class="badge bad">Error</span><span class="txt">@err</span></div>
         }
+        <div class="fw-choices">
+            <button disabled="@_busy" @onclick="() => Decide(PromptDecision.AllowApp)">Allow all</button>
+            <button disabled="@_busy" @onclick="() => Decide(PromptDecision.AllowTarget)">Allow this target only</button>
+            <button class="danger" disabled="@_busy" @onclick="() => Decide(PromptDecision.BlockAlways)">Always block</button>
+            <button disabled="@_busy" @onclick="() => Decide(PromptDecision.BlockOnce)">Block this time</button>
+        </div>
     </div>
 }
 else
 {
-    <div class="prompt empty muted">No connection is waiting for an answer.</div>
+    <div class="fw-prompt fw-idle"><div class="empty"><div><b>Nothing is waiting</b>No connection needs an answer right now.</div></div></div>
 }
 
 @code {

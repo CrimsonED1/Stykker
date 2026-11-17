@@ -27,6 +27,7 @@
   <ItemGroup>
     <!-- Farben und Maße der Stykker-Familie aus shared/design-system, nicht kopiert. -->
     <Content Include="..\..\..\shared\design-system\tokens.css" Link="wwwroot\ds\tokens.css" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\..\shared\design-system\components\bundle.css" Link="wwwroot\ds\components\bundle.css" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>
