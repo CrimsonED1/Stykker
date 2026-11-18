@@ -66,6 +66,9 @@
         yield return Page(Strings.PairApproveTitle, "approve", "lock");
         foreach (var s in e.Registry.Servers.Where(s => s.Kind == BackendKind.LlamaCpp && !s.Info.Manual))
             yield return Page(Strings.CmdDetails(s.Name), $"serverdetail/{Uri.EscapeDataString(s.Key)}", "info");
+        // Den Prompt-Tester mit diesem Server öffnen (wie der Sprechblasen-Knopf am Profil)
+        foreach (var s in e.Registry.Servers.Where(s => s.Online))
+            yield return Page(Strings.CmdPrompt(s.Name), $"prompt?server={Uri.EscapeDataString(s.Key)}", "chat");
         // Downloads (B3) und die Browser-Meldung: die Datei kommt als Anhang, die Seite bleibt stehen
         Item Download(string label, string href, string icon) => new(label, Strings.CmdAction, icon, () => { Nav.NavigateTo(href, forceLoad: true); return Task.CompletedTask; });
         if (e.Csv.Enabled) yield return Download(Strings.CmdDownload("requests.csv"), "api/requests.csv", "file");

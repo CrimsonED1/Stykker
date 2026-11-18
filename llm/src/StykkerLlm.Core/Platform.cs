@@ -1,3 +1,4 @@
+using Stykker.Shared.Net;
 using Stykker.Shared.Disk;
 
 namespace StykkerLlm.Core;
@@ -108,6 +109,9 @@ public interface IPlatform : IDisposable
     DiskSample? ReadDisks() => null;
     // Prozesse mit dem meisten Platten-E/A (Lesen und Schreiben je Sekunde), größte zuerst. Standard: nicht verfügbar.
     IReadOnlyList<ProcessIoRow>? ReadDiskProcesses(int count) => null;
+    // Netzwerk-Durchsatz seit dem letzten Aufruf (Stykker.Shared.Net). Der erste Aufruf setzt nur die Basis und liefert null.
+    // Standard: nicht verfügbar.
+    NetSample? ReadNetwork() => null;
     // Daten an den aktuellen Benutzer binden (Windows: DPAPI CurrentUser). null = nicht möglich (Standard, z. B. Linux/Simulator):
     // der Aufrufer speichert dann nichts dauerhaft.
     byte[]? ProtectForCurrentUser(byte[] data) => null;

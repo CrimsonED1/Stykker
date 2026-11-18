@@ -15,7 +15,7 @@ The interface is an instrument panel, not a table dump: every figure is monospac
 - **Processor**: total load, the five-minute curve, and every core behind a **folded line**. Folded, it names the busiest core; one click opens the bars, which are only built while open.
 - **Memory**: used and total RAM, and the commit charge.
 - **Graphics**: utilisation, VRAM, temperature, board power against its limit, graphics and memory clock (NVIDIA through `nvml.dll`), and the split of the load across the engines (3D, Compute, Copy, Video decode, Video encode) as a stacked bar with a legend. Without `nvml.dll` (Intel or AMD graphics) the utilisation, the engine split and the memory in use come from the Windows GPU counters; temperature, power, clocks and total memory then show `–`.
-- **Storage and network**: read/write and received/sent as **bars**. Each row shows the value against the peak of the session (`10.6 MB/s / 23.8 MB/s`). Totals over all physical drives and all active adapters.
+- **Storage and network**: read/write and received/sent as **bars**. Each row shows the value against the peak of the session (`10.6 MB/s / 23.8 MB/s`). Totals over all physical drives and all active adapters without loopback and tunnels, IPv4 and IPv6 (the measurement in `Stykker.Shared/Net`, the same as in StykkerLLM).
 
 ## The hub
 

@@ -1,3 +1,4 @@
+using Stykker.Shared.Net;
 using Stykker.Shared.Disk;
 
 namespace StykkerLlm.Core;
@@ -228,6 +229,15 @@ public sealed class SimPlatform : IPlatform
     }
 
     public MemoryInfo? ReadMemoryInfo() => _w.ShowSystem ? new MemoryInfo("DDR5", 6000, 2, 64, 2) : null;
+
+    // Netzwerk: etwas Grundrauschen, mehr, solange die Server rechnen (Anfragen kommen übers Netz); 2.5-Gbit-Adapter
+    public NetSample? ReadNetwork()
+    {
+        if (!_w.ShowSystem) return null;
+        double busy = _w.TotalLoad();
+        double rx = (40 + busy * 900 + _noise.NextDouble() * 60) * 1024, tx = (12 + busy * 2600 + _noise.NextDouble() * 30) * 1024;
+        return new NetSample(rx, tx, 2.5e9 / 8);
+    }
 
     public IReadOnlyList<(string Name, double Gb)>? ReadGpuTop(int count)
     {

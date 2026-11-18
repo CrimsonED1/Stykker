@@ -8,6 +8,10 @@
         var id = t.Id;
         <div class="toast @(t.Warn ? "warn" : "")" @key="id">
             <span>@t.Text</span>
+            @if (t.Href != null)
+            {
+                <a class="link" href="@t.Href" @onclick="() => T.Dismiss(id)">@t.LinkText</a>
+            }
             @if (t.Undo != null || t.Commit != null)
             {
                 <button class="link" @onclick="() => T.UndoNow(id)">@Strings.ToastUndo</button>

@@ -940,3 +940,58 @@ html[data-theme=titan] .bench-chart .dot{stroke:var(--card)}
 .keys-list dt{display:flex;gap:4px;align-items:center;flex-wrap:wrap;margin:0}.keys-list dd{margin:0;font-size:13px}
 .keys-list .kbd{display:inline-block;min-width:20px;text-align:center;padding:1px 6px;border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;font:11px var(--font-mono);color:var(--ink);background:var(--card-2)}
 @media(max-width:520px){.keys-list{grid-template-columns:minmax(0,1fr)}.keys-list dd{margin-bottom:6px}}
+/* Hardware-Minibar (HwMiniBar.razor, Entwurf docs/design/minibar-preview.svg): zwei Reihen zu vier Feldern über jeder Seite
+   außer dem Monitor; Name, Balken, Wert. Stufen aus Core/MiniBar.cs: lv-hot rot, lv-warn gelb, lv-good grün (Temperatur).
+   Schmal zwei Spalten mit Name und Wert in einer Zeile. Ausgeblendet mit dem Schalter im ☰ (html[data-mini-bar=off]). */
+.minibar{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px 14px;box-sizing:border-box;width:calc(100% - 40px);max-width:1440px;
+  margin:12px auto 0;padding:10px 14px;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:inset 0 1px 0 var(--top-line)}
+html[data-mini-bar=off] .minibar{display:none}
+.mb-cell{display:grid;grid-template-columns:minmax(0,1fr);row-gap:4px;min-width:0}
+.mb-lbl{font:10px var(--font-mono);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);white-space:nowrap}
+.mb-bar{display:block;height:8px;border-radius:4px;background:var(--track);overflow:hidden}
+.mb-bar>i{display:block;height:100%;width:var(--f,0%);border-radius:4px;background:linear-gradient(90deg,var(--second),var(--acc));transition:width .6s ease}
+.mb-val{font:11px var(--font-mono);font-variant-numeric:tabular-nums;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mb-cell.lv-hot .mb-bar>i{background:var(--bad)}.mb-cell.lv-hot .mb-val{color:var(--bad)}
+.mb-cell.lv-warn .mb-bar>i{background:var(--warn)}.mb-cell.lv-warn .mb-val{color:var(--warn)}
+.mb-cell.lv-good .mb-bar>i{background:var(--good)}.mb-cell.lv-good .mb-val{color:var(--good)}
+.mb-cell.na .mb-val{color:var(--muted)}
+@media(max-width:640px){
+  .minibar{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 12px;width:calc(100% - 24px);padding:8px 10px}
+  .mb-cell{grid-template-columns:auto minmax(0,1fr);column-gap:8px;align-items:baseline}
+  .mb-bar{grid-column:1/-1;grid-row:2;height:6px}
+  .mb-val{text-align:right}
+}
+html.shell .minibar{box-shadow:none}html.shell .mb-bar>i{transition:none}
+/* Felder als Link (GPU-Seite, Hardware im Monitor, Laufwerke) und die Verlaufslinie der letzten Messtakte dahinter */
+.mb-cell{position:relative;margin:-4px -6px;padding:4px 6px;border-radius:6px}
+a.mb-cell{color:inherit;text-decoration:none}
+a.mb-cell:hover{background:rgb(var(--ink-rgb)/.05)}
+a.mb-cell:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
+.mb-cell>span{position:relative}
+.mb-spark{position:absolute;inset:4px 6px;width:calc(100% - 12px);height:calc(100% - 8px);pointer-events:none;opacity:.32}
+.mb-spark polyline{fill:none;stroke:var(--acc);stroke-width:1.5;vector-effect:non-scaling-stroke}
+.mb-cell.lv-hot .mb-spark polyline{stroke:var(--bad)}.mb-cell.lv-warn .mb-spark polyline{stroke:var(--warn)}.mb-cell.lv-good .mb-spark polyline{stroke:var(--good)}
+.mb-more{display:none}
+.top nav .nv-ic{display:none}
+/* Telefon: zugeklappt nur VRAM, GPU, Temperatur (.ph) und „+5“; aufgeklappt alle acht in zwei Spalten */
+@media(max-width:640px){
+  .mb-more{display:block;align-self:center;padding:4px 10px;font:11px var(--font-mono)}
+  .minibar:not(.open){grid-template-columns:repeat(3,minmax(0,1fr)) auto}
+  .minibar:not(.open) .mb-cell:not(.ph){display:none}
+  .minibar:not(.open) .mb-cell{grid-template-columns:minmax(0,1fr)}
+  .minibar:not(.open) .mb-bar{grid-column:auto;grid-row:auto}
+  .minibar:not(.open) .mb-val{text-align:left}
+  .minibar.open .mb-more{grid-column:1/-1;justify-self:end}
+}
+/* Telefon: die Hauptseiten als feste Leiste unten (mit dem Daumen erreichbar). Der Kopf verliert dort die Unschärfe,
+   sonst wäre er der Bezugsrahmen der festen Leiste und sie bliebe oben. Meldungen rücken über die Leiste. */
+@media(max-width:640px){
+  .top{-webkit-backdrop-filter:none;backdrop-filter:none;background:rgb(var(--bg-rgb)/.97)}
+  .top nav{position:fixed;left:0;right:0;bottom:0;z-index:40;display:flex;flex-wrap:nowrap;justify-content:space-around;max-width:none;gap:0;
+    margin:0;padding:4px 4px calc(4px + env(safe-area-inset-bottom));background:rgb(var(--bg-rgb)/.97);border-top:1px solid var(--line)}
+  .top nav a{flex:1 1 0;min-width:0;display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 2px;font-size:10px;line-height:1.1;text-align:center}
+  .top nav a .nv-ic{display:inline-block}
+  .top nav .navtxt,.top nav .nv-t{display:block;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .page{padding-bottom:calc(56px + env(safe-area-inset-bottom))}
+  .toasts{bottom:calc(68px + env(safe-area-inset-bottom))}
+}

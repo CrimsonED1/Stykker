@@ -1,3 +1,4 @@
+using Stykker.Shared.Net;
 using System.Runtime.InteropServices;
 using System.Text;
 using Stykker.Shared.Disk;
@@ -38,8 +39,12 @@ public sealed class WindowsPlatform : IPlatform
     private readonly DiskCounters _disks = new();
     private readonly object _diskLock = new();
     private bool _disposed;
+    private readonly NetCounters _net = new();
 
     public int ProcessorCount => Environment.ProcessorCount;
+
+    // Netzwerk: dieselben Adapterzähler wie in der HUD (Stykker.Shared/Net)
+    public NetSample? ReadNetwork() => _net.Read();
 
     public IReadOnlyList<ListenerInfo> ReadListeners()
     {

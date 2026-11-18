@@ -16,6 +16,7 @@ The rule for what belongs here: code that two tools use, or that would otherwise
 | `Hardware/SystemMath.cs` | The arithmetic of processor load, per-core load and the top list of programs, without Windows. | StykkerLLM |
 | `Disk/` | `DiskRows.cs`: the records of the drives (physical disks with type NVMe, SSD, HDD, USB or unknown; volumes; programs with disk traffic; a sample). `DiskMath.cs`: the conversion and the mapping of the raw counter values, without Windows. | StykkerLLM, StykkerSYS |
 | `Windows/DiskCounters.cs` | Drives and disk traffic from Windows: volumes (`DriveInfo`), counters (PDH `PhysicalDisk`, `LogicalDisk`, `Process`), type and model per disk and the volume-to-disk mapping (`DeviceIoControl`). Read only, no administrator rights; a missing value stays `null`. | StykkerLLM, StykkerSYS |
+| `Net/` | `NetRates.cs`: `NetSample` (received, sent, link speed in bytes per second) and `NetRateMeter` (rate from two counter readings, starts over when a counter goes back). `NetCounters.cs`: the byte counters of all connected adapters without loopback and tunnels, IPv4 and IPv6, with .NET only. | StykkerHUD, StykkerLLM |
 | `Windows/TrayIcon.cs` | Tray icon with a context menu, on a message-only window in its own thread. | StykkerHUD, StykkerSYS |
 | `Web/DesignSystemHost.cs` | Serves the design system under `/ds` from a folder: `--design-system`, the environment variable, or the default `shared/design-system`. | StykkerHUD, StykkerSYS |
 | `Web/LocalRequests.cs` | Guard for local actions: same-origin check (403), failed action (409), done (200). | StykkerSYS |
@@ -58,7 +59,7 @@ The PDH and tray parts only work on Windows. `Stykker.Shared` targets `net10.0` 
 
 `tests/Stykker.Pairing.LockProbe` is a helper program, not a test project: the pairing tests start it several times at once to write the same file.
 
-Last run on 2026-10-15: 319 of 319 tests passed in `Stykker.Shared.Tests` and 109 of 109 in `Stykker.Pairing.Tests`, the build shows no warnings.
+Last run on 2026-11-18: 333 of 333 tests passed in `Stykker.Shared.Tests` and 109 of 109 in `Stykker.Pairing.Tests`, the build shows no warnings.
 
 ## Using it from a tool
 

@@ -13,6 +13,8 @@ public sealed class Toasts
         public bool Warn { get; init; }
         public Func<Task>? Commit { get; init; }     // mit Rückgängig: was nach Ablauf passiert
         public Action? Undo { get; init; }
+        public string? Href { get; init; }           // optionaler Link („Show“) zu der Stelle, um die es geht
+        public string? LinkText { get; init; }
         public DateTime Until { get; init; }
     }
 
@@ -22,6 +24,10 @@ public sealed class Toasts
     public IReadOnlyList<Toast> Items { get { lock (_items) return _items.ToList(); } }
 
     public void Show(string text, bool warn = false, int seconds = 4) => Add(new Toast { Text = text, Warn = warn, Until = DateTime.Now.AddSeconds(seconds) });
+
+    // Meldung mit einem Link dorthin, wo mehr steht (z. B. die Aktivität im Monitor)
+    public void ShowLink(string text, string linkText, string href, bool warn = false, int seconds = 8) =>
+        Add(new Toast { Text = text, Warn = warn, Href = href, LinkText = linkText, Until = DateTime.Now.AddSeconds(seconds) });
 
     // Aktion mit Rückgängig: commit läuft nach Ablauf (Vorgabe 6 s), undo sofort beim Klick
     public void ShowUndo(string text, Func<Task> commit, Action? undo = null, int seconds = 6) =>

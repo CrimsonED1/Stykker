@@ -1,3 +1,4 @@
+using Stykker.Shared.Net;
 using Stykker.Shared.Disk;
 
 namespace StykkerLlm.Core;
@@ -59,6 +60,8 @@ public sealed class MonitorEngine : IDisposable
     public IReadOnlyList<(string Name, double Percent)> GpuUtilTop => _gpuUtilTop;
     // Laufwerke (jede Sekunde; die Raten brauchen zwei Abtastungen) und die Prozesse mit dem meisten Platten-E/A (alle 5 s)
     public DiskSample? Disks { get; private set; }
+    // Netzwerk-Durchsatz aller Adapter (mit den Laufwerken jede Sekunde; der erste Wert kommt mit der zweiten Messung)
+    public NetSample? Net { get; private set; }
     private DateTime _lastDiskRead = DateTime.MinValue;
     private volatile List<ProcessIoRow> _diskProcs = new();
     public IReadOnlyList<ProcessIoRow> DiskProcesses => _diskProcs;
@@ -421,6 +424,8 @@ public sealed class MonitorEngine : IDisposable
                 try { Disks = Platform.ReadDisks(); }
                 catch { Disks = null; }   // ein Zählerfehler lässt die Karte leer, der Takt läuft weiter
                 if (Disks is { } disks) DiskHistory.Add(disks);
+                try { Net = Platform.ReadNetwork() ?? Net; }
+                catch { Net = null; }
             }
             Sys = Platform.ReadSystem();
             if (Recorder.Active)

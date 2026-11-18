@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 130" width="640" height="130" role="img" aria-label="Hardware mini-bar preview: VRAM, GPU, CPU, RAM, HDD, disk I/O, network, temperature">
+  <title>StykkerLLM hardware mini-bar (2 rows x 4 cells)</title>
+  <defs>
+    <!-- bar fill: second -> acc (matches app.css .bar>div) -->
+    <linearGradient id="gradAcc" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#a77bff"/>
+      <stop offset="1" stop-color="#4fe3ff"/>
+    </linearGradient>
+  </defs>
+
+  <!-- outer card: --card, --line border, radius-sm -->
+  <rect x="0" y="0" width="640" height="130" rx="8" fill="#111a33" stroke="#24325a" stroke-width="1"/>
+  <!-- top hairline: --top-line -->
+  <rect x="1" y="1" width="638" height="1" fill="#ffffff3c"/>
+
+  <!-- ===== ROW 1 ===== -->
+  <!-- VRAM -->
+  <text x="14" y="26" font-family="'Cascadia Mono','Cascadia Code',Consolas,ui-monospace,monospace" font-size="10" letter-spacing="0.6" fill="#8292b8">VRAM</text>
+  <rect x="14" y="32" width="144" height="8" rx="4" fill="#ffffff1c"/>
+  <rect x="14" y="32" width="85" height="8" rx="4" fill="url(#gradAcc)"/>
+  <text x="14" y="54" font-family="'Cascadia Mono','Cascadia Code',Consolas,ui-monospace,monospace" font-size="11" fill="#e8eeff" font-variant-numeric="tabular-nums">14.2 / 24 GB</text>
+
+  <!-- GPU -->
+  <text x="170" y="26" font-family="'Cascadia Mono','Cascadia Code',Consolas,ui-monospace,monospace" font-size="10" letter-spacing="0.6" fill="#8292b8">GPU</text>
+  <rect x="170" y="32" width="144" height="8" rx="4" fill="#ffffff1c"/>
+  <rect x="170" y="32" width="104" height="8" rx="4" fill="url(#gradAcc)"/>
+  <text x="170" y="54" font-family="'Cascadia Mono','Cascadia Code',Consolas,ui-monospace,monospace" font-size="11" fill="#e8eeff" font-variant-numeric="tabular-nums">72%</text>
+
+  <!-- CPU -->
+  <text x="326" y="26" font-family="'Cascadia Mono','Cascadia Code',Consolas,ui-monospace,monospace" font-size="10" letter-spacing="0.6" fill="#8292b8">CPU</text>
+  <rect x="326" y="32" width="144" height="8" rx="4" fill="#ffffff1c"/>
+  <rect x="326" y="32" width="50" height="8" rx="4" fill="url(#gradAcc)"/>
+  <text x="326" y="54" font-family="'Cascadia Mono','Cascadia Code',Consolas,ui-monospace,monospace" font-size="11" fill="#e8eeff" font-variant-numeric="tabular-nums">35%</text>
+
+  <!-- RAM -->
+  <text x="482" y="26" font-family="'Cascadia Mono','Cascadia Code',Consolas,ui-monospace,monospace" font-size="10" letter-spacing="0.6" fill="#8292b8">RAM</text>
+  <rect x="482" y="32" width="144" height="8" rx="4" fill="#ffffff1c"/>
+  <rect x="482" y="32" width="112" height="8" rx="4" fill="url(#gradAcc)"/>
+  <text x="482" y="54" font-family="'Cascadia Mono','Cascadia Code',Consolas,ui-monospace,monospace" font-size="11" fill="#e8eeff" font-variant-numeric="tabular-nums">6.1 GB free</text>
+
+  <!-- ===== ROW 2 ===== -->
+  <!-- HDD -->
+  <text x="14" y="82" font-family="'Cascadia Mono','Cascadia Code',Consolas,ui-monospace,monospace" font-size="10" letter-spacing="0.6" fill="#8292b8">HDD</text>
+  <rect x="14" y="90" width="144" height="8" rx="4" fill="#ffffff1c"/>
+  <rect x="14" y="90" width="102" height="8" rx="4" fill="url(#gradAcc)"/>
+  <text x="14" y="112" font-family="'Cascadia Mono','Cascadia Code',Consolas,ui-monospace,monospace" font-size="11" fill="#e8eeff" font-variant-numeric="tabular-nums">71%</text>
+
+  <!-- DISK I/O -->
+  <text x="170" y="82" font-family="'Cascadia Mono','Cascadia Code',Consolas,ui-monospace,monospace" font-size="10" letter-spacing="0.6" fill="#8292b8">DISK I/O</text>
+  <rect x="170" y="90" width="144" height="8" rx="4" fill="#ffffff1c"/>
+  <rect x="170" y="90" width="64" height="8" rx="4" fill="url(#gradAcc)"/>
+  <text x="170" y="112" font-family="'Cascadia Mono','Cascadia Code',Consolas,ui-monospace,monospace" font-size="11" fill="#e8eeff" font-variant-numeric="tabular-nums">10.6 / 23.8 MB/s</text>
+
+  <!-- NET -->
+  <text x="326" y="82" font-family="'Cascadia Mono','Cascadia Code',Consolas,ui-monospace,monospace" font-size="10" letter-spacing="0.6" fill="#8292b8">NET</text>
+  <rect x="326" y="90" width="144" height="8" rx="4" fill="#ffffff1c"/>
+  <rect x="326" y="90" width="24" height="8" rx="4" fill="url(#gradAcc)"/>
+  <text x="326" y="112" font-family="'Cascadia Mono','Cascadia Code',Consolas,ui-monospace,monospace" font-size="11" fill="#e8eeff" font-variant-numeric="tabular-nums">2.1 / 12.5 MB/s</text>
+
+  <!-- TEMP (good tint) -->
+  <text x="482" y="82" font-family="'Cascadia Mono','Cascadia Code',Consolas,ui-monospace,monospace" font-size="10" letter-spacing="0.6" fill="#8292b8">TEMP</text>
+  <rect x="482" y="90" width="144" height="8" rx="4" fill="#ffffff1c"/>
+  <rect x="482" y="90" width="104" height="8" rx="4" fill="#6cffb0"/>
+  <text x="482" y="112" font-family="'Cascadia Mono','Cascadia Code',Consolas,ui-monospace,monospace" font-size="11" fill="#6cffb0" font-variant-numeric="tabular-nums">58 °C</text>
+</svg>
+</svg>

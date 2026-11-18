@@ -1,6 +1,6 @@
-using System.Net.NetworkInformation;
 using Microsoft.Win32;
 using Stykker.Shared.Gpu;
+using Stykker.Shared.Net;
 using Stykker.Shared.Windows;
 using StykkerHud.Core;
 
@@ -16,8 +16,7 @@ public sealed class WindowsProbe : ISystemProbe
     private readonly GpuUtilQuery? _gpuUtil;
     private readonly GpuProcessMemoryQuery? _gpuMem;
     private readonly DiskRateQuery? _disk;
-    private long _netRx, _netTx;
-    private DateTime _netAt = DateTime.MinValue;
+    private readonly NetCounters _net = new();
 
     public WindowsProbe()
     {
@@ -39,58 +38,22 @@ public sealed class WindowsProbe : ISystemProbe
     public GpuUtilSample? ReadGpuUtil() => _gpuUtil?.Read();
     public IReadOnlyList<GpuProcRow>? ReadGpuMemory() => _gpuMem?.Read();
 
-    // Datenträger aus den Leistungsindikatoren, Netzwerk aus den Zählern der Schnittstellen (Summe über alle
-    // aktiven Schnittstellen, ohne Schleife und Tunnel). Beide brauchen eine Basiszahl, deshalb antwortet die
-    // erste Abfrage mit null.
+    // Datenträger aus den Leistungsindikatoren, Netzwerk aus den Zählern der Schnittstellen (Stykker.Shared/Net:
+    // alle aktiven Schnittstellen ohne Schleife und Tunnel, IPv4 und IPv6, dieselbe Messung wie in StykkerLLM).
+    // Beide brauchen eine Basiszahl, deshalb antwortet die erste Abfrage mit null.
     public IoRates? ReadIo()
     {
         var disk = _disk?.Read();
-        var (rx, tx) = NetworkTotals();
-        var now = DateTime.Now;
-        double? rxRate = null, txRate = null;
-        if (_netAt != DateTime.MinValue)
-        {
-            double seconds = (now - _netAt).TotalSeconds;
-            if (seconds > 0)
-            {
-                rxRate = Math.Max(0, (rx - _netRx) / seconds);
-                txRate = Math.Max(0, (tx - _netTx) / seconds);
-            }
-        }
-        _netRx = rx;
-        _netTx = tx;
-        _netAt = now;
-        if (disk == null && rxRate == null) return null;
-        return new IoRates(disk?.Read ?? 0, disk?.Write ?? 0, rxRate ?? 0, txRate ?? 0);
+        var net = _net.Read();
+        if (disk == null && net == null) return null;
+        return new IoRates(disk?.Read ?? 0, disk?.Write ?? 0, net?.RxBytesPerSec ?? 0, net?.TxBytesPerSec ?? 0);
     }
 
     public void ResetBaselines()
     {
         _sys.Reset();
         _disk?.Reset();
-        _netAt = DateTime.MinValue;   // die nächste Abfrage setzt nur die Basiszahl
-    }
-
-    private static (long Rx, long Tx) NetworkTotals()
-    {
-        long rx = 0, tx = 0;
-        try
-        {
-            foreach (var ni in NetworkInterface.GetAllNetworkInterfaces())
-            {
-                if (ni.NetworkInterfaceType is NetworkInterfaceType.Loopback or NetworkInterfaceType.Tunnel) continue;
-                if (ni.OperationalStatus != OperationalStatus.Up) continue;
-                try
-                {
-                    var stats = ni.GetIPv4Statistics();
-                    rx += stats.BytesReceived;
-                    tx += stats.BytesSent;
-                }
-                catch (Exception ex) when (ex is NetworkInformationException or PlatformNotSupportedException) { }
-            }
-        }
-        catch (Exception ex) when (ex is NetworkInformationException or PlatformNotSupportedException) { }
-        return (rx, tx);
+        _net.Reset();   // die nächste Abfrage setzt nur die Basiszahl
     }
 
     // Der Treibername des ersten Anzeige-Geräts aus der Windows-Geräteklasse „Display“. Nur für die Anzeige ohne
