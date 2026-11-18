@@ -1,10 +1,10 @@
+using Stykker.Shared.Net;
 using Stykker.Shared.Disk;
 using StykkerLlm.Core;
 
 namespace StykkerLlm.Tests;
 
-// N114 – Hardware-Minibar: die acht Felder (MiniBar), der Netzwerk-Durchsatz aus den Adapterzählern (NetRateMeter)
-// und der Weg des Netzwerks durch Messschleife und Zustand (JSON). Keine echten Adapter: alles mit Testdaten.
+// N114 – Hardware-Minibar: die acht Felder (MiniBar) und der Weg des Netzwerks durch Messschleife und Zustand (JSON). Keine echten Adapter: alles mit Testdaten.
 [TestClass]
 public class N114_MiniBarTests
 {
@@ -117,31 +117,7 @@ public class N114_MiniBarTests
         Assert.AreEqual("100 Mbit/s", MiniBar.LinkText(1e8 / 8));
     }
 
-    // ── Netzwerk-Durchsatz aus den Zählern ──
-
-    [TestMethod]
-    public void NetRateMeterNeedsTwoReadingsAndDividesByTheTime()
-    {
-        var m = new NetRateMeter();
-        Assert.IsNull(m.Next(1000, 500, 1e9 / 8, T0));
-        var s = m.Next(3000, 1500, 1e9 / 8, T0.AddSeconds(2));
-        Assert.IsNotNull(s);
-        Assert.AreEqual(1000, s!.RxBytesPerSec, 1e-9);
-        Assert.AreEqual(500, s.TxBytesPerSec, 1e-9);
-        Assert.AreEqual(1e9 / 8, s.LinkBytesPerSec, 1e-9);
-    }
-
-    [TestMethod]
-    public void NetRateMeterStartsOverWhenACounterGoesBack()
-    {
-        var m = new NetRateMeter();
-        m.Next(10_000, 10_000, 0, T0);
-        Assert.IsNull(m.Next(50, 50, 0, T0.AddSeconds(1)));   // Adapter weg oder Zähler neu: keine negative Rate
-        Assert.AreEqual(100, m.Next(150, 150, 0, T0.AddSeconds(2))!.RxBytesPerSec, 1e-9);
-        Assert.IsNull(m.Next(200, 200, 0, T0.AddSeconds(2.1)));   // zu kurz für eine Rate
-    }
-
-    // ── Messschleife und Zustand ──
+    // ── Messschleife und Zustand (die Rate selbst prüft Stykker.Shared.Tests/NetRatesTests) ──
 
     [TestMethod]
     public async Task NetworkReachesTheEngineAndTheState()

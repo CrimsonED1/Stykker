@@ -1,3 +1,4 @@
+using Stykker.Shared.Net;
 using System.Runtime.InteropServices;
 using System.Text;
 using Stykker.Shared.Disk;
@@ -38,36 +39,12 @@ public sealed class WindowsPlatform : IPlatform
     private readonly DiskCounters _disks = new();
     private readonly object _diskLock = new();
     private bool _disposed;
-    private readonly NetRateMeter _net = new();
-    private readonly object _netLock = new();
+    private readonly NetCounters _net = new();
 
     public int ProcessorCount => Environment.ProcessorCount;
 
-    // Netzwerk: die Byte-Zähler aller aktiven Adapter (ohne Loopback und Tunnel, wie in der HUD), daraus die Rate
-    public NetSample? ReadNetwork()
-    {
-        long rx = 0, tx = 0;
-        double link = 0;
-        try
-        {
-            foreach (var ni in System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces())
-            {
-                if (ni.NetworkInterfaceType is System.Net.NetworkInformation.NetworkInterfaceType.Loopback
-                    or System.Net.NetworkInformation.NetworkInterfaceType.Tunnel) continue;
-                if (ni.OperationalStatus != System.Net.NetworkInformation.OperationalStatus.Up) continue;
-                try
-                {
-                    var stats = ni.GetIPStatistics();
-                    rx += stats.BytesReceived;
-                    tx += stats.BytesSent;
-                    if (ni.Speed > 0) link += ni.Speed / 8.0;
-                }
-                catch (Exception ex) when (ex is System.Net.NetworkInformation.NetworkInformationException or PlatformNotSupportedException) { }
-            }
-        }
-        catch (Exception ex) when (ex is System.Net.NetworkInformation.NetworkInformationException or PlatformNotSupportedException) { return null; }
-        lock (_netLock) return _net.Next(rx, tx, link, DateTime.UtcNow);
-    }
+    // Netzwerk: dieselben Adapterzähler wie in der HUD (Stykker.Shared/Net)
+    public NetSample? ReadNetwork() => _net.Read();
 
     public IReadOnlyList<ListenerInfo> ReadListeners()
     {
