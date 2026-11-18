@@ -995,3 +995,71 @@ a.mb-cell:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
   .page{padding-bottom:calc(56px + env(safe-area-inset-bottom))}
   .toasts{bottom:calc(68px + env(safe-area-inset-bottom))}
 }
+/* Ansicht „Model“ (ModelView.razor, Detailseite eines Servers): Kennung und Phase, Experten (k von n), Schichtstreifen
+   GPU/CPU, Slots und Anfragen im Proxy. GPU = Akzent, CPU = Zweitfarbe, unbekannt = Spur. Bewegung nur beim Schreiben. */
+.mdl{display:grid;gap:16px}
+.mdl h2{margin:0}
+.mdl-hd{display:flex;flex-wrap:wrap;align-items:flex-start;justify-content:space-between;gap:10px 18px}
+.mdl-id{display:grid;gap:3px;min-width:0}
+.mdl-name{font:600 18px var(--font-sans);color:var(--ink);overflow-wrap:anywhere}
+.mdl-now{display:flex;align-items:center;gap:8px;padding:6px 12px;border:1px solid var(--line);border-radius:999px;color:var(--muted);font-size:13px}
+.mdl-now[data-s=gen]{color:var(--st-gen);border-color:color-mix(in srgb,var(--st-gen) 55%,transparent);box-shadow:0 0 calc(var(--glow)*14px) color-mix(in srgb,var(--st-gen) 35%,transparent)}
+.mdl-now[data-s=read]{color:var(--st-read);border-color:color-mix(in srgb,var(--st-read) 55%,transparent)}
+.mdl-now b{font-weight:600}
+.mdl-tps{font:600 15px var(--font-mono);font-variant-numeric:tabular-nums;color:var(--ink)}.mdl-tps small{font-size:11px;color:var(--muted);margin-left:2px}
+.mdl-moe{display:grid;grid-template-columns:auto minmax(0,1fr) minmax(180px,.6fr);gap:14px 26px;align-items:start}
+.mdl-k{display:grid;gap:2px;justify-items:start}
+.mdl-kn{font-family:var(--font-mono);line-height:1}.mdl-kn b{font-size:44px;font-weight:700;color:var(--acc);text-shadow:0 0 calc(var(--glow)*18px) rgb(var(--acc-rgb)/.45)}
+.mdl-kn span{font-size:20px;color:var(--muted)}
+.mdl-k em{font-style:normal;font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.mdl-ex{display:grid;gap:6px;min-width:0}
+.mdl-exh,.mdl-acth{font-size:12px;color:var(--muted)}
+.mdl-grid{display:grid;gap:3px;max-width:560px}
+.mdl-grid i{aspect-ratio:1;border-radius:2px;background:var(--track)}
+.mdl-grid i.on{background:var(--acc);box-shadow:0 0 calc(var(--glow)*6px) rgb(var(--acc-rgb)/.7)}
+.mdl[data-s=gen] .mdl-grid i.on{animation:mdl-fire 1.1s ease-in-out infinite alternate}
+@keyframes mdl-fire{to{opacity:.55;box-shadow:0 0 calc(var(--glow)*10px) rgb(var(--acc-rgb)/.95)}}
+.mdl-act{display:grid;gap:6px}
+.mdl-actbar,.mdl-sbar{display:block;height:8px;border-radius:4px;background:var(--track);overflow:hidden}
+.mdl-actbar>i,.mdl-sbar>i{display:block;height:100%;width:var(--f,0%);border-radius:4px;background:linear-gradient(90deg,var(--second),var(--acc));transition:width .6s ease}
+.mdl-dense{margin:0}
+.mdl-lh{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 12px;margin-bottom:8px}
+.mdl-strip{position:relative;display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:2px;height:54px;overflow:hidden}
+.mdl-strip .ly{display:grid;grid-template-rows:1fr;gap:2px;min-width:0}
+.mdl-strip.moe .ly{grid-template-rows:2fr 3fr}
+.mdl-strip .ly i{display:block;border-radius:2px}
+.mdl-strip .ly.out{margin-left:4px}
+.mdl-strip .ly.out i{grid-row:1/-1}
+.mdl-strip .ly i.none{background:transparent;box-shadow:inset 0 0 0 1px var(--line)}
+.p-gpu{background:var(--acc)}.p-cpu{background:var(--second)}.p-unk{background:var(--track)}
+.mdl-strip .ly i.p-gpu{box-shadow:0 0 calc(var(--glow)*5px) rgb(var(--acc-rgb)/.35)}
+.mdl[data-s=gen] .mdl-strip::after{content:"";position:absolute;inset:0;width:18%;background:linear-gradient(90deg,transparent,rgb(var(--ink-rgb)/.28),transparent);animation:mdl-pass 1.6s linear infinite;pointer-events:none}
+@keyframes mdl-pass{from{transform:translateX(-100%)}to{transform:translateX(560%)}}
+.mdl-axis{display:grid;grid-template-columns:1fr 1fr auto;font:10px var(--font-mono);margin-top:4px}.mdl-axis span:nth-child(2){text-align:right;padding-right:10px}
+.mdl-legend{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:8px;color:var(--muted)}
+.mdl-legend .lg{display:inline-flex;align-items:center;gap:6px;background:none}
+.mdl-legend .lg::before{content:"";width:10px;height:10px;border-radius:2px}
+.mdl-legend .lg.p-gpu::before{background:var(--acc)}.mdl-legend .lg.p-cpu::before{background:var(--second)}.mdl-legend .lg.p-unk::before{background:var(--track)}
+.mdl-slots{display:grid;gap:6px}
+.mdl-slot{display:grid;grid-template-columns:64px 150px minmax(80px,1fr) minmax(0,1.2fr);align-items:center;gap:12px;font-size:13px}
+.mdl-sid{font:12px var(--font-mono);color:var(--muted)}
+.mdl-ph{display:inline-flex;align-items:center;gap:6px;color:var(--muted)}
+.mdl-slot[data-s=gen] .mdl-ph{color:var(--st-gen)}.mdl-slot[data-s=read] .mdl-ph{color:var(--st-read)}
+.mdl-slot[data-s=read] .mdl-sbar>i{background:var(--st-read)}
+.mdl-stxt{font-family:var(--font-mono);font-variant-numeric:tabular-nums;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mdl-live-h{margin:8px 0 0}
+.mdl-live{display:flex;align-items:center;gap:8px;font-size:13px}
+.mdl-live[data-p=thinking]{color:var(--second)}.mdl-live[data-p=answering]{color:var(--st-gen)}.mdl-live[data-p=tool]{color:var(--warn)}
+@media(max-width:900px){.mdl-moe{grid-template-columns:auto minmax(0,1fr)}.mdl-act{grid-column:1/-1}}
+@media(max-width:640px){
+  .mdl-moe{grid-template-columns:1fr}
+  .mdl-kn b{font-size:36px}
+  .mdl-strip{height:44px;gap:1px}
+  .mdl-slot{grid-template-columns:52px 1fr;row-gap:4px}
+  .mdl-sbar,.mdl-stxt{grid-column:1/-1}
+}
+html.shell .mdl-grid i.on,html.shell .mdl-strip::after{animation:none}html.shell .mdl-strip::after{display:none}
+html.shell .mdl-actbar>i,html.shell .mdl-sbar>i{transition:none}
+html[data-theme=titan] .mdl-grid i,html[data-theme=titan] .mdl-strip .ly i,html[data-theme=titan] .mdl-actbar,html[data-theme=titan] .mdl-sbar,html[data-theme=titan] .mdl-actbar>i,html[data-theme=titan] .mdl-sbar>i{border-radius:0}
+html[data-theme=titan] .mdl-now{border-radius:0;font-family:var(--font-mono);text-transform:uppercase;font-size:11px}
+a.chipi.moec{text-decoration:none;color:var(--acc)}a.chipi.moec:hover{border-color:var(--acc)}

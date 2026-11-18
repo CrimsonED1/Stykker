@@ -78,6 +78,9 @@ public sealed class LlamaServerArgs
         V("lora", "--lora");
         V("mmproj", "-mm", "--mmproj");
         V("override-tensor", "-ot", "--override-tensor");
+        V("n-cpu-moe", "-ncmoe", "--n-cpu-moe");
+        V("model-draft", "-md", "--model-draft");
+        F("cpu-moe", "-cmoe", "--cpu-moe");
         F("jinja", "--jinja");
         F("no-jinja", "--no-jinja");
         F("mlock", "--mlock");
@@ -117,6 +120,7 @@ public sealed class LlamaServerArgs
         ["ctx"] = "LLAMA_ARG_CTX_SIZE", ["ngl"] = "LLAMA_ARG_N_GPU_LAYERS", ["np"] = "LLAMA_ARG_N_PARALLEL",
         ["ctk"] = "LLAMA_ARG_CACHE_TYPE_K", ["ctv"] = "LLAMA_ARG_CACHE_TYPE_V", ["flash-attn"] = "LLAMA_ARG_FLASH_ATTN",
         ["hf-repo"] = "LLAMA_ARG_HF_REPO", ["models-dir"] = "LLAMA_ARG_MODELS_DIR",
+        ["n-cpu-moe"] = "LLAMA_ARG_N_CPU_MOE",
     };
 
     public IReadOnlyList<ArgEntry> Entries { get; }
@@ -221,6 +225,29 @@ public sealed class LlamaServerArgs
     public string? NglRaw => NullIfEmpty(Get("ngl"));
     public int? Ngl => GetInt("ngl");
     public int? TopK => GetInt("top-k");
+    // MoE: die Experten der ersten N Schichten auf der CPU (--n-cpu-moe N) oder aller Schichten (--cpu-moe)
+    public int? NCpuMoe => GetInt("n-cpu-moe");
+    public bool CpuMoe => Has("cpu-moe");
+    public string? ModelDraft => NullIfEmpty(Get("model-draft"));
+
+    // Alle -ot/--override-tensor-Regeln in Reihenfolge („muster=puffer“, auch mehrere je Wert mit Komma getrennt)
+    public IReadOnlyList<(string Pattern, string Buffer)> OverrideTensors
+    {
+        get
+        {
+            var list = new List<(string, string)>();
+            foreach (var e in Entries)
+            {
+                if (e.Name.Length == 0 || Canon(e.Name) != "override-tensor" || string.IsNullOrEmpty(e.Value)) continue;
+                foreach (var part in e.Value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                {
+                    int eq = part.LastIndexOf('=');
+                    if (eq > 0 && eq < part.Length - 1) list.Add((part[..eq], part[(eq + 1)..]));
+                }
+            }
+            return list;
+        }
+    }
     public double? Temp => GetDouble("temp");
     public double? TopP => GetDouble("top-p");
     public double? MinP => GetDouble("min-p");

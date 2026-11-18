@@ -108,19 +108,23 @@ public sealed class SimPlatform : IPlatform
                 return new ProcessDetails(pid, s.StartTicks, ExplorerPid, @"C:\sim\LM Studio\LM Studio.exe", null, @"C:\sim\LM Studio", new Dictionary<string, string>());
             case BackendKind.LmStudio:
             {
-                string cmd = "\"C:\\sim\\lmstudio\\llama-server.exe\" --model C:\\models\\" + spec.Model + ".gguf --host 127.0.0.1 --port " + s.EnginePort +
+                string cmd = "\"C:\\sim\\lmstudio\\llama-server.exe\" --model " + ModelArg(s) + " --host 127.0.0.1 --port " + s.EnginePort +
                              " --api-key " + s.ApiKey + " --ctx-size " + spec.Context + " --parallel " + spec.Slots;
                 return new ProcessDetails(pid, s.StartTicks + 1, s.Pid, @"C:\sim\lmstudio\llama-server.exe", cmd, @"C:\sim\lmstudio", new Dictionary<string, string>());
             }
             default:
             {
-                string cmd = "\"C:\\sim\\llama\\llama-server.exe\" -m C:\\models\\" + spec.Model + ".gguf --port " + s.Port + " --alias " + CmdLine.Quote(spec.Name.Length > 0 ? spec.Name : spec.Model) +
-                             " -ngl 99 -c " + spec.Context + " -np " + spec.Slots + " --jinja" + (s.LogPath != null ? " --log-file " + CmdLine.Quote(s.LogPath) : "");
+                string cmd = "\"C:\\sim\\llama\\llama-server.exe\" -m " + ModelArg(s) + " --port " + s.Port + " --alias " + CmdLine.Quote(spec.Name.Length > 0 ? spec.Name : spec.Model) +
+                             " -ngl 99 -c " + spec.Context + " -np " + spec.Slots + " --jinja" + (spec.ExtraArgs.Length > 0 ? " " + spec.ExtraArgs : "") +
+                             (s.LogPath != null ? " --log-file " + CmdLine.Quote(s.LogPath) : "");
                 return new ProcessDetails(pid, s.StartTicks, ExplorerPid, @"C:\sim\llama\llama-server.exe", cmd, @"C:\sim\llama",
                     new Dictionary<string, string> { ["LLAMA_ARG_CTX_SIZE"] = spec.Context.ToString() });
             }
         }
     }
+
+    // Die Modelldatei auf der Kommandozeile: der GGUF-Kopf im ModelDir, sonst ein erfundener Pfad wie bisher
+    private static string ModelArg(SimWorld.Server s) => s.ModelPath != null ? CmdLine.Quote(s.ModelPath) : "C:\\models\\" + s.Spec.Model + ".gguf";
 
     public string? ProcessName(int pid) => ReadProcess(pid) is { ImagePath: { } p } ? ProcPath.Stem(p) : null;
 

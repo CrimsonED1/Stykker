@@ -58,6 +58,8 @@ public sealed class ServerCardModel
     public int? SlowerPct { get; init; }          // „langsamer als sonst“ (U11), null = kein Hinweis
     public LatencyStats? Latency { get; init; }   // Median Prompt-t/s und Zeit bis zum ersten Token (ServerLatency), null = Host
     public IdleInfo? Idle { get; init; }          // Leerlauf und geplantes Entladen (IdleUnload), null = arbeitet, kurz still oder Host
+    // Mixture of Experts aus dem GGUF-Kopf: (je Token aktiv, Experten, aktive Parameter als Text); null = dicht oder unbekannt
+    public (int Used, int Count, string Active)? Moe { get; init; }
 
     public bool IsLocal => HostId == null;
     // Ollama und LM Studio führen mehrere Modelle in einem Server: Tabelle der geladenen Modelle statt Slots
@@ -113,8 +115,15 @@ public sealed class ServerCardModel
             SlowerPct = usual == null ? null : SpeedHint.SlowerPercent(s.AverageActive(), hist.Count(v => v > 0), usual.MeanTps, usual.TpsCount),
             Latency = latency,
             Idle = IdleUnload.Idle(profile, s, DateTime.Now),
+            Moe = MoeOf(s.Kind == BackendKind.LlamaCpp ? modelPath : null),
         };
     }
+
+    // Gguf.TryRead merkt sich den Kopf je Datei (Größe und Änderungszeit): je Takt nur ein Blick auf die Datei
+    private static (int, int, string)? MoeOf(string? modelPath) =>
+        Gguf.TryRead(modelPath) is { IsMoe: true } g
+            ? (g.ExpertUsedCount!.Value, g.ExpertCount!.Value, ModelAnatomyBuilder.ParamText(ModelAnatomyBuilder.Build(g, null).ActiveParameters))
+            : null;
 
     public static ServerCardModel From(RemoteServer rs, string hostId, string hostName)
     {

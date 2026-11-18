@@ -25,6 +25,19 @@ public sealed class ProxyTap
     // Anthropic-Format (/v1/messages): Zeichenanteile von Denken und Antwort und die vom Server gemeldeten Ausgabe-Token
     private int _reasoningChars, _contentChars, _anthropicOut;
     private bool _anthropic;
+    // Live-Anzeige: Phase der laufenden Antwort (null = noch kein Delta) und Zahl der begonnenen Werkzeugaufrufe.
+    // Schreibt der Stream-Thread, liest die Oberfläche; der Zustand ist unveränderlich und wird nur ausgetauscht.
+    private ProxyLiveState? _live;
+    private int _toolCalls;
+    public ProxyLiveState? LiveState => Volatile.Read(ref _live);
+    public int ToolCalls => Volatile.Read(ref _toolCalls);
+
+    private void Mark(ProxyLivePhase kind, DateTime now, string? tool = null)
+    {
+        var cur = Volatile.Read(ref _live) ?? ProxyLiveState.Initial(now);
+        var next = ProxyLive.Next(cur, kind, now, tool);
+        if (!ReferenceEquals(next, _live)) Volatile.Write(ref _live, next);
+    }
 
     public void Feed(ReadOnlySpan<byte> chunk, DateTime now)
     {
@@ -122,8 +135,11 @@ public sealed class ProxyTap
                 _anthropic = true;
                 if (r.TryGetProperty("content_block", out var cb) && cb.ValueKind == JsonValueKind.Object && cb.TryGetProperty("type", out var ct) && ct.GetString() == "tool_use")
                 {
-                    if (cb.TryGetProperty("name", out var tn) && tn.ValueKind == JsonValueKind.String && tn.GetString() is { Length: > 0 } toolName && !Tools.Contains(toolName)) Tools.Add(toolName);
+                    string? toolName = cb.TryGetProperty("name", out var tn) && tn.ValueKind == JsonValueKind.String && tn.GetString() is { Length: > 0 } n0 ? n0 : null;
+                    if (toolName != null && !Tools.Contains(toolName)) Tools.Add(toolName);
                     FirstToken ??= now;
+                    Interlocked.Increment(ref _toolCalls);
+                    Mark(ProxyLivePhase.Tool, now, toolName);
                 }
                 return true;
             case "content_block_delta":
@@ -131,9 +147,9 @@ public sealed class ProxyTap
                 _anthropic = true;
                 if (!r.TryGetProperty("delta", out var d) || d.ValueKind != JsonValueKind.Object) return true;
                 string dt = d.TryGetProperty("type", out var dtp) && dtp.ValueKind == JsonValueKind.String ? dtp.GetString() ?? "" : "";
-                if (dt == "thinking_delta" && StrLen(d, "thinking") is > 0 and var tl) { Reasoning++; _reasoningChars += tl; FirstReasoning ??= now; FirstToken ??= now; }
-                else if (dt == "text_delta" && StrLen(d, "text") is > 0 and var xl) { Content++; _contentChars += xl; FirstContent ??= now; FirstToken ??= now; }
-                else if (dt == "input_json_delta") FirstToken ??= now;
+                if (dt == "thinking_delta" && StrLen(d, "thinking") is > 0 and var tl) { Reasoning++; _reasoningChars += tl; FirstReasoning ??= now; FirstToken ??= now; Mark(ProxyLivePhase.Thinking, now); }
+                else if (dt == "text_delta" && StrLen(d, "text") is > 0 and var xl) { Content++; _contentChars += xl; FirstContent ??= now; FirstToken ??= now; Mark(ProxyLivePhase.Answering, now); }
+                else if (dt == "input_json_delta") { FirstToken ??= now; Mark(ProxyLivePhase.Tool, now); }
                 return true;
             }
             case "message_delta":
@@ -176,10 +192,19 @@ public sealed class ProxyTap
             if (!c0.TryGetProperty("delta", out var d) || d.ValueKind != JsonValueKind.Object) return;
             bool token = false;
             if (StrLen(d, "content") > 0) { Content++; FirstContent ??= now; token = true; }
-            if (StrLen(d, "reasoning_content") > 0 || StrLen(d, "reasoning") > 0) { Reasoning++; FirstReasoning ??= now; token = true; }
+            if (StrLen(d, "reasoning_content") > 0 || StrLen(d, "reasoning") > 0) { Reasoning++; FirstReasoning ??= now; token = true; Mark(ProxyLivePhase.Thinking, now); }
+            if (StrLen(d, "content") > 0) Mark(ProxyLivePhase.Answering, now);   // nach dem Denken: das spätere Delta bestimmt die Phase
             if (d.TryGetProperty("tool_calls", out var tcs) && tcs.ValueKind == JsonValueKind.Array)
             {
-                foreach (var tc in tcs.EnumerateArray()) AddTool(tc);
+                foreach (var tc in tcs.EnumerateArray())
+                {
+                    AddTool(tc);
+                    // Ein Delta mit Funktionsnamen beginnt einen Aufruf; die folgenden tragen nur Argumente
+                    string? name = tc.TryGetProperty("function", out var f) && f.ValueKind == JsonValueKind.Object && f.TryGetProperty("name", out var fn)
+                        && fn.ValueKind == JsonValueKind.String && fn.GetString() is { Length: > 0 } n1 ? n1 : null;
+                    if (name != null) Interlocked.Increment(ref _toolCalls);
+                    Mark(ProxyLivePhase.Tool, now, name);
+                }
                 token = true;
             }
             if (token) FirstToken ??= now;

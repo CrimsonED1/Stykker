@@ -7,6 +7,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## Unreleased
 
 ### Added
+- **Model view** on the details page of a llama.cpp server: what the model is and what it is doing now. Mixture of
+  experts: how many experts a layer has and how many work per token (e.g. 8 of 128), the active parameters per token
+  (≈ 3.3 B of 30.5 B), and a grid that lights that share. The layers as a strip, upper half attention, lower half
+  experts, coloured by where they sit (GPU or CPU) as `-ngl`, `--cpu-moe`, `--n-cpu-moe` and `-ot` place them. Per slot
+  whether it reads the prompt or writes, and for requests through the Stykker-Proxy whether the model is thinking,
+  answering or calling a tool (with its name). Which experts the router picks is not reported by llama.cpp, so the view
+  shows only the share. The monitor card of a MoE model gets a chip *8/128* that opens the view.
 - **Hardware bar** at the top of every page except the monitor: VRAM, GPU, CPU, RAM, the fullest drive, disk I/O,
   network and GPU temperature in two rows of four. A full bar turns red; the temperature is
   green, yellow from 75 °C and red from 85 °C. A value the server does not measure shows `–`. The switch *Hardware bar*
