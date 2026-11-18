@@ -25,6 +25,8 @@ any browser or your phone; keep an eye on it in the terminal. Nothing leaves you
   up while a model is writing.
 - **GPU and system**: load, VRAM, power, temperature, clocks, throttling, and VRAM and RAM **per program** as a stacked bar.
   **Free VRAM** stops local llama.cpp servers and unloads Ollama models in one click.
+- **Hardware bar** on every page except the monitor: VRAM, GPU, CPU, RAM, fullest drive, disk I/O, network and GPU
+  temperature, each with a faint line of the last minute; a click opens the matching detail page.
 - **Profiles and history**: save a running server as a profile and start it again later (pre-checks: port free, model file
   exists, VRAM estimate); optional restart after a crash and unload after idle time.
 - **Stykker-Proxy** on port 17500: one OpenAI- and Anthropic-compatible endpoint for all local models, other PCs and cloud
@@ -37,6 +39,9 @@ any browser or your phone; keep an eye on it in the terminal. Nothing leaves you
 - **Model hosts**: other PCs run only models (StykkerHost, a tray icon); the server shows and controls them, and its
   proxy starts a requested model on the host that has the file and room for it.
 - **Phone access**: six-digit code or QR code, roles *Admin* and *Viewer*, Home/VPN switch – works over Tailscale too.
+  On the phone the main pages sit in a bar at the bottom.
+- **Messages on every page**: a restart, an idle unload or a finished test or benchmark shows up wherever you are,
+  with a link to the activity on the monitor.
 - **Bug report** in one click: a zip with logs and state, secrets blacked out, plus a prefilled GitHub issue.
 - **Two themes**: *Dark* with a soft glow and *Spacepunk Titan*, a matte light theme like a ship console under work
   light; *System* switches with the light/dark setting of the device. Symbols instead of words, `Ctrl+K` for every page

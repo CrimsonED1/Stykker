@@ -59,7 +59,7 @@ The PDH and tray parts only work on Windows. `Stykker.Shared` targets `net10.0` 
 
 `tests/Stykker.Pairing.LockProbe` is a helper program, not a test project: the pairing tests start it several times at once to write the same file.
 
-Last run on 2026-10-15: 319 of 319 tests passed in `Stykker.Shared.Tests` and 109 of 109 in `Stykker.Pairing.Tests`, the build shows no warnings.
+Last run on 2026-11-18: 333 of 333 tests passed in `Stykker.Shared.Tests` and 109 of 109 in `Stykker.Pairing.Tests`, the build shows no warnings.
 
 ## Using it from a tool
 
