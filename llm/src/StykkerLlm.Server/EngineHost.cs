@@ -26,6 +26,8 @@ public sealed class EngineHost : IDisposable
     public DoneEvents Done { get; } = new();
     // Was passiert ist (Karte „Activity“): Absturz, Neustart, Leerlauf-Entladen, fertige Läufe
     public ActivityLog Activity { get; } = new();
+    // Der Verlauf der Hardware-Minibar (ein Eintrag je Messtakt, für alle Browser gemeinsam)
+    public MiniHistory MiniHistory { get; } = new();
     // Die Modelltests des Servers gehören in den Zustand: Fenster, TUI und Telefon lesen sonst eine leere Warteschlange
     public EvalQueue? Queue { get; set; }
     // Die gekoppelten Nodes (dieser Server als Hub, docs/nodes.md)
@@ -158,6 +160,7 @@ public sealed class EngineHost : IDisposable
                 {
                     await Engine.TickAsync();
                     if (Queue is { } q) Done.Queue(q.Running, q.Jobs, DateTime.Now);   // Ende der Testwarteschlange → Meldung
+                    MiniHistory.Add(MiniBar.Build(Engine.Gpu, Engine.Sys, Engine.Disks, Engine.Net));   // Linie hinter der Minibar
                     Ticked?.Invoke();
                 }
                 catch { }

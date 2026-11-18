@@ -117,6 +117,77 @@ public class N114_MiniBarTests
         Assert.AreEqual("100 Mbit/s", MiniBar.LinkText(1e8 / 8));
     }
 
+    // ── Links, Telefon, Verlauf ──
+
+    [TestMethod]
+    public void CellsLinkToTheirPageAndTheNetworkHasNone()
+    {
+        var cells = MiniBar.Build(Gpu(), Sys(), Disks(Vol("C", 1e12, 3e11)), new NetSample(1, 1, 0)).ToDictionary(c => c.Key, c => c.Href);
+        Assert.AreEqual("gpu", cells["vram"]);
+        Assert.AreEqual("gpu", cells["gpu"]);
+        Assert.AreEqual("gpu", cells["temp"]);
+        Assert.AreEqual("./#hw", cells["cpu"]);
+        Assert.AreEqual("./#hw", cells["ram"]);
+        Assert.AreEqual("disks", cells["disk"]);
+        Assert.AreEqual("disks", cells["io"]);
+        Assert.IsNull(cells["net"]);
+    }
+
+    [TestMethod]
+    public void ThePhoneKeepsVramGpuAndTemperature()
+    {
+        CollectionAssert.AreEqual(new[] { "vram", "gpu", "temp" }, MiniBar.PhoneKeys.ToArray());
+        var keys = MiniBar.Build(null, null, null, null).Select(c => c.Key).ToList();
+        Assert.IsTrue(MiniBar.PhoneKeys.All(keys.Contains));
+    }
+
+    [TestMethod]
+    public void HistoryKeepsTheLastReadingsWithGaps()
+    {
+        var h = new MiniHistory();
+        for (int i = 0; i < MiniHistory.Length + 5; i++)
+            h.Add(MiniBar.Build(Gpu(util: i), null, null, null));
+        var gpu = h.Of("gpu");
+        Assert.AreEqual(MiniHistory.Length, gpu.Count);
+        Assert.AreEqual(0.05, gpu[0]!.Value, 1e-9);                         // die ältesten fünf sind herausgefallen
+        Assert.AreEqual((MiniHistory.Length + 4) / 100.0, gpu[^1]!.Value, 1e-9);
+        Assert.IsTrue(h.Of("cpu").All(v => v == null));                    // fehlender Wert = Lücke, kein 0
+        Assert.AreEqual(0, h.Of("unknown").Count);
+    }
+
+    [TestMethod]
+    public void PeakIsTheHighestReadingOrNull()
+    {
+        Assert.AreEqual(0.8, MiniHistory.Peak(new double?[] { 0.2, null, 0.8, 0.5 })!.Value, 1e-9);
+        Assert.IsNull(MiniHistory.Peak(new double?[] { null, null }));
+        Assert.IsNull(MiniHistory.Peak(Array.Empty<double?>()));
+    }
+
+    // ── Ereignisse als Meldung auf den anderen Seiten ──
+
+    [TestMethod]
+    public void SinceGivesTheNewEventsOldestFirst()
+    {
+        var log = new ActivityLog();
+        log.Add(ActivityKind.Restart, "a");
+        var seen = log.Recent(1)[0];
+        log.Add(ActivityKind.Unload, "b", when: T0);
+        log.Add(ActivityKind.Unload, "b", when: T0);   // derselbe Eintrag zweimal: zwei Ereignisse
+        var fresh = ActivityLog.Since(log.Recent(ActivityLog.Max), seen);
+        Assert.AreEqual(2, fresh.Count);
+        Assert.IsTrue(fresh.All(e => e.Text == "b"));
+        Assert.AreEqual(0, ActivityLog.Since(log.Recent(ActivityLog.Max), log.Recent(1)[0]).Count);
+        Assert.AreEqual(3, ActivityLog.Since(log.Recent(ActivityLog.Max), null).Count);
+    }
+
+    [TestMethod]
+    public void ACrashIsNoToastBecauseTheBannerShowsIt()
+    {
+        Assert.IsFalse(new ActivityEvent(T0, ActivityKind.Crash, "x").ShowsToast);
+        foreach (var k in new[] { ActivityKind.Restart, ActivityKind.RestartFailed, ActivityKind.Unload, ActivityKind.Tests, ActivityKind.Bench })
+            Assert.IsTrue(new ActivityEvent(T0, k, "x").ShowsToast, k.ToString());
+    }
+
     // ── Messschleife und Zustand (die Rate selbst prüft Stykker.Shared.Tests/NetRatesTests) ──
 
     [TestMethod]

@@ -13,6 +13,44 @@ public enum MiniLevel { Normal, Good, Warn, Hot }
 public sealed record MiniCell(string Key, string Label, string Value, double? Fraction, MiniLevel Level, string Tip)
 {
     public bool Missing => Value == MiniBar.None;
+    public string? Href => MiniBar.Href(Key);
+}
+
+// Der Verlauf der Balken: je Feld die letzten Anteile (ein Eintrag je Messtakt), für die feine Linie hinter dem Feld.
+// Ein fehlender Anteil bleibt als Lücke stehen, damit die Zeitachse aller Felder gleich lang ist.
+public sealed class MiniHistory
+{
+    public const int Length = 60;
+    private readonly object _gate = new();
+    private readonly Dictionary<string, Queue<double?>> _series = new(StringComparer.Ordinal);
+
+    public void Add(IEnumerable<MiniCell> cells)
+    {
+        lock (_gate)
+        {
+            foreach (var c in cells)
+            {
+                if (!_series.TryGetValue(c.Key, out var q)) _series[c.Key] = q = new Queue<double?>();
+                q.Enqueue(c.Missing ? null : c.Fraction);
+                while (q.Count > Length) q.Dequeue();
+            }
+        }
+    }
+
+    // Ältester zuerst (eine Kopie)
+    public IReadOnlyList<double?> Of(string key)
+    {
+        lock (_gate) return _series.TryGetValue(key, out var q) ? q.ToArray() : Array.Empty<double?>();
+    }
+
+    // Der höchste Anteil der Reihe, null ohne Messwert
+    public static double? Peak(IReadOnlyList<double?> values)
+    {
+        double? best = null;
+        foreach (var v in values)
+            if (v is double d && double.IsFinite(d) && (best == null || d > best)) best = d;
+        return best;
+    }
 }
 
 public static class MiniBar
@@ -24,6 +62,18 @@ public static class MiniBar
     public const double TempWarnC = 75, TempHotC = 85, TempScaleC = 90;
 
     private static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
+
+    // Auf dem Telefon zugeklappt stehen nur diese drei: der Speicher, die Last und die Hitze der Grafikkarte
+    public static readonly IReadOnlyList<string> PhoneKeys = new[] { "vram", "gpu", "temp" };
+
+    // Wohin ein Klick auf das Feld führt: GPU-Seite, Hardware-Karte im Monitor, Laufwerksseite; das Netzwerk hat keine Seite
+    public static string? Href(string key) => key switch
+    {
+        "vram" or "gpu" or "temp" => "gpu",
+        "cpu" or "ram" => "./#hw",
+        "disk" or "io" => "disks",
+        _ => null,
+    };
 
     public static IReadOnlyList<MiniCell> Build(GpuSample? gpu, SystemSample? sys, DiskSample? disks, NetSample? net) =>
         new[] { Vram(gpu), GpuLoad(gpu), Cpu(sys), Ram(sys), Disk(disks), DiskIo(disks), Network(net), Temp(gpu) };

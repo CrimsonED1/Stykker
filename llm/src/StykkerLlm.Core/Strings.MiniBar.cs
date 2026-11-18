@@ -17,4 +17,13 @@ public static partial class Strings
         $"All disks: read {read}, write {write}" + (busy is double b ? $" · busiest disk {b.ToString("0", Inv)}% busy" : "");
     public static string MiniNetTip(string rx, string tx, string? link) =>
         $"All network adapters: received {rx}, sent {tx}" + (link != null ? $" · link {link}" : "");
+
+    // Verlauf hinter jedem Feld (MiniHistory) und das Auf- und Zuklappen auf dem Telefon
+    public static string MiniPeak(double fraction, int readings) => $"Highest of the last {readings} readings: {(fraction * 100).ToString("0", Inv)}%";
+    public static string MiniMore(int hidden) => $"+{hidden}";
+    public const string MiniMoreTip = "Show all hardware values", MiniLess = "Less", MiniLessTip = "Show only VRAM, GPU and temperature";
+
+    // Ereignisse als Meldung auf den anderen Seiten (der Monitor hat die Liste selbst)
+    public const string ToastShowActivity = "Show";
+    public static string CmdPrompt(string name) => $"Prompt: {name}";
 }

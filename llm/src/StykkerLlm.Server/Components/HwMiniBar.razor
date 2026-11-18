@@ -1,18 +1,45 @@
-@* Hardware-Minibar (Entwurf: docs/design/minibar-preview.svg): acht Felder in zwei Reihen, auf dem Telefon in vier.
+@* Hardware-Minibar (Entwurf: docs/design/minibar-preview.svg): acht Felder in zwei Reihen.
    Was in den Feldern steht, entscheidet Core/MiniBar.cs; hier wird nur gezeichnet. Ein- und ausblenden je Browser über den
-   Schalter „Hardware bar“ im ☰ → Ansicht (ui.js setzt html[data-mini-bar]). Neu gezeichnet wird mit dem Kopf (MainLayout). *@
+   Schalter „Hardware bar“ im ☰ → Ansicht (ui.js setzt html[data-mini-bar]). Neu gezeichnet wird mit dem Kopf (MainLayout).
+   Ein Feld mit Ziel ist ein Link (GPU-Seite, Hardware im Monitor, Laufwerke). Hinter jedem Feld liegt der Verlauf der
+   letzten Messtakte als feine Linie (EngineHost.MiniHistory). Auf dem Telefon stehen zugeklappt nur VRAM, GPU und
+   Temperatur; „+5“ klappt auf. *@
 @inject EngineHost Host
 @{ var e = Host.Engine; }
 @if (e.Gpu != null || e.Sys != null || e.Disks != null || e.Net != null)
 {
-    <section class="minibar" aria-label="@Strings.MiniBarAria">
+    int hidden = 8 - MiniBar.PhoneKeys.Count;
+    <section class="minibar @(_open ? "open" : "")" aria-label="@Strings.MiniBarAria">
         @foreach (var c in MiniBar.Build(e.Gpu, e.Sys, e.Disks, e.Net))
         {
-            <div class="mb-cell lv-@c.Level.ToString().ToLowerInvariant() @(c.Missing ? "na" : "")" data-k="@c.Key" title="@c.Tip">
+            var hist = Host.MiniHistory.Of(c.Key);
+            var peak = MiniHistory.Peak(hist);
+            var tip = peak is double pk && hist.Count > 1 ? c.Tip + " · " + Strings.MiniPeak(pk, hist.Count) : c.Tip;
+            var cls = $"mb-cell lv-{c.Level.ToString().ToLowerInvariant()} {(c.Missing ? "na" : "")} {(MiniBar.PhoneKeys.Contains(c.Key) ? "ph" : "")}";
+            var pts = Sparkline.Points(hist, 1.0);
+            RenderFragment body =@<text>
+                @if (pts.Length > 0)
+                {
+                    <svg class="mb-spark" viewBox="0 0 300 70" preserveAspectRatio="none" aria-hidden="true" focusable="false"><polyline points="@pts" /></svg>
+                }
                 <span class="mb-lbl">@c.Label</span>
                 <span class="mb-bar"><i style="--f:@((int)Math.Round(100 * (c.Fraction ?? 0)))%"></i></span>
                 <span class="mb-val">@c.Value</span>
-            </div>
+            </text>;
+            @if (c.Href is { } href)
+            {
+                <a class="@cls" data-k="@c.Key" title="@tip" href="@href">@body</a>
+            }
+            else
+            {
+                <div class="@cls" data-k="@c.Key" title="@tip">@body</div>
+            }
         }
+        <button class="mb-more" aria-expanded="@(_open ? "true" : "false")" title="@(_open ? Strings.MiniLessTip : Strings.MiniMoreTip)"
+                @onclick="() => _open = !_open">@(_open ? Strings.MiniLess : Strings.MiniMore(hidden))</button>
     </section>
+}
+
+@code {
+    private bool _open;   // nur auf dem Telefon sichtbar: alle acht Felder statt drei
 }

@@ -962,3 +962,36 @@ html[data-mini-bar=off] .minibar{display:none}
   .mb-val{text-align:right}
 }
 html.shell .minibar{box-shadow:none}html.shell .mb-bar>i{transition:none}
+/* Felder als Link (GPU-Seite, Hardware im Monitor, Laufwerke) und die Verlaufslinie der letzten Messtakte dahinter */
+.mb-cell{position:relative;margin:-4px -6px;padding:4px 6px;border-radius:6px}
+a.mb-cell{color:inherit;text-decoration:none}
+a.mb-cell:hover{background:rgb(var(--ink-rgb)/.05)}
+a.mb-cell:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
+.mb-cell>span{position:relative}
+.mb-spark{position:absolute;inset:4px 6px;width:calc(100% - 12px);height:calc(100% - 8px);pointer-events:none;opacity:.32}
+.mb-spark polyline{fill:none;stroke:var(--acc);stroke-width:1.5;vector-effect:non-scaling-stroke}
+.mb-cell.lv-hot .mb-spark polyline{stroke:var(--bad)}.mb-cell.lv-warn .mb-spark polyline{stroke:var(--warn)}.mb-cell.lv-good .mb-spark polyline{stroke:var(--good)}
+.mb-more{display:none}
+.top nav .nv-ic{display:none}
+/* Telefon: zugeklappt nur VRAM, GPU, Temperatur (.ph) und „+5“; aufgeklappt alle acht in zwei Spalten */
+@media(max-width:640px){
+  .mb-more{display:block;align-self:center;padding:4px 10px;font:11px var(--font-mono)}
+  .minibar:not(.open){grid-template-columns:repeat(3,minmax(0,1fr)) auto}
+  .minibar:not(.open) .mb-cell:not(.ph){display:none}
+  .minibar:not(.open) .mb-cell{grid-template-columns:minmax(0,1fr)}
+  .minibar:not(.open) .mb-bar{grid-column:auto;grid-row:auto}
+  .minibar:not(.open) .mb-val{text-align:left}
+  .minibar.open .mb-more{grid-column:1/-1;justify-self:end}
+}
+/* Telefon: die Hauptseiten als feste Leiste unten (mit dem Daumen erreichbar). Der Kopf verliert dort die Unschärfe,
+   sonst wäre er der Bezugsrahmen der festen Leiste und sie bliebe oben. Meldungen rücken über die Leiste. */
+@media(max-width:640px){
+  .top{-webkit-backdrop-filter:none;backdrop-filter:none;background:rgb(var(--bg-rgb)/.97)}
+  .top nav{position:fixed;left:0;right:0;bottom:0;z-index:40;display:flex;flex-wrap:nowrap;justify-content:space-around;max-width:none;gap:0;
+    margin:0;padding:4px 4px calc(4px + env(safe-area-inset-bottom));background:rgb(var(--bg-rgb)/.97);border-top:1px solid var(--line)}
+  .top nav a{flex:1 1 0;min-width:0;display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 2px;font-size:10px;line-height:1.1;text-align:center}
+  .top nav a .nv-ic{display:inline-block}
+  .top nav .navtxt,.top nav .nv-t{display:block;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .page{padding-bottom:calc(56px + env(safe-area-inset-bottom))}
+  .toasts{bottom:calc(68px + env(safe-area-inset-bottom))}
+}

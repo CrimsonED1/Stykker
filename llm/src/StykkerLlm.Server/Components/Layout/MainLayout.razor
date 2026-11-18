@@ -43,10 +43,11 @@
         <span class="here muted">@PageName()</span>
     }
     <nav>
-        <NavLink href="" Match="NavLinkMatch.All">@Strings.NavMonitor</NavLink>
-        <NavLink href="results">@Strings.NavEval</NavLink>
-        <NavLink href="bench">@Strings.NavBenchmarks</NavLink>
-        <NavLink href="recordings">@Strings.NavRecordings</NavLink>
+        @* Die Symbole mit Klasse nv-ic stehen nur in der Leiste unten auf dem Telefon (app.css) *@
+        <NavLink href="" Match="NavLinkMatch.All"><Icon Name="slots" Class="nv-ic" /><span class="nv-t">@Strings.NavMonitor</span></NavLink>
+        <NavLink href="results"><Icon Name="peak" Class="nv-ic" /><span class="nv-t">@Strings.NavEval</span></NavLink>
+        <NavLink href="bench"><Icon Name="avg" Class="nv-ic" /><span class="nv-t">@Strings.NavBenchmarks</span></NavLink>
+        <NavLink href="recordings"><Icon Name="rec" Class="nv-ic" /><span class="nv-t">@Strings.NavRecordings</span></NavLink>
         <NavLink href="prompt" title="@Strings.BtnPrompt" aria-label="@Strings.BtnPrompt"><Icon Name="chat" /><span class="navtxt">@Strings.BtnPrompt</span></NavLink>
     </nav>
     @* Statusleiste (U3): Proxy, Grafikspeicher mit Minibalken, freier Arbeitsspeicher, Server – je ein Chip *@
@@ -194,7 +195,26 @@ else if (Viewer.Known && Viewer.IsViewer)
     // Seiten, die nicht als Hauptpunkt in der Kopfzeile stehen, sondern im ☰
     private static readonly string[] MorePages = { "runs", "catalog", "models", "gpu", "compare", "hosts", "nodes", "phone", "settings", "bugreport", "serverdetail" };
 
-    protected override void OnInitialized() => _t = new Timer(_ => InvokeAsync(StateHasChanged), null, 2000, 2000);
+    private ActivityEvent? _seenActivity;    // der neueste Eintrag, der schon bekannt war (für die Meldungen)
+
+    protected override void OnInitialized()
+    {
+        _t = new Timer(_ => InvokeAsync(StateHasChanged), null, 2000, 2000);
+        _seenActivity = Host.Activity.Recent(1).FirstOrDefault();
+        Host.Activity.Changed += OnActivity;
+    }
+
+    // Neue Ereignisse (Neustart, Leerlauf-Entladen, fertige Tests und Benchmarks) als Meldung mit Link zur Aktivität –
+    // nur außerhalb des Monitors, der die Liste selbst zeigt; den Absturz meldet schon das Banner
+    private void OnActivity() => _ = InvokeAsync(() =>
+    {
+        var recent = Host.Activity.Recent(ActivityLog.Max);
+        var fresh = ActivityLog.Since(recent, _seenActivity);
+        _seenActivity = recent.FirstOrDefault();
+        if (RelPath() == "") return;
+        foreach (var a in fresh.Where(a => a.ShowsToast).TakeLast(3))
+            Toast.ShowLink(a.Text, Strings.ToastShowActivity, "./#activity", warn: a.Alarm);
+    });
 
     // Rolle, Hülle und Ansicht einmal beim Browser erfragen (geht erst nach dem ersten Zeichnen)
     protected override async Task OnAfterRenderAsync(bool first)
@@ -318,7 +338,11 @@ else if (Viewer.Known && Viewer.IsViewer)
     }
 
     private void DismissLost() => Host.ClearLost();
-    public void Dispose() => _t?.Dispose();
+    public void Dispose()
+    {
+        _t?.Dispose();
+        Host.Activity.Changed -= OnActivity;
+    }
 
     // Server beenden: auch im Handler gesperrt (ein manipulierter Client kann Ereignisse an gesperrte Knöpfe schicken)
     private async Task StopServer()

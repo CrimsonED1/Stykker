@@ -262,7 +262,7 @@
    Aussehen und Markup: die Hardware-Bausteine des Design-Systems (hw-*), dieselben wie in StykkerSYS. *@
 @if (e.Gpu != null || e.Sys != null || e.Disks != null)
 {
-    <div class="mon-area mon-hw">
+    <div class="mon-area mon-hw" id="hw">
     <h3 class="sec">@Strings.SectionHardware</h3>
     <section class="hw-card">
         @if (e.Gpu is { } g)
@@ -567,7 +567,7 @@
 @* Ereignisse (ActivityLog): was passiert ist, während niemand hinsah – Absturz mit Ursache, Neustart, Leerlauf-Entladen,
    fertige Modelltests und Benchmarks; das Banner oben zeigt nur den letzten verlorenen Server *@
 @{ var acts = Host.Activity.Recent(8); var actNow = DateTime.Now; }
-<div class="mon-area mon-act">
+<div class="mon-area mon-act" id="activity">
 <h3 class="sec" title="@Strings.ActivityTip">@Strings.ActivityTitle</h3>
 <div class="card act">
     @if (acts.Count == 0)

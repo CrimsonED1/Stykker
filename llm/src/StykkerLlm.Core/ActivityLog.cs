@@ -10,6 +10,9 @@ public sealed record ActivityEvent(DateTime When, ActivityKind Kind, string Text
     // Schlimm (rot): Absturz, Neustart gescheitert. Sonst Information.
     public bool Alarm => Kind is ActivityKind.Crash or ActivityKind.RestartFailed;
 
+    // Als Meldung auf den anderen Seiten: alles außer dem Absturz, den das Banner oben auf jeder Seite schon zeigt
+    public bool ShowsToast => Kind != ActivityKind.Crash;
+
     // Symbol aus dem Sprite (IconSprite)
     public string Icon => Kind switch
     {
@@ -50,6 +53,21 @@ public sealed class ActivityLog
     }
 
     public int Count { get { lock (_gate) return _events.Count; } }
+
+    // Was seit seen dazukam, ältestes zuerst (recent: die neuesten zuerst, wie Recent). Ist seen nicht mehr in der Liste
+    // (herausgefallen) oder fehlt, gilt die ganze Liste als neu. Verglichen wird der Eintrag selbst, nicht sein Text:
+    // zwei gleiche Meldungen hintereinander sind zwei Ereignisse.
+    public static IReadOnlyList<ActivityEvent> Since(IReadOnlyList<ActivityEvent> recent, ActivityEvent? seen)
+    {
+        var fresh = new List<ActivityEvent>();
+        foreach (var e in recent)
+        {
+            if (seen != null && ReferenceEquals(e, seen)) break;
+            fresh.Add(e);
+        }
+        fresh.Reverse();
+        return fresh;
+    }
 
     // Ein fertiger Lauf (DoneEvents) als Eintrag
     public void Add(DoneEvent done) =>
