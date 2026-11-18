@@ -124,6 +124,7 @@
             </div>
             <div class="seg">
                 <button class="@(_cardLabels ? "on" : "")" title="@Strings.CardLabelsTip" aria-pressed="@(_cardLabels ? "true" : "false")" @onclick="ToggleCardLabels">@Strings.CardLabels</button>
+                <button class="@(_miniBar ? "on" : "")" title="@Strings.MiniBarTip" aria-pressed="@(_miniBar ? "true" : "false")" @onclick="ToggleMiniBar">@Strings.MiniBarLabel</button>
                 @* Browser-Meldung (je Gerät): Absturz, fertige Modelltests, fertiger Benchmark; im Fenster meldet schon das Tray-Symbol *@
                 @if (!_shell)
                 {
@@ -167,6 +168,11 @@ else if (Viewer.Known && Viewer.IsViewer)
         <button class="ib" title="@Strings.BtnDismiss" aria-label="@Strings.BtnDismiss" @onclick="DismissLost"><Icon Name="x" /></button>
     </div>
 }
+@* Hardware-Minibar auf jeder Seite außer dem Monitor (der hat die große Hardware-Karte) *@
+@if (RelPath() != "")
+{
+    <HwMiniBar />
+}
 <main>@Body</main>
 <PromptDialog />
 <ClientDialog />
@@ -183,6 +189,7 @@ else if (Viewer.Known && Viewer.IsViewer)
     private bool _shell;                 // in der Fenster-Hülle: dort die Zurück/Vor-Knöpfe zeigen
     private string _density = DensityAuto;   // auto = nach Fensterbreite (der Umschalter im ☰ überstimmt sie)
     private bool _cardLabels;                // Kurznamen unter den Kennzahlen der Serverkarten (Schalter im ☰ → Ansicht)
+    private bool _miniBar = true;            // Hardware-Minibar oben (Schalter im ☰ → Ansicht, an ist der Standard)
     private string _notify = "off";          // Absturz-Meldung im Browser: on | off | blocked | unsupported (ui.js)
     // Seiten, die nicht als Hauptpunkt in der Kopfzeile stehen, sondern im ☰
     private static readonly string[] MorePages = { "runs", "catalog", "models", "gpu", "compare", "hosts", "nodes", "phone", "settings", "bugreport", "serverdetail" };
@@ -197,6 +204,7 @@ else if (Viewer.Known && Viewer.IsViewer)
         _shell = await Safe<bool>("stykkerUi.shell");
         _density = await Safe<string>("stykkerUi.density") ?? "auto";
         _cardLabels = await Safe<bool>("stykkerUi.cardLabels");
+        _miniBar = await SafeOr("stykkerUi.miniBar", true);
         _notify = await Safe<string>("stykkerUi.notify") ?? "unsupported";
         StateHasChanged();
     }
@@ -221,6 +229,19 @@ else if (Viewer.Known && Viewer.IsViewer)
     {
         _cardLabels = !_cardLabels;
         await JS.InvokeVoidAsync("stykkerUi.setCardLabels", _cardLabels);
+    }
+
+    // Hardware-Minibar ein/aus (je Browser gemerkt; ui.js setzt html[data-mini-bar], das CSS blendet sie aus)
+    private async Task ToggleMiniBar()
+    {
+        _miniBar = !_miniBar;
+        await JS.InvokeVoidAsync("stykkerUi.setMiniBar", _miniBar);
+    }
+
+    private async Task<T> SafeOr<T>(string what, T fallback)
+    {
+        try { return await JS.InvokeAsync<T>(what); }
+        catch (Exception ex) when (ex is JSException or InvalidOperationException or NotSupportedException) { return fallback; }
     }
 
     // Fehlt das Skript (alte Seite im Cache), bleibt die Oberfläche einfach ohne Hüllen-Knöpfe und in „auto“

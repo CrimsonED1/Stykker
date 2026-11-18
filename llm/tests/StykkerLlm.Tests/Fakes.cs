@@ -16,6 +16,9 @@ internal sealed class FakePlatform : IPlatform
     public Stykker.Shared.Disk.DiskSample? Disks { get; set; }
     public List<Stykker.Shared.Disk.ProcessIoRow>? DiskProcs { get; set; }
     public Stykker.Shared.Disk.DiskSample? ReadDisks() => Disks;
+    // Netzwerk-Durchsatz: was die Tests vorgeben (null = nicht verfügbar)
+    public NetSample? Net { get; set; }
+    public NetSample? ReadNetwork() => Net;
     public IReadOnlyList<Stykker.Shared.Disk.ProcessIoRow>? ReadDiskProcesses(int count) => DiskProcs?.Take(count).ToList();
     public IReadOnlyList<ListenerInfo> ReadListeners() => Listeners.ToList();
     public IReadOnlyList<ConnectionInfo> ReadConnections() => Connections.ToList();

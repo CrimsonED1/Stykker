@@ -1,0 +1,18 @@
+@* Hardware-Minibar (Entwurf: docs/design/minibar-preview.svg): acht Felder in zwei Reihen, auf dem Telefon in vier.
+   Was in den Feldern steht, entscheidet Core/MiniBar.cs; hier wird nur gezeichnet. Ein- und ausblenden je Browser über den
+   Schalter „Hardware bar“ im ☰ → Ansicht (ui.js setzt html[data-mini-bar]). Neu gezeichnet wird mit dem Kopf (MainLayout). *@
+@inject EngineHost Host
+@{ var e = Host.Engine; }
+@if (e.Gpu != null || e.Sys != null || e.Disks != null || e.Net != null)
+{
+    <section class="minibar" aria-label="@Strings.MiniBarAria">
+        @foreach (var c in MiniBar.Build(e.Gpu, e.Sys, e.Disks, e.Net))
+        {
+            <div class="mb-cell lv-@c.Level.ToString().ToLowerInvariant() @(c.Missing ? "na" : "")" data-k="@c.Key" title="@c.Tip">
+                <span class="mb-lbl">@c.Label</span>
+                <span class="mb-bar"><i style="--f:@((int)Math.Round(100 * (c.Fraction ?? 0)))%"></i></span>
+                <span class="mb-val">@c.Value</span>
+            </div>
+        }
+    </section>
+}

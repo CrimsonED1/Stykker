@@ -8,7 +8,8 @@ only**: it shows the state and sends the user to the web UI for anything that ch
 
 | # | Area | Where |
 |---|---|---|
-| 1 | Header: name, main pages, ☰ menu (view, labels, **Alerts** per browser), free VRAM, stop server; tab title and favicon show t/s or a lost server | header bar |
+| 1 | Header: name, main pages, ☰ menu (view, labels, **Hardware bar**, **Alerts** per browser), free VRAM, stop server; tab title and favicon show t/s or a lost server | header bar |
+| 1a | Hardware bar: VRAM, GPU, CPU, RAM, fullest drive, disk I/O, network, GPU temperature in two rows of four (`Core/MiniBar.cs`, draft `docs/design/minibar-preview.svg`); off with the switch in ☰ | every page except the Monitor |
 | 2 | Status line + notice line (proxy, persistent hints with *Dismiss*, *Open log*) | top of Monitor |
 | 3 | Saved profiles (start with pre-check, bench, edit, remove, start script download) | Monitor |
 | 4 | Running servers (t/s, slots, chips, proxy chip, record, details, save, stop, **Prompt**; prompt t/s and time to first token, idle time with unload countdown) | Monitor cards, `/serverdetail/{key}` |

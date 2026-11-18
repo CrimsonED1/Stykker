@@ -36,6 +36,12 @@
     const LABELS_KEY = 'stykker.cardLabels';
     const labelsRead = () => { try { return localStorage.getItem(LABELS_KEY) === 'on'; } catch (e) { return false; } };
     function applyLabels() { root.dataset.cardLabels = labelsRead() ? 'on' : 'off'; }
+
+    // Hardware-Minibar oben (Schalter „Hardware bar“ im ☰ → Ansicht): je Browser gemerkt, an ist der Standard
+    const MINIBAR_KEY = 'stykker.miniBar';
+    const miniBarRead = () => { try { return localStorage.getItem(MINIBAR_KEY) !== 'off'; } catch (e) { return true; } };
+    function applyMiniBar() { root.dataset.miniBar = miniBarRead() ? 'on' : 'off'; }
+    applyMiniBar();
     applyLabels();
 
     // Thema: html[data-theme] = dark | titan. Die Wahl kommt vom Server (data-theme-choice beim ersten Bild, danach
@@ -241,6 +247,8 @@
         // zuletzt gewählter Reiter des Proxy-Dialogs (je Browser); ohne Speicher bleibt es bei dem Standard des Dialogs
         cardLabels: labelsRead,
         setCardLabels: function (on) { try { localStorage.setItem(LABELS_KEY, on ? 'on' : 'off'); } catch (e) { /* egal: dann eben nur diese Sitzung */ } applyLabels(); },
+        miniBar: miniBarRead,
+        setMiniBar: function (on) { try { localStorage.setItem(MINIBAR_KEY, on ? 'on' : 'off'); } catch (e) { /* egal: dann eben nur diese Sitzung */ } applyMiniBar(); },
         proxyTab: function () { try { return localStorage.getItem(TAB_KEY) || ''; } catch (e) { return ''; } },
         setProxyTab: function (t) { try { localStorage.setItem(TAB_KEY, t); } catch (e) { /* egal: dann eben nur diese Sitzung */ } },
         keys: keys,             // Fenster „Keyboard shortcuts“ (auch aus dem Befehlsfenster)

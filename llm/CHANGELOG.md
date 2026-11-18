@@ -7,6 +7,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## Unreleased
 
 ### Added
+- **Hardware bar** at the top of every page except the monitor: VRAM, GPU, CPU, RAM, the fullest drive, disk I/O,
+  network and GPU temperature in two rows of four, two columns on the phone. A full bar turns red; the temperature is
+  green, yellow from 75 °C and red from 85 °C. A value the server does not measure shows `–`. The switch *Hardware bar*
+  in ☰ → View hides it (per browser). New in the state: `network` (`rxBps`, `txBps`, `linkBps`; all network adapters
+  without loopback and tunnels).
 - **Prompt page: answers as Markdown.** Code blocks with language and a Copy button, tables, lists, quotes, bold and
   links; only blocks and spans are rendered, no HTML from the answer. Every answer keeps its figures (TTFT, tokens, t/s,
   time, finish) and a Copy button; *Copy chat* copies the conversation as Markdown. The chat follows a streaming answer

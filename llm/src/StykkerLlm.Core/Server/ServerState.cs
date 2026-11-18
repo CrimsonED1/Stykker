@@ -74,6 +74,17 @@ public static class StateJson
             }
             else w.WriteNull("system");
 
+            // Netzwerk (Minibar): Byte je Sekunde über alle Adapter, linkBps = Summe der Verbindungsgeschwindigkeiten (0 = unbekannt)
+            if (e.Net is { } net)
+            {
+                w.WriteStartObject("network");
+                Num(w, "rxBps", net.RxBytesPerSec);
+                Num(w, "txBps", net.TxBytesPerSec);
+                Num(w, "linkBps", net.LinkBytesPerSec);
+                w.WriteEndObject();
+            }
+            else w.WriteNull("network");
+
             WriteDisks(w, e, withHistory);
 
             WriteTop(w, "vramTop", e.VramTop);
@@ -815,6 +826,7 @@ public sealed class StateSnapshot
     public string? CsvNote { get; init; }
     public GpuSample? Gpu { get; init; }
     public SystemSample? Sys { get; init; }
+    public NetSample? Net { get; init; }
     public List<(string Name, double Gb)> VramTop { get; init; } = new();
     public List<(string Name, double Gb)> RamTop { get; init; } = new();
     public List<(string Name, double Percent)> GpuUtilTop { get; init; } = new();
@@ -863,6 +875,7 @@ public sealed class StateSnapshot
             Sys = J.Obj(r, "system") is { } s ? new SystemSample(
                 J.Dbl(s, "cpu"), J.Int(s, "cores"), J.Dbl(s, "ramUsedGb"), J.Dbl(s, "ramTotalGb"),
                 J.Dbl(s, "commitUsedGb"), J.Dbl(s, "commitLimitGb")) : null,
+            Net = J.Obj(r, "network") is { } n ? new NetSample(J.Dbl(n, "rxBps"), J.Dbl(n, "txBps"), J.Dbl(n, "linkBps")) : null,
             VramTop = Top(r, "vramTop"),
             RamTop = Top(r, "ramTop"),
             GpuUtilTop = UtilTop(r, "gpuUtilTop"),

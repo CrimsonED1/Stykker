@@ -30,6 +30,10 @@ public sealed record SystemSample(double CpuPercent, int Cores, double RamUsedGb
     public int CommitLevel => CommitFrac >= CommitCriticalFrac ? 2 : CommitFrac >= CommitWarnFrac ? 1 : 0;
 }
 
+// Netzwerk über alle aktiven Adapter (ohne Loopback und Tunnel): Empfangen und Senden in Byte je Sekunde.
+// LinkBytesPerSec = Summe der Verbindungsgeschwindigkeiten (0 = unbekannt); nur der Maßstab für den Balken der Minibar.
+public sealed record NetSample(double RxBytesPerSec, double TxBytesPerSec, double LinkBytesPerSec);
+
 public sealed record GpuSample(string Name, double Util, double MemUsedGb, double MemTotalGb, double PowerW, double PowerLimitW, double TempC,
     double MemUtil, double GfxMhz, double GfxMaxMhz, double MemMhz, double MemMaxMhz, ulong ThrottleBits)
 {
@@ -108,6 +112,9 @@ public interface IPlatform : IDisposable
     DiskSample? ReadDisks() => null;
     // Prozesse mit dem meisten Platten-E/A (Lesen und Schreiben je Sekunde), größte zuerst. Standard: nicht verfügbar.
     IReadOnlyList<ProcessIoRow>? ReadDiskProcesses(int count) => null;
+    // Netzwerk-Durchsatz seit dem letzten Aufruf (NetRateMeter). Der erste Aufruf setzt nur die Basis und liefert null.
+    // Standard: nicht verfügbar.
+    NetSample? ReadNetwork() => null;
     // Daten an den aktuellen Benutzer binden (Windows: DPAPI CurrentUser). null = nicht möglich (Standard, z. B. Linux/Simulator):
     // der Aufrufer speichert dann nichts dauerhaft.
     byte[]? ProtectForCurrentUser(byte[] data) => null;
