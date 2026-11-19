@@ -23,8 +23,9 @@ public interface IPeerSource
 {
     Task<ChangePage> GetChangesAsync(long since, CancellationToken ct);
 
-    // Die Datei mit genau diesem Inhalt; null, wenn die Gegenstelle sie nicht (mehr) so hat.
-    Task<Stream?> OpenFileAsync(string path, string hash, CancellationToken ct);
+    // Die Datei mit genau diesem Inhalt, ab Byte offset (zum Fortsetzen); null, wenn die Gegenstelle sie nicht (mehr)
+    // so hat.
+    Task<Stream?> OpenFileAsync(string path, string hash, long offset, CancellationToken ct);
 }
 
 public enum ActivityKind { Added, Changed, Deleted, Received, Removed, Conflict, Kept, Error }
@@ -39,4 +40,6 @@ public sealed record MeshOptions
     // Eine Datei, die sich in dieser Zeit noch geändert hat, wird erst beim nächsten Durchgang aufgenommen.
     public TimeSpan StableDelay { get; init; } = TimeSpan.FromSeconds(2);
     public TimeSpan TrashKeep { get; init; } = TimeSpan.FromDays(30);
+    // Teildateien werden in Blöcken dieser Größe gesichert (auf die Platte gespült und mit eigenem Hash gemerkt).
+    public int TransferChunkSize { get; init; } = 8 * 1024 * 1024;
 }

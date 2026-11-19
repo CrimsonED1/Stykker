@@ -130,7 +130,7 @@ app.MapGet("/api/status", (HttpContext ctx, PeerManager peers) =>
             lastScan = node.LastScan,
             problem = node.FolderProblem,
             heldDeletes = node.HeldDeletes,
-            transfer = node.Transfer,
+            transfer = node.Progress is { } t ? new { path = t.Path, from = t.From, size = t.Size, done = t.Done, resumed = t.Resumed, rate = t.BytesPerSecond, checking = t.Checking } : null,
             pending = node.PendingRescan,
             localOnly,
             // Den Ordner wechselt man nur am PC selbst: der Pfad gilt für diese Maschine.
@@ -148,6 +148,9 @@ app.MapGet("/api/status", (HttpContext ctx, PeerManager peers) =>
             lastSync = p.LastSync,
             error = p.LastError,
         }).ToArray(),
+        // Was noch kommt (in dieser Reihenfolge) und was angefangen ist, aber gerade nicht dran.
+        queue = node.Queue.Select(q => new { path = q.Path, size = q.Size, from = q.From, done = q.Done }),
+        paused = node.Paused.Select(q => new { path = q.Path, size = q.Size, done = q.Done }),
         activity = node.RecentActivity.Take(30).Select(a => new { time = a.Time, kind = a.Kind.ToString().ToLowerInvariant(), path = a.Path, from = a.From }),
     });
 });
@@ -188,6 +191,12 @@ app.MapPost("/api/folder", (HttpContext ctx, FolderRequest body) => !NetworkAcce
         settings.SetFolder(node.Folder);
         return new Stykker.Shared.ActionResult(true, body.Move ? $"Moved to {node.Folder}." : $"Now using {node.Folder}. The files come from the other PCs.");
     }));
+// Reihenfolge der Warteschlange (Ziehen und Ablegen auf der Seite): die Pfade in der gewünschten Reihenfolge.
+app.MapPost("/api/queue/order", (HttpContext ctx, OrderRequest body) => LocalRequests.Guarded(ctx, () =>
+{
+    node.SetOrder(body.Paths ?? []);
+    return new Stykker.Shared.ActionResult(true, "Order saved.");
+}));
 app.MapPost("/api/allow-deletes", (HttpContext ctx) =>
     LocalRequests.Guarded(ctx, () => { node.AllowHeldDeletes(); return new Stykker.Shared.ActionResult(true, "Deletions sent to the other PCs."); }));
 app.MapPost("/api/peers", (HttpContext ctx, PeerRequest body, PeerManager peers) => LocalRequests.Guarded(ctx, () =>
@@ -248,4 +257,5 @@ await app.WaitForShutdownAsync();
 if (tray != null && OperatingSystem.IsWindows()) tray.Dispose();
 
 internal sealed record PeerRequest(string? Address);
+internal sealed record OrderRequest(string[]? Paths);
 internal sealed record FolderRequest(string? Path, bool Move);

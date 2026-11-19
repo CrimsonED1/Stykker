@@ -12,7 +12,7 @@ namespace StykkerMeshShare.Core;
 // Sicherheitsnetze: Wird eine Datei hier überschrieben oder gelöscht, landet die alte Fassung im Papierkorb
 // (DataDir/trash). Verschwinden auf einen Schlag (fast) alle Dateien, hält der Scan die Löschung an (HeldDeletes),
 // bis jemand sie bestätigt – zum Beispiel, wenn ein Laufwerk nicht eingehängt ist.
-public sealed class MeshNode
+public sealed partial class MeshNode
 {
     private const int ActivityLimit = 200;
     private static readonly JsonSerializerOptions Json = new() { WriteIndented = false };
@@ -39,7 +39,6 @@ public sealed class MeshNode
     public string? FolderProblem { get; private set; }
     public int HeldDeletes { get; private set; }
     public bool PendingRescan { get; private set; }      // eine Datei war noch in Arbeit: der nächste Scan holt sie
-    public string? Transfer { get; private set; }        // Datei, die gerade geladen wird
 
     public event Action? Changed;
 
@@ -57,6 +56,7 @@ public sealed class MeshNode
             foreach (var entry in state.Entries) _entries[entry.Path] = entry;
             foreach (var (peer, seq) in state.Cursors) _cursors[peer] = seq;
         }
+        InitTransfers();
         Save();
     }
 
@@ -214,6 +214,8 @@ public sealed class MeshNode
             if (!_entries.TryGetValue(relative, out var entry) || entry.Deleted || entry.Hash != hash) return null;
             var full = PathRules.ToFull(_folder, relative);
             if (full == null || !File.Exists(full)) return null;
+            // Hat sich die Datei seit dem Scan geändert, wird sie nicht ausgeliefert; der nächste Scan nimmt sie auf.
+            if (!DiskMatches(entry, full)) { PendingRescan = true; return null; }
             try { return new FileStream(full, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete); }
             catch (IOException) { return null; }
         }
@@ -258,14 +260,59 @@ public sealed class MeshNode
 
         int applied = 0;
         bool complete = true;
-        foreach (var remote in page.Entries)
+
+        // Zuerst alles ohne Download (Löschungen, schon vorhandener Inhalt), dann die Downloads in der Reihenfolge
+        // der Warteschlange. Die Reihenfolge wird vor jeder Datei neu gelesen: so gilt ein Umsortieren sofort.
+        var entries = page.Entries
+            .Select(e => (Entry: e, Path: PathRules.Normalize(e.Path)))
+            .Where(x => x.Path != null && !PathRules.IsIgnored(x.Path))
+            .Select(x => x.Entry with { Path = x.Path! }).ToList();
+        List<FileEntry> downloads;
+        await _gate.WaitAsync(ct).ConfigureAwait(false);
+        try { downloads = entries.Where(NeedsDownload).ToList(); }
+        finally { _gate.Release(); }
+        var quick = entries.Except(downloads).ToList();
+        lock (_queueLock)
         {
-            ct.ThrowIfCancellationRequested();
-            var relative = PathRules.Normalize(remote.Path);
-            if (relative == null || PathRules.IsIgnored(relative)) continue;
-            var outcome = await ApplyAsync(remote with { Path = relative }, page.NodeName, peer, ct).ConfigureAwait(false);
-            if (outcome == Outcome.Applied) applied++;
-            else if (outcome == Outcome.Retry) complete = false;
+            _queue.Clear();
+            _queue.AddRange(downloads.Select(d => new QueueItem(d.Path, d.Size, page.NodeName, _partials.BytesOf(d.Hash!))));
+        }
+
+        try
+        {
+            foreach (var remote in quick)
+            {
+                ct.ThrowIfCancellationRequested();
+                var outcome = await ApplyAsync(remote, page.NodeName, peer, ct).ConfigureAwait(false);
+                if (outcome == Outcome.Applied) applied++;
+                else if (outcome == Outcome.Retry) complete = false;
+            }
+
+            var byPath = downloads.ToDictionary(d => d.Path, PathRules.Comparer);
+            var left = new HashSet<string>(byPath.Keys, PathRules.Comparer);
+            while (left.Count > 0)
+            {
+                ct.ThrowIfCancellationRequested();
+                FileEntry remote;
+                lock (_queueLock) remote = byPath[Ordered(_queue.Where(q => left.Contains(q.Path))).First().Path];
+                var outcome = await ApplyAsync(remote, page.NodeName, peer, ct).ConfigureAwait(false);
+                if (outcome == Outcome.Deferred) continue;   // eine andere Datei wurde vorgezogen; diese kommt später
+                left.Remove(remote.Path);
+                if (outcome == Outcome.Retry)
+                {
+                    complete = false;
+                    lock (_queueLock) _queue.RemoveAll(q => PathRules.Comparer.Equals(q.Path, remote.Path));
+                }
+                else
+                {
+                    if (outcome == Outcome.Applied) applied++;
+                    Dequeue(remote.Path);
+                }
+            }
+        }
+        finally
+        {
+            lock (_queueLock) _queue.Clear();
         }
 
         await _gate.WaitAsync(ct).ConfigureAwait(false);
@@ -279,7 +326,17 @@ public sealed class MeshNode
         return new PullResult(applied, complete);
     }
 
-    private enum Outcome { Nothing, Applied, Retry }
+    private enum Outcome { Nothing, Applied, Retry, Deferred }
+
+    // Grobe Vorauswahl (unter der Sperre): ein Eintrag mit Inhalt, der hier unter diesem Pfad noch fehlt und nicht
+    // älter ist als der eigene. Was wirklich passiert, entscheidet Decide() erst direkt vor dem Laden.
+    private bool NeedsDownload(FileEntry remote)
+    {
+        if (remote.Deleted || remote.Hash == null) return false;
+        if (!_entries.TryGetValue(remote.Path, out var local)) return true;
+        if (!local.Deleted && local.Hash == remote.Hash) return false;
+        return VersionVector.Compare(local.Version, remote.Version) is not (Order.Equal or Order.LocalNewer);
+    }
 
     // Was mit einem Eintrag der Gegenstelle zu tun ist. Entschieden wird unter der Sperre, geladen wird ohne sie, und
     // vor dem Übernehmen wird geprüft, dass sich hier in der Zwischenzeit nichts geändert hat.
@@ -293,24 +350,42 @@ public sealed class MeshNode
         if (plan.Kind == PlanKind.Done) return plan.Changed ? Outcome.Applied : Outcome.Nothing;
         if (plan.Kind == PlanKind.Retry) return Outcome.Retry;
 
-        // Laden: zuerst eine Datei mit demselben Inhalt hier am PC suchen, sonst bei der Gegenstelle.
-        Directory.CreateDirectory(TempDir);
-        var temp = Path.Combine(TempDir, Guid.NewGuid().ToString("N") + ".partial");
+        // Laden: zuerst eine Datei mit demselben Inhalt hier am PC suchen, sonst bei der Gegenstelle. Geladen wird in
+        // eine Teildatei, die einen Abbruch übersteht; SetOrder() kann diese Datei anhalten (Deferred).
+        using var current = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        lock (_queueLock)
+        {
+            _currentPath = remote.Path;
+            _currentCancel = current;
+        }
         try
         {
-            Transfer = plan.Target;
-            Notify();
-            bool loaded = await LoadAsync(remote, temp, peer, ct).ConfigureAwait(false);
-            if (!loaded) return Outcome.Retry;
+            var result = await LoadAsync(remote, peerName, peer, current.Token).ConfigureAwait(false);
+            if (result.Status != LoadStatus.Loaded) return Outcome.Retry;
 
+            bool committed;
             await _gate.WaitAsync(ct).ConfigureAwait(false);
-            try { return Commit(plan, remote, temp) ? Outcome.Applied : Outcome.Retry; }
+            try { committed = Commit(plan, remote, result.DataPath!); }
             finally { _gate.Release(); }
+            if (committed) _partials.Discard(remote.Hash!);
+            return committed ? Outcome.Applied : Outcome.Retry;
         }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested) { return Outcome.Deferred; }
         finally
         {
-            Transfer = null;
-            TryDelete(temp);
+            lock (_queueLock)
+            {
+                // Angehalten: die Zeile zeigt den Stand, ab dem es weitergeht (der letzte gesicherte Block).
+                if (_progress is { Checking: false } stopped && PathRules.Comparer.Equals(stopped.Path, remote.Path))
+                {
+                    long kept = stopped.Done / _partials.ChunkSize * _partials.ChunkSize;
+                    var at = _queue.FindIndex(q => PathRules.Comparer.Equals(q.Path, remote.Path));
+                    if (at >= 0) _queue[at] = _queue[at] with { Done = kept };
+                }
+                _currentPath = null;
+                _currentCancel = null;
+            }
+            _progress = null;
         }
     }
 
@@ -429,9 +504,15 @@ public sealed class MeshNode
         catch (IOException) { return false; }
     }
 
-    private async Task<bool> LoadAsync(FileEntry remote, string temp, IPeerSource peer, CancellationToken ct)
+    private enum LoadStatus { Loaded, Failed }
+    private sealed record LoadResult(LoadStatus Status, string? DataPath = null);
+
+    // Lädt den Inhalt in seine Teildatei und setzt dort fort, wo die letzte Übertragung aufgehört hat (auch nach einem
+    // Neustart oder von einer anderen Gegenstelle mit demselben Inhalt). Stimmt am Ende der SHA-256 der ganzen Datei
+    // nicht, wird die Teildatei verworfen und die Datei beim nächsten Abruf neu geladen.
+    private async Task<LoadResult> LoadAsync(FileEntry remote, string peerName, IPeerSource peer, CancellationToken ct)
     {
-        if (remote.Hash == null) return false;
+        if (remote.Hash == null) return new(LoadStatus.Failed);
         string? localCopy = null;
         await _gate.WaitAsync(ct).ConfigureAwait(false);
         try
@@ -445,33 +526,65 @@ public sealed class MeshNode
         }
         finally { _gate.Release(); }
 
+        // Eine angefangene Teildatei wird erst ganz gelesen und geprüft; bei großen Dateien dauert das einen Moment.
+        long already = _partials.BytesOf(remote.Hash);
+        if (already > 0) _progress = new TransferProgress(remote.Path, peerName, remote.Size, already, already, 0, Checking: true);
+        PartialStore.Handle handle;
+        // Ohne ct: die Prüfung läuft zu Ende, sonst bliebe die Teildatei offen. Abgebrochen wird gleich danach.
+        try { handle = await Task.Run(() => _partials.Open(remote.Path, remote.Hash, remote.Size)).ConfigureAwait(false); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { return new(LoadStatus.Failed); }
+
         Stream? source = null;
         try
         {
-            if (localCopy != null)
+            ct.ThrowIfCancellationRequested();
+            long done = handle.Stream.Position;
+            ReportProgress(remote.Path, localCopy != null ? NodeName : peerName, remote.Size, done, handle.Resumed);
+            bool tooLong = false;
+            if (done < remote.Size)
             {
-                try { source = new FileStream(localCopy, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete); }
-                catch (IOException) { source = null; }
-            }
-            source ??= await peer.OpenFileAsync(remote.Path, remote.Hash, ct).ConfigureAwait(false);
-            if (source == null) return false;
-            using var sha = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-            await using (var target = new FileStream(temp, FileMode.Create, FileAccess.Write, FileShare.None))
-            {
-                var buffer = new byte[81920];
+                if (localCopy != null)
+                {
+                    try { source = new FileStream(localCopy, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete) { Position = done }; }
+                    catch (IOException) { source = null; }
+                }
+                source ??= await peer.OpenFileAsync(remote.Path, remote.Hash, done, ct).ConfigureAwait(false);
+                if (source == null) return new(LoadStatus.Failed);
+
+                var buffer = new byte[256 * 1024];
                 int read;
                 while ((read = await source.ReadAsync(buffer, ct).ConfigureAwait(false)) > 0)
                 {
-                    sha.AppendData(buffer, 0, read);
-                    await target.WriteAsync(buffer.AsMemory(0, read), ct).ConfigureAwait(false);
+                    if (done + read > remote.Size) { tooLong = true; break; }
+                    await _partials.WriteAsync(handle, buffer.AsMemory(0, read), ct).ConfigureAwait(false);
+                    done += read;
+                    _meter.Add(read);
+                    ReportProgress(remote.Path, localCopy != null ? NodeName : peerName, remote.Size, done, handle.Resumed);
                 }
             }
-            return Convert.ToHexStringLower(sha.GetHashAndReset()) == remote.Hash;
+            await handle.Stream.FlushAsync(ct).ConfigureAwait(false);
+
+            // Zu kurz (Verbindung weg): Teildatei behalten, beim nächsten Mal weiter.
+            if (!tooLong && done < remote.Size) return new(LoadStatus.Failed);
+
+            var hash = Convert.ToHexStringLower(handle.FileHash.GetHashAndReset());
+            if (!tooLong && hash == remote.Hash)
+            {
+                handle.Dispose();
+                return new(LoadStatus.Loaded, handle.DataPath);
+            }
+            // Inhalt stimmt nicht (die Datei hat sich dort während der Übertragung geändert, oder Daten sind
+            // unterwegs kaputtgegangen): verwerfen und neu laden.
+            handle.Dispose();
+            _partials.Discard(remote.Hash);
+            Record(ActivityKind.Error, remote.Path, "Check failed (SHA-256); loading again");
+            return new(LoadStatus.Failed);
         }
-        catch (IOException) { return false; }
-        catch (HttpRequestException) { return false; }
+        catch (IOException) { return new(LoadStatus.Failed); }
+        catch (HttpRequestException) { return new(LoadStatus.Failed); }
         finally
         {
+            handle.Dispose();
             if (source != null) await source.DisposeAsync().ConfigureAwait(false);
         }
     }

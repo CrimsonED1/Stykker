@@ -53,6 +53,23 @@ PC A  ◀──── pull ────▶  PC B  ◀──── pull ───
 
 Index, trash and settings live in `%APPDATA%\Stykker\MeshShare`, not in the shared folder.
 
+## Transfers
+
+- **Progress**: the page shows the file being received, how much of it, the rate and the time left, and what comes
+  next.
+- **Order**: drag the waiting files into the order you want (on the phone: the arrow button). A file dragged to the
+  very top is loaded now: the running file pauses and later continues where it stopped. The order is kept in
+  `queue.json` and survives a restart.
+- **Continue after a break**: a file is received into `partial\` in the data folder. Every 8 MB the data is written
+  to disk and the block's SHA-256 is noted. After a lost connection, a crash or a restart, the blocks already there
+  are read and checked again, and the transfer continues after the last good block (HTTP range request). It also
+  continues from another PC that has the same content. Unused partial files are removed after 14 days.
+- **Checked by hash**: a received file is used only if the SHA-256 of the whole file equals the hash of the sending
+  PC. Otherwise it is thrown away and loaded again (the activity list shows "Check failed").
+- **Changed files**: each PC notices changes in its folder (watcher plus a full scan every minute; size and time,
+  then SHA-256). A PC does not hand out a file that changed since its last scan. If a file changes on the other PC
+  during a transfer, the half-received old version is dropped and the new one is loaded.
+
 ## Finding the other PCs
 
 - **Home network**: PCs find each other by themselves. Each PC sends a short UDP broadcast on port 17404 into every
@@ -64,7 +81,7 @@ Index, trash and settings live in `%APPDATA%\Stykker\MeshShare`, not in the shar
 
 **LAN first.** The same PC under two addresses syncs over only one of them, and over the best way: the home network
 before Tailscale. When a PC that is connected over Tailscale shows up in the home network, syncing moves to the home
-network at once, also in the middle of a transfer (the file starts again over the faster way). When the home network
+network at once, also in the middle of a transfer (the file continues over the faster way). When the home network
 address stops answering, the Tailscale address takes over. The page shows the way (`via LAN`, `via Tailscale`).
 
 ## Access (no pairing yet)
@@ -109,5 +126,5 @@ dotnet test meshshare/tests/StykkerMeshShare.Tests -c Release
 
 - Pairing (`Stykker.Pairing`) and HTTPS between the PCs.
 - Tombstones are kept forever; a cleanup after a long time is still missing.
-- Large files are transferred whole (resumable by range on the server side, not yet used by the client).
+- The queue shows only the files of the PC being synced right now, not those still waiting on other PCs.
 - Tile in the hub (`/api/module`).

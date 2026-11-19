@@ -66,6 +66,17 @@
         </section>
     </div>
 
+    @* Übertragung: die laufende Datei mit Rate und Restzeit, darunter die Warteschlange. Die Reihenfolge legt man per
+       Ziehen fest (am Handy mit „Nach oben“); eine nach vorn gezogene Datei hält die laufende an, die später weiterlädt. *@
+    <section class="card ms-transfers" id="transfers">
+        <div class="ms-bar">
+            <h2>Transfers</h2>
+            <span class="muted ms-rate" id="v-rate"></span>
+        </div>
+        <div id="current" class="ms-current"></div>
+        <div id="queue" class="ms-queue" aria-label="Waiting files. Drag to change the order."></div>
+    </section>
+
     <div class="ms-grid">
         <section class="card">
             <div class="ms-bar">

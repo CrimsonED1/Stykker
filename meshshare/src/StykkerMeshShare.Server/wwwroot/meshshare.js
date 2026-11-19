@@ -75,7 +75,7 @@
         const syncing = n.transfer || st.peers.some((p) => p.syncing);
         if (n.problem) lamp("off", n.problem);
         else if (n.heldDeletes) lamp("off", `${n.heldDeletes} files vanished – deletion held`);
-        else if (syncing) lamp("sync", n.transfer ? `Receiving ${n.transfer}` : "Syncing");
+        else if (syncing) lamp("sync", n.transfer ? `Receiving ${n.transfer.path}` : "Syncing");
         else if (n.pending) lamp("scan");
         else if (!st.peers.length) lamp("alone");
         else if (!online) lamp("off", "No other PC reachable");
@@ -114,6 +114,8 @@
         $("activity").innerHTML = st.activity.length
             ? st.activity.map((a) => `<div class="ms-act"><span class="k ${esc(a.kind)}">${esc(a.kind)}</span><span class="p" title="${esc(a.path)}">${esc(a.path)}${a.from ? ` <span class="muted">· ${esc(a.from)}</span>` : ""}</span><span class="t">${clock(a.time)}</span></div>`).join("")
             : `<p class="muted" style="margin:0">Nothing happened yet.</p>`;
+
+        renderTransfers(st);
 
         if (n.seq !== lastSeq) {
             lastSeq = n.seq;
@@ -276,6 +278,123 @@
         });
         button.classList.toggle("on", document.documentElement.dataset.theme === button.dataset.themeChoice);
     }
+
+    // ── Übertragung ──
+    // Die laufende Datei mit Fortschritt, Rate und Restzeit; darunter die Warteschlange. Ziehen ändert die Reihenfolge
+    // (am Handy „Nach oben“). Während gezogen wird, zeichnet die Abfrage die Liste nicht neu.
+    let dragging = null;
+    let waitingOrder = [];   // ohne die laufende Datei
+    let currentPath = null;
+    const rate = (bps) => bps > 0 ? `${size(bps)}/s` : "–";
+    function left(seconds) {
+        if (!Number.isFinite(seconds) || seconds <= 0) return "";
+        if (seconds < 60) return `${Math.ceil(seconds)} s left`;
+        if (seconds < 3600) return `${Math.ceil(seconds / 60)} min left`;
+        return `${(seconds / 3600).toFixed(1)} h left`;
+    }
+
+    function renderTransfers(st) {
+        const t = st.node.transfer;
+        const queue = st.queue || [];
+        const paused = st.paused || [];
+        const waiting = queue.filter((q) => !t || q.path !== t.path);
+        const rest = waiting.reduce((sum, q) => sum + Math.max(0, q.size - q.done), 0) + (t ? Math.max(0, t.size - t.done) : 0);
+        set("v-rate", t ? `${rate(t.rate)} · ${size(rest)} to go${t.rate > 0 ? " · " + left(rest / t.rate) : ""}` : "");
+
+        const cur = $("current");
+        if (t) {
+            const pct = t.size > 0 ? Math.min(100, (t.done / t.size) * 100) : 100;
+            const info = t.checking
+                ? [`checking the ${size(t.done)} already here before it continues`]
+                : [`from ${esc(t.from)}`, left((t.size - t.done) / t.rate)];
+            if (t.resumed > 0 && !t.checking) info.push(`continued at ${size(t.resumed)}`);
+            cur.innerHTML = `<div class="ms-cur-top"><b title="${esc(t.path)}">${esc(t.path)}</b><span class="num">${size(t.done)} of ${size(t.size)} · ${pct.toFixed(0)} %</span></div>
+                <div class="ms-prog"><i style="width:${pct.toFixed(1)}%"></i></div>
+                <span class="muted ms-cur-info">${info.filter(Boolean).join(" · ")}</span>`;
+        } else {
+            cur.innerHTML = queue.length || paused.length ? "" : `<p class="muted" style="margin:0">Nothing to transfer.</p>`;
+        }
+
+        if (dragging) return;
+        currentPath = t ? t.path : null;
+        waitingOrder = waiting.map((q) => q.path);
+        const row = (q, i, isPaused) => {
+            const pct = q.size > 0 ? Math.round((q.done / q.size) * 100) : 0;
+            const state = q.done > 0 ? `paused at ${pct} %` : size(q.size);
+            const top = !isPaused && (i > 0 || t)
+                ? `<button type="button" class="quiet sq" data-top="${esc(q.path)}" title="Load this now; a running file pauses and continues later" aria-label="Load ${esc(q.path)} now"><svg class="ic"><use href="#i-arrow-up" /></svg></button>`
+                : `<span></span>`;
+            return `<div class="ms-q${q.done > 0 ? " paused" : ""}" ${isPaused ? "" : `draggable="true" data-path="${esc(q.path)}"`}>
+                <span class="grip" aria-hidden="true">${isPaused ? "" : "⠿"}</span>
+                <span class="p" title="${esc(q.path)}">${esc(q.path)}${q.from ? ` <span class="muted">· ${esc(q.from)}</span>` : ""}</span>
+                <span class="num">${q.done > 0 ? `${size(q.size)} · ${state}` : state}</span>${top}</div>`;
+        };
+        const html = (waiting.length ? `<div class="muted ms-q-head">Next (${waiting.length}) · drag to change the order</div>` : "")
+            + waiting.map((q, i) => row(q, i, false)).join("")
+            + (paused.length ? `<div class="muted ms-q-head">Started, continues when the PC that has it is online</div>` + paused.map((q, i) => row(q, i, true)).join("") : "");
+        const box = $("queue");
+        if (box.dataset.html !== html) { box.dataset.html = html; box.innerHTML = html; }
+    }
+
+    // Ganz oben in „Next“ heißt: jetzt laden (vor der laufenden Datei, die dann pausiert). Sonst nach ihr.
+    async function saveOrder(waiting, now) {
+        const order = currentPath
+            ? (now ? [waiting[0], currentPath, ...waiting.slice(1)] : [currentPath, ...waiting])
+            : waiting;
+        waitingOrder = waiting;
+        const r = await post("/api/queue/order", { paths: order });
+        if (!r.ok) toast(r.message ?? "Could not change the order", true);
+        tick();
+    }
+
+    const queueBox = $("queue");
+    queueBox.addEventListener("click", (e) => {
+        const button = e.target.closest("[data-top]");
+        if (!button) return;
+        const path = button.dataset.top;
+        saveOrder([path, ...waitingOrder.filter((p) => p !== path)], true);
+    });
+    queueBox.addEventListener("dragstart", (e) => {
+        const row = e.target.closest(".ms-q[data-path]");
+        if (!row) return;
+        dragging = row.dataset.path;
+        row.classList.add("dragging");
+        e.dataTransfer.effectAllowed = "move";
+        e.dataTransfer.setData("text/plain", dragging);
+    });
+    function clearMarks() { for (const el of queueBox.querySelectorAll(".drop-before,.drop-after")) el.classList.remove("drop-before", "drop-after"); }
+    function dropTarget(e) {
+        const row = e.target.closest(".ms-q[data-path]");
+        if (!row || row.dataset.path === dragging) return null;
+        const box = row.getBoundingClientRect();
+        return { row, after: e.clientY > box.top + box.height / 2 };
+    }
+    queueBox.addEventListener("dragover", (e) => {
+        if (!dragging) return;
+        e.preventDefault();   // auch über der eigenen Zeile: sonst zeigt der Browser „nicht erlaubt“
+        const target = dropTarget(e);
+        clearMarks();
+        if (target) target.row.classList.add(target.after ? "drop-after" : "drop-before");
+    });
+    queueBox.addEventListener("drop", (e) => {
+        if (!dragging) return;
+        e.preventDefault();
+        const target = dropTarget(e);
+        const moved = dragging;
+        clearMarks();
+        if (!target) return;
+        const order = waitingOrder.filter((p) => p !== moved);
+        let at = order.indexOf(target.row.dataset.path);
+        if (target.after) at++;
+        order.splice(at, 0, moved);
+        saveOrder(order, at === 0);
+    });
+    queueBox.addEventListener("dragend", () => {
+        dragging = null;
+        clearMarks();
+        for (const el of queueBox.querySelectorAll(".dragging")) el.classList.remove("dragging");
+        delete queueBox.dataset.html;   // beim nächsten Mal neu zeichnen
+    });
 
     async function tick() {
         try { renderStatus(await fetch("/api/status").then((r) => r.json())); }

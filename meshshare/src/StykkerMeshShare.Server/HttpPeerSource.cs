@@ -18,17 +18,37 @@ public sealed class HttpPeerSource(HttpClient http, string address) : IPeerSourc
         await http.GetFromJsonAsync<ChangePage>(Url($"/mesh/changes?since={since}"), ct).ConfigureAwait(false)
         ?? throw new HttpRequestException("empty answer");
 
-    public async Task<Stream?> OpenFileAsync(string path, string hash, CancellationToken ct)
+    // Ab offset: per Range-Anfrage. Antwortet die Gegenstelle trotzdem mit der ganzen Datei (200 statt 206),
+    // wird der Anfang hier überlesen, damit der Strom wirklich bei offset steht.
+    public async Task<Stream?> OpenFileAsync(string path, string hash, long offset, CancellationToken ct)
     {
         var request = new HttpRequestMessage(HttpMethod.Get, Url($"/mesh/file?path={Uri.EscapeDataString(path)}&hash={hash}"));
+        if (offset > 0) request.Headers.Range = new System.Net.Http.Headers.RangeHeaderValue(offset, null);
         var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
-        if (response.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.Conflict)
+        if (response.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.Conflict or HttpStatusCode.RequestedRangeNotSatisfiable)
         {
             response.Dispose();
             return null;
         }
         response.EnsureSuccessStatusCode();
-        return await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+        var stream = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+        if (offset == 0) return stream;
+        if (response.StatusCode == HttpStatusCode.PartialContent)
+        {
+            if (response.Content.Headers.ContentRange?.From == offset) return stream;
+            await stream.DisposeAsync().ConfigureAwait(false);
+            response.Dispose();
+            return null;
+        }
+        var skip = new byte[81920];
+        long left = offset;
+        while (left > 0)
+        {
+            int read = await stream.ReadAsync(skip.AsMemory(0, (int)Math.Min(skip.Length, left)), ct).ConfigureAwait(false);
+            if (read <= 0) { await stream.DisposeAsync().ConfigureAwait(false); response.Dispose(); return null; }
+            left -= read;
+        }
+        return stream;
     }
 
     // Lange Abfrage: kommt zurück, sobald sich dort etwas ändert, spätestens nach timeout.

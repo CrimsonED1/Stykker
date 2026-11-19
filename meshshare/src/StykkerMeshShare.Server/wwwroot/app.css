@@ -67,3 +67,26 @@
 .ms-choice b{font-weight:600}
 .ms-folder .ms-hint{margin:0}
 .ms-folder-acts{display:flex;gap:8px}
+
+/* Übertragung */
+.ms-transfers{margin-bottom:var(--gap)}
+.ms-rate{margin-left:auto;font-size:var(--t-sm);font-variant-numeric:tabular-nums}
+.ms-current{display:flex;flex-direction:column;gap:6px}
+.ms-current:empty{display:none}
+.ms-cur-top{display:flex;gap:8px;align-items:baseline;min-width:0}
+.ms-cur-top b{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.ms-cur-top .num{margin-left:auto;flex:none;font-variant-numeric:tabular-nums;font-size:var(--t-sm)}
+.ms-current .ms-prog{height:6px;border-radius:3px}
+.ms-cur-info{font-size:var(--t-xs);font-variant-numeric:tabular-nums}
+.ms-queue{display:flex;flex-direction:column;gap:4px;margin-top:10px}
+.ms-queue:empty{display:none}
+.ms-q{display:grid;grid-template-columns:18px minmax(0,1fr) auto auto;gap:8px;align-items:center;padding:5px 8px;border:1px solid var(--line);border-radius:6px;background:var(--panel, transparent);font-size:var(--t-sm)}
+.ms-q[draggable=true]{cursor:grab}
+.ms-q .grip{color:var(--muted);width:14px;height:14px}
+.ms-q .p{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ms-q .num{font-variant-numeric:tabular-nums;color:var(--muted);font-size:var(--t-xs)}
+.ms-q.paused .num{color:var(--acc)}
+.ms-q.dragging{opacity:.45}
+.ms-q.drop-before{box-shadow:0 -2px 0 var(--acc)}
+.ms-q.drop-after{box-shadow:0 2px 0 var(--acc)}
+.ms-q-head{font-size:var(--t-xs);margin:8px 0 2px}
