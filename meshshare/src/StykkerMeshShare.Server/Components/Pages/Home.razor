@@ -1,0 +1,70 @@
+@page "/"
+@* Eine Seite: links die Dropzone, rechts der Sync-Status, darunter die Dateien (zum Herunterladen, auch am Handy)
+   und was zuletzt passiert ist. Statisch gerendert; meshshare.js holt die Werte aus /api/status und /api/files. *@
+
+<div class="top">
+    <div class="brand"><span class="logo">◆</span> STYKKER <span class="acc">MESHSHARE</span></div>
+    <div class="strip">
+        <span class="stat" title="Files in the shared folder">Files <b id="v-files">–</b></span>
+        <span class="stat" title="Size of the shared folder">Size <b id="v-size">–</b></span>
+        <span class="stat" id="v-peers-chip" title="Other PCs online">PCs <b id="v-peers">–</b></span>
+        <div class="seg" role="group" aria-label="Theme">
+            <button type="button" data-theme-choice="dark" class="on">Dark</button>
+            <button type="button" data-theme-choice="titan">Titan</button>
+        </div>
+    </div>
+</div>
+
+<main>
+    <div id="notes"></div>
+
+    <div class="ms-grid">
+        <section class="card ms-drop" id="drop" tabindex="0" role="button" aria-label="Drop files here, or choose files">
+            <input type="file" id="pick" multiple hidden />
+            <div class="ms-drop-inner">
+                <svg class="ic ms-drop-ic" aria-hidden="true"><use href="#i-arrow-down" /></svg>
+                <b>Drop files or folders here</b>
+                <span class="muted">They go into the shared folder and reach every PC.</span>
+                <span class="ms-drop-acts">
+                    <button type="button" class="primary" id="pick-btn">Choose files</button>
+                    <button type="button" id="open-folder" title="Open the shared folder in the Explorer">Open folder</button>
+                </span>
+            </div>
+            <div id="uploads" class="ms-uploads"></div>
+        </section>
+
+        <section class="card ms-status">
+            <div class="ms-head">
+                <span class="st" id="v-lamp" data-s="idle" title="Idle" aria-label="Idle"><svg class="ic"><use id="v-lamp-ic" href="#s-idle" /></svg></span>
+                <div class="ms-state">
+                    <b id="v-state">Starting…</b>
+                    <span class="muted mono ms-ellipsis" id="v-folder">–</span>
+                </div>
+            </div>
+            <div class="sec">Other PCs <span class="n" id="v-peer-count">0</span></div>
+            <div id="peers" class="ms-peers"></div>
+            <form id="add-peer" class="ms-add" autocomplete="off">
+                <div class="search"><input id="peer-address" placeholder="Add a PC: name or address" aria-label="Name or address of another PC" /></div>
+                <button type="submit">Add</button>
+            </form>
+            <p class="muted ms-hint">PCs in the same home network find each other. Over Tailscale, add the other PC by its name.</p>
+        </section>
+    </div>
+
+    <div class="ms-grid">
+        <section class="card">
+            <div class="ms-bar">
+                <h2>Files</h2>
+                <div class="search"><input id="q" placeholder="Search" aria-label="Search files" /></div>
+            </div>
+            <div id="files" class="ms-files"></div>
+        </section>
+
+        <section class="card">
+            <h2>Activity</h2>
+            <div id="activity" class="ms-activity"></div>
+        </section>
+    </div>
+
+    <div class="toasts" id="toasts"></div>
+</main>

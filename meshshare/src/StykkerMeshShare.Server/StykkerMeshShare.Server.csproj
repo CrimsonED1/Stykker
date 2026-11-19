@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <!-- StykkerMeshShare-Server: der Abgleich des geteilten Ordners mit den anderen PCs und die Web-Oberfläche
+       (Dropzone, Sync-Status) auf Port 17404. Das Fenster (StykkerMeshShare.exe) zeigt dieselben Seiten. -->
+  <PropertyGroup>
+    <!-- net10.0 und Exe wie bei StykkerSYS: nur so bindet das SDK blazor.web.js ein. -->
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>StykkerMeshShare-Server</AssemblyName>
+    <RootNamespace>StykkerMeshShare.Server</RootNamespace>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <SupportedOSPlatformVersion>10.0.17763.0</SupportedOSPlatformVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\StykkerMeshShare.Core\StykkerMeshShare.Core.csproj" />
+    <ProjectReference Include="..\..\..\shared\src\Stykker.Shared\Stykker.Shared.csproj" />
+  </ItemGroup>
+
+</Project>

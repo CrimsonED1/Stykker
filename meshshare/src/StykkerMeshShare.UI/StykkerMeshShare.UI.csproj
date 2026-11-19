@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- StykkerMeshShare: das Fenster um die Oberfläche des Servers (Photino: unter Windows WebView2), wie bei StykkerSYS.
+       Kein eigener Oberflächen-Code – Fenster, Browser und Handy zeigen dieselben Seiten. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>WinExe</OutputType>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>StykkerMeshShare</AssemblyName>
+    <RootNamespace>StykkerMeshShare.UI</RootNamespace>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Photino.NET" Version="4.0.16" />
+    <ProjectReference Include="..\..\..\shared\src\Stykker.Pairing\Stykker.Pairing.csproj" />
+  </ItemGroup>
+
+</Project>

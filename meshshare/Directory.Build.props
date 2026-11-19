@@ -1,0 +1,15 @@
+<Project>
+
+  <!-- Gemeinsame Metadaten aller Projekte. Nur Metadaten: kein Verhalten. -->
+  <PropertyGroup>
+    <Version Condition="'$(Version)' == ''">0.1.0</Version>
+    <Authors>CrimsonED1</Authors>
+    <Company>CrimsonED1</Company>
+    <Product>StykkerMeshShare</Product>
+    <Copyright>Copyright (c) CrimsonED1</Copyright>
+    <Description>A shared folder on every PC: each PC syncs its folder with all others in the network, without a central server.</Description>
+    <Deterministic>true</Deterministic>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+  </PropertyGroup>
+
+</Project>

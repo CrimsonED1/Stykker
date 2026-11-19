@@ -1,0 +1,35 @@
+@* Die Hülle der Seiten wie bei StykkerSYS: Themenwahl am <html>, die Stile aus dem gemeinsamen Design-System (/ds),
+   dazu app.css. Das Manifest macht die Seite am Handy zur Web-App (Startbildschirm). *@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>StykkerMeshShare</title>
+    <link rel="icon" href="/ds/assets/Logos/app-icon.png" />
+    <link rel="apple-touch-icon" href="/ds/assets/Logos/app-icon.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="MeshShare" />
+    <meta name="theme-color" content="#060916" />
+    <link rel="stylesheet" href="/ds/tokens.css" />
+    <link rel="stylesheet" href="/ds/components/bundle.css" />
+    <link rel="stylesheet" href="/app.css" />
+    <script>
+        try {
+            const theme = localStorage.getItem("stykkermeshshare.theme");
+            if (theme) document.documentElement.dataset.theme = theme;
+        } catch { }
+        const query = new URLSearchParams(location.search);
+        if (query.has("shell")) document.documentElement.classList.add("shell");
+        if (query.has("embed")) document.documentElement.classList.add("embed");
+        if (query.get("theme") === "dark" || query.get("theme") === "titan") document.documentElement.dataset.theme = query.get("theme");
+    </script>
+</head>
+<body>
+    <Routes />
+    <script src="/ds/components/bundle.js"></script>
+    <script src="/meshshare.js"></script>
+</body>
+</html>

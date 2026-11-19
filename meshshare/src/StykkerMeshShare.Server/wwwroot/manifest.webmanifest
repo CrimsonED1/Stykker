@@ -1,0 +1,11 @@
+{
+  "name": "StykkerMeshShare",
+  "short_name": "MeshShare",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#060916",
+  "theme_color": "#060916",
+  "icons": [
+    { "src": "/ds/assets/Logos/app-icon.png", "sizes": "48x48", "type": "image/png" }
+  ]
+}

@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Der Kern von StykkerMeshShare: Index, Abgleich mit einer Gegenstelle, Konflikte, Papierkorb, Pfadregeln.
+       Ohne Oberfläche und ohne Netz – die Gegenstelle kommt über IPeerSource herein. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>StykkerMeshShare.Core</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="StykkerMeshShare.Tests" />
+  </ItemGroup>
+
+</Project>

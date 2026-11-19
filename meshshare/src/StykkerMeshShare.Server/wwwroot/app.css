@@ -1,0 +1,56 @@
+/* StykkerMeshShare — nur was das Design-System nicht hergibt: das Raster der Seite, die Dropzone, die Zeilen der
+   Gegenstellen, Dateien und Aktivität. Farben, Maße und Schriften kommen aus tokens.css/bundle.css. */
+.ms-grid{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:var(--gap);margin-bottom:var(--gap);align-items:start}
+@media(max-width:900px){.ms-grid{grid-template-columns:minmax(0,1fr)}}
+
+/* Dropzone: gestrichelt wie EmptyState, beim Darüberziehen in der Akzentfarbe. */
+.ms-drop{cursor:pointer;min-height:240px;display:flex;flex-direction:column}
+.ms-drop:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.ms-drop-inner{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;text-align:center;
+  border:1.5px dashed var(--line);border-radius:calc(var(--radius) - 4px);padding:28px 16px;transition:border-color .15s,background .15s}
+.ms-drop-inner b{font-size:var(--t-lg);font-weight:600}
+.ms-drop-ic{width:34px;height:34px;color:var(--acc);margin-bottom:4px}
+.ms-drop-acts{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;justify-content:center}
+.ms-drop.over .ms-drop-inner{border-color:var(--acc);background:color-mix(in srgb,var(--acc) 8%,transparent)}
+.ms-uploads{display:flex;flex-direction:column;gap:4px;margin-top:8px}
+.ms-uploads:empty{display:none}
+.ms-up{display:grid;grid-template-columns:minmax(0,1fr) 90px 60px;gap:8px;align-items:center;font-size:var(--t-sm)}
+.ms-prog{height:4px;border-radius:2px;background:var(--track);overflow:hidden}.ms-prog i{display:block;height:100%;width:0;background:var(--acc);transition:width .2s}
+.ms-up.ok .p{color:var(--good)}.ms-up.err .p{color:var(--bad)}
+
+/* Sync-Status */
+.ms-head{display:flex;gap:10px;align-items:center;margin-bottom:10px}
+.ms-head .st{width:30px;height:30px;flex:none}.ms-head .st .ic{width:18px;height:18px}
+.ms-state{display:flex;flex-direction:column;min-width:0}
+.ms-state b{font-size:var(--t-lg)}
+.ms-ellipsis{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:var(--t-xs)}
+.ms-peers{display:flex;flex-direction:column;gap:6px;margin:8px 0}
+.ms-peer{display:grid;grid-template-columns:10px minmax(0,1fr) auto;gap:8px;align-items:center;padding:6px 8px;border:1px solid var(--line);border-radius:6px}
+.ms-peer .dot.off{background:var(--muted)}
+.ms-peer .dot.sync{background:var(--acc)}
+.ms-peer .nm{display:flex;flex-direction:column;min-width:0}
+.ms-peer .nm b{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ms-peer .nm span{font-size:var(--t-xs)}
+.ms-peer .err{color:var(--warn)}
+.ms-add{display:flex;gap:8px}
+.ms-add .search{max-width:none}
+.ms-hint{font-size:var(--t-xs);margin:8px 0 0}
+
+/* Dateien und Aktivität */
+.ms-bar{display:flex;align-items:center;gap:12px;margin-bottom:8px}
+.ms-bar .search{margin-left:auto}
+.ms-files,.ms-activity{display:flex;flex-direction:column;max-height:420px;overflow:auto}
+.ms-row{display:grid;grid-template-columns:minmax(0,1fr) 80px 120px;gap:10px;align-items:center;padding:5px 2px;border-bottom:1px solid var(--line);font-size:var(--t-sm)}
+.ms-row:last-child{border-bottom:0}
+.ms-row a{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ms-row .num,.ms-row .when{color:var(--muted);text-align:right;font-family:var(--mono);font-size:var(--t-xs)}
+.ms-act{display:grid;grid-template-columns:70px minmax(0,1fr) auto;gap:8px;padding:4px 2px;font-size:var(--t-sm);border-bottom:1px solid var(--line)}
+.ms-act:last-child{border-bottom:0}
+.ms-act .k{font-size:var(--t-xs);text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.ms-act .k.conflict,.ms-act .k.kept{color:var(--warn)}.ms-act .k.error{color:var(--bad)}.ms-act .k.received{color:var(--good)}
+.ms-act .p{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ms-act .t{color:var(--muted);font-family:var(--mono);font-size:var(--t-xs)}
+@media(max-width:600px){.ms-row{grid-template-columns:minmax(0,1fr) 70px}.ms-row .when{display:none}}
+
+/* In der Zentrale (Frame, ?embed=1): Marke und Themenwahl stehen schon in deren Leiste. */
+.embed .top .brand,.embed .top .seg[aria-label="Theme"]{display:none}
