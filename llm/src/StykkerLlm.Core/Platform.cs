@@ -64,6 +64,14 @@ public interface IGpuMemoryQuery : IDisposable
     (double DedicatedGb, double SharedGb)? Read();
 }
 
+// Eine eingeblendete Datei in einem Prozess: eingeblendete Bytes (alle Ansichten der Datei zusammen) und davon im
+// Arbeitsspeicher. Bei großen Dateien wird nur jede n-te Seite geprüft (SampledPages, ResidentPages); ResidentBytes ist
+// dann hochgerechnet.
+public sealed record MappedFileResidency(long MappedBytes, long ResidentBytes, int SampledPages, int ResidentPages)
+{
+    public double Fraction => MappedBytes > 0 ? Math.Clamp((double)ResidentBytes / MappedBytes, 0, 1) : 0;
+}
+
 // Alles, was vom Betriebssystem kommt. Die Windows-Umsetzung liegt im Projekt StykkerLlm.Platform.Windows,
 // eine Linux-Umsetzung (/proc, nvml) kann später daneben treten. Alle Methoden dürfen von Hintergrund-Threads
 // aufgerufen werden und liefern bei Fehlern null bzw. leere Listen statt Ausnahmen.
@@ -112,6 +120,12 @@ public interface IPlatform : IDisposable
     // Netzwerk-Durchsatz seit dem letzten Aufruf (Stykker.Shared.Net). Der erste Aufruf setzt nur die Basis und liefert null.
     // Standard: nicht verfügbar.
     NetSample? ReadNetwork() => null;
+    // Harte Seitenfehler des Prozesses seit seinem Start (Seiten, die von der Platte kommen mussten: eingeblendete Dateien
+    // wie das Modell, aber auch die Auslagerungsdatei). Ohne Administratorrechte lesbar. Standard: nicht verfügbar.
+    long? ReadHardFaults(int pid) => null;
+    // Wie viel einer im Prozess eingeblendeten Datei (mmap, z. B. die GGUF-Datei) gerade in seinem Arbeitsspeicher liegt.
+    // null = Datei nicht eingeblendet, Prozess nicht lesbar oder nicht verfügbar (Standard).
+    MappedFileResidency? ReadMappedResidency(int pid, string filePath) => null;
     // Daten an den aktuellen Benutzer binden (Windows: DPAPI CurrentUser). null = nicht möglich (Standard, z. B. Linux/Simulator):
     // der Aufrufer speichert dann nichts dauerhaft.
     byte[]? ProtectForCurrentUser(byte[] data) => null;

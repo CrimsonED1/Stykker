@@ -79,6 +79,7 @@ public sealed class LlamaServerArgs
         V("mmproj", "-mm", "--mmproj");
         V("override-tensor", "-ot", "--override-tensor");
         V("n-cpu-moe", "-ncmoe", "--n-cpu-moe");
+        V("load-mode", "-lm", "--load-mode");
         V("model-draft", "-md", "--model-draft");
         F("cpu-moe", "-cmoe", "--cpu-moe");
         F("jinja", "--jinja");
@@ -120,7 +121,7 @@ public sealed class LlamaServerArgs
         ["ctx"] = "LLAMA_ARG_CTX_SIZE", ["ngl"] = "LLAMA_ARG_N_GPU_LAYERS", ["np"] = "LLAMA_ARG_N_PARALLEL",
         ["ctk"] = "LLAMA_ARG_CACHE_TYPE_K", ["ctv"] = "LLAMA_ARG_CACHE_TYPE_V", ["flash-attn"] = "LLAMA_ARG_FLASH_ATTN",
         ["hf-repo"] = "LLAMA_ARG_HF_REPO", ["models-dir"] = "LLAMA_ARG_MODELS_DIR",
-        ["n-cpu-moe"] = "LLAMA_ARG_N_CPU_MOE",
+        ["n-cpu-moe"] = "LLAMA_ARG_N_CPU_MOE", ["load-mode"] = "LLAMA_ARG_LOAD_MODE",
     };
 
     public IReadOnlyList<ArgEntry> Entries { get; }
@@ -229,6 +230,8 @@ public sealed class LlamaServerArgs
     public int? NCpuMoe => GetInt("n-cpu-moe");
     public bool CpuMoe => Has("cpu-moe");
     public string? ModelDraft => NullIfEmpty(Get("model-draft"));
+    // Lademodus (neuere Versionen): auto, none, mmap, mlock, mmap+mlock, dio; ersetzt --no-mmap und --mlock
+    public string? LoadMode => NullIfEmpty(Get("load-mode"));
 
     // Alle -ot/--override-tensor-Regeln in Reihenfolge („muster=puffer“, auch mehrere je Wert mit Komma getrennt)
     public IReadOnlyList<(string Pattern, string Buffer)> OverrideTensors

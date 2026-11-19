@@ -192,7 +192,7 @@ public sealed class SimWorld
                 {
                     Directory.CreateDirectory(LogDir);
                     s.LogPath = Path.Combine(LogDir, $"sim-{s.Port}.log");
-                    File.WriteAllText(s.LogPath, "kv_unified = 'false'\n");
+                    File.WriteAllText(s.LogPath, "kv_unified = 'false'\n" + SimGguf.LoadLog(spec));
                 }
                 catch { s.LogPath = null; }
             }

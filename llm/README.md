@@ -29,7 +29,8 @@ any browser or your phone; keep an eye on it in the terminal. Nothing leaves you
   temperature, each with a faint line of the last minute; a click opens the matching detail page.
 - **What the model is doing**: on a server's details page, its layers on the GPU or CPU, for mixture-of-experts models
   how many experts work per token and how many parameters are active, and live whether it reads, thinks, answers or
-  calls a tool.
+  calls a tool. *Storage* shows whether the model sits in memory or pages in from the SSD while it writes, and how much
+  it read from the drive.
 - **Profiles and history**: save a running server as a profile and start it again later (pre-checks: port free, model file
   exists, VRAM estimate); optional restart after a crash and unload after idle time.
 - **Stykker-Proxy** on port 17500: one OpenAI- and Anthropic-compatible endpoint for all local models, other PCs and cloud

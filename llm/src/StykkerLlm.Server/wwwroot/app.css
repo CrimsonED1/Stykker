@@ -1063,3 +1063,15 @@ html.shell .mdl-actbar>i,html.shell .mdl-sbar>i{transition:none}
 html[data-theme=titan] .mdl-grid i,html[data-theme=titan] .mdl-strip .ly i,html[data-theme=titan] .mdl-actbar,html[data-theme=titan] .mdl-sbar,html[data-theme=titan] .mdl-actbar>i,html[data-theme=titan] .mdl-sbar>i{border-radius:0}
 html[data-theme=titan] .mdl-now{border-radius:0;font-family:var(--font-mono);text-transform:uppercase;font-size:11px}
 a.chipi.moec{text-decoration:none;color:var(--acc)}a.chipi.moec:hover{border-color:var(--acc)}
+/* Abschnitt „Storage“ der Ansicht „Model“: Lademodus, Puffer, Anteil im RAM, Nachladen von der Platte */
+.mdl-stor{display:grid;gap:6px}
+.mdl-verdict{display:inline-flex;align-items:center;gap:6px;padding:2px 10px;border-radius:999px;border:1px solid var(--line);font-size:12px;color:var(--muted)}
+.mdl-verdict.ok{color:var(--good);border-color:color-mix(in srgb,var(--good) 45%,transparent)}
+.mdl-verdict.warn{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 55%,transparent);box-shadow:0 0 calc(var(--glow)*12px) color-mix(in srgb,var(--warn) 30%,transparent)}
+.mdl-stor-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:8px 32px;color:var(--ink)}
+.mdl-stor-col{display:grid;gap:6px;align-content:start;min-width:0}
+.mdl-inram{display:grid;grid-template-columns:minmax(80px,160px) auto;align-items:center;gap:10px}
+.mdl-stor[data-v=warn] .mdl-inram .mdl-sbar>i{background:var(--warn)}
+.mdl-pg{color:var(--warn);font-family:var(--font-mono);font-variant-numeric:tabular-nums}
+html[data-theme=titan] .mdl-verdict{border-radius:0;font-family:var(--font-mono);text-transform:uppercase;font-size:11px}
+@media(max-width:640px){.mdl-inram{grid-template-columns:1fr;gap:4px}.mdl-stor-grid{grid-template-columns:1fr}}

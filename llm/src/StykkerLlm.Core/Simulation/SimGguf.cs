@@ -15,6 +15,32 @@ public static class SimGguf
         return path;
     }
 
+    // Die Ladezeilen eines echten llama-server: was auf der Grafikkarte liegt und was in der eingeblendeten Datei bleibt.
+    // Mit Experten auf dem Prozessor (--n-cpu-moe N) bleibt deren Anteil eingeblendet, sonst nur die Einbettung.
+    public static string LoadLog(SimServerSpec spec)
+    {
+        double mib = spec.ModelGb * 1024;
+        double cpuShare = CpuShare(spec);
+        string F(double v) => v.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
+        return $"load_tensors: offloaded {spec.Layers + 1}/{spec.Layers + 1} layers to GPU\n" +
+               $"load_tensors:        CUDA0 model buffer size = {F(mib * (1 - cpuShare))} MiB\n" +
+               $"load_tensors:   CPU_Mapped model buffer size = {F(mib * cpuShare)} MiB\n";
+    }
+
+    // Anteil der Datei, der eingeblendet bleibt: die Experten der ersten N Schichten (--n-cpu-moe N), sonst 2 % (Einbettung).
+    // Experten = (gesamt − aktiv) / (1 − k/n), wie in Build.
+    public static double CpuShare(SimServerSpec spec)
+    {
+        if (spec.Experts > 1 && spec.ExpertsUsed > 0 && spec.ParamsB > 0 && spec.Layers > 0 &&
+            System.Text.RegularExpressions.Regex.Match(spec.ExtraArgs, @"--n-cpu-moe\s+(\d+)") is { Success: true } m)
+        {
+            double experts = (spec.ParamsB - spec.ActiveB) / (1 - (double)spec.ExpertsUsed / spec.Experts);
+            int n = int.Parse(m.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture);
+            return Math.Clamp(experts / spec.ParamsB * n / spec.Layers, 0.02, 1);
+        }
+        return spec.ExtraArgs.Contains("--cpu-moe", StringComparison.Ordinal) ? 0.9 : 0.02;
+    }
+
     // Parameter so verteilt, dass Gesamt- und aktive Parameter zum Vorbild passen (spec.ParamsB, spec.ActiveB)
     public static byte[] Build(SimServerSpec spec)
     {

@@ -426,6 +426,14 @@ public sealed class MonitorEngine : IDisposable
                 if (Disks is { } disks) DiskHistory.Add(disks);
                 try { Net = Platform.ReadNetwork() ?? Net; }
                 catch { Net = null; }
+                // Nachladen von der Platte: das Lesen vom Laufwerk der Modelldatei zählt, solange der Server nachlädt
+                foreach (var w in Registry.Servers)
+                {
+                    string? letter = ModelStorage.DriveOf(w.Info.ModelPath);
+                    double? read = letter == null ? null
+                        : Disks?.Volumes.FirstOrDefault(v => string.Equals(v.Letter, letter, StringComparison.OrdinalIgnoreCase))?.ReadBytesPerSec;
+                    w.Paging.Tick(now, read);
+                }
             }
             Sys = Platform.ReadSystem();
             if (Recorder.Active)

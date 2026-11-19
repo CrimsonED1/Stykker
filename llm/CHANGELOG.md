@@ -14,6 +14,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   whether it reads the prompt or writes, and for requests through the Stykker-Proxy whether the model is thinking,
   answering or calling a tool (with its name). Which experts the router picks is not reported by llama.cpp, so the view
   shows only the share. The monitor card of a MoE model gets a chip *8/128* that opens the view.
+- **Model view → Storage:** how the server gets its model from the disk. From llama.cpp: the load mode (`-lm` /
+  `--load-mode`, or the older `--no-mmap` and `--mlock`) and, from the load log, how much sits on the GPU, in RAM and
+  stays in the memory-mapped file. Measured on Windows without administrator rights: how much of the mapped part is in
+  RAM, the hard page faults of the server process, and while it pages, the reads from the model's drive – live, per
+  token and in total (≈ how many times the model was read). llama.cpp itself reports none of this at runtime; the
+  amounts read are estimates, because another program reading from the same drive counts too. Reading does not wear
+  an SSD; paging costs speed.
 - **Hardware bar** at the top of every page except the monitor: VRAM, GPU, CPU, RAM, the fullest drive, disk I/O,
   network and GPU temperature in two rows of four. A full bar turns red; the temperature is
   green, yellow from 75 °C and red from 85 °C. A value the server does not measure shows `–`. The switch *Hardware bar*

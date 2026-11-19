@@ -721,6 +721,7 @@ public sealed class ServerWatcher : IDisposable
                 _cpuPrev = u.CpuTime; _cpuPrevAt = at; _cpuPrevPid = gpuPid;
             }
             _mem = new MemInfo(gm?.DedicatedGb, gm?.SharedGb, ram, commit, cpuPct, clients);
+            ReadPaging(info, gpuPid);
         }
     }
 
@@ -885,18 +886,50 @@ public sealed class ServerWatcher : IDisposable
             OnRelease(I(m, 1), I(m, 2), m.Groups[4].Value == "1", initial);
     }
 
-    // Serverstart-Zeilen am Loganfang (kv_unified); nur beim ersten Lesen und nach Neustart des Servers
+    // Serverstart-Zeilen am Loganfang (kv_unified, Modellpuffer beim Laden); nur beim ersten Lesen und nach Neustart des
+    // Servers. Die Pufferzeilen stehen nach den Metadaten des Modells, deshalb mehr als die ersten 64 KB.
     private void ReadHeader(FileStream fs, long len)
     {
         try
         {
-            var buf = new byte[(int)Math.Min(len, 64 * 1024)];
+            var buf = new byte[(int)Math.Min(len, 512 * 1024)];
             fs.Seek(0, SeekOrigin.Begin);
             int got = fs.Read(buf, 0, buf.Length);
-            var m = LogPatterns.Unified().Match(Encoding.UTF8.GetString(buf, 0, got));
+            string head = Encoding.UTF8.GetString(buf, 0, got);
+            var m = LogPatterns.Unified().Match(head);
             if (m.Success) Unified = m.Groups[1].Value == "true";
+            var buffers = ModelBuffers.Parse(head);
+            if (buffers.Count > 0) Buffers = buffers;
         }
         catch { }
+    }
+
+    // Modellpuffer aus dem Ladelog (Größe je Gerät; „…_Mapped“ = bleibt in der eingeblendeten Datei). Leer = unbekannt.
+    public IReadOnlyList<ModelBuffer> Buffers { get; private set; } = Array.Empty<ModelBuffer>();
+    // Nachladen von der Platte: harte Seitenfehler, Anteil der Modelldatei im RAM, geschätztes Lesen (Abschnitt „Storage“)
+    public PagingTracker Paging { get; } = new();
+    private DateTime _lastResidency;
+
+    // In der Speicherabfrage: Seitenfehler bei jedem Durchlauf, den RAM-Anteil der Modelldatei seltener (er ist teurer)
+    private void ReadPaging(ServerInfo info, int pid)
+    {
+        var now = DateTime.Now;
+        bool residencyNow = (now - _lastResidency).TotalSeconds >= 6;
+        MappedFileResidency? residency = null;
+        if (residencyNow)
+        {
+            _lastResidency = now;
+            if (Kind == BackendKind.LlamaCpp && info.ModelPath is { Length: > 0 } mp)
+            {
+                try
+                {
+                    string full = Path.IsPathRooted(mp) ? mp : Path.GetFullPath(mp, info.WorkingDir ?? Environment.CurrentDirectory);
+                    residency = _platform.ReadMappedResidency(pid, full);
+                }
+                catch (Exception ex) when (ex is ArgumentException or NotSupportedException or IOException) { }
+            }
+        }
+        Paging.Sample(now, pid, _platform.ReadHardFaults(pid), residency, residencyNow);
     }
 
     private Pending Pend(int task)

@@ -4,6 +4,7 @@
    Anfragen, die gerade durch den Proxy laufen (denkt, antwortet, Werkzeug).
    Was hier steht, rechnet Core/ModelAnatomy.cs; llama.cpp meldet weder die Verteilung noch welche Experten rechnen.
    Bewegung nur, solange das Modell schreibt; im Fenster (html.shell) und bei reduzierter Bewegung keine. *@
+@using Stykker.Shared.Disk
 @inject EngineHost Host
 
 @{
@@ -104,6 +105,57 @@ else
                 @foreach (var note in a.Notes) { <div class="muted small">@note</div> }
             </div>
         }
+
+        @{
+            var vol = ModelStorage.DriveOf(S.Info.ModelPath) is { } dl ? Host.Engine.Disks?.Volumes.FirstOrDefault(v => string.Equals(v.Letter, dl, StringComparison.OrdinalIgnoreCase)) : null;
+            var st = ModelStorage.Of(S.Info.Params, S.Buffers, S.Info.ModelPath, S.ModelFileGb, vol?.Kind, S.Paging, DateTime.Now, S.Current);
+            var (verdictText, verdictCls) = st.Verdict switch
+            {
+                StorageVerdict.Paging => (Strings.StorPaging, "warn"),
+                StorageVerdict.InMemory => (Strings.StorInMemory, "ok"),
+                StorageVerdict.Locked => (Strings.StorLocked, "ok"),
+                StorageVerdict.ReadOnce => (Strings.StorReadOnce, "ok"),
+                _ => (Strings.StorUnknown, ""),
+            };
+        }
+        <div class="mdl-stor" data-v="@verdictCls">
+            <div class="mdl-lh">
+                <b>@Strings.StorTitle</b>
+                <span class="mdl-verdict @verdictCls"><Icon Name="@(st.Verdict == StorageVerdict.Paging ? "down" : "check")" Class="sm" /> @verdictText</span>
+            </div>
+            <div class="mdl-stor-grid small">
+              <div class="mdl-stor-col">
+                <div>@Strings.StorLoading(Strings.StorMode(st.Mode))@(st.AutoMode ? Strings.StorAutoSuffix : "")</div>
+                @if (st.FileBytes > 0) { <div>@Strings.StorFile(DiskFormat.Size(st.FileBytes), st.Drive, vol != null ? DiskKinds.Label(vol.Kind) : null)</div> }
+                <div class="@(st.Buffers.Count == 0 ? "muted" : "")">@(st.Buffers.Count == 0 ? Strings.StorNoBuffers : Strings.StorBuffers(st.DeviceGb, st.HostGb, st.MappedGb))</div>
+              </div>
+              <div class="mdl-stor-col">
+                @if (ModelLoad.CanPage(st.Mode))
+                {
+                    @if (st.MappedInRam is double inRam)
+                    {
+                        <div class="mdl-inram" title="@Strings.StorInRamTitle">
+                            <span class="mdl-sbar"><i style="--f:@((int)Math.Round(inRam * 100))%"></i></span>
+                            <span>@Strings.StorInRam(inRam)</span>
+                        </div>
+                    }
+                    @if (st.HardFaultsPerSec is double hf)
+                    {
+                        <div class="@(st.PagingNow ? "mdl-pg" : "muted")">
+                            @(st.PagingNow ? Strings.StorNow(hf, st.ReadBytesPerSec > 0 ? DiskFormat.Rate(st.ReadBytesPerSec) : null, st.Drive) : Strings.StorNoPaging)
+                            @if (st.BytesPerToken is double bpt) { <span> · @Strings.StorPerToken(DiskFormat.Size(bpt))</span> }
+                        </div>
+                    }
+                    @if (st.ReadBytes > 0)
+                    {
+                        <div>@Strings.StorRead(DiskFormat.Size(st.ReadBytes), st.Drive, st.ReadTimes)</div>
+                    }
+                }
+              </div>
+            </div>
+            @if (st.Verdict == StorageVerdict.Paging) { <div class="muted small">@Strings.StorHint</div> }
+            @if (st.ReadBytes > 0) { <div class="muted small">@Strings.StorEstimate</div> }
+        </div>
 
         <div class="mdl-slots">
             <div class="mdl-lh"><b>@Strings.AnatNowTitle</b></div>
