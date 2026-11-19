@@ -7,6 +7,7 @@ public sealed class Mesh : IDisposable
 {
     private readonly string _root = Path.Combine(Path.GetTempPath(), "meshshare-test-" + Guid.NewGuid().ToString("N")[..8]);
     public List<MeshNode> Nodes { get; } = new();
+    public string Root => _root;
 
     public MeshNode Add(string name)
     {

@@ -40,7 +40,22 @@
                     <b id="v-state">Starting…</b>
                     <span class="muted mono ms-ellipsis" id="v-folder">–</span>
                 </div>
+                <button type="button" class="quiet" id="folder-btn" hidden title="Choose another shared folder">Change folder</button>
             </div>
+            @* Ordner wechseln: nur am PC selbst (der Server blendet den Knopf sonst aus). *@
+            <form id="folder-form" class="ms-folder" hidden autocomplete="off">
+                <label class="ms-label" for="folder-path">New shared folder</label>
+                <div class="search"><input id="folder-path" class="mono" placeholder="D:\Shared" aria-label="New shared folder" /></div>
+                <label class="ms-choice"><input type="radio" name="folder-mode" value="move" checked />
+                    <span><b>Move the files there</b><span class="muted">Everything moves to the new folder. The other PCs notice nothing.</span></span></label>
+                <label class="ms-choice"><input type="radio" name="folder-mode" value="fresh" />
+                    <span><b>Start empty</b><span class="muted">The new folder gets all files from the other PCs. The old folder stays as it is; nothing is deleted anywhere.</span></span></label>
+                <p class="muted ms-hint">The new folder must be empty or not exist yet.</p>
+                <span class="ms-folder-acts">
+                    <button type="submit" class="primary" id="folder-apply">Change</button>
+                    <button type="button" class="quiet" id="folder-cancel">Cancel</button>
+                </span>
+            </form>
             <div class="sec">Other PCs <span class="n" id="v-peer-count">0</span></div>
             <div id="peers" class="ms-peers"></div>
             <form id="add-peer" class="ms-add" autocomplete="off">

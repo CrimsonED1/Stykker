@@ -58,11 +58,15 @@
     }
 
     let lastSeq = -1;
+    let currentFolder = "";
     function renderStatus(st) {
         const n = st.node;
         set("v-files", String(n.files));
         set("v-size", size(n.bytes));
         set("v-folder", n.folder);
+        $("folder-btn").hidden = !n.canChangeFolder;
+        $("open-folder").hidden = !n.canChangeFolder;
+        currentFolder = n.folder;
         const online = st.peers.filter((p) => p.online).length;
         set("v-peers", `${online}/${st.peers.length}`);
         set("v-peer-count", String(st.peers.length));
@@ -218,6 +222,30 @@
     $("open-folder").addEventListener("click", async () => {
         const r = await post("/api/open-folder");
         if (!r.ok) toast(r.message ?? "Could not open the folder", true);
+    });
+
+    // ── Ordner wechseln ──
+    const folderForm = $("folder-form");
+    $("folder-btn").addEventListener("click", () => {
+        folderForm.hidden = !folderForm.hidden;
+        if (!folderForm.hidden) { $("folder-path").value = currentFolder; $("folder-path").select(); }
+    });
+    $("folder-cancel").addEventListener("click", () => { folderForm.hidden = true; });
+    folderForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const move = folderForm.querySelector("input[name=folder-mode]:checked").value === "move";
+        const apply = $("folder-apply");
+        apply.setAttribute("aria-busy", "true");
+        apply.disabled = true;
+        try {
+            const r = await post("/api/folder", { path: $("folder-path").value, move });
+            toast(r.message ?? (r.ok ? "Changed" : "Failed"), !r.ok);
+            if (r.ok) { folderForm.hidden = true; lastSeq = -1; }
+        } finally {
+            apply.removeAttribute("aria-busy");
+            apply.disabled = false;
+        }
+        tick();
     });
 
     // ── Gegenstellen ──

@@ -16,7 +16,15 @@ Start `StykkerMeshShare.exe` (window) or `StykkerMeshShare-Server.exe` (tray onl
 
 Below are the files (click to download) and what happened recently.
 
-The shared folder is `%USERPROFILE%\StykkerMeshShare` (change it with `--folder`; it is remembered).
+The shared folder is `%USERPROFILE%\StykkerMeshShare`. **Change folder** (on the PC itself, not from the phone) picks
+another one; it is remembered in `settings.json`, and `--folder` does the same from the command line. The new folder
+must be empty or not exist yet:
+
+- **Move the files there**: everything moves (times are kept). The other PCs notice nothing.
+- **Start empty**: the new folder gets all files from the other PCs. The old folder stays as it is, and no deletion
+  reaches the other PCs. Files that existed only on this PC stay in the old folder.
+
+A whole drive, the user profile itself, Windows, the program folders, AppData and the data folder cannot be shared.
 Closing the window does not stop syncing; the tray icon has **Shut down**.
 
 ## How it syncs

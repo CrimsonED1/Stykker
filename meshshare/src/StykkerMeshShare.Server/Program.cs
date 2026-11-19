@@ -113,7 +113,7 @@ app.MapGet("/mesh/wait", async (long since, int? seconds, CancellationToken ct) 
 });
 
 // ── Für die Oberfläche ──
-app.MapGet("/api/status", (PeerManager peers) =>
+app.MapGet("/api/status", (HttpContext ctx, PeerManager peers) =>
 {
     var files = node.Files;
     return Results.Json(new
@@ -133,6 +133,8 @@ app.MapGet("/api/status", (PeerManager peers) =>
             transfer = node.Transfer,
             pending = node.PendingRescan,
             localOnly,
+            // Den Ordner wechselt man nur am PC selbst: der Pfad gilt für diese Maschine.
+            canChangeFolder = NetworkAccess.IsLocal(ctx),
         },
         peers = peers.Peers.Select(p => new
         {
@@ -174,6 +176,17 @@ app.MapPost("/api/upload", async (HttpContext ctx, string path, FolderWatcher wa
     watcher.Soon(200);
     return Results.Json(new { ok = true, path = name });
 });
+// Ordner wechseln: nur am PC selbst. move = true zieht die Dateien mit um, sonst fängt der neue Ordner leer an und
+// holt alles von den anderen PCs. Der neue Ordner wird in settings.json gemerkt.
+app.MapPost("/api/folder", (HttpContext ctx, FolderRequest body) => !NetworkAccess.IsLocal(ctx)
+    ? Results.Json(new Stykker.Shared.ActionResult(false, "The folder can only be changed on the PC itself."), statusCode: 403)
+    : LocalRequests.Guarded(ctx, () =>
+    {
+        var problem = node.ChangeFolder(body.Path?.Trim() ?? "", body.Move);
+        if (problem != null) return new Stykker.Shared.ActionResult(false, problem);
+        settings.SetFolder(node.Folder);
+        return new Stykker.Shared.ActionResult(true, body.Move ? $"Moved to {node.Folder}." : $"Now using {node.Folder}. The files come from the other PCs.");
+    }));
 app.MapPost("/api/allow-deletes", (HttpContext ctx) =>
     LocalRequests.Guarded(ctx, () => { node.AllowHeldDeletes(); return new Stykker.Shared.ActionResult(true, "Deletions sent to the other PCs."); }));
 app.MapPost("/api/peers", (HttpContext ctx, PeerRequest body, PeerManager peers) => LocalRequests.Guarded(ctx, () =>
@@ -223,7 +236,7 @@ if (OperatingSystem.IsWindows() && !args.Contains("--no-tray") && TrayIcon.Possi
         id =>
         {
             if (id == 1) ToolHost.OpenBrowser(url);
-            else if (id == 2) ToolHost.OpenBrowser(folder);
+            else if (id == 2) ToolHost.OpenBrowser(node.Folder);
             else if (id == 3) app.Services.GetRequiredService<IHostApplicationLifetime>().StopApplication();
         },
         () => ToolHost.OpenBrowser(url));
@@ -234,3 +247,4 @@ await app.WaitForShutdownAsync();
 if (tray != null && OperatingSystem.IsWindows()) tray.Dispose();
 
 internal sealed record PeerRequest(string? Address);
+internal sealed record FolderRequest(string? Path, bool Move);

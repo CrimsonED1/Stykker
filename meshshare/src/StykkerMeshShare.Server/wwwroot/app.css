@@ -54,3 +54,16 @@
 
 /* In der Zentrale (Frame, ?embed=1): Marke und Themenwahl stehen schon in deren Leiste. */
 .embed .top .brand,.embed .top .seg[aria-label="Theme"]{display:none}
+
+/* Ordner wechseln */
+.ms-head #folder-btn{margin-left:auto;flex:none}
+.ms-folder{display:flex;flex-direction:column;gap:8px;margin:0 0 12px;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:color-mix(in srgb,var(--ink) 2%,transparent)}
+.ms-folder[hidden]{display:none}
+.ms-folder .search{max-width:none;flex:none}
+.ms-label{font-size:var(--t-xs);letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.ms-choice{display:flex;gap:8px;align-items:flex-start;cursor:pointer;font-size:var(--t-sm)}
+.ms-choice input{margin-top:3px;accent-color:var(--acc)}
+.ms-choice>span{display:flex;flex-direction:column}
+.ms-choice b{font-weight:600}
+.ms-folder .ms-hint{margin:0}
+.ms-folder-acts{display:flex;gap:8px}

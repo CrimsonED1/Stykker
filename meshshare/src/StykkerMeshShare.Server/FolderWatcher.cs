@@ -15,6 +15,16 @@ public sealed class FolderWatcher(MeshNode node) : IHostedService, IDisposable
     {
         _debounce = new Timer(_ => ScanNow(), null, Timeout.Infinite, Timeout.Infinite);
         _periodic = new Timer(_ => ScanNow(), null, TimeSpan.Zero, TimeSpan.FromMinutes(1));
+        node.FolderChanged += _ => Watch();
+        Watch();
+        return Task.CompletedTask;
+    }
+
+    // Beobachtet den aktuellen Ordner; nach einem Ordnerwechsel ruft der Knoten das erneut auf.
+    private void Watch()
+    {
+        _watcher?.Dispose();
+        _watcher = null;
         try
         {
             _watcher = new FileSystemWatcher(node.Folder)
@@ -34,7 +44,6 @@ public sealed class FolderWatcher(MeshNode node) : IHostedService, IDisposable
         {
             Console.Error.WriteLine($"[watch] {ex.Message} – changes are picked up once a minute.");
         }
-        return Task.CompletedTask;
     }
 
     public void Soon(int milliseconds = 1500) => _debounce?.Change(milliseconds, Timeout.Infinite);

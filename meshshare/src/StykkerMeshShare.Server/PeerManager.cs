@@ -22,6 +22,7 @@ public sealed class PeerManager : IHostedService, IDisposable
     private readonly SemaphoreSlim _pullGate = new(1, 1);
     private readonly ConcurrentDictionary<string, Peer> _peers = new(StringComparer.OrdinalIgnoreCase);
     private readonly CancellationTokenSource _stop = new();
+    private CancellationTokenSource _wake = new();
 
     public PeerManager(MeshNode node, ServerSettings settings, int port, bool discovery, IEnumerable<string> extraPeers)
     {
@@ -30,6 +31,7 @@ public sealed class PeerManager : IHostedService, IDisposable
         _port = port;
         _discovery = discovery;
         foreach (var address in settings.Peers.Concat(extraPeers)) Track(address, manual: true);
+        node.FolderChanged += _ => Wake();
     }
 
     public sealed class Peer
@@ -65,6 +67,13 @@ public sealed class PeerManager : IHostedService, IDisposable
         _stop.Cancel();
         foreach (var peer in _peers.Values) peer.Cancel.Cancel();
         return Task.CompletedTask;
+    }
+
+    // Weckt alle Gegenstellen aus der langen Abfrage, damit sie sofort abgleichen.
+    public void Wake()
+    {
+        var previous = Interlocked.Exchange(ref _wake, new CancellationTokenSource());
+        previous.Cancel();   // nicht freigeben: eine Schleife kann das alte Token gerade noch lesen
     }
 
     public bool AddManual(string address)
@@ -128,7 +137,17 @@ public sealed class PeerManager : IHostedService, IDisposable
                 // Warten, bis sich dort etwas ändert; dann wieder abgleichen.
                 while (!ct.IsCancellationRequested)
                 {
-                    var seq = await source.WaitAsync(remoteSeq, WaitTimeout, ct).ConfigureAwait(false);
+                    // Wake() (zum Beispiel nach einem Ordnerwechsel) bricht das Warten ab: dann sofort abgleichen.
+                    long seq;
+                    using (var wait = CancellationTokenSource.CreateLinkedTokenSource(ct, _wake.Token))
+                    {
+                        try { seq = await source.WaitAsync(remoteSeq, WaitTimeout, wait.Token).ConfigureAwait(false); }
+                        catch (OperationCanceledException) when (!ct.IsCancellationRequested && wait.IsCancellationRequested)
+                        {
+                            complete = await PullAsync(peer, source, ct).ConfigureAwait(false);
+                            continue;
+                        }
+                    }
                     if (seq != remoteSeq)
                     {
                         remoteSeq = seq;

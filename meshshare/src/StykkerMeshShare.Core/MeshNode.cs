@@ -18,6 +18,7 @@ public sealed class MeshNode
     private static readonly JsonSerializerOptions Json = new() { WriteIndented = false };
 
     private readonly MeshOptions _options;
+    private string _folder;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly Dictionary<string, FileEntry> _entries = new(PathRules.Comparer);
     private readonly Dictionary<string, long> _cursors = new(StringComparer.Ordinal);
@@ -30,7 +31,8 @@ public sealed class MeshNode
 
     public string NodeId { get; }
     public string NodeName => _options.NodeName;
-    public string Folder => _options.Folder;
+    public string Folder => _folder;
+    public event Action<string>? FolderChanged;
     public string DataDir => _options.DataDir;
 
     public DateTime? LastScan { get; private set; }
@@ -44,6 +46,7 @@ public sealed class MeshNode
     public MeshNode(MeshOptions options)
     {
         _options = options;
+        _folder = Path.GetFullPath(options.Folder);
         Directory.CreateDirectory(options.DataDir);
         Directory.CreateDirectory(options.Folder);
         var state = Load();
@@ -97,7 +100,7 @@ public sealed class MeshNode
 
     private void ScanLocked()
     {
-        if (!Directory.Exists(_options.Folder))
+        if (!Directory.Exists(_folder))
         {
             FolderProblem = "The shared folder does not exist.";
             return;
@@ -114,9 +117,9 @@ public sealed class MeshNode
             // Verknüpfungen und Junctions: nicht folgen, sonst landet ein fremder Ordner im Mesh.
             AttributesToSkip = FileAttributes.ReparsePoint,
         };
-        foreach (var full in Directory.EnumerateFiles(_options.Folder, "*", enumeration))
+        foreach (var full in Directory.EnumerateFiles(_folder, "*", enumeration))
         {
-            var relative = PathRules.Normalize(PathRules.ToRelative(_options.Folder, full));
+            var relative = PathRules.Normalize(PathRules.ToRelative(_folder, full));
             if (relative == null || PathRules.IsIgnored(relative)) continue;
             seen.Add(relative);
             FileInfo info;
@@ -209,7 +212,7 @@ public sealed class MeshNode
         try
         {
             if (!_entries.TryGetValue(relative, out var entry) || entry.Deleted || entry.Hash != hash) return null;
-            var full = PathRules.ToFull(_options.Folder, relative);
+            var full = PathRules.ToFull(_folder, relative);
             if (full == null || !File.Exists(full)) return null;
             try { return new FileStream(full, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete); }
             catch (IOException) { return null; }
@@ -323,7 +326,7 @@ public sealed class MeshNode
     private Plan Decide(FileEntry remote, string peerName)
     {
         _entries.TryGetValue(remote.Path, out var local);
-        var full = PathRules.ToFull(_options.Folder, remote.Path);
+        var full = PathRules.ToFull(_folder, remote.Path);
         if (full == null) return new Plan(PlanKind.Done);
 
         if (local == null)
@@ -406,7 +409,7 @@ public sealed class MeshNode
                     _entries[remote.Path] = local with { Version = merged, Seq = ++_seq };
                     return new Plan(PlanKind.Done);
                 }
-                var copyFull = PathRules.ToFull(_options.Folder, copyName);
+                var copyFull = PathRules.ToFull(_folder, copyName);
                 if (copyFull == null) return new Plan(PlanKind.Done);
                 if (File.Exists(copyFull)) return new Plan(PlanKind.Retry);   // erst scannen
                 return new Plan(PlanKind.Download, Target: copyName,
@@ -436,7 +439,7 @@ public sealed class MeshNode
             var same = _entries.Values.FirstOrDefault(e => !e.Deleted && e.Hash == remote.Hash);
             if (same != null)
             {
-                var full = PathRules.ToFull(_options.Folder, same.Path);
+                var full = PathRules.ToFull(_folder, same.Path);
                 if (full != null && DiskMatches(same, full)) localCopy = full;
             }
         }
@@ -476,7 +479,7 @@ public sealed class MeshNode
     private bool Commit(Plan plan, FileEntry remote, string temp)
     {
         var target = plan.Target!;
-        var full = PathRules.ToFull(_options.Folder, target);
+        var full = PathRules.ToFull(_folder, target);
         if (full == null) return false;
         _entries.TryGetValue(target, out var now);
         // Seit der Entscheidung darf sich am Ziel nichts geändert haben – weder im Index noch auf der Platte.
@@ -488,7 +491,7 @@ public sealed class MeshNode
             if (plan.LoserToMove != null && plan.LoserTarget != null && File.Exists(full))
             {
                 // Die eigene Fassung wird zur Konfliktkopie; der nächste Scan nimmt sie als neue Datei auf.
-                var loserFull = PathRules.ToFull(_options.Folder, plan.LoserTarget);
+                var loserFull = PathRules.ToFull(_folder, plan.LoserTarget);
                 if (loserFull == null) return false;
                 if (File.Exists(loserFull)) MoveToTrash(full, target);
                 else File.Move(full, loserFull);
@@ -532,6 +535,90 @@ public sealed class MeshNode
         }
     }
 
+    // ── Ordner wechseln ──
+
+    // Der neue Ordner muss leer sein oder noch nicht bestehen.
+    //  move = true:  alle Dateien ziehen in den neuen Ordner um (Zeiten bleiben). Der Index gilt weiter; die anderen PCs
+    //                merken nichts davon.
+    //  move = false: der neue Ordner fängt leer an und holt alles von den anderen PCs. Der alte Ordner bleibt, wie er
+    //                ist; an die anderen PCs geht keine Löschung. Dateien, die nur hier lagen, bleiben im alten Ordner.
+    // Rückgabe: null bei Erfolg, sonst der Grund (englisch, für die Oberfläche).
+    public string? ChangeFolder(string newFolder, bool move)
+    {
+        string target;
+        _gate.Wait();
+        try
+        {
+            var problem = FolderRules.Check(newFolder, _folder, _options.DataDir);
+            if (problem != null) return problem;
+            target = Path.GetFullPath(newFolder).TrimEnd(Path.DirectorySeparatorChar);
+            if (Directory.Exists(target) && Directory.EnumerateFileSystemEntries(target).Any())
+                return "The new folder is not empty. Choose an empty folder, or one that does not exist yet.";
+
+            Directory.CreateDirectory(target);
+            if (move)
+            {
+                var error = MoveAll(_folder, target);
+                if (error != null) return error;
+            }
+            else
+            {
+                // Ohne die Einträge der vorhandenen Dateien holt der Abgleich sie neu; Grabsteine bleiben, damit eine
+                // alte Löschung nicht zurückkommt. Alle Gegenstellen werden von vorn gelesen.
+                foreach (var entry in _entries.Values.Where(e => !e.Deleted).ToList()) _entries.Remove(entry.Path);
+                _cursors.Clear();
+            }
+            var old = _folder;
+            _folder = target;
+            HeldDeletes = 0;
+            _allowMassDelete = false;
+            Record(ActivityKind.Changed, move ? $"Folder moved from {old}" : "Folder changed: fetching the files from the other PCs", null);
+            Save();
+        }
+        finally { _gate.Release(); }
+        FolderChanged?.Invoke(target);
+        Scan();
+        return null;
+    }
+
+    // Zieht alle Dateien um. Geht unterwegs etwas schief, werden die schon verschobenen zurückgelegt.
+    private static string? MoveAll(string from, string to)
+    {
+        if (!Directory.Exists(from)) return null;
+        var moved = new List<(string From, string To)>();
+        var enumeration = new EnumerationOptions { RecurseSubdirectories = true, IgnoreInaccessible = false, AttributesToSkip = FileAttributes.ReparsePoint };
+        try
+        {
+            foreach (var source in Directory.EnumerateFiles(from, "*", enumeration).ToList())
+            {
+                var destination = Path.Combine(to, Path.GetRelativePath(from, source));
+                Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+                var time = File.GetLastWriteTimeUtc(source);
+                File.Move(source, destination);
+                File.SetLastWriteTimeUtc(destination, time);
+                moved.Add((source, destination));
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            foreach (var (source, destination) in Enumerable.Reverse(moved))
+            {
+                try { File.Move(destination, source); }
+                catch (Exception back) when (back is IOException or UnauthorizedAccessException) { }
+            }
+            return $"Could not move the files: {ex.Message} Nothing was changed.";
+        }
+        // Leere Unterordner bleiben sonst im alten Ordner stehen; der alte Ordner selbst auch, wenn er leer ist.
+        try
+        {
+            foreach (var dir in Directory.EnumerateDirectories(from, "*", enumeration).OrderByDescending(d => d.Length))
+                if (!Directory.EnumerateFileSystemEntries(dir).Any()) Directory.Delete(dir);
+            if (!Directory.EnumerateFileSystemEntries(from).Any()) Directory.Delete(from);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+        return null;
+    }
+
     // ── Hochladen aus der Oberfläche ──
 
     // Legt eine Datei in den Ordner (über eine Temp-Datei). Eine vorhandene Datei gleichen Namens bekommt " (2)" usw.
@@ -550,7 +637,7 @@ public sealed class MeshNode
             {
                 var name = FreeName(relative);
                 if (name == null) return null;
-                var full = PathRules.ToFull(_options.Folder, name)!;
+                var full = PathRules.ToFull(_folder, name)!;
                 Directory.CreateDirectory(Path.GetDirectoryName(full)!);
                 File.Move(temp, full);
                 return name;
@@ -562,7 +649,7 @@ public sealed class MeshNode
 
     private string? FreeName(string relative)
     {
-        var full = PathRules.ToFull(_options.Folder, relative);
+        var full = PathRules.ToFull(_folder, relative);
         if (full == null) return null;
         if (!File.Exists(full) && !Directory.Exists(full)) return relative;
         var slash = relative.LastIndexOf('/');
@@ -574,7 +661,7 @@ public sealed class MeshNode
         for (int i = 2; i < 1000; i++)
         {
             var candidate = $"{dir}{stem} ({i}){ext}";
-            var candidateFull = PathRules.ToFull(_options.Folder, candidate);
+            var candidateFull = PathRules.ToFull(_folder, candidate);
             if (candidateFull != null && !File.Exists(candidateFull)) return candidate;
         }
         return null;
