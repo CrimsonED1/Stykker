@@ -51,14 +51,26 @@ public static partial class ModelBuffers
     [GeneratedRegex(@"load_tensors:\s+(\S+) model buffer size =\s*([\d.]+) MiB")]
     private static partial Regex Line();
 
-    // Alle Pufferzeilen eines Logs; je Name zählt die letzte (ein neu geladenes Modell überschreibt das alte)
+    [GeneratedRegex(@"load_tensors: loading model tensors")]
+    private static partial Regex LoadStart();
+
+    // Die Puffer des zuletzt geladenen Modells. Neuere Builds schreiben je Name viele Zeilen (eine je Tensorgruppe,
+    // gemessen mit b11854: 109× CPU_Mapped), ältere eine – deshalb wird je Name summiert. Ein neuer Ladevorgang
+    // („loading model tensors“) beginnt von vorn, damit ein neu geladenes Modell das alte ersetzt.
     public static IReadOnlyList<ModelBuffer> Parse(string text)
     {
-        var map = new Dictionary<string, double>(StringComparer.Ordinal);
-        foreach (Match m in Line().Matches(text))
-            if (double.TryParse(m.Groups[2].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var mib))
-                map[m.Groups[1].Value] = mib;
-        return map.Select(kv => new ModelBuffer(kv.Key, kv.Value)).ToList();
+        var starts = LoadStart().Matches(text);
+        for (var i = starts.Count - 1; i >= -1; i--)
+        {
+            var from = i < 0 ? 0 : starts[i].Index;
+            var to = i + 1 < starts.Count ? starts[i + 1].Index : text.Length;
+            var map = new Dictionary<string, double>(StringComparer.Ordinal);
+            foreach (Match m in Line().Matches(text[from..to]))
+                if (double.TryParse(m.Groups[2].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var mib))
+                    map[m.Groups[1].Value] = map.GetValueOrDefault(m.Groups[1].Value) + mib;
+            if (map.Count > 0) return map.Select(kv => new ModelBuffer(kv.Key, kv.Value)).ToList();
+        }
+        return [];
     }
 }
 

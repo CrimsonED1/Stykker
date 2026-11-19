@@ -36,20 +36,40 @@ public class N118_ModelStorageTests
     public void BuffersAreReadFromTheLoadLog()
     {
         const string log = "llama_model_loader: loaded meta data\n" +
+                           "load_tensors: loading model tensors, this can take a while... (mmap = true)\n" +
+                           "load_tensors:        CUDA0 model buffer size =  9000.00 MiB\n" +
+                           "load_tensors: loading model tensors, this can take a while... (mmap = true)\n" +   // neu geladen: nur das zählt
                            "load_tensors: offloaded 49/49 layers to GPU\n" +
                            "load_tensors:        CUDA0 model buffer size = 14920.50 MiB\n" +
                            "load_tensors:   CPU_Mapped model buffer size =  2790.25 MiB\n" +
                            "load_tensors:          CPU model buffer size =   300.00 MiB\n" +
-                           "load_tensors:        CUDA0 model buffer size = 15000.00 MiB\n";   // neu geladen: die letzte zählt
+                           "srv  update_slots: all slots are idle\n";
         var b = ModelBuffers.Parse(log);
         Assert.AreEqual(3, b.Count);
-        Assert.AreEqual(15000, b.Single(x => x.Name == "CUDA0").MiB, 1e-9);
+        Assert.AreEqual(14920.5, b.Single(x => x.Name == "CUDA0").MiB, 1e-9);
         var mapped = b.Single(x => x.Mapped);
         Assert.AreEqual("CPU_Mapped", mapped.Name);
         Assert.IsTrue(mapped.Host);
         Assert.IsFalse(b.Single(x => x.Name == "CUDA0").Host);
         Assert.IsTrue(new ModelBuffer("CUDA_Host", 1).Host);
         Assert.AreEqual(0, ModelBuffers.Parse("nothing here").Count);
+    }
+
+    [TestMethod]
+    public void RepeatedBufferLinesOfNewerBuildsAreSummed()
+    {
+        // so schreibt b11854 mit -lv 4 (CPU-Build, Qwen3-VL 4B): je Tensorgruppe eine Zeile, mit Zeitstempel davor
+        const string log = "0.00.704.035 I load_tensors: loading model tensors, this can take a while... (load_mode = mmap)\n" +
+                           "0.00.966.478 I load_tensors:   CPU_Mapped model buffer size =   304.29 MiB\n" +
+                           "0.00.966.685 I load_tensors:   CPU_Mapped model buffer size =     0.01 MiB\n" +
+                           "0.00.966.709 I load_tensors:   CPU_Mapped model buffer size =    21.53 MiB\n" +
+                           "0.00.966.858 I load_tensors:   CPU_REPACK model buffer size =  1683.28 MiB\n";
+        var b = ModelBuffers.Parse(log);
+        Assert.AreEqual(2, b.Count);
+        Assert.AreEqual(325.83, b.Single(x => x.Mapped).MiB, 1e-6);
+        var repack = b.Single(x => x.Name == "CPU_REPACK");
+        Assert.IsTrue(repack.Host);
+        Assert.IsFalse(repack.Mapped);
     }
 
     [TestMethod]

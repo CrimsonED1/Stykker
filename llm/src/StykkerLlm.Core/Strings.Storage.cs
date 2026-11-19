@@ -10,7 +10,7 @@ public static partial class Strings
         StorReadOnce = "Read once at start – does not page from the disk",
         StorUnknown = "Paging not measured yet",
         StorAutoSuffix = " · llama.cpp default",
-        StorNoBuffers = "Where the weights sit appears in the log when the model loads (needs --log-file).",
+        StorNoBuffers = "Where the weights sit appears in the log when the model loads (needs --log-file and -lv 4).",
         StorNoPaging = "no paging",
         StorEstimate = "The amounts read are estimates: another program reading from the same drive at the same time counts too.",
         StorHint = "Reading does not wear an SSD; paging costs speed. More free RAM, fewer experts on the CPU (--n-cpu-moe) or -lm mlock keep the model in memory.",
