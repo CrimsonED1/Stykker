@@ -99,8 +99,9 @@
         $("peers").innerHTML = st.peers.length
             ? st.peers.map((p) => {
                 const dot = p.syncing ? "sync" : p.online ? "" : "off";
-                const state = p.duplicate ? "same PC under another address"
-                    : p.online ? `synced ${ago(p.lastSync)}` : (p.error ? "offline" : "connecting…");
+                const via = p.route ? ` via ${p.route}` : "";
+                const state = p.duplicate ? `standby${via}: connected over a faster way`
+                    : p.online ? `synced ${ago(p.lastSync)}${via}` : (p.error ? "offline" : "connecting…");
                 const remove = p.manual ? `<button type="button" class="quiet sq" data-remove="${esc(p.address)}" title="Remove this PC" aria-label="Remove ${esc(p.address)}"><svg class="ic"><use href="#i-x" /></svg></button>` : "";
                 return `<div class="ms-peer">
                     <span class="dot ${dot}" title="${p.online ? "online" : "offline"}"></span>

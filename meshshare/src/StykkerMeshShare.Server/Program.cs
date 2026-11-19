@@ -144,6 +144,7 @@ app.MapGet("/api/status", (HttpContext ctx, PeerManager peers) =>
             syncing = p.Syncing,
             manual = p.Manual,
             duplicate = p.Duplicate,
+            route = p.NodeId == null ? null : StykkerMeshShare.Core.NetworkRoute.Label(p.Route),
             lastSync = p.LastSync,
             error = p.LastError,
         }).ToArray(),

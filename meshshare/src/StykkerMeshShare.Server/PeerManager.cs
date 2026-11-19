@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Net;
+using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Text;
 using StykkerMeshShare.Core;
@@ -9,10 +10,16 @@ namespace StykkerMeshShare.Server;
 // Die Gegenstellen: von Hand eingetragene (settings.json, --peer) und im Heimnetz gefundene (UDP-Rundruf).
 // Für jede läuft eine Schleife: Abgleich, dann lange Abfrage „hat sich bei dir etwas geändert?“, dann wieder Abgleich.
 // Abgeglichen wird immer nur mit einer Gegenstelle zur Zeit, damit zwei Abrufe nicht um dieselbe Datei streiten.
+//
+// Dieselbe Gegenstelle kann unter mehreren Adressen bekannt sein (Heimnetz und Tailscale). Abgeglichen wird nur über
+// eine, und zwar über den besten Weg (Route: dieser PC, dann Heimnetz, dann Tailscale). Taucht ein besserer Weg auf,
+// bricht der schlechtere sofort ab, auch mitten in einer Übertragung; fällt der bessere weg, übernimmt der andere.
 public sealed class PeerManager : IHostedService, IDisposable
 {
     private const string DiscoveryTag = "STYKKER-MESHSHARE/1";
     private static readonly TimeSpan WaitTimeout = TimeSpan.FromSeconds(25);
+    private static readonly TimeSpan AnnounceEvery = TimeSpan.FromSeconds(20);
+    private static readonly TimeSpan ForgetFoundAfter = TimeSpan.FromMinutes(10);
 
     private readonly MeshNode _node;
     private readonly ServerSettings _settings;
@@ -22,7 +29,9 @@ public sealed class PeerManager : IHostedService, IDisposable
     private readonly SemaphoreSlim _pullGate = new(1, 1);
     private readonly ConcurrentDictionary<string, Peer> _peers = new(StringComparer.OrdinalIgnoreCase);
     private readonly CancellationTokenSource _stop = new();
+    private readonly Lock _routeLock = new();
     private CancellationTokenSource _wake = new();
+    private TaskCompletionSource _announceNow = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     public PeerManager(MeshNode node, ServerSettings settings, int port, bool discovery, IEnumerable<string> extraPeers)
     {
@@ -40,22 +49,27 @@ public sealed class PeerManager : IHostedService, IDisposable
         public bool Manual { get; set; }
         public string? NodeId { get; set; }
         public string? Name { get; set; }
+        public PeerRoute Route { get; set; } = PeerRoute.Other;
         public bool Online { get; set; }
         public bool IsSelf { get; set; }
-        public bool Duplicate { get; set; }       // dieselbe Gegenstelle ist schon unter einer anderen Adresse verbunden
+        public bool Duplicate { get; set; }       // dieselbe Gegenstelle ist schon über einen besseren Weg verbunden
         public bool Syncing { get; set; }
         public DateTime? LastSync { get; set; }
+        public DateTime? OfflineSince { get; set; }
         public string? LastError { get; set; }
         internal CancellationTokenSource Cancel { get; } = new();
+        internal CancellationTokenSource? Round { get; set; }   // ein Durchgang: Hallo, Abgleich, Warten
     }
 
-    public IReadOnlyList<Peer> Peers => _peers.Values.Where(p => !p.IsSelf).OrderBy(p => p.Name ?? p.Address, StringComparer.OrdinalIgnoreCase).ToList();
+    public IReadOnlyList<Peer> Peers => _peers.Values.Where(p => !p.IsSelf)
+        .OrderBy(p => p.Duplicate).ThenBy(p => p.Name ?? p.Address, StringComparer.OrdinalIgnoreCase).ToList();
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
         foreach (var peer in _peers.Values) _ = RunAsync(peer);
         if (_discovery)
         {
+            NetworkChange.NetworkAddressChanged += OnNetworkChanged;
             _ = Task.Run(() => ListenAsync(_stop.Token));
             _ = Task.Run(() => AnnounceAsync(_stop.Token));
         }
@@ -64,6 +78,7 @@ public sealed class PeerManager : IHostedService, IDisposable
 
     public Task StopAsync(CancellationToken cancellationToken)
     {
+        NetworkChange.NetworkAddressChanged -= OnNetworkChanged;
         _stop.Cancel();
         foreach (var peer in _peers.Values) peer.Cancel.Cancel();
         return Task.CompletedTask;
@@ -79,7 +94,8 @@ public sealed class PeerManager : IHostedService, IDisposable
     public bool AddManual(string address)
     {
         _settings.AddPeer(address);
-        if (_peers.TryGetValue(address, out var existing)) { existing.Manual = true; return true; }
+        var normalized = ServerSettings.NormalizeAddress(address, _port);
+        if (normalized != null && _peers.TryGetValue(normalized, out var existing)) { existing.Manual = true; return true; }
         var peer = Track(address, manual: true);
         if (peer != null && !_stop.IsCancellationRequested) _ = RunAsync(peer);
         return peer != null;
@@ -90,6 +106,7 @@ public sealed class PeerManager : IHostedService, IDisposable
         _settings.RemovePeer(address);
         if (!_peers.TryRemove(address, out var peer)) return false;
         peer.Cancel.Cancel();
+        WakeStandbys(peer);
         return true;
     }
 
@@ -101,17 +118,35 @@ public sealed class PeerManager : IHostedService, IDisposable
         return _peers.TryAdd(normalized, peer) ? peer : null;
     }
 
+    // Bricht den laufenden Durchgang einer Gegenstelle ab (Warten, Abgleich oder Pause nach einem Fehler).
+    private static void Interrupt(Peer peer)
+    {
+        try { peer.Round?.Cancel(); }
+        catch (ObjectDisposedException) { }
+    }
+
+    // Die Gegenstelle ist weg: andere Adressen desselben PCs, die nur zugeschaut haben, versuchen es sofort.
+    private void WakeStandbys(Peer gone)
+    {
+        if (gone.NodeId == null) return;
+        foreach (var other in _peers.Values)
+            if (other != gone && other.NodeId == gone.NodeId && other.Duplicate) Interrupt(other);
+    }
+
     private async Task RunAsync(Peer peer)
     {
         var source = new HttpPeerSource(_http, peer.Address);
         var ct = CancellationTokenSource.CreateLinkedTokenSource(peer.Cancel.Token, _stop.Token).Token;
         var backoff = TimeSpan.FromSeconds(3);
-        long remoteSeq = -1;
         while (!ct.IsCancellationRequested)
         {
+            using var round = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            peer.Round = round;
+            var rt = round.Token;
             try
             {
-                using (var helloTimeout = CancellationTokenSource.CreateLinkedTokenSource(ct))
+                long remoteSeq;
+                using (var helloTimeout = CancellationTokenSource.CreateLinkedTokenSource(rt))
                 {
                     helloTimeout.CancelAfter(TimeSpan.FromSeconds(8));
                     var hello = await source.HelloAsync(helloTimeout.Token).ConfigureAwait(false);
@@ -119,58 +154,107 @@ public sealed class PeerManager : IHostedService, IDisposable
                     peer.NodeId = hello.Id;
                     peer.Name = hello.Name;
                     remoteSeq = hello.Seq;
+                    peer.Route = await NetworkRoute.ResolveAsync(peer.Address, helloTimeout.Token).ConfigureAwait(false);
                 }
-                // Dieselbe Gegenstelle unter zwei Adressen (Heimnetz und Tailscale): nur eine gleicht ab.
-                peer.Duplicate = _peers.Values.Any(other => other != peer && other.NodeId == peer.NodeId && other.Online && !other.Duplicate);
-                if (peer.Duplicate)
+
+                if (!TakeOver(peer))
                 {
-                    peer.Online = false;
-                    await Task.Delay(TimeSpan.FromSeconds(30), ct).ConfigureAwait(false);
+                    // Derselbe PC ist schon über einen mindestens so guten Weg verbunden: nur zuschauen.
+                    await Task.Delay(TimeSpan.FromSeconds(30), rt).ConfigureAwait(false);
                     continue;
                 }
 
-                bool complete = await PullAsync(peer, source, ct).ConfigureAwait(false);
-                peer.Online = true;
+                bool complete = await PullAsync(peer, source, rt).ConfigureAwait(false);
                 peer.LastError = null;
                 backoff = TimeSpan.FromSeconds(3);
 
                 // Warten, bis sich dort etwas ändert; dann wieder abgleichen.
-                while (!ct.IsCancellationRequested)
+                while (!rt.IsCancellationRequested)
                 {
                     // Wake() (zum Beispiel nach einem Ordnerwechsel) bricht das Warten ab: dann sofort abgleichen.
                     long seq;
-                    using (var wait = CancellationTokenSource.CreateLinkedTokenSource(ct, _wake.Token))
+                    using (var wait = CancellationTokenSource.CreateLinkedTokenSource(rt, _wake.Token))
                     {
                         try { seq = await source.WaitAsync(remoteSeq, WaitTimeout, wait.Token).ConfigureAwait(false); }
-                        catch (OperationCanceledException) when (!ct.IsCancellationRequested && wait.IsCancellationRequested)
+                        catch (OperationCanceledException) when (!rt.IsCancellationRequested && wait.IsCancellationRequested)
                         {
-                            complete = await PullAsync(peer, source, ct).ConfigureAwait(false);
+                            complete = await PullAsync(peer, source, rt).ConfigureAwait(false);
                             continue;
                         }
                     }
                     if (seq != remoteSeq)
                     {
                         remoteSeq = seq;
-                        complete = await PullAsync(peer, source, ct).ConfigureAwait(false);
+                        complete = await PullAsync(peer, source, rt).ConfigureAwait(false);
                     }
                     else if (!complete || _node.PendingRescan)
                     {
                         // Beim letzten Mal blieb etwas liegen (Datei in Arbeit): noch einmal versuchen.
-                        complete = await PullAsync(peer, source, ct).ConfigureAwait(false);
+                        complete = await PullAsync(peer, source, rt).ConfigureAwait(false);
                     }
                 }
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested) { return; }
+            catch (OperationCanceledException) when (rt.IsCancellationRequested)
+            {
+                // Ein besserer Weg hat übernommen, oder der bisherige ist weg: neuer Durchgang ohne Pause.
+                peer.Syncing = false;
+            }
             catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or IOException or System.Text.Json.JsonException)
             {
+                bool wasActive = peer.Online;
                 peer.Online = false;
                 peer.Syncing = false;
+                peer.Duplicate = false;
+                peer.OfflineSince ??= DateTime.UtcNow;
                 peer.LastError = ex is OperationCanceledException ? "No answer" : ex.Message;
-                try { await Task.Delay(backoff, ct).ConfigureAwait(false); }
+                if (wasActive) WakeStandbys(peer);
+
+                // Selbst gefundene Adressen, die lange nicht antworten (neue IP, PC weg), werden vergessen.
+                if (!peer.Manual && DateTime.UtcNow - peer.OfflineSince > ForgetFoundAfter)
+                {
+                    _peers.TryRemove(peer.Address, out _);
+                    return;
+                }
+                try { await Task.Delay(backoff, rt).ConfigureAwait(false); }
+                catch (OperationCanceledException) when (!ct.IsCancellationRequested) { backoff = TimeSpan.FromSeconds(3); continue; }
                 catch (OperationCanceledException) { return; }
                 backoff = TimeSpan.FromSeconds(Math.Min(60, backoff.TotalSeconds * 2));
             }
+            finally { peer.Round = null; }
         }
+    }
+
+    // Entscheidet, ob diese Adresse für ihren PC abgleicht. Ja, wenn keine andere Adresse desselben PCs über einen
+    // mindestens so guten Weg verbunden ist; schlechtere Wege werden dann abgelöst (laufende Übertragung bricht ab).
+    private bool TakeOver(Peer peer)
+    {
+        List<Peer> demoted;
+        lock (_routeLock)
+        {
+            var same = _peers.Values.Where(o => o != peer && !o.IsSelf && o.NodeId == peer.NodeId).ToList();
+            if (same.Any(o => o.Online && !o.Duplicate && o.Route <= peer.Route))
+            {
+                peer.Duplicate = true;
+                peer.Online = false;
+                return false;
+            }
+            peer.Duplicate = false;
+            peer.Online = true;
+            peer.OfflineSince = null;
+            demoted = same.Where(o => o.Online && !o.Duplicate).ToList();
+            foreach (var other in demoted)
+            {
+                other.Duplicate = true;
+                other.Online = false;
+            }
+        }
+        foreach (var other in demoted)
+        {
+            Console.WriteLine($"[mesh] {peer.Name}: using {NetworkRoute.Label(peer.Route)} ({peer.Address}) instead of {NetworkRoute.Label(other.Route)} ({other.Address})");
+            Interrupt(other);
+        }
+        return true;
     }
 
     private async Task<bool> PullAsync(Peer peer, HttpPeerSource source, CancellationToken ct)
@@ -191,21 +275,64 @@ public sealed class PeerManager : IHostedService, IDisposable
         }
     }
 
-    // ── Suche im Heimnetz: ein kurzer Rundruf alle 20 Sekunden ──
+    // ── Suche im Heimnetz ──
+    // Ein kurzer Rundruf alle 20 Sekunden, sofort nach dem Start und wenn sich das Netz ändert. Gerufen wird in jedes
+    // Heimnetz einzeln (die Broadcast-Adresse jedes Netzwerkadapters), weil 255.255.255.255 bei mehreren Adaptern
+    // (VPN, Hyper-V, Tailscale) nur über einen hinausgeht. Wer einen Ruf hört, antwortet direkt: so finden sich zwei
+    // PCs in Sekunden statt erst beim nächsten Rundruf.
 
-    private string Announcement => $"{DiscoveryTag}|{_node.NodeId}|{_port}";
+    private string Announcement(bool reply) => $"{DiscoveryTag}|{_node.NodeId}|{_port}" + (reply ? "|reply" : "");
+
+    private void OnNetworkChanged(object? sender, EventArgs e) => _announceNow.TrySetResult();
+
+    internal static List<IPAddress> BroadcastAddresses()
+    {
+        var result = new List<IPAddress> { IPAddress.Broadcast };
+        try
+        {
+            foreach (var nic in NetworkInterface.GetAllNetworkInterfaces())
+            {
+                if (nic.OperationalStatus != OperationalStatus.Up) continue;
+                if (nic.NetworkInterfaceType is NetworkInterfaceType.Loopback or NetworkInterfaceType.Tunnel) continue;
+                foreach (var unicast in nic.GetIPProperties().UnicastAddresses)
+                {
+                    if (unicast.Address.AddressFamily != AddressFamily.InterNetwork) continue;
+                    if (NetworkRoute.Classify(unicast.Address) != PeerRoute.Lan) continue;   // kein Tailscale, kein öffentliches Netz
+                    var ip = unicast.Address.GetAddressBytes();
+                    var mask = unicast.IPv4Mask.GetAddressBytes();
+                    if (mask.Length != 4 || mask.All(b => b == 0)) continue;
+                    var broadcast = new byte[4];
+                    for (int i = 0; i < 4; i++) broadcast[i] = (byte)(ip[i] | ~mask[i]);
+                    var address = new IPAddress(broadcast);
+                    if (!result.Contains(address)) result.Add(address);
+                }
+            }
+        }
+        catch (NetworkInformationException) { }
+        return result;
+    }
 
     private async Task AnnounceAsync(CancellationToken ct)
     {
         using var udp = new UdpClient { EnableBroadcast = true };
-        var bytes = Encoding.UTF8.GetBytes(Announcement);
+        var bytes = Encoding.UTF8.GetBytes(Announcement(reply: false));
         while (!ct.IsCancellationRequested)
         {
-            try { await udp.SendAsync(bytes, new IPEndPoint(IPAddress.Broadcast, _port), ct).ConfigureAwait(false); }
-            catch (SocketException) { }
+            foreach (var target in BroadcastAddresses())
+            {
+                try { await udp.SendAsync(bytes, new IPEndPoint(target, _port), ct).ConfigureAwait(false); }
+                catch (SocketException) { }
+                catch (OperationCanceledException) { return; }
+            }
+            var kick = _announceNow.Task;
+            try { await Task.WhenAny(Task.Delay(AnnounceEvery, ct), kick).ConfigureAwait(false); }
             catch (OperationCanceledException) { return; }
-            try { await Task.Delay(TimeSpan.FromSeconds(20), ct).ConfigureAwait(false); }
-            catch (OperationCanceledException) { return; }
+            if (kick.IsCompleted)
+            {
+                _announceNow = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                try { await Task.Delay(TimeSpan.FromSeconds(2), ct).ConfigureAwait(false); }   // das neue Netz braucht einen Moment
+                catch (OperationCanceledException) { return; }
+            }
         }
     }
 
@@ -225,6 +352,7 @@ public sealed class PeerManager : IHostedService, IDisposable
         }
         using (udp)
         {
+            var reply = Encoding.UTF8.GetBytes(Announcement(reply: true));
             while (!ct.IsCancellationRequested)
             {
                 UdpReceiveResult received;
@@ -232,19 +360,36 @@ public sealed class PeerManager : IHostedService, IDisposable
                 catch (OperationCanceledException) { return; }
                 catch (SocketException) { continue; }
                 var parts = Encoding.UTF8.GetString(received.Buffer).Split('|');
-                if (parts.Length != 3 || parts[0] != DiscoveryTag || parts[1] == _node.NodeId) continue;
-                if (!int.TryParse(parts[2], out var port) || !NetworkAccess.Allowed(received.RemoteEndPoint.Address)) continue;
+                if (parts.Length is < 3 or > 4 || parts[0] != DiscoveryTag || parts[1] == _node.NodeId) continue;
+                if (!int.TryParse(parts[2], out var port) || port is < 1 or > 65535) continue;
                 var ip = received.RemoteEndPoint.Address;
                 if (ip.IsIPv4MappedToIPv6) ip = ip.MapToIPv4();
-                if (_peers.Values.Any(p => p.NodeId == parts[1] && p.Online)) continue;
-                var peer = Track(ip.AddressFamily == AddressFamily.InterNetworkV6 ? $"[{ip}]:{port}" : $"{ip}:{port}", manual: false);
+                if (!NetworkAccess.Allowed(ip)) continue;
+                bool isReply = parts.Length == 4 && parts[3] == "reply";
+
+                // Antworten, damit der Rufer uns sofort kennt (auf eine Antwort wird nicht geantwortet).
+                if (!isReply)
+                {
+                    try { await udp.SendAsync(reply, new IPEndPoint(ip, port), ct).ConfigureAwait(false); }
+                    catch (SocketException) { }
+                    catch (OperationCanceledException) { return; }
+                }
+
+                var route = NetworkRoute.Classify(ip);
+                // Schon über einen mindestens so guten Weg verbunden: nichts zu tun. Nur über Tailscale verbunden:
+                // diese Heimnetz-Adresse trotzdem aufnehmen, sie übernimmt dann.
+                if (_peers.Values.Any(p => p.NodeId == parts[1] && p.Online && p.Route <= route)) continue;
+                var address = ip.AddressFamily == AddressFamily.InterNetworkV6 ? $"[{ip}]:{port}" : $"{ip}:{port}";
+                var peer = Track(address, manual: false);
                 if (peer != null) _ = RunAsync(peer);
+                else if (_peers.TryGetValue(address, out var known) && !known.Online && !known.Duplicate) Interrupt(known);  // aus der Pause holen
             }
         }
     }
 
     public void Dispose()
     {
+        NetworkChange.NetworkAddressChanged -= OnNetworkChanged;
         _stop.Cancel();
         _http.Dispose();
         _stop.Dispose();

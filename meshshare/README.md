@@ -55,11 +55,17 @@ Index, trash and settings live in `%APPDATA%\Stykker\MeshShare`, not in the shar
 
 ## Finding the other PCs
 
-- **Home network**: a short UDP broadcast on port 17404 every 20 seconds. PCs find each other by themselves.
+- **Home network**: PCs find each other by themselves. Each PC sends a short UDP broadcast on port 17404 into every
+  home network it is connected to (each network adapter on its own), at start, every 20 seconds and when the network
+  changes. A PC that hears it answers at once, so two PCs find each other within seconds. Found addresses that do not
+  answer for 10 minutes are forgotten.
 - **Tailscale** (no broadcast there): enter the other PC's Tailscale name in the page, for example
   `pc.example.ts.net`. It is kept in `settings.json`.
 
-The same PC under two addresses (home network and Tailscale) syncs over only one of them.
+**LAN first.** The same PC under two addresses syncs over only one of them, and over the best way: the home network
+before Tailscale. When a PC that is connected over Tailscale shows up in the home network, syncing moves to the home
+network at once, also in the middle of a transfer (the file starts again over the faster way). When the home network
+address stops answering, the Tailscale address takes over. The page shows the way (`via LAN`, `via Tailscale`).
 
 ## Access (no pairing yet)
 
