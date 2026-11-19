@@ -15,6 +15,8 @@ only**: it shows the state and sends the user to the web UI for anything that ch
 | 2 | Status line + notice line (proxy, persistent hints with *Dismiss*, *Open log*) | top of Monitor |
 | 3 | Saved profiles (start with pre-check, bench, edit, remove, start script download) | Monitor |
 | 4 | Running servers (t/s, slots, chips, proxy chip, record, details, save, stop, **Prompt**; prompt t/s and time to first token, idle time with unload countdown) | Monitor cards, `/serverdetail/{key}` |
+| 4b | Details page: header with backend, status and chips (address, port, context, slots, PID, clients) and actions; figures (t/s now with history, prompt t/s and first token, generated, VRAM/RAM, idle); options as pairs, full command line to open and copy; process, /props and model as a list (`Pages/Server.razor`) | `/serverdetail/{key}` |
+| 4a | Model view: name, phase now, MoE experts k of n with active parameters, layer strip GPU/CPU (attention above, experts below; from `-ngl`, `--cpu-moe`, `--n-cpu-moe`, `-ot`), slots, requests through the proxy (thinking, answering, tool) (`Core/ModelAnatomy.cs`, `Components/ModelView.razor`); chip *k/n* on the card; *Storage*: load mode, buffers from the load log, mapped part in RAM, hard page faults, reads from the model's drive while paging (`Core/ModelPaging.cs`) | `/serverdetail/{key}` |
 | 5 | GPU (load, VRAM, power, temp, clocks, throttling, VRAM per program) | Monitor, `/gpu` |
 | 6 | System (CPU, RAM per program) | Monitor |
 | 7 | Recent requests (ttft column, filter *problems*, *Show more*, download `requests.csv` and `proxy.csv`) | Monitor |

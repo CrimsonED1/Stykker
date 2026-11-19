@@ -108,19 +108,23 @@ public sealed class SimPlatform : IPlatform
                 return new ProcessDetails(pid, s.StartTicks, ExplorerPid, @"C:\sim\LM Studio\LM Studio.exe", null, @"C:\sim\LM Studio", new Dictionary<string, string>());
             case BackendKind.LmStudio:
             {
-                string cmd = "\"C:\\sim\\lmstudio\\llama-server.exe\" --model C:\\models\\" + spec.Model + ".gguf --host 127.0.0.1 --port " + s.EnginePort +
+                string cmd = "\"C:\\sim\\lmstudio\\llama-server.exe\" --model " + ModelArg(s) + " --host 127.0.0.1 --port " + s.EnginePort +
                              " --api-key " + s.ApiKey + " --ctx-size " + spec.Context + " --parallel " + spec.Slots;
                 return new ProcessDetails(pid, s.StartTicks + 1, s.Pid, @"C:\sim\lmstudio\llama-server.exe", cmd, @"C:\sim\lmstudio", new Dictionary<string, string>());
             }
             default:
             {
-                string cmd = "\"C:\\sim\\llama\\llama-server.exe\" -m C:\\models\\" + spec.Model + ".gguf --port " + s.Port + " --alias " + CmdLine.Quote(spec.Name.Length > 0 ? spec.Name : spec.Model) +
-                             " -ngl 99 -c " + spec.Context + " -np " + spec.Slots + " --jinja" + (s.LogPath != null ? " --log-file " + CmdLine.Quote(s.LogPath) : "");
+                string cmd = "\"C:\\sim\\llama\\llama-server.exe\" -m " + ModelArg(s) + " --port " + s.Port + " --alias " + CmdLine.Quote(spec.Name.Length > 0 ? spec.Name : spec.Model) +
+                             " -ngl 99 -c " + spec.Context + " -np " + spec.Slots + " --jinja" + (spec.ExtraArgs.Length > 0 ? " " + spec.ExtraArgs : "") +
+                             (s.LogPath != null ? " --log-file " + CmdLine.Quote(s.LogPath) : "");
                 return new ProcessDetails(pid, s.StartTicks, ExplorerPid, @"C:\sim\llama\llama-server.exe", cmd, @"C:\sim\llama",
                     new Dictionary<string, string> { ["LLAMA_ARG_CTX_SIZE"] = spec.Context.ToString() });
             }
         }
     }
+
+    // Die Modelldatei auf der Kommandozeile: der GGUF-Kopf im ModelDir, sonst ein erfundener Pfad wie bisher
+    private static string ModelArg(SimWorld.Server s) => s.ModelPath != null ? CmdLine.Quote(s.ModelPath) : "C:\\models\\" + s.Spec.Model + ".gguf";
 
     public string? ProcessName(int pid) => ReadProcess(pid) is { ImagePath: { } p } ? ProcPath.Stem(p) : null;
 
@@ -138,6 +142,40 @@ public sealed class SimPlatform : IPlatform
     }
 
     // ── Messwerte ──
+
+    // Nachladen von der Platte: ein Modell mit Experten auf dem Prozessor (--n-cpu-moe, --cpu-moe) passt im Simulator nicht
+    // ganz in den RAM – beim Schreiben holt es Seiten von der Platte, rund 70 % der Datei liegen im Arbeitsspeicher.
+    // Alle anderen liegen ganz im Speicher und haben nur ein paar Seitenfehler.
+    private readonly Dictionary<int, (double Faults, DateTime At)> _faults = new();
+
+    private static bool Streams(SimWorld.Server s) => s.Spec.ExtraArgs.Contains("cpu-moe", StringComparison.Ordinal);
+
+    public long? ReadHardFaults(int pid)
+    {
+        var s = ByPid(pid, out _);
+        if (s == null) return null;
+        var now = DateTime.Now;
+        lock (_faults)
+        {
+            var (f, at) = _faults.TryGetValue(pid, out var v) ? v : (1200.0 + pid % 500, now);
+            bool writing = s.Slots.Any(sl => sl.Busy && !sl.Prompting);
+            double rate = Streams(s) && writing ? 2400 + _noise.NextDouble() * 900 : 1.5;
+            f += rate * Math.Max(0, (now - at).TotalSeconds);
+            _faults[pid] = (f, now);
+            return (long)f;
+        }
+    }
+
+    public MappedFileResidency? ReadMappedResidency(int pid, string filePath)
+    {
+        var s = ByPid(pid, out _);
+        if (s?.ModelPath == null || !string.Equals(Path.GetFullPath(s.ModelPath), Path.GetFullPath(filePath), StringComparison.OrdinalIgnoreCase)) return null;
+        // Die ganze Datei ist eingeblendet; im Arbeitsspeicher liegt vom Teil, der eingeblendet bleibt (CPU_Mapped), rund 70 %
+        long mapped = (long)(s.Spec.ModelGb * 1073741824.0);
+        double frac = SimGguf.CpuShare(s.Spec) * (Streams(s) ? 0.66 + _noise.NextDouble() * 0.06 : 1.0);
+        const int sampled = 65536;
+        return new MappedFileResidency(mapped, (long)(mapped * frac), sampled, (int)(sampled * frac));
+    }
 
     public ProcessUsage? ReadUsage(int pid)
     {

@@ -68,6 +68,33 @@ public class RequestProxy : IDisposable
     private readonly CancellationTokenSource _cts = new();
     private int _active;
     private int _requests;
+    // Laufende Generierungs-Anfragen für die Live-Anzeige; eingetragen nach dem Lesen der Anfrage, entfernt im finally
+    private readonly ConcurrentDictionary<Guid, LiveEntry> _live = new();
+
+    private sealed class LiveEntry
+    {
+        public required ProxyTap Tap { get; init; }
+        public required DateTime Started { get; init; }
+        public required string Client { get; init; }
+        public volatile ProxyRoute? Route;
+        public volatile bool Track;
+    }
+
+    // Momentaufnahme aller laufenden Generierungs-Anfragen dieses Proxys (älteste zuerst). Darf von jedem Thread gerufen werden.
+    public IReadOnlyList<ProxyLiveRequest> Live()
+    {
+        var list = new List<ProxyLiveRequest>();
+        foreach (var e in _live.Values)
+        {
+            if (!e.Track) continue;
+            var t = e.Tap;
+            var st = t.LiveState;
+            list.Add(new ProxyLiveRequest(t.RoutedServerKey ?? e.Route?.ServerKey, e.Client, st?.Phase ?? ProxyLivePhase.Waiting,
+                st?.Phase == ProxyLivePhase.Tool ? st.Tool : null, e.Started, st?.Since ?? e.Started, t.Reasoning, t.Content, t.ToolCalls));
+        }
+        list.Sort((a, b) => a.Started.CompareTo(b.Started));
+        return list;
+    }
     private bool _disposed;
 
     public string ServerKey { get; }
@@ -390,6 +417,8 @@ public class RequestProxy : IDisposable
         HttpRequestMessage? upMsg = null;
         var tap = new ProxyTap();
         var start = DateTime.Now;
+        var liveId = Guid.NewGuid();
+        LiveEntry? live = null;
         bool track = false, stream = false, aborted = false;
         int status = 0;
         byte[]? errProbe = null; int errProbeLen = 0;   // kleine Probe einer Fehlerantwort (nur 400er, nicht kodiert)
@@ -407,6 +436,8 @@ public class RequestProxy : IDisposable
             catch (ProxyHttpException ex) { await WriteSimpleAsync(net, ex.Status, ex.Message); return; }
             if (req == null) return;
             start = DateTime.Now;
+            live = new LiveEntry { Tap = tap, Started = start, Client = RequestRows.ClientFromAgent(req.Header("User-Agent")) };
+            _live[liveId] = live;
 
             // Ab jetzt wird der Client beobachtet: schließt er die Verbindung (Abbruch im Chat), wird der Server abgebrochen.
             // Die Anfrage ist komplett gelesen, jedes weitere Byte ist unerwartet und wird verworfen.
@@ -428,6 +459,7 @@ public class RequestProxy : IDisposable
             int q = req.Target.IndexOf('?');
             string pathOnly = q >= 0 ? req.Target[..q] : req.Target;
             route = await RouteAsync(req.Method, req.Target, req.Headers, req.Body, conn.Token);
+            live.Route = route;
             if (route.LocalBody is { } localBody)   // der Router beantwortet diese Anfrage selbst (z. B. /v1/models oder kein Ziel)
             {
                 status = route.LocalStatus;
@@ -440,6 +472,7 @@ public class RequestProxy : IDisposable
             if (route.LocalStream is { } localStream)
             {
                 track = req.Method == "POST" && IsGenerationPath(pathOnly);
+                live.Track = track;
                 stream = true;
                 tap.Stream = true;
                 try { status = await localStream(net, tap, conn.Token); }
@@ -448,6 +481,7 @@ public class RequestProxy : IDisposable
                 return;
             }
             track = req.Method == "POST" && IsGenerationPath(pathOnly);
+            live.Track = track;
             // Failover: scheitert eine Generierungs-Anfrage, bevor ein Byte an den Client ging (keine Verbindung, 503, Kontext
             // zu klein), darf der Router ein anderes Ziel nennen. Der Anfragetext liegt im Speicher, ein zweiter Versuch ist sicher.
             var attempts = new ProxyAttempts();
@@ -459,6 +493,7 @@ public class RequestProxy : IDisposable
                 tap.Stream = stream;
                 upMsg?.Dispose();
                 upMsg = BuildUpstreamRequest(req, route, body);
+                live.Route = route;   // nach einem Failover das neue Ziel zeigen
 
                 HttpResponseMessage got;
                 try
@@ -575,6 +610,7 @@ public class RequestProxy : IDisposable
         catch (Exception) { aborted = true; }
         finally
         {
+            _live.TryRemove(liveId, out _);
             upMsg?.Dispose();
             Volatile.Write(ref done, 1);
             if (Volatile.Read(ref clientGone) != 0) aborted = true;

@@ -38,13 +38,14 @@ public sealed class SimHost : IDisposable
         Paths = new AppPaths(root);
         Settings = AppSettings.Load(Paths.SettingsFile);
         if (theme != null) Settings.Theme = theme;
-        World = new SimWorld(seed) { LogDir = Paths.LogsDir };
+        World = new SimWorld(seed) { LogDir = Paths.LogsDir, ModelDir = Path.Combine(root, "sim-models") };
         Platform = new SimPlatform(World);
         Http = new HttpClient(new SimHandler(World)) { Timeout = TimeSpan.FromSeconds(5) };
         foreach (var s in specs) World.Add(s);
         Engine = new MonitorEngine(Platform, Paths, Settings, Http, simulation: World,
             proxyFactory: port => new SimRouterProxy(port));
         Engine.BenchClient = () => new HttpClient(new SimHandler(World)) { Timeout = Timeout.InfiniteTimeSpan };
+        Engine.Proxies.SimulatedLive = () => World.LiveRequests(DateTime.Now);
         World.Observed += (key, rec) =>
         {
             if (Engine.Proxies.Proxy is SimRouterProxy p) p.Observe(rec);

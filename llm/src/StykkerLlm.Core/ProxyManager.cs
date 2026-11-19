@@ -102,6 +102,12 @@ public sealed class ProxyManager : IDisposable
     public bool IsRunningFor(string key) => Running && _servers().Any(s => s.Key == key);
     public RouterProxy? Get(string? key = null) => Running ? _proxy : null;
     public IReadOnlyCollection<RequestProxy> All => _proxy != null ? new RequestProxy[] { _proxy } : Array.Empty<RequestProxy>();
+    // Laufende Anfragen aller laufenden Proxys (Live-Anzeige je Model-Server)
+    public IReadOnlyList<ProxyLiveRequest> Live() =>
+        All.Where(p => p.Running).SelectMany(p => p.Live()).Concat(SimulatedLive?.Invoke() ?? Array.Empty<ProxyLiveRequest>()).ToList();
+    // Nur der Simulator: laufende Anfragen aus den simulierten Slots (dort fließt nichts durch einen echten Proxy)
+    public Func<IReadOnlyList<ProxyLiveRequest>>? SimulatedLive { get; set; }
+    public IReadOnlyList<ProxyLiveRequest> LiveFor(string serverKey) => Live().Where(r => string.Equals(r.ServerKey, serverKey, StringComparison.Ordinal)).ToList();
 
     // Anzeigename eines Ziels (Server bzw. „Rechner · Modell"), für die Aufnahmen entfernt bedienter Anfragen
     public string DisplayName(string key) => _names.TryGetValue(key, out var n) ? n : key;

@@ -20,6 +20,10 @@
             <span class="chipi readc" title="@Strings.CardReadingTip(rd)"><b>@Strings.CardReading(rd)</b></span>
         }
         <span class="mc port" title="@Strings.CardPort(m.Port)"><Icon Name="port" /><b>@m.Port</b></span>
+        @if (m.Moe is { } moe)
+        {
+            <a class="chipi moec" href="@($"serverdetail/{Uri.EscapeDataString(m.Key)}")" title="@Strings.AnatChipTip(moe.Used, moe.Count, moe.Active)"><Icon Name="layers" />@Strings.AnatChip(moe.Used, moe.Count)</a>
+        }
         @if (m.IsLocal)
         {
             <span class="chipi local" title="@Strings.CardLocalTip"><Icon Name="host" />@Strings.CardLocal</span>

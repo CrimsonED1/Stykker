@@ -343,6 +343,12 @@ public sealed class WindowsPlatform : IPlatform
             return _disposed ? null : _disks.ReadProcesses(count);
     }
 
+    // Harte Seitenfehler aus der Prozessliste des Systems (ohne Administratorrechte, ProcessPaging)
+    public long? ReadHardFaults(int pid) => ProcessPaging.HardFaults(pid);
+
+    // Anteil der eingeblendeten Datei (GGUF über mmap) im Working Set; braucht PROCESS_QUERY_INFORMATION (gleicher Benutzer)
+    public MappedFileResidency? ReadMappedResidency(int pid, string filePath) => ProcessPaging.MappedResidency(pid, filePath);
+
     public byte[]? ProtectForCurrentUser(byte[] data) => Dpapi.Protect(data);
     public byte[]? UnprotectForCurrentUser(byte[] data) => Dpapi.Unprotect(data);
 

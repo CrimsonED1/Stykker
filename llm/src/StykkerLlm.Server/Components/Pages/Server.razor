@@ -4,8 +4,11 @@
 @inject WebActions Web
 @inject WebPrompt Prompt
 @inject NavigationManager Nav
+@inject IJSRuntime JS
 
-@* Details wie im Fenster-Fenster (Bereich 4 in docs/ui.md): Kommandozeile, Parameter, /props, Clients *@
+@* Detailseite eines Servers (Bereich 4 in docs/ui.md): oben Kopf mit Kenndaten und Aktionen, dann die Kennzahlen (t/s mit
+   Verlauf, Prompt, erzeugt, Speicher, Leerlauf), dann die Ansicht „Model“, darunter die Optionen der Kommandozeile und
+   Prozess/Modell. Die Slot-Tabelle nur, wenn die Ansicht „Model“ fehlt (sie zeigt die Slots selbst). *@
 
 @{ var key0 = Uri.UnescapeDataString(key ?? ""); var s = Host.Engine.Registry.Servers.FirstOrDefault(x => x.Key == key0); }
 
@@ -18,112 +21,146 @@
 }
 else
 {
-    <div class="row" style="margin-bottom:12px">
-        <span style="color:@(s.Online ? "var(--good)" : "var(--warn)")">●</span>
-        <b style="font-size:17px">@s.Name</b>
-        <span class="muted small">@s.Url</span>
-        <span style="margin-left:auto"></span>
-        <button disabled="@Host.ReadOnly" @onclick="() => Record()">@Strings.BtnRecord</button>
-        <button disabled="@Host.ReadOnly" @onclick="() => Save()">@Strings.BtnSave</button>
-        @if (!s.Info.Manual)
-        {
-            <button class="bad" disabled="@Host.ReadOnly" @onclick="() => Stop()">@Strings.Stop</button>
-        }
-        <button @onclick="Back">@Strings.Close</button>
+    var m = ServerCardModel.From(s, Host.Engine.Recorder.Sessions.FirstOrDefault(r => r.Target == s.Key), null,
+        Host.Engine.Library.FindProfile(s.Info), Host.Engine.RecentProxy());
+    var lat = m.Latency;
+    var args = LlamaServerArgs.Parse(s.Info.Args, s.Info.Env);
+    bool modelView = s.Kind == BackendKind.LlamaCpp && File.Exists(s.Info.ModelPath ?? "");
+    string state = m.State;
+    <section class="card dt-hero" data-s="@state" aria-label="@Strings.DetAria">
+        <div class="dt-top">
+            <span class="dt-be" title="@m.Backend"><Icon Name="@m.BackendIcon" /></span>
+            <div class="dt-id">
+                <h1>@m.Title</h1>
+                <span class="muted small">@m.Subtitle</span>
+            </div>
+            <div class="dt-act">
+                <button disabled="@Host.ReadOnly" @onclick="() => Record()"><Icon Name="rec" Class="sm" /> @Strings.DetRecord</button>
+                <button disabled="@Host.ReadOnly" @onclick="() => Save()"><Icon Name="save" Class="sm" /> @Strings.DetSave</button>
+                @if (!s.Info.Manual)
+                {
+                    <button class="bad" disabled="@Host.ReadOnly" @onclick="() => Stop()"><Icon Name="stop" Class="sm" /> @Strings.Stop</button>
+                }
+                <button @onclick="Back"><Icon Name="x" Class="sm" /> @Strings.Close</button>
+            </div>
+        </div>
+        <div class="dt-chips small">
+            <span class="dt-chip dt-st @(s.Online ? "on" : "off")"><i></i>@(s.Online ? Strings.DetOnline : Strings.DetOffline)</span>
+            <span class="dt-chip"><Icon Name="host" Class="sm" />@m.Url</span>
+            @if (m.Port > 0) { <span class="dt-chip"><Icon Name="port" Class="sm" />@Strings.DetPort(m.Port)</span> }
+            @if (m.CtxPerSlot is int ctx) { <span class="dt-chip"><Icon Name="ctx" Class="sm" />@Strings.DetCtx(ctx)</span> }
+            @if (s.Slots.Count > 0) { <span class="dt-chip"><Icon Name="slots" Class="sm" />@Strings.DetSlots(m.SlotsBusy, s.Slots.Count)</span> }
+            @if (s.Info.Pid is int pid) { <span class="dt-chip"><Icon Name="cpu" Class="sm" />@Strings.DetPid(pid)</span> }
+            @if (m.Clients.Length > 0) { <span class="dt-chip"><Icon Name="users" Class="sm" />@string.Join(", ", m.Clients)</span> }
+        </div>
+    </section>
+
+    <div class="dt-kpis">
+        <div class="dt-kpi dt-tps" data-s="@state">
+            @if (m.History.Length > 1)
+            {
+                <svg class="spark" viewBox="0 0 300 70" preserveAspectRatio="none" aria-hidden="true"><polygon class="area" points="@m.SparkArea()" /><polyline class="line" fill="none" points="@m.SparkPoints()" /></svg>
+            }
+            <span class="dt-kl">@Strings.DetNowTps</span>
+            <span class="dt-kv">@(m.Current > 0 ? m.Current.ToString("0.0", CultureInfo.InvariantCulture) : "–")<small>t/s</small></span>
+            <span class="dt-ks">@Strings.DetPeakAvg(m.Peak, m.Avg)</span>
+        </div>
+        <div class="dt-kpi" title="@Strings.ReqPromptTip">
+            <span class="dt-kl">@Strings.DetPrompt</span>
+            <span class="dt-kv">@(lat?.PromptTps is double pps ? pps.ToString("0", CultureInfo.InvariantCulture) : "–")<small>t/s</small></span>
+            <span class="dt-ks" title="@(lat is { } l1 ? (l1.TtftMeasured ? Strings.CardTtft(l1.Samples) : Strings.CardTtftEstimated(l1.Samples)) : "")">@(lat?.TtftSec is double tt ? Strings.DetTtft(ServerLatency.Seconds(tt), lat.TtftMeasured) : "–")</span>
+        </div>
+        <div class="dt-kpi">
+            <span class="dt-kl">@Strings.DetGenerated</span>
+            <span class="dt-kv">@m.GeneratedTotal.ToString("N0", CultureInfo.InvariantCulture)</span>
+            <span class="dt-ks">@Strings.DetTokensSince</span>
+        </div>
+        <div class="dt-kpi">
+            <span class="dt-kl">@Strings.DetMemory</span>
+            <span class="dt-kv">@(m.VramGb is double vg ? vg.ToString("0.0", CultureInfo.InvariantCulture) : "–")<small>GB VRAM</small></span>
+            <span class="dt-ks">@Strings.DetRam(Gb(m.RamGb))</span>
+        </div>
+        <div class="dt-kpi" title="@(m.Idle?.Tip ?? "")">
+            <span class="dt-kl">@Strings.DetIdleTile</span>
+            <span class="dt-kv dt-kt">@(m.Idle?.Text ?? Strings.DetIdleNow)</span>
+        </div>
     </div>
 
-    <div class="grid2">
+    @* Was das Modell ist und gerade tut: Experten, Schichten auf GPU/CPU, Speicher, Slots, Anfragen im Proxy (ModelView) *@
+    <ModelView S="s" />
+
+    <div class="grid2 dt-grid">
         <div>
-            <div class="card">
-                <h2>@Strings.SecCommand</h2>
-                <div class="answer">@(s.Info.CommandLine ?? "")</div>
-                <table>
-                    <tr><th>@Strings.ColOption</th><th>@Strings.ColValue</th></tr>
-                    @foreach (var e in LlamaServerArgs.Parse(s.Info.Args, s.Info.Env).Entries)
+            <section class="card">
+                <h2>@Strings.DetOptions</h2>
+                @if (args.Entries.Count == 0 && s.Info.Env.Count == 0) { <p class="muted small">@Strings.DetNoOptions</p> }
+                <div class="dt-opts">
+                    @foreach (var e in args.Entries)
                     {
-                        <tr><td>@(e.Name.Length > 0 ? e.Name : "(argument)")</td><td class="muted">@e.Value</td></tr>
+                        <div class="dt-opt"><code>@(e.Name.Length > 0 ? e.Name : "(argument)")</code><span title="@e.Value">@Short(e.Value)</span></div>
                     }
                     @foreach (var kv in s.Info.Env)
                     {
-                        <tr><td>env @kv.Key</td><td class="muted">@kv.Value</td></tr>
+                        <div class="dt-opt env"><code>@kv.Key</code><span title="@kv.Value">@Short(kv.Value)</span></div>
                     }
-                </table>
-                @if (s.Info.HasSecrets)
-                {
-                    <p class="muted small">@Strings.SecretsHidden</p>
-                }
-            </div>
-
-            @if (s.Props is { } p)
-            {
-                <div class="card">
-                    <h2>/props</h2>
-                    <table>
-                        <tr><th>@Strings.ColProperty</th><th>@Strings.ColValue</th></tr>
-                        <tr><td>build</td><td class="muted">@p.BuildInfo</td></tr>
-                        <tr><td>model</td><td class="muted">@p.ModelPath</td></tr>
-                        <tr><td>alias</td><td class="muted">@p.ModelAlias</td></tr>
-                        <tr><td>slots</td><td class="muted">@p.TotalSlots</td></tr>
-                        <tr><td>@Strings.ColContext</td><td class="muted">@p.NCtx.ToString("N0", CultureInfo.InvariantCulture)</td></tr>
-                        <tr><td>quant</td><td class="muted">@p.ModelFtype</td></tr>
-                        <tr><td>role</td><td class="muted">@p.Role</td></tr>
-                    </table>
                 </div>
+                @if (s.Info.HasSecrets) { <p class="muted small">@Strings.SecretsHidden</p> }
+                @if (!string.IsNullOrEmpty(s.Info.CommandLine))
+                {
+                    <details class="dt-cmd">
+                        <summary>@Strings.DetFullCommand</summary>
+                        <div class="answer">@s.Info.CommandLine</div>
+                        <button class="dt-copy" @onclick="() => Copy(s.Info.CommandLine!)"><Icon Name="@(_copied ? "check" : "file")" Class="sm" /> @(_copied ? Strings.DetCopied : Strings.DetCopy)</button>
+                    </details>
+                }
+            </section>
+
+            @if (!modelView)
+            {
+                <section class="card">
+                    <h2>@Strings.SlotsTitle</h2>
+                    @if (s.Slots.Count == 0) { <span class="muted small">@Strings.SlotNoSlots</span> }
+                    <table>
+                        <tr><th>@Strings.ColSlot</th><th>@Strings.ColStatus</th><th class="num">@Strings.ColTps</th><th class="num">@Strings.ColGenerated</th></tr>
+                        @foreach (var v in s.Slots)
+                        {
+                            <tr>
+                                <td>@v.Id</td>
+                                <td><span class="pill @(!v.Busy ? "wait" : v.ReadingPrompt ? "half" : "ok")">@(!v.Busy ? Strings.SlotIdle : v.ReadingPrompt ? Strings.SlotReading : Strings.SlotWriting)</span></td>
+                                <td class="num">@(v.Tps > 0 ? v.Tps.ToString("0.0", CultureInfo.InvariantCulture) : "–")</td>
+                                <td class="num">@v.Generated.ToString("N0", CultureInfo.InvariantCulture)</td>
+                            </tr>
+                        }
+                    </table>
+                </section>
             }
         </div>
 
         <div>
-            <div class="card">
-                <h2>@Strings.SlotsTitle</h2>
-                @if (s.Slots.Count == 0) { <span class="muted small">@Strings.SlotNoSlots</span> }
-                <table>
-                    <tr><th>@Strings.ColSlot</th><th>@Strings.ColStatus</th><th class="num">@Strings.ColTps</th><th class="num">@Strings.ColGenerated</th></tr>
-                    @foreach (var v in s.Slots)
+            <section class="card">
+                <h2>@Strings.DetServer</h2>
+                <dl class="dt-kv-list small">
+                    <dt>@Strings.ColWorkingDir</dt><dd class="dt-path" title="@s.Info.WorkingDir">@(s.Info.WorkingDir ?? "–")</dd>
+                    <dt>@Strings.ColLogFile</dt><dd class="dt-path" title="@s.Info.LogFile">@(s.Info.LogFile ?? "–")</dd>
+                    @if (s.Props is { } p)
                     {
-                        <tr>
-                            <td>@v.Id</td>
-                            <td><span class="pill @(!v.Busy ? "wait" : v.ReadingPrompt ? "half" : "ok")">@(!v.Busy ? Strings.SlotIdle : v.ReadingPrompt ? Strings.SlotReading : Strings.SlotWriting)</span></td>
-                            <td class="num">@(v.Tps > 0 ? v.Tps.ToString("0.0", CultureInfo.InvariantCulture) : "–")</td>
-                            <td class="num">@v.Generated.ToString("N0", CultureInfo.InvariantCulture)</td>
-                        </tr>
+                        <dt>model</dt><dd class="dt-path" title="@p.ModelPath">@p.ModelPath</dd>
+                        @if (!string.IsNullOrEmpty(p.ModelAlias)) { <dt>alias</dt><dd>@p.ModelAlias</dd> }
+                        <dt>build</dt><dd>@p.BuildInfo</dd>
+                        <dt>quant</dt><dd>@p.ModelFtype</dd>
+                        <dt>@Strings.ColContext</dt><dd>@p.NCtx.ToString("N0", CultureInfo.InvariantCulture)</dd>
+                        <dt>slots</dt><dd>@p.TotalSlots</dd>
+                        @if (!string.IsNullOrEmpty(p.Role)) { <dt>role</dt><dd>@p.Role</dd> }
                     }
-                </table>
-                <div class="muted small" style="margin-top:8px">@Strings.Stats(s.Peak, s.AverageActive(), s.GeneratedTotal, s.Slots.Count(v => v.Busy), s.Slots.Count)</div>
-            </div>
-
-            <div class="card">
-                <h2>@Strings.ColProcess</h2>
-                <table>
-                    <tr><th>@Strings.ColProperty</th><th>@Strings.ColValue</th></tr>
-                    <tr><td>PID</td><td class="muted">@(s.Info.Pid?.ToString(CultureInfo.InvariantCulture) ?? "–")</td></tr>
-                    <tr><td>@Strings.ColWorkingDir</td><td class="muted">@(s.Info.WorkingDir ?? "–")</td></tr>
-                    <tr><td>@Strings.ColLogFile</td><td class="muted">@(s.Info.LogFile ?? "–")</td></tr>
-                    <tr><td>@Strings.Clients</td><td class="muted">@(s.Clients.Length == 0 ? Strings.None : string.Join(", ", s.Clients))</td></tr>
-                    <tr><td>@Strings.GpuVram</td><td class="muted">@Gb(s.VramGb)</td></tr>
-                    <tr><td>@Strings.Ram</td><td class="muted">@Gb(s.RamGb)</td></tr>
-                </table>
-            </div>
-
-            @* Antwortbeginn und Leerlauf (B1, B4): dieselben Werte wie auf der Karte, hier mit Erklärung *@
-            @{ var lat = ServerLatency.Of(s.Finished, Host.Engine.RecentProxy(), s.Key); var idle = IdleUnload.Idle(Host.Engine.Library.FindProfile(s.Info), s, DateTime.Now); }
-            <div class="card">
-                <h2>@Strings.SecLatency</h2>
-                <table>
-                    <tr><th>@Strings.ColProperty</th><th>@Strings.ColValue</th></tr>
-                    <tr title="@Strings.ReqPromptTip"><td>@Strings.MxPromptSpeed</td><td class="muted">@(lat.PromptTps is double pps ? pps.ToString("0", CultureInfo.InvariantCulture) + " t/s" : "–")</td></tr>
-                    <tr title="@(lat.TtftMeasured ? Strings.CardTtft(lat.Samples) : Strings.CardTtftEstimated(lat.Samples))">
-                        <td>@Strings.MxTtft</td>
-                        <td class="muted">@(lat.TtftSec is double tt ? (lat.TtftMeasured ? "" : "≈ ") + ServerLatency.Seconds(tt) + " s · " + (lat.TtftMeasured ? Strings.LatMeasured(lat.Samples) : Strings.LatEstimated(lat.Samples)) : "–")</td>
-                    </tr>
-                    <tr title="@(idle?.Tip ?? "")"><td>@Strings.LatIdle</td><td class="muted">@(idle?.Text ?? Strings.LatNotIdle)</td></tr>
-                </table>
-            </div>
+                </dl>
+            </section>
         </div>
     </div>
 }
 
 @code {
     private Timer? _t;
+    private bool _copied;
 
     protected override void OnInitialized() => _t = new Timer(_ => InvokeAsync(StateHasChanged), null, 1500, 1500);
     public void Dispose() => _t?.Dispose();
@@ -131,6 +168,20 @@ else
     [Parameter] public string? key { get; set; }
 
     private static string Gb(double? v) => v == null ? "–" : v.Value.ToString("0.0", CultureInfo.InvariantCulture) + " GB";
+
+    // Lange Pfade als Dateiname (der ganze Wert steht im Tooltip)
+    private static string Short(string? v)
+    {
+        if (string.IsNullOrEmpty(v)) return "";
+        if (v.Length > 32 && (v.Contains('\\') || v.Contains('/'))) return "…" + Path.DirectorySeparatorChar + Path.GetFileName(v.TrimEnd('\\', '/'));
+        return v;
+    }
+
+    private async Task Copy(string text)
+    {
+        try { await JS.InvokeVoidAsync("navigator.clipboard.writeText", text); _copied = true; }
+        catch (JSException) { }
+    }
 
     private ServerWatcher? Watcher => Host.Engine.Registry.Servers.FirstOrDefault(x => x.Key == Uri.UnescapeDataString(key ?? ""));
     private void Back() => Nav.NavigateTo("");

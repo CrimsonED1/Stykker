@@ -23,11 +23,20 @@ public sealed class SimServerSpec
     public bool Strata { get; set; }
     // Spekulatives Decoding: Größe des Entwurfsmodells in Token (0 = aus, dann zählt der Server nichts)
     public int DraftModel { get; set; }
+    // Aufbau für den GGUF-Kopf (SimGguf) und die Ansicht „Model“: Schichten, Parameter (Milliarden), Experten (0 = dicht),
+    // davon je Token aktiv, aktive Parameter; ExtraArgs hängt an die Kommandozeile (z. B. „--n-cpu-moe 8“)
+    public int Layers { get; set; } = 36;
+    public double ParamsB { get; set; } = 8.2;
+    public int Experts { get; set; }
+    public int ExpertsUsed { get; set; }
+    public double ActiveB { get; set; }
+    public string ExtraArgs { get; set; } = "";
 
     public SimServerSpec Clone(bool keepId = false) => new()
     {
         Id = keepId ? Id : Guid.NewGuid(), Kind = Kind, Name = Name, Model = Model, Context = Context, Slots = Slots, TpsMin = TpsMin, TpsMax = TpsMax,
         RequestsPerMinute = RequestsPerMinute, ThinkPercent = ThinkPercent, ToolCalls = ToolCalls, ModelGb = ModelGb, Strata = Strata, DraftModel = DraftModel,
+        Layers = Layers, ParamsB = ParamsB, Experts = Experts, ExpertsUsed = ExpertsUsed, ActiveB = ActiveB, ExtraArgs = ExtraArgs,
     };
 
     // Werte in sinnvolle Grenzen bringen (Eingabe aus Textfeldern)
@@ -53,16 +62,19 @@ public sealed class SimServerSpec
             Kind = BackendKind.LlamaCpp, Name = "qwen3-8b", Model = "qwen3-8b-q4_k_m", Context = 16384, Slots = 2, TpsMin = 55, TpsMax = 85,
             RequestsPerMinute = 22, ThinkPercent = 45, ToolCalls = true, ModelGb = 5.0,
         },
+        // Ein Mixture-of-Experts-Modell wie Qwen3-30B-A3B: 128 Experten je Schicht, 8 davon je Token; die Experten der
+        // ersten acht Schichten liegen auf dem Prozessor (--n-cpu-moe 8)
         new SimServerSpec
         {
-            Kind = BackendKind.LlamaCpp, Name = "gemma-3-12b", Model = "gemma-3-12b-it-q4_k_m", Context = 8192, Slots = 1, TpsMin = 28, TpsMax = 40,
-            RequestsPerMinute = 9, ThinkPercent = 0, ToolCalls = false, ModelGb = 7.3,
+            Kind = BackendKind.LlamaCpp, Name = "qwen3-30b-a3b", Model = "qwen3-30b-a3b-q4_k_m", Context = 8192, Slots = 1, TpsMin = 38, TpsMax = 62,
+            RequestsPerMinute = 9, ThinkPercent = 30, ToolCalls = true, ModelGb = 17.3,
+            Layers = 48, ParamsB = 30.5, Experts = 128, ExpertsUsed = 8, ActiveB = 3.3, ExtraArgs = "--n-cpu-moe 8",
         },
         new SimServerSpec { Kind = BackendKind.Ollama, Name = "Ollama", Model = "llama3.2:3b", Context = 4096, Slots = 1, ModelGb = 2.0 },
         new SimServerSpec
         {
             Kind = BackendKind.LmStudio, Name = "LM Studio", Model = "gemma-3-4b-it", Context = 8192, Slots = 2, TpsMin = 70, TpsMax = 110,
-            RequestsPerMinute = 6, ThinkPercent = 20, ToolCalls = true, ModelGb = 2.6,
+            RequestsPerMinute = 6, ThinkPercent = 20, ToolCalls = true, ModelGb = 2.6, Layers = 34, ParamsB = 3.9,
         },
     };
 }

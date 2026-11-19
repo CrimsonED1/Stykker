@@ -1,0 +1,204 @@
+@* Ansicht „Model“ auf der Detailseite eines Servers: woraus das Modell besteht und was es gerade tut.
+   Oben die Kennung und die Phase jetzt; dann bei MoE die Experten (k von n je Token, aktive Parameter); dann die Schichten
+   als Streifen – oben Attention und der Rest, unten die Experten, eingefärbt nach GPU/CPU; dann die Slots und die
+   Anfragen, die gerade durch den Proxy laufen (denkt, antwortet, Werkzeug).
+   Was hier steht, rechnet Core/ModelAnatomy.cs; llama.cpp meldet weder die Verteilung noch welche Experten rechnen.
+   Bewegung nur, solange das Modell schreibt; im Fenster (html.shell) und bei reduzierter Bewegung keine. *@
+@using Stykker.Shared.Disk
+@inject EngineHost Host
+
+@{
+    var g = Gguf.TryRead(S.Info.ModelPath);
+    var slots = S.Slots.Select(SlotActivity.Of).ToList();
+    string state = slots.Any(x => x.Phase == SlotPhase.Writing) || (slots.Count == 0 && S.Current > 0) ? "gen"
+        : slots.Any(x => x.Phase == SlotPhase.Reading) ? "read" : "idle";
+    var live = Host.Engine.Proxies.LiveFor(S.Key);
+}
+@if (g == null)
+{
+    @if (S.Kind == BackendKind.LlamaCpp)
+    {
+        <section class="card mdl" aria-label="@Strings.AnatAria"><h2>@Strings.AnatTitle</h2><p class="muted small">@Strings.AnatNoModel</p></section>
+    }
+}
+else
+{
+    var a = ModelAnatomyBuilder.Build(g, S.Info.Params, S.Buffers);
+    <section class="card mdl" data-s="@state" aria-label="@Strings.AnatAria">
+        <div class="mdl-hd">
+            <div class="mdl-id">
+                <h2>@Strings.AnatTitle</h2>
+                <span class="mdl-name">@(a.Name ?? S.Name)</span>
+                <span class="muted small">@a.Architecture · @a.Quantization · @Strings.AnatParams(ModelAnatomyBuilder.ParamText(a.Parameters))</span>
+            </div>
+            <div class="mdl-now" data-s="@state" role="status">
+                <Icon Name="@("s-" + state)" />
+                <b>@(state == "gen" ? Strings.AnatWriting : state == "read" ? Strings.AnatReading : Strings.AnatIdle)</b>
+                @if (state == "gen" && S.Current > 0) { <span class="mdl-tps">@S.Current.ToString("0.0", CultureInfo.InvariantCulture) <small>t/s</small></span> }
+                @if (state == "read" && slots.FirstOrDefault(x => x.Phase == SlotPhase.Reading) is { ReadFraction: > 0 } rs)
+                {
+                    <span class="mdl-tps">@((rs.ReadFraction * 100).ToString("0", CultureInfo.InvariantCulture))<small>%</small></span>
+                }
+            </div>
+        </div>
+
+        @if (a.IsMoe)
+        {
+            int n = a.ExpertCount!.Value, k = a.ExpertUsed!.Value;
+            int cols = ModelAnatomyBuilder.ExpertColumns(n);
+            var lit = ModelAnatomyBuilder.LitExperts(n, k);
+            double share = a.Parameters > 0 ? (double)a.ActiveParameters / a.Parameters : 0;
+            <div class="mdl-moe">
+                <div class="mdl-k">
+                    <div class="mdl-kn"><b>@k</b><span>/@n</span></div>
+                    <em>@Strings.AnatExpertsPerToken</em>
+                    @if (a.ExpertShared is > 0 and var sh) { <small class="muted">@Strings.AnatShared(sh)</small> }
+                </div>
+                <div class="mdl-ex">
+                    <div class="mdl-exh">@Strings.AnatExpertsTitle</div>
+                    <div class="mdl-grid" style="grid-template-columns:repeat(@cols,minmax(0,1fr))" role="img" aria-label="@Strings.AnatChipTip(k, n, ModelAnatomyBuilder.ParamText(a.ActiveParameters))">
+                        @for (int i = 0; i < n; i++)
+                        {
+                            <i class="@(lit[i] ? "on" : "")"></i>
+                        }
+                    </div>
+                    <div class="muted small">@Strings.AnatWhich</div>
+                </div>
+                @if (a.ExpertParameters > 0)
+                {
+                    <div class="mdl-act">
+                        <div class="mdl-acth">@Strings.AnatActive(ModelAnatomyBuilder.ParamText(a.ActiveParameters), share)</div>
+                        <span class="mdl-actbar"><i style="--f:@((int)Math.Round(share * 100))%"></i></span>
+                        <div class="muted small">@Strings.AnatParams(ModelAnatomyBuilder.ParamText(a.Parameters))</div>
+                    </div>
+                }
+            </div>
+        }
+        else
+        {
+            <p class="muted small mdl-dense">@Strings.AnatDense</p>
+        }
+
+        @if (a.Layers.Count > 0)
+        {
+            <div class="mdl-layers">
+                <div class="mdl-lh">
+                    <b>@Strings.AnatLayersTitle</b>
+                    <span class="muted small">@Strings.AnatLayers(a.Layers.Count, a.MoeLayers)@(a.PlacementKnown ? " · " + Strings.AnatGpuLayers(a.MainOnGpu, a.Layers.Count) : "")@(a.ExpertsOnCpu > 0 ? " · " + Strings.AnatExpertsCpu(a.ExpertsOnCpu) : "")</span>
+                </div>
+                <div class="mdl-strip @(a.IsMoe ? "moe" : "")" role="img" aria-label="@Strings.AnatLayers(a.Layers.Count, a.MoeLayers)">
+                    @foreach (var l in a.Layers)
+                    {
+                        <span class="ly" title="@Strings.AnatLayerTip(l.Index, Place(l.Main), l.Moe ? Place(l.Experts) : null)">
+                            <i class="m p-@Cls(l.Main)"></i>
+                            @if (a.IsMoe) { <i class="x p-@Cls(l.Experts) @(l.Moe ? "" : "none")"></i> }
+                        </span>
+                    }
+                    <span class="ly out" title="@Strings.AnatOutputTip(Place(a.Output))"><i class="m p-@Cls(a.Output)"></i></span>
+                </div>
+                <div class="mdl-axis muted"><span>0</span><span>@(a.Layers.Count - 1)</span><span>@Strings.AnatOutput</span></div>
+                <div class="mdl-legend small">
+                    <span class="lg p-gpu">@Strings.AnatGpu</span><span class="lg p-cpu">@Strings.AnatCpu</span>
+                    @if (!a.PlacementKnown) { <span class="lg p-unk">@Strings.AnatUnknown</span> }
+                    @if (a.IsMoe) { <span class="muted">@Strings.AnatLegendMain · @Strings.AnatLegendExperts</span> }
+                </div>
+                @foreach (var note in a.Notes) { <div class="muted small">@note</div> }
+            </div>
+        }
+
+        @{
+            var vol = ModelStorage.DriveOf(S.Info.ModelPath) is { } dl ? Host.Engine.Disks?.Volumes.FirstOrDefault(v => string.Equals(v.Letter, dl, StringComparison.OrdinalIgnoreCase)) : null;
+            var st = ModelStorage.Of(S.Info.Params, S.Buffers, S.Info.ModelPath, S.ModelFileGb, vol?.Kind, S.Paging, DateTime.Now, S.Current);
+            var (verdictText, verdictCls) = st.Verdict switch
+            {
+                StorageVerdict.Paging => (Strings.StorPaging, "warn"),
+                StorageVerdict.InMemory => (Strings.StorInMemory, "ok"),
+                StorageVerdict.Locked => (Strings.StorLocked, "ok"),
+                StorageVerdict.ReadOnce => (Strings.StorReadOnce, "ok"),
+                _ => (Strings.StorUnknown, ""),
+            };
+        }
+        <div class="mdl-stor" data-v="@verdictCls">
+            <div class="mdl-lh">
+                <b>@Strings.StorTitle</b>
+                <span class="mdl-verdict @verdictCls"><Icon Name="@(st.Verdict == StorageVerdict.Paging ? "down" : "check")" Class="sm" /> @verdictText</span>
+            </div>
+            <div class="mdl-stor-grid small">
+              <div class="mdl-stor-col">
+                <div>@Strings.StorLoading(Strings.StorMode(st.Mode))@(st.AutoMode ? Strings.StorAutoSuffix : "")</div>
+                @if (st.FileBytes > 0) { <div>@Strings.StorFile(DiskFormat.Size(st.FileBytes), st.Drive, vol != null ? DiskKinds.Label(vol.Kind) : null)</div> }
+                <div class="@(st.Buffers.Count == 0 ? "muted" : "")">@(st.Buffers.Count == 0 ? Strings.StorNoBuffers : Strings.StorBuffers(st.DeviceGb, st.HostGb, st.MappedGb))</div>
+              </div>
+              <div class="mdl-stor-col">
+                @if (ModelLoad.CanPage(st.Mode))
+                {
+                    @if (st.MappedInRam is double inRam)
+                    {
+                        <div class="mdl-inram" title="@Strings.StorInRamTitle">
+                            <span class="mdl-sbar"><i style="--f:@((int)Math.Round(inRam * 100))%"></i></span>
+                            <span>@Strings.StorInRam(inRam)</span>
+                        </div>
+                    }
+                    @if (st.HardFaultsPerSec is double hf)
+                    {
+                        <div class="@(st.PagingNow ? "mdl-pg" : "muted")">
+                            @(st.PagingNow ? Strings.StorNow(hf, st.ReadBytesPerSec > 0 ? DiskFormat.Rate(st.ReadBytesPerSec) : null, st.Drive) : Strings.StorNoPaging)
+                            @if (st.BytesPerToken is double bpt) { <span> · @Strings.StorPerToken(DiskFormat.Size(bpt))</span> }
+                        </div>
+                    }
+                    @if (st.ReadBytes > 0)
+                    {
+                        <div>@Strings.StorRead(DiskFormat.Size(st.ReadBytes), st.Drive, st.ReadTimes)</div>
+                    }
+                }
+              </div>
+            </div>
+            @if (st.Verdict == StorageVerdict.Paging) { <div class="muted small">@Strings.StorHint</div> }
+            @if (st.ReadBytes > 0) { <div class="muted small">@Strings.StorEstimate</div> }
+        </div>
+
+        <div class="mdl-slots">
+            <div class="mdl-lh"><b>@Strings.AnatNowTitle</b></div>
+            @if (slots.Count == 0) { <span class="muted small">@Strings.AnatNoSlots</span> }
+            @foreach (var sl in slots)
+            {
+                string ph = sl.Phase == SlotPhase.Writing ? "gen" : sl.Phase == SlotPhase.Reading ? "read" : "idle";
+                <div class="mdl-slot" data-s="@ph" title="@Strings.AnatCtx(sl.CtxUsed, sl.CtxMax)">
+                    <span class="mdl-sid">@Strings.AnatSlot(sl.Id)</span>
+                    <span class="mdl-ph"><Icon Name="@("s-" + ph)" Class="sm" /> @(ph == "gen" ? Strings.AnatWriting : ph == "read" ? Strings.AnatReading : Strings.AnatIdle)</span>
+                    <span class="mdl-sbar"><i style="--f:@((int)Math.Round(100 * sl.BarFraction))%"></i></span>
+                    <span class="mdl-stxt small">
+                        @if (ph == "read") { @Strings.AnatRead(sl.PromptDone, Math.Max(0, sl.PromptCached)) }
+                        else if (ph == "gen") { @(sl.Tps.ToString("0.0", CultureInfo.InvariantCulture) + " t/s · " + Strings.AnatWritten(sl.Generated, sl.MaxTokens)) }
+                        else { @Strings.AnatCtx(sl.CtxUsed, sl.CtxMax) }
+                    </span>
+                </div>
+            }
+            @if (live.Count > 0)
+            {
+                <div class="mdl-lh mdl-live-h"><b>@Strings.AnatLiveTitle</b></div>
+                @foreach (var r in live)
+                {
+                    var (icon, text) = r.Phase switch
+                    {
+                        ProxyLivePhase.Thinking => ("x-think", Strings.AnatThinking),
+                        ProxyLivePhase.Answering => ("chat", Strings.AnatAnswering),
+                        ProxyLivePhase.Tool => ("x-tool", r.Tool is { Length: > 0 } tn ? Strings.AnatTool(tn) : Strings.AnatToolAny),
+                        _ => ("timer", Strings.AnatWaiting),
+                    };
+                    <div class="mdl-live" data-p="@r.Phase.ToString().ToLowerInvariant()">
+                        <Icon Name="@icon" Class="sm" /><b>@text</b>
+                        <span class="muted small">@Strings.AnatFor((DateTime.Now - r.PhaseSince).TotalSeconds)@(r.Client.Length > 0 ? " · " + r.Client : "")</span>
+                    </div>
+                }
+            }
+        </div>
+    </section>
+}
+
+@code {
+    [Parameter, EditorRequired] public ServerWatcher S { get; set; } = null!;
+
+    private static string Cls(LayerPlace p) => p switch { LayerPlace.Gpu => "gpu", LayerPlace.Cpu => "cpu", _ => "unk" };
+    private static string Place(LayerPlace p) => p switch { LayerPlace.Gpu => Strings.AnatGpu, LayerPlace.Cpu => Strings.AnatCpu, _ => Strings.AnatUnknown };
+}

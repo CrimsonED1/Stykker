@@ -7,6 +7,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## Unreleased
 
 ### Added
+- **Model view** on the details page of a llama.cpp server: what the model is and what it is doing now. Mixture of
+  experts: how many experts a layer has and how many work per token (e.g. 8 of 128), the active parameters per token
+  (≈ 3.3 B of 30.5 B), and a grid that lights that share. The layers as a strip, upper half attention, lower half
+  experts, coloured by where they sit (GPU or CPU) as `-ngl`, `--cpu-moe`, `--n-cpu-moe` and `-ot` place them. Per slot
+  whether it reads the prompt or writes, and for requests through the Stykker-Proxy whether the model is thinking,
+  answering or calling a tool (with its name). Which experts the router picks is not reported by llama.cpp, so the view
+  shows only the share. The monitor card of a MoE model gets a chip *8/128* that opens the view.
+- **Model view → Storage:** how the server gets its model from the disk. From llama.cpp: the load mode (`-lm` /
+  `--load-mode`, or the older `--no-mmap` and `--mlock`) and, from the load log, how much sits on the GPU, in RAM and
+  stays in the memory-mapped file. Measured on Windows without administrator rights: how much of the mapped part is in
+  RAM, the hard page faults of the server process, and while it pages, the reads from the model's drive – live, per
+  token and in total (≈ how many times the model was read). llama.cpp itself reports none of this at runtime; the
+  amounts read are estimates, because another program reading from the same drive counts too. Reading does not wear
+  an SSD; paging costs speed.
+- **Details page redesigned:** a header with the backend, status and key facts as chips (address, port, context per
+  slot, slots, PID, clients) and the actions with symbols; a row of figures (t/s now with its history, prompt speed and
+  first token, tokens generated, VRAM and RAM, idle); the options of the command line as compact pairs with long paths
+  shortened to the file name, the full command line to open and copy; process, /props and model in one list. The slot
+  table stays only for servers without the model view. Checked against a real llama-server (b11854, CPU build):
+  repeated buffer lines of newer builds are summed (they appear with `-lv 4`), and a load log without a graphics device
+  shows every layer on the CPU.
 - **Hardware bar** at the top of every page except the monitor: VRAM, GPU, CPU, RAM, the fullest drive, disk I/O,
   network and GPU temperature in two rows of four. A full bar turns red; the temperature is
   green, yellow from 75 °C and red from 85 °C. A value the server does not measure shows `–`. The switch *Hardware bar*

@@ -11,6 +11,8 @@ public sealed class GgufInfo
     public int Version { get; init; }
     public long TensorCount { get; init; }
     public long ParameterCount { get; init; }
+    // Parameter der gerouteten Experten (MoE); 0 bei einem dichten Modell
+    public long ExpertParameterCount { get; init; }
     public string Architecture { get; init; } = "";
     public string? Name { get; init; }
     public string? SizeLabel { get; init; }
@@ -39,6 +41,13 @@ public sealed class GgufInfo
         }
     }
 
+    // Mixture of Experts: Experten je Schicht, davon je Token aktiv, geteilte Experten, führende dichte Schichten
+    public int? ExpertCount => (int?)Int($"{Architecture}.expert_count");
+    public int? ExpertUsedCount => (int?)Int($"{Architecture}.expert_used_count");
+    public int? ExpertSharedCount => (int?)Int($"{Architecture}.expert_shared_count");
+    public int? LeadingDenseBlockCount => (int?)Int($"{Architecture}.leading_dense_block_count");
+    public bool IsMoe => ExpertCount is > 1 && ExpertUsedCount is > 0;
+
     public long? Int(string key) => Meta.TryGetValue(key, out var v) ? v switch
     {
         long l => l,
@@ -60,6 +69,12 @@ public static class Gguf
     private static readonly ConcurrentDictionary<string, (long Size, long Mtime, GgufInfo Info)> Cache = new(StringComparer.OrdinalIgnoreCase);
 
     // Liest den Kopf (mit Cache nach Pfad, Größe und Änderungszeit). null, wenn die Datei fehlt oder kein lesbares GGUF ist.
+    // „blk.12.ffn_up_exps.weight“, „blk.3.ffn_gate_up_exps.weight“, „…_chexps…“: die gerouteten Experten einer Schicht
+    // (dasselbe Muster wie llama.cpp für --cpu-moe: \.ffn_(up|down|gate|gate_up)_(ch|)exps)
+    private static readonly System.Text.RegularExpressions.Regex ExpertTensor =
+        new(@"\.ffn_(up|down|gate|gate_up)_(ch|)exps", System.Text.RegularExpressions.RegexOptions.CultureInvariant | System.Text.RegularExpressions.RegexOptions.Compiled);
+    public static bool IsRoutedExpertTensor(string name) => ExpertTensor.IsMatch(name);
+
     public static GgufInfo? TryRead(string? path)
     {
         if (string.IsNullOrWhiteSpace(path)) return null;
@@ -98,12 +113,14 @@ public static class Gguf
             if (keep && val != null) meta[key] = val;
         }
 
-        // Tensor-Verzeichnis: Parameterzahl und häufigster Typ (nach Elementen)
-        long total = 0;
+        // Tensor-Verzeichnis: Parameterzahl, häufigster Typ (nach Elementen) und der Anteil der gerouteten Experten
+        // (Tensoren „…_exps“, „…_chexps“; die geteilten Experten „…_shexp“ arbeiten bei jedem Token und zählen nicht dazu)
+        long total = 0, experts = 0;
         var perType = new Dictionary<uint, long>();
         for (ulong i = 0; i < tensorCount; i++)
         {
-            r.SkipString();
+            string name = r.String(256, skipIfLonger: true) ?? "";
+            bool expert = IsRoutedExpertTensor(name);
             uint nd = r.U32();
             if (nd > 8) throw new GgufException("bad tensor rank");
             long elems = 1;
@@ -111,6 +128,7 @@ public static class Gguf
             uint tt = r.U32();
             r.U64();   // Offset
             total += elems;
+            if (expert) experts += elems;
             perType[tt] = perType.GetValueOrDefault(tt) + elems;
         }
 
@@ -121,6 +139,7 @@ public static class Gguf
         return new GgufInfo
         {
             Path = path, FileSize = fileSize, Version = (int)version, TensorCount = (long)tensorCount, ParameterCount = total,
+            ExpertParameterCount = experts,
             Architecture = arch,
             Name = meta.TryGetValue("general.name", out var n) ? n as string : null,
             SizeLabel = meta.TryGetValue("general.size_label", out var sl) ? sl as string : null,

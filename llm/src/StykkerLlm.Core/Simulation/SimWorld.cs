@@ -41,6 +41,7 @@ public sealed class SimWorld
         public string ApiKey { get; internal set; } = "";
         public long StartTicks { get; internal set; }
         public string? LogPath { get; internal set; }
+        public string? ModelPath { get; internal set; }   // GGUF-Kopf im ModelDir (SimGguf), sonst null
         public bool Loaded { get; internal set; } = true;   // Ollama: Modell im Speicher
         public Slot[] Slots { get; internal set; } = Array.Empty<Slot>();
         public int Queue { get; internal set; }
@@ -101,6 +102,8 @@ public sealed class SimWorld
     public double GpuTotalGb { get; set; } = 24;
     // Ordner für die synthetischen Server-Logs (null = keine Logdateien)
     public string? LogDir { get; set; }
+    // Ordner für die GGUF-Köpfe der simulierten Modelle (SimGguf; null = keine Dateien, die Kommandozeile nennt C:\models)
+    public string? ModelDir { get; set; }
     // Ein Server wurde hinzugefügt oder entfernt
     public event Action? Changed;
     // Eine Anfrage ist zu Ende: so hätte sie der Aufnahme-Proxy gesehen (Serverschlüssel, Beobachtung). Der Host reicht sie nur an einen laufenden Proxy weiter.
@@ -112,6 +115,40 @@ public sealed class SimWorld
     public SimWorld(int? seed = null) => _rng = seed is int s ? new Random(s) : new Random();
 
     public IReadOnlyList<Server> Servers { get { lock (Gate) return _servers.ToList(); } }
+
+    // Was die laufenden Anfragen gerade tun, wie es der Proxy sähe (Ansicht „Model“): erst warten (Prompt), dann denken
+    // (die ersten ReasoningTokens), dann antworten; mit Werkzeugen am Ende ein Werkzeugaufruf
+    public IReadOnlyList<ProxyLiveRequest> LiveRequests(DateTime now)
+    {
+        var list = new List<ProxyLiveRequest>();
+        lock (Gate)
+        {
+            foreach (var s in _servers)
+            {
+                if (s.Spec.Kind == BackendKind.Ollama) continue;
+                foreach (var sl in s.Slots)
+                {
+                    if (!sl.Busy) continue;
+                    ProxyLivePhase phase;
+                    DateTime since;
+                    string? tool = null;
+                    double tps = Math.Max(1, sl.Tps);
+                    if (sl.Prompting) { phase = ProxyLivePhase.Waiting; since = sl.Start; }
+                    else if (sl.Gen < sl.ReasoningTokens) { phase = ProxyLivePhase.Thinking; since = sl.GenStart; }
+                    else if (sl.Tools.Length > 0 && sl.Gen > sl.GenTarget * 0.8)
+                    {
+                        phase = ProxyLivePhase.Tool; tool = sl.Tools[0];
+                        since = sl.GenStart.AddSeconds(sl.GenTarget * 0.8 / tps);
+                    }
+                    else { phase = ProxyLivePhase.Answering; since = sl.GenStart.AddSeconds(sl.ReasoningTokens / tps); }
+                    if (since > now) since = now;
+                    list.Add(new ProxyLiveRequest(s.Key, sl.Agent, phase, tool, sl.Start, since, sl.ReasoningTokens, (int)Math.Max(0, sl.Gen - sl.ReasoningTokens),
+                        tool != null ? 1 : 0));
+                }
+            }
+        }
+        return list;
+    }
 
     // ── Zustand ──
 
@@ -144,13 +181,18 @@ public sealed class SimWorld
                 s.ApiKey = "sim-" + Guid.NewGuid().ToString("N")[..16];
             }
             s.Slots = spec.Kind == BackendKind.Ollama ? Array.Empty<Slot>() : Enumerable.Range(0, spec.Slots).Select(i => new Slot { Id = i }).ToArray();
+            if (ModelDir != null && spec.Kind is BackendKind.LlamaCpp or BackendKind.LmStudio && !spec.Strata)
+            {
+                try { s.ModelPath = SimGguf.Ensure(ModelDir, spec); }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { s.ModelPath = null; }
+            }
             if (s.HasEngine && LogDir != null && !spec.Strata)
             {
                 try
                 {
                     Directory.CreateDirectory(LogDir);
                     s.LogPath = Path.Combine(LogDir, $"sim-{s.Port}.log");
-                    File.WriteAllText(s.LogPath, "kv_unified = 'false'\n");
+                    File.WriteAllText(s.LogPath, "kv_unified = 'false'\n" + SimGguf.LoadLog(spec));
                 }
                 catch { s.LogPath = null; }
             }
