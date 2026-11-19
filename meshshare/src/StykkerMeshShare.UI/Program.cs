@@ -84,8 +84,9 @@ internal static class Program
         {
             try
             {
+                // Nur unser Server zählt: ein anderes Programm auf dem Port bekäme sonst das Fenster.
                 using var response = await http.GetAsync($"http://127.0.0.1:{port}/api/ping").ConfigureAwait(false);
-                if (response.IsSuccessStatusCode) return true;
+                if (response.IsSuccessStatusCode && (await response.Content.ReadAsStringAsync().ConfigureAwait(false)).Contains("\"app\":\"StykkerMeshShare\"", StringComparison.Ordinal)) return true;
             }
             catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or OperationCanceledException) { }
             if (DateTime.Now >= end) return false;
@@ -102,14 +103,19 @@ internal static class Program
         var here = Path.Combine(AppContext.BaseDirectory, name);
         if (File.Exists(here)) return here;
 
-        for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir != null; dir = dir.Parent)
+        // Beim Entwickeln: nur innerhalb des Repos suchen (bis zum Ordner mit der .slnx), nie hinauf bis C:\.
+        int level = 0;
+        for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir != null && level < 8; dir = dir.Parent, level++)
         {
             var project = Path.Combine(dir.FullName, "StykkerMeshShare.Server");
-            if (!Directory.Exists(project)) continue;
-            var found = Directory.GetFiles(project, name, SearchOption.AllDirectories)
-                .OrderByDescending(File.GetLastWriteTimeUtc)
-                .FirstOrDefault();
-            if (found != null) return found;
+            if (Directory.Exists(project))
+            {
+                var found = Directory.GetFiles(project, name, SearchOption.AllDirectories)
+                    .OrderByDescending(File.GetLastWriteTimeUtc)
+                    .FirstOrDefault();
+                if (found != null) return found;
+            }
+            if (File.Exists(Path.Combine(dir.FullName, "StykkerMeshShare.slnx"))) break;   // Wurzel des Werkzeugs erreicht
         }
         return null;
     }

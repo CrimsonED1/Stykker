@@ -12,7 +12,7 @@ namespace StykkerMeshShare.Core;
 // Sicherheitsnetze: Wird eine Datei hier überschrieben oder gelöscht, landet die alte Fassung im Papierkorb
 // (DataDir/trash). Verschwinden auf einen Schlag (fast) alle Dateien, hält der Scan die Löschung an (HeldDeletes),
 // bis jemand sie bestätigt – zum Beispiel, wenn ein Laufwerk nicht eingehängt ist.
-public sealed partial class MeshNode
+public sealed partial class MeshNode : IDisposable
 {
     private const int ActivityLimit = 200;
     private static readonly JsonSerializerOptions Json = new() { WriteIndented = false };
@@ -28,6 +28,10 @@ public sealed partial class MeshNode
     private long _seq;
     private bool _allowMassDelete;
     private DateTime _lastTrashPurge = DateTime.MinValue;
+    private readonly object _scanSerial = new();          // nur ein Scan zur Zeit
+    private int _folderGen;
+    private int _holdTransfers;                            // > 0: keine Downloads (Ordnerwechsel läuft)                                // zählt Ordnerwechsel: ein Abruf von vorher setzt keinen Zeiger
+    private Totals _totals = new(0, 0);
 
     public string NodeId { get; }
     public string NodeName => _options.NodeName;
@@ -40,7 +44,8 @@ public sealed partial class MeshNode
     public int HeldDeletes { get; private set; }
     public bool PendingRescan { get; private set; }      // eine Datei war noch in Arbeit: der nächste Scan holt sie
 
-    public event Action? Changed;
+    // Jeder Eintrag der Aktivität, sobald er entsteht (für Meldungen im Tray). Läuft außerhalb der Sperren.
+    public event Action<Activity>? Recorded;
 
     public MeshNode(MeshOptions options)
     {
@@ -61,10 +66,13 @@ public sealed partial class MeshNode
     }
 
     private string StateFile => Path.Combine(_options.DataDir, "index.json");
-    private string TempDir => Path.Combine(_options.DataDir, "tmp");
     public string TrashDir => Path.Combine(_options.DataDir, "trash");
 
-    public long Seq { get { _gate.Wait(); try { return _seq; } finally { _gate.Release(); } } }
+    public long Seq => Interlocked.Read(ref _seq);
+
+    // Anzahl und Größe der Dateien; wird beim Speichern des Index neu gezählt (für die Statuszeile, ohne Sperre).
+    public sealed record Totals(int Files, long Bytes);
+    public Totals Summary => _totals;
 
     public IReadOnlyList<FileEntry> Files
     {
@@ -85,9 +93,7 @@ public sealed partial class MeshNode
 
     public void Scan()
     {
-        _gate.Wait();
-        try { ScanLocked(); }
-        finally { _gate.Release(); }
+        lock (_scanSerial) ScanCore();
         Notify();
     }
 
@@ -98,18 +104,25 @@ public sealed partial class MeshNode
         Scan();
     }
 
-    private void ScanLocked()
+    private sealed record SeenFile(string Relative, string Full, long Size, long MtimeTicks);
+
+    // In vier Schritten, damit die Sperre nie lange gehalten wird (sonst warten die anderen PCs, die Seite und der
+    // Abgleich, während eine große Datei gehasht wird):
+    //  1. Ordner lesen (ohne Sperre)  2. vergleichen, was neu ist (Sperre)  3. hashen (ohne Sperre)
+    //  4. übernehmen (Sperre) – aber nur, was sich in der Zwischenzeit weder im Index noch auf der Platte geändert hat.
+    private void ScanCore()
     {
-        if (!Directory.Exists(_folder))
+        var folder = _folder;
+        if (!Directory.Exists(folder))
         {
             FolderProblem = "The shared folder does not exist.";
             return;
         }
         FolderProblem = null;
-        PendingRescan = false;
-        bool changed = false;
+        bool pending = false;
         var now = DateTime.UtcNow;
         var seen = new HashSet<string>(PathRules.Comparer);
+        var found = new List<SeenFile>();
         var enumeration = new EnumerationOptions
         {
             RecurseSubdirectories = true,
@@ -117,67 +130,118 @@ public sealed partial class MeshNode
             // Verknüpfungen und Junctions: nicht folgen, sonst landet ein fremder Ordner im Mesh.
             AttributesToSkip = FileAttributes.ReparsePoint,
         };
-        foreach (var full in Directory.EnumerateFiles(_folder, "*", enumeration))
+        foreach (var full in Directory.EnumerateFiles(folder, "*", enumeration))
         {
-            var relative = PathRules.Normalize(PathRules.ToRelative(_folder, full));
+            var relative = PathRules.Normalize(PathRules.ToRelative(folder, full));
             if (relative == null || PathRules.IsIgnored(relative)) continue;
             seen.Add(relative);
             FileInfo info;
             try { info = new FileInfo(full); _ = info.Length; }
             catch (IOException) { continue; }
             var mtime = info.LastWriteTimeUtc;
-            if (now - mtime < _options.StableDelay) { PendingRescan = true; continue; }
-
-            _entries.TryGetValue(relative, out var entry);
-            if (entry is { Deleted: false } && entry.Size == info.Length && entry.MtimeTicks == mtime.Ticks) continue;
-
-            var hash = TryHash(full);
-            if (hash == null) { PendingRescan = true; continue; }   // gesperrt: später noch einmal
-
-            if (entry is { Deleted: false } && entry.Hash == hash)
-            {
-                _entries[relative] = entry with { Size = info.Length, MtimeTicks = mtime.Ticks };
-                changed = true;
-                continue;
-            }
-            _entries[relative] = new FileEntry
-            {
-                Path = relative,
-                Size = info.Length,
-                MtimeTicks = mtime.Ticks,
-                Hash = hash,
-                Version = VersionVector.Bump(entry?.Version ?? new(), NodeId),
-                Seq = ++_seq,
-                OriginId = NodeId,
-                OriginName = NodeName,
-            };
-            Record(entry is { Deleted: false } ? ActivityKind.Changed : ActivityKind.Added, relative, null);
-            changed = true;
+            // Gerade geändert: erst beim nächsten Mal. Eine Zeit in der Zukunft (falsche Uhr) gilt als ruhig.
+            var age = now - mtime;
+            if (age >= TimeSpan.Zero && age < _options.StableDelay) { pending = true; continue; }
+            found.Add(new SeenFile(relative, full, info.Length, mtime.Ticks));
         }
 
-        var gone = _entries.Values.Where(e => !e.Deleted && !seen.Contains(e.Path)).ToList();
-        int live = _entries.Values.Count(e => !e.Deleted);
-        bool massive = gone.Count > 0 && ((live >= 3 && gone.Count == live) || (gone.Count >= 50 && gone.Count * 2 > live));
-        if (massive && !_allowMassDelete)
+        List<(SeenFile File, FileEntry? Entry)> toHash;
+        _gate.Wait();
+        try
         {
-            HeldDeletes = gone.Count;
-        }
-        else
-        {
-            HeldDeletes = 0;
-            _allowMassDelete = false;
-            foreach (var entry in gone)
+            if (!PathRules.Comparer.Equals(folder, _folder)) return;   // Ordner inzwischen gewechselt
+            toHash = new List<(SeenFile, FileEntry?)>();
+            foreach (var file in found)
             {
-                _entries[entry.Path] = Tombstone(entry, VersionVector.Bump(entry.Version, NodeId), NodeId, NodeName);
-                Record(ActivityKind.Deleted, entry.Path, null);
-                changed = true;
+                _entries.TryGetValue(file.Relative, out var entry);
+                if (entry is { Deleted: false } && entry.Size == file.Size && entry.MtimeTicks == file.MtimeTicks) continue;
+                toHash.Add((file, entry));
             }
         }
+        finally { _gate.Release(); }
 
-        LastScan = DateTime.UtcNow;
-        PurgeTrash();
-        if (changed) Save();
+        var hashed = new List<(SeenFile File, FileEntry? Entry, string Hash)>();
+        foreach (var (file, entry) in toHash)
+        {
+            var hash = TryHash(file.Full);
+            if (hash == null) { pending = true; continue; }   // gesperrt: später noch einmal
+            hashed.Add((file, entry, hash));
+        }
+
+        _gate.Wait();
+        try
+        {
+            if (!PathRules.Comparer.Equals(folder, _folder)) return;
+            bool changed = false;
+            foreach (var (file, before, hash) in hashed)
+            {
+                _entries.TryGetValue(file.Relative, out var entry);
+                // Inzwischen hat der Abgleich den Eintrag geändert, oder die Datei hat sich noch einmal geändert.
+                if (!ReferenceEquals(entry, before) || !SameOnDisk(file)) { pending = true; continue; }
+                if (entry is { Deleted: false } && entry.Hash == hash)
+                {
+                    _entries[file.Relative] = entry with { Size = file.Size, MtimeTicks = file.MtimeTicks };
+                    changed = true;
+                    continue;
+                }
+                _entries[file.Relative] = new FileEntry
+                {
+                    Path = file.Relative,
+                    Size = file.Size,
+                    MtimeTicks = file.MtimeTicks,
+                    Hash = hash,
+                    Version = VersionVector.Bump(entry?.Version ?? new(), NodeId),
+                    Seq = ++_seq,
+                    OriginId = NodeId,
+                    OriginName = NodeName,
+                };
+                Record(entry is { Deleted: false } ? ActivityKind.Changed : ActivityKind.Added, file.Relative, null);
+                changed = true;
+            }
+
+            // Verschwunden: nicht gesehen und auch jetzt nicht auf der Platte (eine Datei kann während des Scans vom
+            // Abgleich gekommen sein).
+            var gone = _entries.Values.Where(e => !e.Deleted && !seen.Contains(e.Path) && !OnDisk(e.Path)).ToList();
+            int live = _entries.Values.Count(e => !e.Deleted);
+            bool massive = gone.Count > 0 && ((live >= 3 && gone.Count == live) || (gone.Count >= 50 && gone.Count * 2 > live));
+            if (massive && !_allowMassDelete)
+            {
+                HeldDeletes = gone.Count;
+            }
+            else
+            {
+                HeldDeletes = 0;
+                _allowMassDelete = false;
+                foreach (var entry in gone)
+                {
+                    _entries[entry.Path] = Tombstone(entry, VersionVector.Bump(entry.Version, NodeId), NodeId, NodeName);
+                    Record(ActivityKind.Deleted, entry.Path, null);
+                    changed = true;
+                }
+            }
+
+            LastScan = DateTime.UtcNow;
+            PendingRescan = pending;
+            PurgeTrash();
+            if (changed) Save();
+        }
+        finally { _gate.Release(); }
     }
+
+    private static bool SameOnDisk(SeenFile file)
+    {
+        try
+        {
+            var info = new FileInfo(file.Full);
+            return info.Exists && info.Length == file.Size && info.LastWriteTimeUtc.Ticks == file.MtimeTicks;
+        }
+        catch (IOException) { return false; }
+    }
+
+    private bool OnDisk(string relative) => Full(relative) is { } full && File.Exists(full);
+
+    // Der volle Pfad im Ordner, ohne Verknüpfungen auf dem Weg (siehe PathRules.ToFullNoLinks).
+    private string? Full(string relative) => PathRules.ToFullNoLinks(_folder, relative);
 
     private FileEntry Tombstone(FileEntry entry, Dictionary<string, long> version, string? originId, string? originName) => entry with
     {
@@ -212,14 +276,43 @@ public sealed partial class MeshNode
         try
         {
             if (!_entries.TryGetValue(relative, out var entry) || entry.Deleted || entry.Hash != hash) return null;
-            var full = PathRules.ToFull(_folder, relative);
+            var full = Full(relative);
             if (full == null || !File.Exists(full)) return null;
             // Hat sich die Datei seit dem Scan geändert, wird sie nicht ausgeliefert; der nächste Scan nimmt sie auf.
             if (!DiskMatches(entry, full)) { PendingRescan = true; return null; }
-            try { return new FileStream(full, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete); }
+            try
+            {
+                var stream = new FileStream(full, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+                // Ganz ausgeliefert wird mitgehasht: stimmt der Inhalt nicht mehr (geändert, ohne dass sich Größe oder
+                // Zeit bewegt haben), wird der Eintrag zum Neuhashen markiert und erst danach wieder ausgeliefert.
+                return new VerifyingStream(stream, hash, () => Invalidate(relative, hash));
+            }
             catch (IOException) { return null; }
         }
         finally { _gate.Release(); }
+    }
+
+    private void Invalidate(string relative, string hash)
+    {
+        _gate.Wait();
+        try
+        {
+            if (_entries.TryGetValue(relative, out var entry) && entry.Hash == hash) _entries[relative] = entry with { MtimeTicks = 0 };
+            PendingRescan = true;
+        }
+        finally { _gate.Release(); }
+    }
+
+    // Für die Oberfläche: eine Datei im Ordner zum Herunterladen. Hilfsdateien (.stykker…) und Pfade über
+    // Verknüpfungen gibt es nicht.
+    public FileStream? OpenForDownload(string path)
+    {
+        var relative = PathRules.Normalize(path);
+        if (relative == null || PathRules.IsIgnored(relative)) return null;
+        var full = Full(relative);
+        if (full == null || !File.Exists(full)) return null;
+        try { return new FileStream(full, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { return null; }
     }
 
     // Wartet, bis sich der Index über die Nummer since hinaus ändert (lange Abfrage der Gegenstellen).
@@ -250,8 +343,13 @@ public sealed partial class MeshNode
         var probe = await peer.GetChangesAsync(long.MaxValue, ct).ConfigureAwait(false);
         if (probe.NodeId == NodeId) return new PullResult(0, true);
         long since;
+        int generation;
         await _gate.WaitAsync(ct).ConfigureAwait(false);
-        try { since = _cursors.GetValueOrDefault(probe.NodeId); }
+        try
+        {
+            since = _cursors.GetValueOrDefault(probe.NodeId);
+            generation = _folderGen;
+        }
         finally { _gate.Release(); }
         // Hat die Gegenstelle neu angefangen (kleinere Nummer als gemerkt), alles neu lesen.
         if (probe.Seq < since) since = 0;
@@ -265,7 +363,7 @@ public sealed partial class MeshNode
         // der Warteschlange. Die Reihenfolge wird vor jeder Datei neu gelesen: so gilt ein Umsortieren sofort.
         var entries = page.Entries
             .Select(e => (Entry: e, Path: PathRules.Normalize(e.Path)))
-            .Where(x => x.Path != null && !PathRules.IsIgnored(x.Path))
+            .Where(x => x.Path != null && !PathRules.IsIgnored(x.Path) && Plausible(x.Entry))
             .Select(x => x.Entry with { Path = x.Path! }).ToList();
         List<FileEntry> downloads;
         await _gate.WaitAsync(ct).ConfigureAwait(false);
@@ -285,7 +383,7 @@ public sealed partial class MeshNode
                 ct.ThrowIfCancellationRequested();
                 var outcome = await ApplyAsync(remote, page.NodeName, peer, ct).ConfigureAwait(false);
                 if (outcome == Outcome.Applied) applied++;
-                else if (outcome == Outcome.Retry) complete = false;
+                else if (outcome is Outcome.Retry or Outcome.Deferred) complete = false;
             }
 
             var byPath = downloads.ToDictionary(d => d.Path, PathRules.Comparer);
@@ -293,6 +391,7 @@ public sealed partial class MeshNode
             while (left.Count > 0)
             {
                 ct.ThrowIfCancellationRequested();
+                if (TransfersPaused || _holdTransfers > 0) { complete = false; break; }
                 FileEntry remote;
                 lock (_queueLock) remote = byPath[Ordered(_queue.Where(q => left.Contains(q.Path))).First().Path];
                 var outcome = await ApplyAsync(remote, page.NodeName, peer, ct).ConfigureAwait(false);
@@ -318,7 +417,8 @@ public sealed partial class MeshNode
         await _gate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            if (complete) _cursors[page.NodeId] = page.Seq;
+            // Wurde inzwischen der Ordner gewechselt („Start empty“), muss alles neu gelesen werden: Zeiger nicht setzen.
+            if (complete && generation == _folderGen) _cursors[page.NodeId] = page.Seq;
             Save();
         }
         finally { _gate.Release(); }
@@ -328,11 +428,19 @@ public sealed partial class MeshNode
 
     private enum Outcome { Nothing, Applied, Retry, Deferred }
 
+    // Einträge einer Gegenstelle, die so nicht stimmen können, werden übergangen: der Hash geht in Dateinamen
+    // (Teildateien), die Zeit in DateTime, die Größe in die Platzprüfung.
+    private static bool Plausible(FileEntry remote) =>
+        remote.Version != null
+        && remote.Size >= 0
+        && remote.MtimeTicks > 0 && remote.MtimeTicks < DateTime.MaxValue.Ticks
+        && (remote.Deleted ? remote.Hash == null : PathRules.IsHash(remote.Hash));
+
     // Grobe Vorauswahl (unter der Sperre): ein Eintrag mit Inhalt, der hier unter diesem Pfad noch fehlt und nicht
     // älter ist als der eigene. Was wirklich passiert, entscheidet Decide() erst direkt vor dem Laden.
     private bool NeedsDownload(FileEntry remote)
     {
-        if (remote.Deleted || remote.Hash == null) return false;
+        if (remote.Deleted || remote.Hash == null || IsSkipped(remote.Path)) return false;
         if (!_entries.TryGetValue(remote.Path, out var local)) return true;
         if (!local.Deleted && local.Hash == remote.Hash) return false;
         return VersionVector.Compare(local.Version, remote.Version) is not (Order.Equal or Order.LocalNewer);
@@ -345,10 +453,19 @@ public sealed partial class MeshNode
         Plan plan;
         await _gate.WaitAsync(ct).ConfigureAwait(false);
         try { plan = Decide(remote, peerName); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Zum Beispiel: die Datei soll gelöscht werden, ist hier aber in Word offen. Später noch einmal; die
+            // übrigen Änderungen dieser Gegenstelle kommen trotzdem an.
+            Record(ActivityKind.Error, remote.Path, null, ex.Message);
+            return Outcome.Retry;
+        }
         finally { _gate.Release(); }
 
         if (plan.Kind == PlanKind.Done) return plan.Changed ? Outcome.Applied : Outcome.Nothing;
         if (plan.Kind == PlanKind.Retry) return Outcome.Retry;
+        if (IsSkipped(remote.Path)) return Outcome.Nothing;        // „nicht laden“ in der Oberfläche
+        if (HashOnHold(remote.Hash!)) return Outcome.Retry;        // kam eben kaputt an: eine Weile nicht neu laden
 
         // Laden: zuerst eine Datei mit demselben Inhalt hier am PC suchen, sonst bei der Gegenstelle. Geladen wird in
         // eine Teildatei, die einen Abbruch übersteht; SetOrder() kann diese Datei anhalten (Deferred).
@@ -378,7 +495,7 @@ public sealed partial class MeshNode
                 // Angehalten: die Zeile zeigt den Stand, ab dem es weitergeht (der letzte gesicherte Block).
                 if (_progress is { Checking: false } stopped && PathRules.Comparer.Equals(stopped.Path, remote.Path))
                 {
-                    long kept = stopped.Done / _partials.ChunkSize * _partials.ChunkSize;
+                    long kept = stopped.Done;
                     var at = _queue.FindIndex(q => PathRules.Comparer.Equals(q.Path, remote.Path));
                     if (at >= 0) _queue[at] = _queue[at] with { Done = kept };
                 }
@@ -401,7 +518,7 @@ public sealed partial class MeshNode
     private Plan Decide(FileEntry remote, string peerName)
     {
         _entries.TryGetValue(remote.Path, out var local);
-        var full = PathRules.ToFull(_folder, remote.Path);
+        var full = Full(remote.Path);
         if (full == null) return new Plan(PlanKind.Done);
 
         if (local == null)
@@ -474,17 +591,17 @@ public sealed partial class MeshNode
                     : string.CompareOrdinal(remote.Hash, local.Hash) > 0;
                 if (remoteWins)
                 {
-                    var loserName = PathRules.ConflictName(remote.Path, local.OriginName, local.MtimeTicks);
+                    var loserName = PathRules.ConflictName(remote.Path, local.OriginName, local.MtimeTicks, local.Hash);
                     return new Plan(PlanKind.Download, Target: remote.Path, Version: merged, ExpectedAtTarget: local,
                         LoserToMove: local, LoserTarget: loserName);
                 }
-                var copyName = PathRules.ConflictName(remote.Path, remote.OriginName, remote.MtimeTicks);
+                var copyName = PathRules.ConflictName(remote.Path, remote.OriginName, remote.MtimeTicks, remote.Hash);
                 if (_entries.TryGetValue(copyName, out var existingCopy) && !existingCopy.Deleted && existingCopy.Hash == remote.Hash)
                 {
                     _entries[remote.Path] = local with { Version = merged, Seq = ++_seq };
                     return new Plan(PlanKind.Done);
                 }
-                var copyFull = PathRules.ToFull(_folder, copyName);
+                var copyFull = Full(copyName);
                 if (copyFull == null) return new Plan(PlanKind.Done);
                 if (File.Exists(copyFull)) return new Plan(PlanKind.Retry);   // erst scannen
                 return new Plan(PlanKind.Download, Target: copyName,
@@ -506,40 +623,60 @@ public sealed partial class MeshNode
 
     private enum LoadStatus { Loaded, Failed }
     private sealed record LoadResult(LoadStatus Status, string? DataPath = null);
+    private DateTime _spaceWarned = DateTime.MinValue;
 
     // Lädt den Inhalt in seine Teildatei und setzt dort fort, wo die letzte Übertragung aufgehört hat (auch nach einem
     // Neustart oder von einer anderen Gegenstelle mit demselben Inhalt). Stimmt am Ende der SHA-256 der ganzen Datei
-    // nicht, wird die Teildatei verworfen und die Datei beim nächsten Abruf neu geladen.
+    // nicht, wird die Teildatei verworfen und der Inhalt eine Weile nicht neu geladen.
+    // Abgebrochen (vorgezogene Datei, alles anhalten) oder abgerissen (keine Daten mehr): die Teildatei bleibt offen
+    // geparkt und geht ohne neues Prüfen weiter.
     private async Task<LoadResult> LoadAsync(FileEntry remote, string peerName, IPeerSource peer, CancellationToken ct)
     {
-        if (remote.Hash == null) return new(LoadStatus.Failed);
+        var hash = remote.Hash!;
         string? localCopy = null;
         await _gate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            var same = _entries.Values.FirstOrDefault(e => !e.Deleted && e.Hash == remote.Hash);
+            var same = _entries.Values.FirstOrDefault(e => !e.Deleted && e.Hash == hash);
             if (same != null)
             {
-                var full = PathRules.ToFull(_folder, same.Path);
+                var full = Full(same.Path);
                 if (full != null && DiskMatches(same, full)) localCopy = full;
             }
         }
         finally { _gate.Release(); }
+        string from = localCopy != null ? NodeName : peerName;
 
-        // Eine angefangene Teildatei wird erst ganz gelesen und geprüft; bei großen Dateien dauert das einen Moment.
-        long already = _partials.BytesOf(remote.Hash);
-        if (already > 0) _progress = new TransferProgress(remote.Path, peerName, remote.Size, already, already, 0, Checking: true);
-        PartialStore.Handle handle;
-        // Ohne ct: die Prüfung läuft zu Ende, sonst bliebe die Teildatei offen. Abgebrochen wird gleich danach.
-        try { handle = await Task.Run(() => _partials.Open(remote.Path, remote.Hash, remote.Size)).ConfigureAwait(false); }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { return new(LoadStatus.Failed); }
+        var handle = TakeParked(hash);
+        if (handle == null)
+        {
+            // Eine angefangene Teildatei wird erst ganz gelesen und geprüft; bei großen Dateien dauert das einen Moment.
+            long already = _partials.BytesOf(hash);
+            if (already > 0) _progress = new TransferProgress(remote.Path, from, remote.Size, already, already, 0, Checking: true);
+            // Ohne ct: die Prüfung läuft zu Ende, sonst bliebe die Teildatei offen. Abgebrochen wird gleich danach.
+            try { handle = await Task.Run(() => _partials.Open(remote.Path, hash, remote.Size)).ConfigureAwait(false); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException) { return new(LoadStatus.Failed); }
+        }
 
         Stream? source = null;
+        bool keep = false;          // Teildatei offen parken statt schließen
+        bool writeFailed = false;   // die eigene Platte hat versagt: die Teildatei ist nicht mehr sicher
         try
         {
             ct.ThrowIfCancellationRequested();
             long done = handle.Stream.Position;
-            ReportProgress(remote.Path, localCopy != null ? NodeName : peerName, remote.Size, done, handle.Resumed);
+            ReportProgress(remote.Path, from, remote.Size, done, handle.Resumed, force: true);
+            if (!EnoughSpace(remote.Size - done))
+            {
+                if (DateTime.UtcNow - _spaceWarned > TimeSpan.FromMinutes(10))
+                {
+                    _spaceWarned = DateTime.UtcNow;
+                    Record(ActivityKind.Error, remote.Path, peerName, "Not enough free disk space for this file");
+                }
+                keep = true;
+                return new(LoadStatus.Failed);
+            }
+
             bool tooLong = false;
             if (done < remote.Size)
             {
@@ -548,51 +685,90 @@ public sealed partial class MeshNode
                     try { source = new FileStream(localCopy, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete) { Position = done }; }
                     catch (IOException) { source = null; }
                 }
-                source ??= await peer.OpenFileAsync(remote.Path, remote.Hash, done, ct).ConfigureAwait(false);
-                if (source == null) return new(LoadStatus.Failed);
+                source ??= await peer.OpenFileAsync(remote.Path, hash, done, ct).ConfigureAwait(false);
+                if (source == null) { keep = true; return new(LoadStatus.Failed); }
 
-                var buffer = new byte[256 * 1024];
-                int read;
-                while ((read = await source.ReadAsync(buffer, ct).ConfigureAwait(false)) > 0)
+                var buffer = System.Buffers.ArrayPool<byte>.Shared.Rent(256 * 1024);
+                using var idle = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                try
                 {
-                    if (done + read > remote.Size) { tooLong = true; break; }
-                    await _partials.WriteAsync(handle, buffer.AsMemory(0, read), ct).ConfigureAwait(false);
-                    done += read;
-                    _meter.Add(read);
-                    ReportProgress(remote.Path, localCopy != null ? NodeName : peerName, remote.Size, done, handle.Resumed);
+                    while (true)
+                    {
+                        idle.CancelAfter(_options.TransferIdleTimeout);
+                        int read;
+                        try { read = await source.ReadAsync(buffer, idle.Token).ConfigureAwait(false); }
+                        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+                        {
+                            // So lange keine Daten: Verbindung hängt. Später an derselben Stelle weiter.
+                            keep = true;
+                            return new(LoadStatus.Failed);
+                        }
+                        if (read <= 0) break;
+                        if (done + read > remote.Size) { tooLong = true; break; }
+                        try { await _partials.WriteAsync(handle, buffer.AsMemory(0, read)).ConfigureAwait(false); }
+                        catch (IOException) { writeFailed = true; throw; }
+                        done += read;
+                        _meter.Add(read);
+                        ReportProgress(remote.Path, from, remote.Size, done, handle.Resumed);
+                        ct.ThrowIfCancellationRequested();
+                    }
                 }
+                finally { System.Buffers.ArrayPool<byte>.Shared.Return(buffer); }
             }
-            await handle.Stream.FlushAsync(ct).ConfigureAwait(false);
+            await handle.Stream.FlushAsync(CancellationToken.None).ConfigureAwait(false);
 
             // Zu kurz (Verbindung weg): Teildatei behalten, beim nächsten Mal weiter.
-            if (!tooLong && done < remote.Size) return new(LoadStatus.Failed);
+            if (!tooLong && done < remote.Size) { keep = true; return new(LoadStatus.Failed); }
 
-            var hash = Convert.ToHexStringLower(handle.FileHash.GetHashAndReset());
-            if (!tooLong && hash == remote.Hash)
+            var actual = Convert.ToHexStringLower(handle.FileHash.GetHashAndReset());
+            if (!tooLong && actual == hash)
             {
                 handle.Dispose();
                 return new(LoadStatus.Loaded, handle.DataPath);
             }
             // Inhalt stimmt nicht (die Datei hat sich dort während der Übertragung geändert, oder Daten sind
-            // unterwegs kaputtgegangen): verwerfen und neu laden.
+            // unterwegs kaputtgegangen): verwerfen und eine Weile nicht neu laden.
             handle.Dispose();
-            _partials.Discard(remote.Hash);
-            Record(ActivityKind.Error, remote.Path, "Check failed (SHA-256); loading again");
+            _partials.Discard(hash);
+            Record(ActivityKind.Error, remote.Path, peerName, "Check failed (SHA-256); loading again");
+            HoldHash(hash);
             return new(LoadStatus.Failed);
         }
-        catch (IOException) { return new(LoadStatus.Failed); }
-        catch (HttpRequestException) { return new(LoadStatus.Failed); }
+        catch (OperationCanceledException)
+        {
+            keep = true;   // angehalten: geht später weiter
+            throw;
+        }
+        catch (Exception ex) when (ex is IOException or HttpRequestException)
+        {
+            // Ein Lesefehler der Verbindung lässt die Teildatei heil (geschrieben wird nur, was ganz gelesen wurde).
+            keep = true;
+            return new(LoadStatus.Failed);
+        }
         finally
         {
-            handle.Dispose();
             if (source != null) await source.DisposeAsync().ConfigureAwait(false);
+            if (keep && !writeFailed && handle.Stream.CanWrite) Park(hash, handle);
+            else handle.Dispose();
         }
+    }
+
+    // Genug Platz für den Rest der Datei, und es bleibt noch etwas übrig (die Platte soll nicht volllaufen).
+    private bool EnoughSpace(long needed)
+    {
+        try
+        {
+            var root = Path.GetPathRoot(Path.GetFullPath(_folder));
+            if (string.IsNullOrEmpty(root)) return true;
+            return new DriveInfo(root).AvailableFreeSpace >= needed + 512L * 1024 * 1024;
+        }
+        catch (Exception ex) when (ex is IOException or ArgumentException or UnauthorizedAccessException) { return true; }
     }
 
     private bool Commit(Plan plan, FileEntry remote, string temp)
     {
         var target = plan.Target!;
-        var full = PathRules.ToFull(_folder, target);
+        var full = Full(target);
         if (full == null) return false;
         _entries.TryGetValue(target, out var now);
         // Seit der Entscheidung darf sich am Ziel nichts geändert haben – weder im Index noch auf der Platte.
@@ -604,7 +780,7 @@ public sealed partial class MeshNode
             if (plan.LoserToMove != null && plan.LoserTarget != null && File.Exists(full))
             {
                 // Die eigene Fassung wird zur Konfliktkopie; der nächste Scan nimmt sie als neue Datei auf.
-                var loserFull = PathRules.ToFull(_folder, plan.LoserTarget);
+                var loserFull = Full(plan.LoserTarget);
                 if (loserFull == null) return false;
                 if (File.Exists(loserFull)) MoveToTrash(full, target);
                 else File.Move(full, loserFull);
@@ -638,12 +814,12 @@ public sealed partial class MeshNode
         }
         catch (IOException ex)
         {
-            Record(ActivityKind.Error, target, ex.Message);
+            Record(ActivityKind.Error, target, null, ex.Message);
             return false;
         }
         catch (UnauthorizedAccessException ex)
         {
-            Record(ActivityKind.Error, target, ex.Message);
+            Record(ActivityKind.Error, target, null, ex.Message);
             return false;
         }
     }
@@ -658,7 +834,40 @@ public sealed partial class MeshNode
     // Rückgabe: null bei Erfolg, sonst der Grund (englisch, für die Oberfläche).
     public string? ChangeFolder(string newFolder, bool move)
     {
+        // Erst den laufenden Download anhalten und die offenen Teildateien schließen: sie liegen im Ordner
+        // (.stykker\partial) und müssen mit umziehen bzw. weg.
+        Interlocked.Increment(ref _holdTransfers);
+        try
+        {
+            CancellationTokenSource? running;
+            lock (_queueLock) running = _currentCancel;
+            Cancel(running);
+            for (int i = 0; i < 100 && _currentPath != null; i++) Thread.Sleep(50);
+            CloseParked();
+            return ChangeFolderCore(newFolder, move);
+        }
+        finally { Interlocked.Decrement(ref _holdTransfers); }
+    }
+
+    // Prüft einen Ordner, bevor er gewählt wird (für die Oberfläche beim Tippen): null, wenn er taugt.
+    public string? CheckFolder(string newFolder)
+    {
+        var problem = FolderRules.Check(newFolder, _folder, _options.DataDir);
+        if (problem != null) return problem;
+        try
+        {
+            var target = Path.GetFullPath(newFolder);
+            if (Directory.Exists(target) && Directory.EnumerateFileSystemEntries(target).Any())
+                return "The new folder is not empty. Choose an empty folder, or one that does not exist yet.";
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException) { return ex.Message; }
+        return null;
+    }
+
+    private string? ChangeFolderCore(string newFolder, bool move)
+    {
         string target;
+        string old;
         _gate.Wait();
         try
         {
@@ -681,14 +890,22 @@ public sealed partial class MeshNode
                 foreach (var entry in _entries.Values.Where(e => !e.Deleted).ToList()) _entries.Remove(entry.Path);
                 _cursors.Clear();
             }
-            var old = _folder;
+            old = _folder;
             _folder = target;
+            _folderGen++;
+            OpenPartialStore();
             HeldDeletes = 0;
             _allowMassDelete = false;
-            Record(ActivityKind.Changed, move ? $"Folder moved from {old}" : "Folder changed: fetching the files from the other PCs", null);
+            Record(ActivityKind.Folder, "", null, move ? $"Folder moved from {old}" : "Folder changed: fetching the files from the other PCs");
             Save();
         }
         finally { _gate.Release(); }
+        // Beim Neuanfang bleiben die alten Dateien liegen; die Teildateien im alten Ordner braucht niemand mehr.
+        if (!move)
+        {
+            try { Directory.Delete(WorkDir(old), recursive: true); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+        }
         FolderChanged?.Invoke(target);
         Scan();
         return null;
@@ -750,7 +967,8 @@ public sealed partial class MeshNode
             {
                 var name = FreeName(relative);
                 if (name == null) return null;
-                var full = PathRules.ToFull(_folder, name)!;
+                var full = Full(name);
+                if (full == null) return null;
                 Directory.CreateDirectory(Path.GetDirectoryName(full)!);
                 File.Move(temp, full);
                 return name;
@@ -762,7 +980,7 @@ public sealed partial class MeshNode
 
     private string? FreeName(string relative)
     {
-        var full = PathRules.ToFull(_folder, relative);
+        var full = Full(relative);
         if (full == null) return null;
         if (!File.Exists(full) && !Directory.Exists(full)) return relative;
         var slash = relative.LastIndexOf('/');
@@ -774,7 +992,7 @@ public sealed partial class MeshNode
         for (int i = 2; i < 1000; i++)
         {
             var candidate = $"{dir}{stem} ({i}){ext}";
-            var candidateFull = PathRules.ToFull(_folder, candidate);
+            var candidateFull = Full(candidate);
             if (candidateFull != null && !File.Exists(candidateFull)) return candidate;
         }
         return null;
@@ -796,6 +1014,8 @@ public sealed partial class MeshNode
     {
         if (DateTime.UtcNow - _lastTrashPurge < TimeSpan.FromHours(1)) return;
         _lastTrashPurge = DateTime.UtcNow;
+        try { _partials.Purge(); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
         if (!Directory.Exists(TrashDir)) return;
         foreach (var day in Directory.GetDirectories(TrashDir))
         {
@@ -828,20 +1048,25 @@ public sealed partial class MeshNode
         catch (UnauthorizedAccessException) { }
     }
 
-    private void Record(ActivityKind kind, string path, string? from)
+    private void Record(ActivityKind kind, string path, string? from, string? message = null)
     {
+        var activity = new Activity(DateTime.UtcNow, kind, path, from, message);
         lock (_activityLock)
         {
-            _activity.AddFirst(new Activity(DateTime.UtcNow, kind, path, from));
+            _activity.AddFirst(activity);
             while (_activity.Count > ActivityLimit) _activity.RemoveLast();
         }
+        var handler = Recorded;
+        if (handler != null) ThreadPool.QueueUserWorkItem(_ => handler(activity));
     }
+
+    // Schließt offene Teildateien (beim Beenden; Tests stellen damit einen Neustart nach).
+    public void Dispose() => CloseParked();
 
     private void Notify()
     {
         var previous = Interlocked.Exchange(ref _changed, new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously));
         previous.TrySetResult();
-        Changed?.Invoke();
     }
 
     private sealed record StoredState(string NodeId, long Seq, List<FileEntry> Entries, Dictionary<string, long> Cursors);
@@ -860,9 +1085,11 @@ public sealed partial class MeshNode
 
     private void Save()
     {
+        int files = 0;
+        long bytes = 0;
+        foreach (var e in _entries.Values) if (!e.Deleted) { files++; bytes += e.Size; }
+        _totals = new Totals(files, bytes);
         var state = new StoredState(NodeId, _seq, _entries.Values.ToList(), new Dictionary<string, long>(_cursors));
-        var temp = StateFile + ".new";
-        File.WriteAllText(temp, JsonSerializer.Serialize(state, Json));
-        File.Move(temp, StateFile, overwrite: true);
+        AtomicFile.WriteJson(StateFile, state, Json);
     }
 }

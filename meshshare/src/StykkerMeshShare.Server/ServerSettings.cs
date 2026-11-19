@@ -39,11 +39,13 @@ public sealed class ServerSettings
         }
     }
 
-    public bool RemovePeer(string address)
+    // Verglichen wird normalisiert: ein früher als "pc" gespeicherter Eintrag ist derselbe wie "pc:17404".
+    public bool RemovePeer(string address, int defaultPort)
     {
+        var wanted = NormalizeAddress(address, defaultPort) ?? address;
         lock (_lock)
         {
-            bool removed = _stored.Peers.RemoveAll(p => string.Equals(p, address, StringComparison.OrdinalIgnoreCase)) > 0;
+            bool removed = _stored.Peers.RemoveAll(p => string.Equals(NormalizeAddress(p, defaultPort) ?? p, wanted, StringComparison.OrdinalIgnoreCase)) > 0;
             if (removed) Save();
             return removed;
         }
@@ -63,9 +65,7 @@ public sealed class ServerSettings
 
     private void Save()
     {
-        var temp = _file + ".new";
-        File.WriteAllText(temp, JsonSerializer.Serialize(_stored, Json));
-        File.Move(temp, _file, overwrite: true);
+        StykkerMeshShare.Core.AtomicFile.WriteJson(_file, _stored, Json);
     }
 
     // "host", "host:port", "[v6]:port" -> "host:port" mit dem Standardport; null, wenn es keine Adresse ist.

@@ -28,9 +28,10 @@ public interface IPeerSource
     Task<Stream?> OpenFileAsync(string path, string hash, long offset, CancellationToken ct);
 }
 
-public enum ActivityKind { Added, Changed, Deleted, Received, Removed, Conflict, Kept, Error }
+public enum ActivityKind { Added, Changed, Deleted, Received, Removed, Conflict, Kept, Error, Folder, Restored }
 
-public sealed record Activity(DateTime Time, ActivityKind Kind, string Path, string? From);
+// Message: Erklärung für Fehler und Ordnerwechsel (englisch, für die Oberfläche).
+public sealed record Activity(DateTime Time, ActivityKind Kind, string Path, string? From, string? Message = null);
 
 public sealed record MeshOptions
 {
@@ -42,4 +43,8 @@ public sealed record MeshOptions
     public TimeSpan TrashKeep { get; init; } = TimeSpan.FromDays(30);
     // Teildateien werden in Blöcken dieser Größe gesichert (auf die Platte gespült und mit eigenem Hash gemerkt).
     public int TransferChunkSize { get; init; } = 8 * 1024 * 1024;
+    // Kommen so lange keine Daten, gilt die Übertragung als abgerissen (sie geht später an derselben Stelle weiter).
+    public TimeSpan TransferIdleTimeout { get; init; } = TimeSpan.FromSeconds(60);
+    // Kam ein Inhalt kaputt an, wird er so lange nicht neu geladen (sonst lädt ein PC dieselben GB endlos).
+    public TimeSpan BadHashPause { get; init; } = TimeSpan.FromMinutes(10);
 }

@@ -20,12 +20,14 @@ public sealed class PeerManager : IHostedService, IDisposable
     private static readonly TimeSpan WaitTimeout = TimeSpan.FromSeconds(25);
     private static readonly TimeSpan AnnounceEvery = TimeSpan.FromSeconds(20);
     private static readonly TimeSpan ForgetFoundAfter = TimeSpan.FromMinutes(10);
+    private const int MaxFound = 64;                                     // selbst gefundene Adressen höchstens
+    private static readonly TimeSpan ReplyEvery = TimeSpan.FromSeconds(5); // je Absender höchstens eine Antwort
 
     private readonly MeshNode _node;
     private readonly ServerSettings _settings;
     private readonly int _port;
     private readonly bool _discovery;
-    private readonly HttpClient _http = new() { Timeout = Timeout.InfiniteTimeSpan };
+    private readonly HttpClient _http = HttpPeerSource.CreateClient();
     private readonly SemaphoreSlim _pullGate = new(1, 1);
     private readonly ConcurrentDictionary<string, Peer> _peers = new(StringComparer.OrdinalIgnoreCase);
     private readonly CancellationTokenSource _stop = new();
@@ -59,6 +61,7 @@ public sealed class PeerManager : IHostedService, IDisposable
         public string? LastError { get; set; }
         internal CancellationTokenSource Cancel { get; } = new();
         internal CancellationTokenSource? Round { get; set; }   // ein Durchgang: Hallo, Abgleich, Warten
+        internal volatile bool InBackoff;                        // wartet nach einem Fehler auf den nächsten Versuch
     }
 
     public IReadOnlyList<Peer> Peers => _peers.Values.Where(p => !p.IsSelf)
@@ -103,7 +106,7 @@ public sealed class PeerManager : IHostedService, IDisposable
 
     public bool Remove(string address)
     {
-        _settings.RemovePeer(address);
+        _settings.RemovePeer(address, _port);
         if (!_peers.TryRemove(address, out var peer)) return false;
         peer.Cancel.Cancel();
         WakeStandbys(peer);
@@ -136,7 +139,8 @@ public sealed class PeerManager : IHostedService, IDisposable
     private async Task RunAsync(Peer peer)
     {
         var source = new HttpPeerSource(_http, peer.Address);
-        var ct = CancellationTokenSource.CreateLinkedTokenSource(peer.Cancel.Token, _stop.Token).Token;
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(peer.Cancel.Token, _stop.Token);
+        var ct = linked.Token;
         var backoff = TimeSpan.FromSeconds(3);
         while (!ct.IsCancellationRequested)
         {
@@ -210,19 +214,47 @@ public sealed class PeerManager : IHostedService, IDisposable
                 peer.LastError = ex is OperationCanceledException ? "No answer" : ex.Message;
                 if (wasActive) WakeStandbys(peer);
 
-                // Selbst gefundene Adressen, die lange nicht antworten (neue IP, PC weg), werden vergessen.
-                if (!peer.Manual && DateTime.UtcNow - peer.OfflineSince > ForgetFoundAfter)
-                {
-                    _peers.TryRemove(peer.Address, out _);
-                    return;
-                }
-                try { await Task.Delay(backoff, rt).ConfigureAwait(false); }
-                catch (OperationCanceledException) when (!ct.IsCancellationRequested) { backoff = TimeSpan.FromSeconds(3); continue; }
-                catch (OperationCanceledException) { return; }
-                backoff = TimeSpan.FromSeconds(Math.Min(60, backoff.TotalSeconds * 2));
+                if (await BackoffAsync(peer, backoff, rt, ct).ConfigureAwait(false) is not { } next) return;
+                backoff = next;
+            }
+            catch (Exception) when (ct.IsCancellationRequested) { return; }   // beim Beenden
+            catch (Exception ex)
+            {
+                // Unerwartet (zum Beispiel ein Fehler auf der Platte): nicht still sterben. Wie ein Verbindungsfehler
+                // behandeln, damit die Seite „offline“ zeigt und eine andere Adresse desselben PCs übernehmen kann.
+                Console.Error.WriteLine($"[mesh] {peer.Address}: {ex.GetType().Name}: {ex.Message}");
+                bool wasActive = peer.Online;
+                peer.Online = false;
+                peer.Syncing = false;
+                peer.Duplicate = false;
+                peer.OfflineSince ??= DateTime.UtcNow;
+                peer.LastError = ex.Message;
+                if (wasActive) WakeStandbys(peer);
+                if (await BackoffAsync(peer, backoff, rt, ct).ConfigureAwait(false) is not { } next) return;
+                backoff = next;
             }
             finally { peer.Round = null; }
         }
+    }
+
+    // Pause nach einem Fehler. null: die Schleife endet (gestoppt, oder eine gefundene Adresse wird vergessen).
+    private async Task<TimeSpan?> BackoffAsync(Peer peer, TimeSpan backoff, CancellationToken rt, CancellationToken ct)
+    {
+        // Selbst gefundene Adressen, die lange nicht antworten (neue IP, PC weg), werden vergessen.
+        if (!peer.Manual && DateTime.UtcNow - peer.OfflineSince > ForgetFoundAfter)
+        {
+            _peers.TryRemove(new KeyValuePair<string, Peer>(peer.Address, peer));
+            return null;
+        }
+        peer.InBackoff = true;
+        try
+        {
+            await Task.Delay(backoff, rt).ConfigureAwait(false);
+            return TimeSpan.FromSeconds(Math.Min(60, backoff.TotalSeconds * 2));
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested) { return TimeSpan.FromSeconds(3); }   // geweckt
+        catch (OperationCanceledException) { return null; }
+        finally { peer.InBackoff = false; }
     }
 
     // Entscheidet, ob diese Adresse für ihren PC abgleicht. Ja, wenn keine andere Adresse desselben PCs über einen
@@ -233,7 +265,7 @@ public sealed class PeerManager : IHostedService, IDisposable
         lock (_routeLock)
         {
             var same = _peers.Values.Where(o => o != peer && !o.IsSelf && o.NodeId == peer.NodeId).ToList();
-            if (same.Any(o => o.Online && !o.Duplicate && o.Route <= peer.Route))
+            if (NetworkRoute.MustWait(peer.Route, same.Where(o => o.Online && !o.Duplicate).Select(o => o.Route)))
             {
                 peer.Duplicate = true;
                 peer.Online = false;
@@ -353,6 +385,7 @@ public sealed class PeerManager : IHostedService, IDisposable
         using (udp)
         {
             var reply = Encoding.UTF8.GetBytes(Announcement(reply: true));
+            var replied = new Dictionary<IPAddress, DateTime>();
             while (!ct.IsCancellationRequested)
             {
                 UdpReceiveResult received;
@@ -367,9 +400,13 @@ public sealed class PeerManager : IHostedService, IDisposable
                 if (!NetworkAccess.Allowed(ip)) continue;
                 bool isReply = parts.Length == 4 && parts[3] == "reply";
 
-                // Antworten, damit der Rufer uns sofort kennt (auf eine Antwort wird nicht geantwortet).
-                if (!isReply)
+                // Antworten, damit der Rufer uns sofort kennt (auf eine Antwort wird nicht geantwortet). Je Absender
+                // höchstens alle paar Sekunden: sonst ließe sich mit gefälschten Rufen ein Gerät mit Antworten fluten.
+                var now = DateTime.UtcNow;
+                if (replied.Count > 1024) foreach (var old in replied.Where(r => now - r.Value > ReplyEvery).Select(r => r.Key).ToList()) replied.Remove(old);
+                if (!isReply && (!replied.TryGetValue(ip, out var last) || now - last > ReplyEvery))
                 {
+                    replied[ip] = now;
                     try { await udp.SendAsync(reply, new IPEndPoint(ip, port), ct).ConfigureAwait(false); }
                     catch (SocketException) { }
                     catch (OperationCanceledException) { return; }
@@ -380,9 +417,14 @@ public sealed class PeerManager : IHostedService, IDisposable
                 // diese Heimnetz-Adresse trotzdem aufnehmen, sie übernimmt dann.
                 if (_peers.Values.Any(p => p.NodeId == parts[1] && p.Online && p.Route <= route)) continue;
                 var address = ip.AddressFamily == AddressFamily.InterNetworkV6 ? $"[{ip}]:{port}" : $"{ip}:{port}";
+                if (_peers.TryGetValue(address, out var known))
+                {
+                    if (known.InBackoff) Interrupt(known);   // meldet sich wieder: nicht erst die Pause abwarten
+                    continue;
+                }
+                if (_peers.Values.Count(p => !p.Manual) >= MaxFound) continue;
                 var peer = Track(address, manual: false);
                 if (peer != null) _ = RunAsync(peer);
-                else if (_peers.TryGetValue(address, out var known) && !known.Online && !known.Duplicate) Interrupt(known);  // aus der Pause holen
             }
         }
     }

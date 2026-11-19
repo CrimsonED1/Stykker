@@ -61,6 +61,36 @@ public static class PathRules
         return full.StartsWith(rootFull + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) ? full : null;
     }
 
+    // Wie ToFull, aber kein Teil des Pfads unterhalb des Ordners darf eine Verknüpfung oder Junction sein. Sonst führte
+    // „docs/x.txt“ mit „docs“ als Junction auf C:\Users\… aus dem Ordner hinaus – zum Lesen wie zum Schreiben.
+    // Teile, die es noch nicht gibt, sind in Ordnung (sie werden als normale Ordner angelegt).
+    public static string? ToFullNoLinks(string root, string? relative)
+    {
+        var full = ToFull(root, relative);
+        if (full == null) return null;
+        var current = Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        foreach (var part in Normalize(relative)!.Split('/'))
+        {
+            current = Path.Combine(current, part);
+            try
+            {
+                if ((File.GetAttributes(current) & FileAttributes.ReparsePoint) != 0) return null;
+            }
+            catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException) { break; }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { return null; }
+        }
+        return full;
+    }
+
+    // Ein Inhalts-Hash, wie ihn der Index führt: SHA-256 als 64 Kleinbuchstaben-Hex. Hashes von außen gehen in
+    // Dateinamen (Teildateien) – alles andere wird abgewiesen.
+    public static bool IsHash(string? hash)
+    {
+        if (hash is not { Length: 64 }) return false;
+        foreach (var c in hash) if (c is not (>= '0' and <= '9' or >= 'a' and <= 'f')) return false;
+        return true;
+    }
+
     public static string ToRelative(string root, string full)
     {
         var rootFull = Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
@@ -82,9 +112,10 @@ public static class PathRules
         return false;
     }
 
-    // Name der Konfliktkopie: „Bericht (conflict PC2 2026-11-19 1432).docx“. Er hängt nur am Verlierer (Gerätename und
-    // Änderungszeit), damit beide Seiten dieselbe Kopie anlegen und sie danach als gleich erkennen.
-    public static string ConflictName(string relative, string? deviceName, long mtimeTicks)
+    // Name der Konfliktkopie: „Bericht (conflict PC2 2026-11-19 143205 3fa2c1).docx“. Er hängt nur am Verlierer
+    // (Gerätename, Änderungszeit, Anfang des Hashs), damit beide Seiten dieselbe Kopie anlegen und sie danach als gleich
+    // erkennen. Mit dem Hash bekommen zwei verschiedene Fassungen aus derselben Sekunde nie denselben Namen.
+    public static string ConflictName(string relative, string? deviceName, long mtimeTicks, string? hash = null)
     {
         var slash = relative.LastIndexOf('/');
         var dir = slash >= 0 ? relative[..(slash + 1)] : "";
@@ -93,8 +124,9 @@ public static class PathRules
         var stem = dot > 0 ? name[..dot] : name;
         var ext = dot > 0 ? name[dot..] : "";
         var device = Clean(deviceName);
-        var stamp = new DateTime(mtimeTicks, DateTimeKind.Utc).ToString("yyyy-MM-dd HHmm", CultureInfo.InvariantCulture);
-        return $"{dir}{stem} (conflict {device} {stamp}){ext}";
+        var stamp = new DateTime(Math.Clamp(mtimeTicks, 0, DateTime.MaxValue.Ticks), DateTimeKind.Utc).ToString("yyyy-MM-dd HHmmss", CultureInfo.InvariantCulture);
+        var tag = hash is { Length: >= 6 } ? " " + hash[..6] : "";
+        return $"{dir}{stem} (conflict {device} {stamp}{tag}){ext}";
     }
 
     private static string Clean(string? deviceName)

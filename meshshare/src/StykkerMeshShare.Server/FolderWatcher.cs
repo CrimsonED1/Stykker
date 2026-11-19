@@ -33,10 +33,11 @@ public sealed class FolderWatcher(MeshNode node) : IHostedService, IDisposable
                 NotifyFilter = NotifyFilters.FileName | NotifyFilters.DirectoryName | NotifyFilters.LastWrite | NotifyFilters.Size,
                 InternalBufferSize = 64 * 1024,
             };
-            _watcher.Changed += (_, _) => Soon();
-            _watcher.Created += (_, _) => Soon();
-            _watcher.Deleted += (_, _) => Soon();
-            _watcher.Renamed += (_, _) => Soon();
+            // Eigene Hilfsdateien (.stykker\partial, .stykker	mp) lösen keinen Scan aus: sie ändern sich bei jedem Download.
+            _watcher.Changed += (_, e) => SoonUnlessOwn(e.Name);
+            _watcher.Created += (_, e) => SoonUnlessOwn(e.Name);
+            _watcher.Deleted += (_, e) => SoonUnlessOwn(e.Name);
+            _watcher.Renamed += (_, e) => { if (!Own(e.Name) || !Own(e.OldName)) Soon(); };
             _watcher.Error += (_, _) => Soon();
             _watcher.EnableRaisingEvents = true;
         }
@@ -47,6 +48,13 @@ public sealed class FolderWatcher(MeshNode node) : IHostedService, IDisposable
     }
 
     public void Soon(int milliseconds = 1500) => _debounce?.Change(milliseconds, Timeout.Infinite);
+
+    private static bool Own(string? name) => name != null && name.StartsWith(".stykker", StringComparison.OrdinalIgnoreCase);
+
+    private void SoonUnlessOwn(string? name)
+    {
+        if (!Own(name)) Soon();
+    }
 
     private void ScanNow()
     {

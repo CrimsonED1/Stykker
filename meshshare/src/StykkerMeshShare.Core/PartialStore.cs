@@ -8,17 +8,46 @@ namespace StykkerMeshShare.Core;
 // sicher auf der Platte stehen (geschrieben, auf die Platte gespült, mit eigenem SHA-256). Beim Fortsetzen wird jeder
 // Block noch einmal gelesen und geprüft; was danach kommt oder nicht stimmt, wird abgeschnitten und neu geladen.
 // Am Ende entscheidet der Hash der ganzen Datei: stimmt er nicht, wird die Teildatei verworfen.
-internal sealed class PartialStore(string dir, int chunkSize)
+//
+// Die Beschreibungen werden einmal gelesen und dann im Speicher geführt (die Seite fragt alle 1,5 s danach).
+internal sealed class PartialStore
 {
     private static readonly TimeSpan KeepFor = TimeSpan.FromDays(14);
     private static readonly JsonSerializerOptions Json = new() { WriteIndented = false };
 
-    public int ChunkSize { get; } = chunkSize;
+    private readonly string _dir;
+    private readonly Lock _lock = new();
+    private readonly Dictionary<string, Meta> _metas = new(StringComparer.Ordinal);
+
+    public PartialStore(string dir, int chunkSize)
+    {
+        _dir = dir;
+        ChunkSize = chunkSize;
+        if (!Directory.Exists(dir)) return;
+        foreach (var file in Directory.EnumerateFiles(dir, "*.json"))
+        {
+            try
+            {
+                if (JsonSerializer.Deserialize<Meta>(File.ReadAllText(file), Json) is { } meta && PathRules.IsHash(meta.Hash))
+                    _metas[meta.Hash] = meta;
+            }
+            catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException) { }
+        }
+    }
+
+    public int ChunkSize { get; }
 
     internal sealed record Meta(string Path, string Hash, long Size, List<string> Chunks, DateTime Updated);
 
-    private string DataPath(string hash) => System.IO.Path.Combine(dir, hash + ".partial");
-    private string MetaPath(string hash) => System.IO.Path.Combine(dir, hash + ".json");
+    // Was die Oberfläche braucht: welche Datei, wie groß, wie viel schon sicher da ist.
+    internal sealed record Info(string Path, string Hash, long Size, long Bytes, DateTime Updated);
+
+    // Der Hash wird Teil des Dateinamens: nur echte SHA-256-Hashes, sonst könnte ein fremder Wert aus dem Ordner führen.
+    private string DataPath(string hash) => System.IO.Path.Combine(_dir, Checked(hash) + ".partial");
+    private string MetaPath(string hash) => System.IO.Path.Combine(_dir, Checked(hash) + ".json");
+
+    private static string Checked(string hash) =>
+        PathRules.IsHash(hash) ? hash : throw new ArgumentException("not a SHA-256 hash", nameof(hash));
 
     // Eine geöffnete Teildatei: steht am Ende des geprüften Teils, der Hash kennt diesen Teil schon.
     internal sealed class Handle : IDisposable
@@ -40,37 +69,34 @@ internal sealed class PartialStore(string dir, int chunkSize)
         }
     }
 
-    public IEnumerable<Meta> All()
+    public IReadOnlyList<Info> All()
     {
-        if (!Directory.Exists(dir)) yield break;
-        foreach (var file in Directory.EnumerateFiles(dir, "*.json"))
-        {
-            Meta? meta = null;
-            try { meta = JsonSerializer.Deserialize<Meta>(File.ReadAllText(file), Json); }
-            catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException) { }
-            if (meta != null) yield return meta;
-        }
+        lock (_lock)
+            return _metas.Values.Select(m => new Info(m.Path, m.Hash, m.Size, (long)m.Chunks.Count * ChunkSize, m.Updated)).ToList();
     }
 
+    // Wie viel von diesem Inhalt schon sicher da ist (die geprüften Blöcke).
     public long BytesOf(string hash)
     {
-        try { return File.Exists(DataPath(hash)) ? new FileInfo(DataPath(hash)).Length : 0; }
-        catch (IOException) { return 0; }
+        lock (_lock) return _metas.TryGetValue(hash, out var meta) ? (long)meta.Chunks.Count * ChunkSize : 0;
     }
 
     // Öffnet die Teildatei für diesen Inhalt (oder legt sie an) und prüft, was schon da ist.
     // Teildateien für denselben Pfad mit anderem Inhalt sind veraltet (die Datei hat sich dort geändert) und gehen weg.
     public Handle Open(string path, string hash, long size)
     {
-        Directory.CreateDirectory(dir);
-        foreach (var other in All().Where(m => m.Hash != hash && string.Equals(m.Path, path, StringComparison.OrdinalIgnoreCase)).ToList())
-            Discard(other.Hash);
-
-        Meta meta;
-        try { meta = File.Exists(MetaPath(hash)) ? JsonSerializer.Deserialize<Meta>(File.ReadAllText(MetaPath(hash)), Json)! : null!; }
-        catch (JsonException) { meta = null!; }
+        Checked(hash);
+        Directory.CreateDirectory(_dir);
+        List<string> stale;
+        Meta? meta;
+        lock (_lock)
+        {
+            stale = _metas.Values.Where(m => m.Hash != hash && string.Equals(m.Path, path, StringComparison.OrdinalIgnoreCase)).Select(m => m.Hash).ToList();
+            _metas.TryGetValue(hash, out meta);
+        }
+        foreach (var other in stale) Discard(other);
         if (meta == null || meta.Size != size) meta = new Meta(path, hash, size, new List<string>(), DateTime.UtcNow);
-        else meta = meta with { Path = path };
+        else meta = meta with { Path = path, Chunks = new List<string>(meta.Chunks) };
 
         var stream = new FileStream(DataPath(hash), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None, 81920);
         var fileHash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
@@ -106,10 +132,9 @@ internal sealed class PartialStore(string dir, int chunkSize)
             long verified = (long)good.Count * ChunkSize;
             stream.SetLength(verified);
             stream.Position = verified;
-            meta = meta with { Chunks = good, Updated = DateTime.UtcNow };
             var handle = new Handle
             {
-                Stream = stream, FileHash = fileHash, Meta = meta, DataPath = DataPath(hash), MetaPath = MetaPath(hash),
+                Stream = stream, FileHash = fileHash, Meta = meta with { Chunks = good }, DataPath = DataPath(hash), MetaPath = MetaPath(hash),
                 Resumed = verified,
             };
             SaveMeta(handle);
@@ -123,14 +148,15 @@ internal sealed class PartialStore(string dir, int chunkSize)
         }
     }
 
-    // Schreibt Daten und schließt volle Blöcke ab (auf die Platte spülen, Block-Hash merken).
-    public async Task WriteAsync(Handle handle, ReadOnlyMemory<byte> data, CancellationToken ct)
+    // Schreibt Daten und schließt volle Blöcke ab (auf die Platte spülen, Block-Hash merken). Ohne Abbruch: ein halb
+    // geschriebener Puffer würde Datei und Hash auseinanderbringen.
+    public async Task WriteAsync(Handle handle, ReadOnlyMemory<byte> data)
     {
         while (!data.IsEmpty)
         {
             int take = (int)Math.Min(data.Length, ChunkSize - handle.ChunkFill);
             var part = data[..take];
-            await handle.Stream.WriteAsync(part, ct).ConfigureAwait(false);
+            await handle.Stream.WriteAsync(part, CancellationToken.None).ConfigureAwait(false);
             handle.FileHash.AppendData(part.Span);
             handle.ChunkHash.AppendData(part.Span);
             handle.ChunkFill += take;
@@ -145,17 +171,19 @@ internal sealed class PartialStore(string dir, int chunkSize)
         }
     }
 
-    private static void SaveMeta(Handle handle)
+    private void SaveMeta(Handle handle)
     {
         handle.Meta = handle.Meta with { Updated = DateTime.UtcNow };
-        var temp = handle.MetaPath + ".tmp";
-        File.WriteAllText(temp, JsonSerializer.Serialize(handle.Meta, Json));
-        File.Move(temp, handle.MetaPath, overwrite: true);
+        var copy = handle.Meta with { Chunks = new List<string>(handle.Meta.Chunks) };
+        AtomicFile.WriteJson(handle.MetaPath, copy, Json);
+        lock (_lock) _metas[copy.Hash] = copy;
     }
 
     // Nach dem Übernehmen (die Teildatei wurde verschoben) oder wenn der Inhalt nicht stimmt.
     public void Discard(string hash)
     {
+        lock (_lock) _metas.Remove(hash);
+        if (!PathRules.IsHash(hash)) return;
         TryDelete(DataPath(hash));
         TryDelete(MetaPath(hash));
     }
@@ -163,12 +191,14 @@ internal sealed class PartialStore(string dir, int chunkSize)
     // Alte Reste (zwei Wochen nicht angefasst) und Teildateien ohne Beschreibung.
     public void Purge()
     {
-        if (!Directory.Exists(dir)) return;
-        foreach (var meta in All().Where(m => DateTime.UtcNow - m.Updated > KeepFor).ToList()) Discard(meta.Hash);
-        foreach (var file in Directory.EnumerateFiles(dir, "*.partial").ToList())
+        if (!Directory.Exists(_dir)) return;
+        foreach (var info in All().Where(m => DateTime.UtcNow - m.Updated > KeepFor)) Discard(info.Hash);
+        foreach (var file in Directory.EnumerateFiles(_dir, "*.partial").ToList())
         {
             var hash = System.IO.Path.GetFileNameWithoutExtension(file);
-            if (!File.Exists(MetaPath(hash)) && DateTime.UtcNow - File.GetLastWriteTimeUtc(file) > TimeSpan.FromHours(1)) TryDelete(file);
+            bool known;
+            lock (_lock) known = _metas.ContainsKey(hash);
+            if (!known && DateTime.UtcNow - File.GetLastWriteTimeUtc(file) > TimeSpan.FromHours(1)) TryDelete(file);
         }
     }
 

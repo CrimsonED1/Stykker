@@ -64,8 +64,9 @@
         set("v-files", String(n.files));
         set("v-size", size(n.bytes));
         set("v-folder", n.folder);
-        $("folder-btn").hidden = !n.canChangeFolder;
-        $("open-folder").hidden = !n.canChangeFolder;
+        $("folder-btn").hidden = !n.local;
+        $("open-folder").hidden = !n.local;
+        $("add-peer").hidden = !n.local;   // PCs verwaltet man nur am PC selbst
         currentFolder = n.folder;
         const online = st.peers.filter((p) => p.online).length;
         set("v-peers", `${online}/${st.peers.length}`);
@@ -84,7 +85,7 @@
         // Hinweis bei angehaltenen Löschungen: erst nach Bestätigung gehen sie an die anderen PCs.
         const notes = $("notes");
         const held = n.heldDeletes
-            ? `<div class="notice"><span><b>${n.heldDeletes} files are missing from the shared folder.</b> The deletion is held so it does not reach the other PCs by mistake (for example, a drive that is not connected).</span><button type="button" class="danger" id="allow">Delete on all PCs</button></div>`
+            ? `<div class="notice"><span><b>${n.heldDeletes} files are missing from the shared folder.</b> The deletion is held so it does not reach the other PCs by mistake (for example, a drive that is not connected).</span>${n.local ? `<button type="button" class="danger" id="allow">Delete on all PCs</button>` : `<span class="muted">Confirm on the PC itself.</span>`}</div>`
             : "";
         if (notes.dataset.html !== held) {
             notes.dataset.html = held;
@@ -102,7 +103,7 @@
                 const via = p.route ? ` via ${p.route}` : "";
                 const state = p.duplicate ? `standby${via}: connected over a faster way`
                     : p.online ? `synced ${ago(p.lastSync)}${via}` : (p.error ? "offline" : "connecting…");
-                const remove = p.manual ? `<button type="button" class="quiet sq" data-remove="${esc(p.address)}" title="Remove this PC" aria-label="Remove ${esc(p.address)}"><svg class="ic"><use href="#i-x" /></svg></button>` : "";
+                const remove = p.manual && st.node.local ? `<button type="button" class="quiet sq" data-remove="${esc(p.address)}" title="Remove this PC" aria-label="Remove ${esc(p.address)}"><svg class="ic"><use href="#i-x" /></svg></button>` : "";
                 return `<div class="ms-peer">
                     <span class="dot ${dot}" title="${p.online ? "online" : "offline"}"></span>
                     <span class="nm"><b>${esc(p.name ?? p.address)}</b><span class="muted mono">${esc(p.address)} · ${esc(state)}</span>${p.error && !p.online ? `<span class="err">${esc(p.error)}</span>` : ""}</span>

@@ -8,7 +8,17 @@ public static class FolderRules
     public static string? Check(string? candidate, string current, string dataDir)
     {
         if (string.IsNullOrWhiteSpace(candidate)) return "Enter a folder.";
+        // Netzwerkpfade (\\server\freigabe, \\?\…) und Netzlaufwerke: die Dateien gingen sonst auf einen fremden Rechner,
+        // und Windows meldet sich dort mit dem eigenen Konto an.
+        if (candidate.StartsWith(@"\\", StringComparison.Ordinal) || candidate.StartsWith("//", StringComparison.Ordinal))
+            return "Network paths cannot be the shared folder. Use a folder on a drive of this PC.";
         if (!Path.IsPathFullyQualified(candidate)) return "Enter a full path, for example D:\\Shared.";
+        try
+        {
+            if (Path.GetPathRoot(candidate) is { Length: > 0 } driveRoot && new DriveInfo(driveRoot).DriveType == DriveType.Network)
+                return "Network drives cannot be the shared folder. Use a folder on a drive of this PC.";
+        }
+        catch (Exception ex) when (ex is ArgumentException or IOException or UnauthorizedAccessException) { }
         string full;
         try { full = Normalize(candidate); }
         catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException) { return "This is not a valid path."; }

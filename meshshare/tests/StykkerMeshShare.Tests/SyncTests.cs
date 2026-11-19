@@ -61,6 +61,7 @@ public sealed class Mesh : IDisposable
 
     public void Dispose()
     {
+        foreach (var node in Nodes) node.Dispose();
         try { Directory.Delete(_root, recursive: true); } catch (IOException) { } catch (UnauthorizedAccessException) { }
     }
 }
@@ -302,6 +303,7 @@ public class PathRuleTests
     public void ConflictNameKeepsExtension()
     {
         var ticks = new DateTime(2026, 11, 19, 14, 32, 0, DateTimeKind.Utc).Ticks;
-        Assert.Equal("docs/Report (conflict PC-2 2026-11-19 1432).docx", PathRules.ConflictName("docs/Report.docx", "PC 2", ticks).Replace("PC2", "PC-2"));
+        Assert.Equal("docs/Report (conflict PC-2 2026-11-19 143200).docx", PathRules.ConflictName("docs/Report.docx", "PC 2", ticks).Replace("PC2", "PC-2"));
+        Assert.Equal("docs/Report (conflict PC2 2026-11-19 143200 3fa2c1).docx", PathRules.ConflictName("docs/Report.docx", "PC 2", ticks, "3fa2c1" + new string('0', 58)));
     }
 }

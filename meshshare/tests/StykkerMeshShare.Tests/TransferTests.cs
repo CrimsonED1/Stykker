@@ -7,7 +7,8 @@ public class TransferTests
 {
     private const int Chunk = 64 * 1024;
 
-    private static MeshNode Node(Mesh mesh, string name) => new(mesh.Options(name) with { TransferChunkSize = Chunk });
+    private static MeshNode Node(Mesh mesh, string name, TimeSpan? badHashPause = null) =>
+        new(mesh.Options(name) with { TransferChunkSize = Chunk, BadHashPause = badHashPause ?? TimeSpan.Zero });
 
     private static byte[] WriteRandom(MeshNode node, string relative, int size, int seed)
     {
@@ -19,7 +20,7 @@ public class TransferTests
         return data;
     }
 
-    private static string PartialDir(MeshNode node) => Path.Combine(node.DataDir, "partial");
+    private static string PartialDir(MeshNode node) => Path.Combine(node.Folder, ".stykker", "partial");
 
     // Gegenstelle, die mitschreibt, was abgerufen wird, und den Inhalt verändern kann.
     private sealed class TestPeer(MeshNode node) : IPeerSource
@@ -80,7 +81,8 @@ public class TransferTests
         var first = await b.PullAsync(peer);
         Assert.False(first.Complete);
         Assert.False(File.Exists(Path.Combine(b.Folder, "big.bin")));
-        Assert.Single(b.Paused);
+        Assert.Single(b.PausedFiles(b.Queue));
+        b.Dispose();
 
         // Neustart: ein neuer Knoten auf denselben Ordnern setzt nach dem letzten sicheren Block fort.
         var b2 = Node(mesh, "B");
@@ -103,6 +105,7 @@ public class TransferTests
 
         var b = Node(mesh, "B");
         await b.PullAsync(new TestPeer(a) { Wrap = (_, _, s) => new LimitedStream(s, 400_000, hang: false) });
+        b.Dispose();
         var partial = Directory.GetFiles(PartialDir(b), "*.partial").Single();
         using (var f = new FileStream(partial, FileMode.Open, FileAccess.ReadWrite))
         {
@@ -192,7 +195,7 @@ public class TransferTests
         var result = await pull.WaitAsync(TimeSpan.FromSeconds(20));
         Assert.True(result.Complete);
         Assert.Equal(["big.bin", "small.bin", "big.bin"], peer.Opened.Select(o => o.Path));
-        Assert.Equal(200_000 / Chunk * Chunk, peer.Opened[2].Offset);
+        Assert.Equal(200_000, peer.Opened[2].Offset);   // die angehaltene Teildatei blieb offen: genau dort weiter
         Assert.Equal(big, File.ReadAllBytes(Path.Combine(b.Folder, "big.bin")));
         Assert.Equal(small, File.ReadAllBytes(Path.Combine(b.Folder, "small.bin")));
     }

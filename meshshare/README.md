@@ -60,15 +60,26 @@ Index, trash and settings live in `%APPDATA%\Stykker\MeshShare`, not in the shar
 - **Order**: drag the waiting files into the order you want (on the phone: the arrow button). A file dragged to the
   very top is loaded now: the running file pauses and later continues where it stopped. The order is kept in
   `queue.json` and survives a restart.
-- **Continue after a break**: a file is received into `partial\` in the data folder. Every 8 MB the data is written
-  to disk and the block's SHA-256 is noted. After a lost connection, a crash or a restart, the blocks already there
-  are read and checked again, and the transfer continues after the last good block (HTTP range request). It also
-  continues from another PC that has the same content. Unused partial files are removed after 14 days.
+- **Continue after a break**: a file is received into `.stykker\partial\` inside the shared folder (hidden, never
+  synced; on the same drive, so taking it over is a rename, not a copy). Every 8 MB the data is written to disk and
+  the block's SHA-256 is noted. After a crash or a restart, the blocks already there are read and checked again, and
+  the transfer continues after the last good block (HTTP range request). A file that was paused or lost its
+  connection keeps its partial file open and continues exactly where it stopped. It also continues from another PC
+  that has the same content. Unused partial files are removed after 14 days.
 - **Checked by hash**: a received file is used only if the SHA-256 of the whole file equals the hash of the sending
-  PC. Otherwise it is thrown away and loaded again (the activity list shows "Check failed").
+  PC. Otherwise it is thrown away (the activity list shows "Check failed") and that content is not loaded again for
+  10 minutes, so a broken file does not cost the same gigabytes over and over.
 - **Changed files**: each PC notices changes in its folder (watcher plus a full scan every minute; size and time,
-  then SHA-256). A PC does not hand out a file that changed since its last scan. If a file changes on the other PC
-  during a transfer, the half-received old version is dropped and the new one is loaded.
+  then SHA-256; a time in the future counts as settled). Hashing runs without holding up the other PCs. A PC does not
+  hand out a file that changed since its last scan, and it hashes what it sends: if the content changed without a new
+  size or time, it hashes the file again before sending it once more. If a file changes on the other PC during a
+  transfer, the half-received old version is dropped and the new one is loaded.
+- **Stuck connections**: if no data comes for 60 seconds, the transfer stops and continues later; TCP keepalive
+  notices a dead connection. A file that is open here (for example in Word) and should be deleted or replaced is
+  tried again later; the other changes still arrive.
+- **Disk space**: a file is received only if the drive keeps at least 512 MB free.
+- **Pause and skip**: "Pause" stops all downloads (deletions and renames still sync). "Don't load" skips a file until
+  you allow it again. Both are kept in `queue.json`.
 
 ## Finding the other PCs
 
@@ -88,10 +99,21 @@ address stops answering, the Tailscale address takes over. The page shows the wa
 
 The server answers this machine, the private ranges of the home network (`10/8`, `172.16/12`, `192.168/16`,
 link-local) and Tailscale (`100.64.0.0/10`, `fc00::/7`). **There is no pairing yet: everyone in the home network can
-read and change the shared folder.** The connection between PCs is plain HTTP; over Tailscale it is encrypted by
-Tailscale. Pairing through `Stykker.Pairing` and HTTPS come later.
+read the shared folder and add files to it.** The connection between PCs is plain HTTP; over Tailscale it is
+encrypted by Tailscale. Pairing through `Stykker.Pairing` and HTTPS come later.
 
-Uploads and other actions are accepted only from the page itself (same origin).
+- **Only on the PC itself**: changing the folder, adding and removing PCs, confirming held deletions and opening the
+  Explorer. Network paths (`\server\share`) and network drives cannot be the shared folder.
+- **Only from the page itself** (same origin): uploads, the queue, pause, skip and restoring from the trash.
+- **Host names**: the server answers only under this PC's own names: an IP address, `localhost`, the computer name
+  (with the network's DNS suffix), `<computer name>.<tailnet>.ts.net`, or a name listed under `hostNames` in
+  `%APPDATA%\Stykker\stykker.json`. This blocks web pages that point their own name at this PC (DNS rebinding).
+  If another PC reaches this one under a different name (an alias), add that name there.
+- **Links**: files behind a link or junction inside the shared folder are never read, sent or written.
+- **Limits**: answers from other PCs are limited in size and time, at most 64 PCs found by broadcast are kept, and a
+  broadcast gets at most one answer per sender every 5 seconds.
+- **Not solved without pairing**: a device in the home network can claim to be another PC (its ID). It can then
+  stop syncing with that PC over a slower way. Pairing will fix this.
 Windows asks once whether the program may use the network; allow it for private networks.
 
 ## Phone

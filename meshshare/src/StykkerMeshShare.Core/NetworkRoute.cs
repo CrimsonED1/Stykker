@@ -55,6 +55,10 @@ public static class NetworkRoute
         return colon > 0 && address.IndexOf(':') == colon ? address[..colon] : address;
     }
 
+    // Dieselbe Gegenstelle unter mehreren Adressen: eine neue Adresse wartet, solange eine andere über einen mindestens
+    // so guten Weg abgleicht. Ist sie besser, löst sie alle aktiven ab (Rückgabe: welche).
+    public static bool MustWait(PeerRoute mine, IEnumerable<PeerRoute> activeOthers) => activeOthers.Any(route => route <= mine);
+
     public static string Label(PeerRoute route) => route switch
     {
         PeerRoute.ThisPc => "this PC",
