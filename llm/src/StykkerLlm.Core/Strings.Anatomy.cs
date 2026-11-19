@@ -9,6 +9,7 @@ public static partial class Strings
         AnatExpertsTitle = "Experts of one layer",
         AnatWhich = "Lit: the share that works per token. Which experts the router picks is not reported by llama.cpp.",
         AnatNoArgs = "Command line unknown: where the layers sit is not shown",
+        AnatCpuOnly = "The load log names no graphics device: every layer runs on the CPU",
         AnatNglAuto = "-ngl not set or auto: llama.cpp decides itself where the layers sit",
         AnatNoModel = "The model file of this server cannot be read (GGUF), so its structure is not shown.",
         AnatNowTitle = "Now", AnatIdle = "Idle", AnatReading = "Reading the prompt", AnatWriting = "Writing",

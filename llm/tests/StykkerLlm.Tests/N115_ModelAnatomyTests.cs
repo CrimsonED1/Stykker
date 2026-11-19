@@ -89,6 +89,19 @@ public class N115_ModelAnatomyTests
     }
 
     [TestMethod]
+    public void ACpuOnlyLoadLogPutsEveryLayerOnTheCpu()
+    {
+        // so lädt der CPU-Build b11854 (ohne -ngl): nur CPU-Puffer im Log
+        var cpu = ModelAnatomyBuilder.Build(Moe(), Args("-m", "x"), new[] { new ModelBuffer("CPU_Mapped", 17000), new ModelBuffer("CPU_REPACK", 10) });
+        Assert.IsTrue(cpu.PlacementKnown);
+        Assert.IsTrue(cpu.Layers.All(l => l.Main == LayerPlace.Cpu && l.Experts == LayerPlace.Cpu));
+        Assert.AreEqual(LayerPlace.Cpu, cpu.Output);
+        Assert.IsTrue(cpu.Notes.Contains(Strings.AnatCpuOnly));
+        // ein Grafikgerät im Log: weiter unbekannt, llama.cpp entscheidet
+        Assert.IsFalse(ModelAnatomyBuilder.Build(Moe(), Args("-m", "x"), new[] { new ModelBuffer("CUDA0", 1), new ModelBuffer("CPU_Mapped", 1) }).PlacementKnown);
+    }
+
+    [TestMethod]
     public void NCpuMoePutsTheExpertsOfTheFirstLayersOnTheCpu()
     {
         var a = ModelAnatomyBuilder.Build(Moe(), Args("-ngl", "99", "--n-cpu-moe", "10"));

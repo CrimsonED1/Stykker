@@ -34,8 +34,9 @@ public static class ModelAnatomyBuilder
 {
     private static readonly TimeSpan RegexTimeout = TimeSpan.FromMilliseconds(50);
 
-    // args null: Kommandozeile unbekannt (z. B. LM Studio, entfernter Host) – die Verteilung bleibt dann unbekannt
-    public static ModelAnatomy Build(GgufInfo g, LlamaServerArgs? args)
+    // args null: Kommandozeile unbekannt (z. B. LM Studio, entfernter Host) – die Verteilung bleibt dann unbekannt.
+    // buffers: die Puffer aus dem Ladelog; nennen sie kein Grafikgerät (reiner CPU-Build), liegt alles auf dem Prozessor.
+    public static ModelAnatomy Build(GgufInfo g, LlamaServerArgs? args, IReadOnlyList<ModelBuffer>? buffers = null)
     {
         int n = Math.Max(0, g.BlockCount ?? 0);
         var notes = new List<string>();
@@ -45,7 +46,12 @@ public static class ModelAnatomyBuilder
 
         // -ngl: die Schichten vom Ende her auf die Grafikkarte; die Ausgabeschicht (Index n) kommt zuerst dran
         var (gpuStart, outputPlace, known) = Offload(args?.NglRaw, n);
-        if (args == null) notes.Add(Strings.AnatNoArgs);
+        if (!known && buffers is { Count: > 0 } && buffers.All(b => b.Host))
+        {
+            (gpuStart, outputPlace, known) = (n + 1, LayerPlace.Cpu, true);
+            notes.Add(Strings.AnatCpuOnly);
+        }
+        else if (args == null) notes.Add(Strings.AnatNoArgs);
         else if (!known) notes.Add(Strings.AnatNglAuto);
 
         var rules = ExpertRules(args, notes);

@@ -1075,3 +1075,59 @@ a.chipi.moec{text-decoration:none;color:var(--acc)}a.chipi.moec:hover{border-col
 .mdl-pg{color:var(--warn);font-family:var(--font-mono);font-variant-numeric:tabular-nums}
 html[data-theme=titan] .mdl-verdict{border-radius:0;font-family:var(--font-mono);text-transform:uppercase;font-size:11px}
 @media(max-width:640px){.mdl-inram{grid-template-columns:1fr;gap:4px}.mdl-stor-grid{grid-template-columns:1fr}}
+/* Detailseite eines Servers (Pages/Server.razor): Kopf, Kennzahlen, Optionen, Prozess und Modell */
+.dt-hero{display:grid;gap:12px}
+.dt-top{display:flex;flex-wrap:wrap;align-items:center;gap:12px 16px}
+.dt-be{display:grid;place-items:center;width:44px;height:44px;border-radius:12px;flex:none;color:var(--acc);background:rgb(var(--acc-rgb)/.1);border:1px solid rgb(var(--acc-rgb)/.3);box-shadow:0 0 calc(var(--glow)*16px) rgb(var(--acc-rgb)/.25)}
+.dt-be svg{width:24px;height:24px}
+.dt-hero[data-s=gen] .dt-be{color:var(--st-gen);background:color-mix(in srgb,var(--st-gen) 12%,transparent);border-color:color-mix(in srgb,var(--st-gen) 45%,transparent)}
+.dt-hero[data-s=off] .dt-be{color:var(--warn);background:color-mix(in srgb,var(--warn) 10%,transparent);border-color:color-mix(in srgb,var(--warn) 40%,transparent);box-shadow:none}
+.dt-id{display:grid;gap:2px;min-width:0;flex:1 1 220px}
+.dt-id h1{margin:0;font:600 22px var(--font-sans);color:var(--ink);overflow-wrap:anywhere}
+.dt-act{display:flex;flex-wrap:wrap;gap:8px}
+.dt-act button{display:inline-flex;align-items:center;gap:6px}
+.dt-chips{display:flex;flex-wrap:wrap;gap:6px}
+.dt-chip{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;border:1px solid var(--line);background:rgb(var(--ink-rgb)/.035);color:var(--muted);font-family:var(--font-mono);font-size:12px;min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dt-chip svg{flex:none;opacity:.8}
+.dt-st i{width:8px;height:8px;border-radius:50%;background:currentColor;box-shadow:0 0 calc(var(--glow)*8px) currentColor}
+.dt-st.on{color:var(--good);border-color:color-mix(in srgb,var(--good) 40%,transparent)}
+.dt-st.off{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 45%,transparent)}
+.dt-kpis{display:grid;grid-template-columns:minmax(220px,1.6fr) repeat(4,minmax(150px,1fr));gap:12px;margin-bottom:16px}
+.dt-kpi{position:relative;display:grid;align-content:start;gap:4px;padding:12px 14px;border-radius:var(--radius);border:1px solid var(--border);background:linear-gradient(180deg,var(--card-top),var(--card-bottom));overflow:hidden;min-width:0}
+.dt-kpi>*:not(svg){position:relative;z-index:1}
+.dt-kpi .spark{position:absolute;z-index:0;left:0;right:0;bottom:0;width:100%;height:60%;border:0;border-radius:0;background:none;opacity:.55;pointer-events:none}
+.dt-kpi .spark .area{fill:rgb(var(--acc-rgb)/.1)}
+.dt-kl{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.dt-kv{font:600 24px var(--font-mono);font-variant-numeric:tabular-nums;color:var(--ink);line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dt-kv small{font-size:12px;font-weight:400;color:var(--muted);margin-left:4px}
+.dt-kv.dt-kt{font:500 14px var(--font-sans);white-space:normal}
+.dt-ks{font:12px var(--font-mono);color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dt-tps .dt-kv{font-size:30px;color:var(--acc);text-shadow:0 0 calc(var(--glow)*16px) rgb(var(--acc-rgb)/.4)}
+.dt-tps[data-s=gen]{border-color:color-mix(in srgb,var(--st-gen) 45%,var(--border))}
+.dt-tps[data-s=gen] .dt-kv{color:var(--st-gen)}
+.dt-opts{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:6px}
+.dt-opt{display:flex;align-items:baseline;gap:8px;padding:6px 10px;border-radius:8px;background:rgb(var(--ink-rgb)/.03);border:1px solid rgb(var(--ink-rgb)/.06);min-width:0;font-size:13px}
+.dt-opt code{font:600 12px var(--font-mono);color:var(--acc);flex:none}
+.dt-opt.env code{color:var(--second)}
+.dt-opt span{color:var(--ink);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--font-mono);font-size:12px}
+.dt-cmd{margin-top:12px}
+.dt-cmd summary{cursor:pointer;color:var(--muted);font-size:13px}
+.dt-cmd summary:hover{color:var(--ink)}
+.dt-cmd .answer{margin-top:8px}
+.dt-copy{margin-top:8px;display:inline-flex;align-items:center;gap:6px}
+.dt-kv-list{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:8px 16px;margin:0}
+.dt-kv-list dt{color:var(--muted)}
+.dt-kv-list dd{margin:0;color:var(--ink);font-family:var(--font-mono);font-size:12px;min-width:0;overflow-wrap:anywhere}
+.dt-kv-list dd.dt-path{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;direction:rtl;text-align:left;overflow-wrap:normal}
+@media(max-width:1100px){.dt-kpis{grid-template-columns:repeat(3,minmax(0,1fr))}.dt-tps{grid-column:1/-1}}
+@media(max-width:640px){
+  .dt-kpis{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+  .dt-kv{font-size:20px}.dt-tps .dt-kv{font-size:26px}
+  .dt-id h1{font-size:18px}
+  .dt-act{width:100%}.dt-act button{flex:1 1 auto;justify-content:center}
+  .dt-opts{grid-template-columns:1fr}
+  .dt-ks{white-space:normal}
+}
+html[data-theme=titan] .dt-be,html[data-theme=titan] .dt-chip,html[data-theme=titan] .dt-opt,html[data-theme=titan] .dt-st i{border-radius:0}
+html[data-theme=titan] .dt-kl{font-family:var(--font-mono)}
+html[data-theme=titan] .dt-kpi .spark{background:none;border:0}html[data-theme=titan] .dt-kpi .spark polyline.line{stroke:var(--acc)}html[data-theme=titan] .dt-kpi .spark .area{fill:rgb(var(--acc-rgb)/.1)}

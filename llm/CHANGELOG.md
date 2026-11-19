@@ -21,6 +21,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   token and in total (≈ how many times the model was read). llama.cpp itself reports none of this at runtime; the
   amounts read are estimates, because another program reading from the same drive counts too. Reading does not wear
   an SSD; paging costs speed.
+- **Details page redesigned:** a header with the backend, status and key facts as chips (address, port, context per
+  slot, slots, PID, clients) and the actions with symbols; a row of figures (t/s now with its history, prompt speed and
+  first token, tokens generated, VRAM and RAM, idle); the options of the command line as compact pairs with long paths
+  shortened to the file name, the full command line to open and copy; process, /props and model in one list. The slot
+  table stays only for servers without the model view. Checked against a real llama-server (b11854, CPU build):
+  repeated buffer lines of newer builds are summed (they appear with `-lv 4`), and a load log without a graphics device
+  shows every layer on the CPU.
 - **Hardware bar** at the top of every page except the monitor: VRAM, GPU, CPU, RAM, the fullest drive, disk I/O,
   network and GPU temperature in two rows of four. A full bar turns red; the temperature is
   green, yellow from 75 °C and red from 85 °C. A value the server does not measure shows `–`. The switch *Hardware bar*
