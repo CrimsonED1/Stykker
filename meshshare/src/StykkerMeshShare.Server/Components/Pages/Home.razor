@@ -9,6 +9,7 @@
         <span class="stat" title="The PC this page belongs to">This PC <b id="v-name">–</b></span>
         <span class="stat hide-s" title="Files in the shared folder">Files <b id="v-files">–</b></span>
         <span class="stat hide-s" title="Size of the shared folder">Size <b id="v-size">–</b></span>
+        <span class="stat" id="v-free-chip" title="Free space on the drive of the shared folder">Free <b id="v-free">–</b></span>
         <span class="stat" id="v-peers-chip" title="Other PCs online">PCs <b id="v-peers">–</b></span>
         <div class="seg" role="group" aria-label="Theme">
             <button type="button" data-theme-choice="dark" class="on" aria-pressed="true">Dark</button>
@@ -50,6 +51,24 @@
                 </div>
                 <button type="button" class="quiet" id="folder-btn" hidden title="Choose another shared folder">Change folder</button>
             </div>
+            @* Freier Platz auf dem Laufwerk des Ordners. Unter der Grenze nimmt dieser PC nichts an; die Grenze ändert man
+               nur am PC selbst. *@
+            <div class="ms-disk" id="disk" hidden>
+                <span class="mono" id="v-disk">–</span>
+                <span class="bar" title="Used space on this drive"><i id="v-disk-bar"></i></span>
+                <span class="mono ms-disk-total" id="v-disk-total"></span>
+            </div>
+            <div class="ms-disk-hint muted" id="disk-hint" hidden>
+                <span id="v-minfree-text">Receiving stops below 5 GB free.</span>
+                <button type="button" class="quiet" id="minfree-btn" hidden>Change</button>
+            </div>
+            <form id="minfree-form" class="ms-minfree" hidden autocomplete="off">
+                <label for="minfree-gb">Keep at least</label>
+                <input id="minfree-gb" type="number" min="0" max="10000" step="0.5" inputmode="decimal" />
+                <span>GB free (0 = no limit)</span>
+                <button type="submit" class="primary">Save</button>
+                <button type="button" class="quiet" id="minfree-cancel">Cancel</button>
+            </form>
             @* Ordner wechseln: nur am PC selbst (der Server blendet den Knopf sonst aus). *@
             <form id="folder-form" class="ms-folder" hidden autocomplete="off">
                 <label class="ms-label" for="folder-path">New shared folder</label>

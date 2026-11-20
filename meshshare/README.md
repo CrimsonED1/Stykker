@@ -86,6 +86,11 @@ Index, trash and settings live in `%APPDATA%\Stykker\MeshShare`, not in the shar
   notices a dead connection. A file that is open here (for example in Word) and should be deleted or replaced is
   tried again later; the other changes still arrive.
 - **Disk space**: a file is received only if the drive keeps at least 512 MB free.
+- **Free space**: the page shows the free space of the drive of the shared folder, for this PC and for every other
+  PC (each PC sends it along with its answers). Below a limit (default 5 GB, "Change" on the PC itself, 0 = off,
+  kept in `settings.json`) a PC receives nothing: no downloads from other PCs and no uploads from the page. It still
+  sends its own changes and deletions, and it continues by itself once enough is free. A download starts only if
+  the limit stays free afterwards. The other PCs show "not receiving" for it, and the tray says so.
 - **Pause and skip**: "Pause" stops all downloads (deletions and renames still sync). "Don't load" skips a file until
   you allow it again. Both are kept in `queue.json`.
 

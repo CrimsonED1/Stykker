@@ -62,6 +62,9 @@ public static class UiEndpoints
         app.MapPost("/api/upload", async (HttpContext ctx, string path, FolderWatcher watcher, CancellationToken ct) =>
         {
             if (!LocalRequests.SameOrigin(ctx)) return Results.Json(new { ok = false, message = "Refused: that request did not come from this page." }, statusCode: 403);
+            // Platte fast voll: nichts annehmen (auch nicht, wenn die Datei die Grenze erst unterschreiten würde).
+            if (node.Disk is { } disk && node.MinFreeBytes > 0 && disk.Free - (ctx.Request.ContentLength ?? 0) < node.MinFreeBytes)
+                return Results.Json(new { ok = false, message = $"Not enough free space on this PC: {Gb(disk.Free)} free, it keeps at least {Gb(node.MinFreeBytes)} free." }, statusCode: StatusCodes.Status507InsufficientStorage);
             var feature = ctx.Features.Get<IHttpMaxRequestBodySizeFeature>();
             if (feature is { IsReadOnly: false }) feature.MaxRequestBodySize = null;   // nur hier: große Dateien
             var name = await node.AddFileAsync(path, ctx.Request.Body, ct);
@@ -84,6 +87,14 @@ public static class UiEndpoints
         // Beim Tippen: taugt der Ordner?
         app.MapPost("/api/folder/check", (HttpContext ctx, FolderRequest body) => LocalOnly(ctx, "Only on the PC itself.", () =>
             node.CheckFolder(body.Path?.Trim() ?? "") is { } problem ? new Result(false, problem) : new Result(true, "This folder works.")));
+        // Grenze für den freien Platz (in GB, 0 = aus). Wird in settings.json gemerkt.
+        app.MapPost("/api/settings/min-free", (HttpContext ctx, MinFreeRequest body) => LocalOnly(ctx, "Change this on the PC itself.", () =>
+        {
+            if (body.Gb is not (>= 0 and <= 10_000)) return new Result(false, "Enter a number of GB between 0 and 10000.");
+            node.MinFreeBytes = (long)(body.Gb.Value * 1024 * 1024 * 1024);
+            settings.SetMinFreeGb(body.Gb.Value);
+            return new Result(true, body.Gb.Value == 0 ? "No limit: receives until the disk is full." : $"Receives only while at least {body.Gb.Value.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture)} GB stay free.");
+        }));
         app.MapPost("/api/allow-deletes", (HttpContext ctx) => LocalOnly(ctx, "Confirm deletions on the PC itself.", () =>
         {
             node.AllowHeldDeletes();
@@ -129,6 +140,8 @@ public static class UiEndpoints
             node.Restore(body.Id ?? "", out var name) is { } problem ? new Result(false, problem) : new Result(true, $"Restored as {name}.")));
     }
 
+    private static string Gb(long bytes) => (bytes / (1024.0 * 1024 * 1024)).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture) + " GB";
+
     private static IResult LocalOnly(HttpContext ctx, string refusal, Func<Result> action) => NetworkAccess.IsLocal(ctx)
         ? LocalRequests.Guarded(ctx, action)
         : Results.Json(new Result(false, refusal), statusCode: StatusCodes.Status403Forbidden);
@@ -140,5 +153,6 @@ internal sealed record FolderRequest(string? Path, bool Move);
 internal sealed record PauseRequest(bool Paused);
 internal sealed record SkipRequest(string? Path, bool Skip);
 internal sealed record RestoreRequest(string? Id);
+internal sealed record MinFreeRequest(double? Gb);
 internal sealed record FileDto(string Path, long Size, DateTime Modified, string? From, bool Conflict, bool Viewable);
 internal sealed record TrashDto(string Id, string Path, DateTime Removed, long Size);

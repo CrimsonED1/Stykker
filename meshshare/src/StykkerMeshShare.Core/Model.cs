@@ -47,4 +47,6 @@ public sealed record MeshOptions
     public TimeSpan TransferIdleTimeout { get; init; } = TimeSpan.FromSeconds(60);
     // Kam ein Inhalt kaputt an, wird er so lange nicht neu geladen (sonst lädt ein PC dieselben GB endlos).
     public TimeSpan BadHashPause { get; init; } = TimeSpan.FromMinutes(10);
+    // Für Tests: misst den freien Platz statt DriveInfo (Ordner -> Platz).
+    public Func<string, DiskSpace?>? MeasureDisk { get; init; }
 }

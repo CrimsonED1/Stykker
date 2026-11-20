@@ -131,3 +131,18 @@
 .ms-trash .ms-row{grid-template-columns:minmax(0,1fr) 70px 90px auto}
 .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 @media(pointer:coarse){.ms-q .acts .sq,.ms-dl{width:38px;height:38px}.ms-q .acts{gap:4px}}
+
+/* Freier Platz */
+.ms-disk{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:center;margin:0 0 4px}
+.ms-disk .bar{min-width:0}
+.ms-disk.low .mono,#v-free-chip.low b{color:var(--warn)}
+.ms-disk.low .bar i{background:var(--warn)}
+.ms-disk-hint{font-size:var(--t-xs);margin:0 0 12px;display:flex;gap:8px;align-items:center}
+.ms-disk-hint .quiet{padding:0 6px;min-height:0;font-size:var(--t-xs)}
+.ms-minfree{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:var(--t-sm);margin:0 0 12px}
+.ms-minfree input{width:90px;font:inherit;background:var(--panel,transparent);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:3px 6px}
+.ms-peer{grid-template-columns:10px minmax(0,1fr) auto auto}
+.ms-peer .space{display:flex;flex-direction:column;align-items:flex-end;gap:3px;font-family:var(--mono);font-size:var(--t-xs);color:var(--muted);min-width:90px}
+.ms-peer .space .bar{width:90px;min-width:0;height:4px;flex:none}
+.ms-peer .space.low{color:var(--warn)}.ms-peer .space.low .bar i{background:var(--warn)}
+@media(max-width:600px){.ms-peer .space{min-width:0}.ms-peer .space .bar{width:60px}}

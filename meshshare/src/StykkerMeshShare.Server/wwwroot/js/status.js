@@ -48,6 +48,7 @@
         set("v-name", n.name);
         set("v-files", String(n.files));
         set("v-size", size(n.bytes));
+        renderDisk(n);
         set("v-folder", n.folder);
         $("folder-btn").hidden = !n.local;
         $("open-folder").hidden = !n.local;
@@ -61,6 +62,7 @@
 
         const syncing = n.transfer || st.peers.some((p) => p.syncing);
         if (n.problem) lamp("off", n.problem);
+        else if (n.disk?.low) lamp("scan", `Receiving paused · only ${size(n.disk.free)} free`);
         else if (n.heldDeletes) lamp("off", `${n.heldDeletes} files vanished – deletion held`);
         else if (n.transfer) lamp("sync", n.transfer.checking ? `Checking ${n.transfer.path}` : `Receiving ${n.transfer.path}`);
         else if (syncing) lamp("sync");
@@ -71,9 +73,13 @@
         else lamp("idle", `Up to date · checked ${ago(n.lastScan)}`);
 
         // Angehaltene Löschungen: erst nach Bestätigung (am PC selbst) gehen sie an die anderen PCs.
-        html($("notes"), n.heldDeletes
+        // Platte fast voll: dieser PC nimmt nichts an, bis wieder genug frei ist.
+        html($("notes"), (n.heldDeletes
             ? `<div class="notice"><span><b>${n.heldDeletes} files are missing from the shared folder.</b> The deletion is held so it does not reach the other PCs by mistake (for example, a drive that is not connected).</span>${n.local ? `<button type="button" class="danger" id="allow">Delete on all PCs</button>` : `<span class="muted">Confirm on the PC itself.</span>`}</div>`
-            : "");
+            : "")
+            + (n.disk?.low
+                ? `<div class="notice"><span><b>Only ${size(n.disk.free)} free on ${esc(n.disk.root)} – receiving is paused.</b> New files from other PCs wait until at least ${size(n.disk.minFree)} are free; uploads here are refused. This PC still sends its own changes and deletions. Free up space or change the folder.</span></div>`
+                : ""));
 
         html($("peers"), st.peers.length
             ? st.peers.map((p) => {
@@ -81,11 +87,12 @@
                 const via = p.route ? ` via ${p.route}` : "";
                 const state = p.duplicate ? `standby${via}: connected over a faster way`
                     : p.online ? `synced ${ago(p.lastSync)}${via}` : (p.error ? "offline" : "connecting…");
+                const space = spaceOf(p);
                 const remove = p.manual && n.local ? `<button type="button" class="quiet sq" data-remove="${esc(p.address)}" title="Remove this PC" aria-label="Remove ${esc(p.address)}"><svg class="ic"><use href="#i-x" /></svg></button>` : "";
                 return `<div class="ms-peer${p.duplicate ? " standby" : ""}">
                     <span class="dot ${dot}" title="${p.online ? "online" : "offline"}"></span>
                     <span class="nm"><b>${esc(p.name ?? p.address)}</b><span class="muted mono">${esc(p.address)} · ${esc(state)}</span>${p.error && !p.online ? `<span class="err">${esc(p.error)}</span>` : ""}</span>
-                    ${remove}
+                    ${space}${remove || "<span></span>"}
                 </div>`;
             }).join("")
             : `<div class="empty"><div><b>No other PC yet</b>Start StykkerMeshShare on another PC in the home network, or add one by name.</div></div>`);
@@ -93,6 +100,51 @@
         html($("activity"), st.activity.length
             ? st.activity.map((a) => `<div class="ms-act"><span class="k ${esc(a.kind)}">${esc(activityText(a))}</span><span class="p" title="${esc(a.path)}">${esc(a.path)}</span><span class="t" title="${esc(new Date(a.time).toLocaleString())}">${esc(ago(a.time))}</span></div>`).join("")
             : `<p class="muted" style="margin:0">Nothing happened yet.</p>`);
+    });
+
+    // ── Freier Platz ──
+    let minFree = 0;
+    function renderDisk(n) {
+        const d = n.disk;
+        $("disk").hidden = !d;
+        $("disk-hint").hidden = !d;
+        if (!d) { set("v-free", "–"); return; }
+        const used = d.total > 0 ? Math.min(100, ((d.total - d.free) / d.total) * 100) : 0;
+        set("v-free", size(d.free));
+        $("v-free-chip").classList.toggle("low", d.low);
+        $("disk").classList.toggle("low", d.low);
+        set("v-disk", `${d.root} · ${size(d.free)} free`);
+        set("v-disk-total", `of ${size(d.total)}`);
+        $("v-disk-bar").style.width = `${used.toFixed(1)}%`;
+        set("v-minfree-text", d.minFree <= 0 ? "No limit: receives until the disk is full."
+            : d.low ? `Receiving continues by itself once ${size(d.minFree)} are free.`
+            : `Receiving stops below ${size(d.minFree)} free.`);
+        $("minfree-btn").hidden = !n.local;
+        minFree = d.minFree;
+    }
+    // Freier Platz eines anderen PCs (meldet er mit; ältere Fassungen nicht).
+    function spaceOf(p) {
+        if (p.free == null) return `<span class="space"></span>`;
+        const used = p.total > 0 ? Math.min(100, ((p.total - p.free) / p.total) * 100) : 0;
+        const low = p.receiving === false;
+        const text = low ? `${size(p.free)} free · not receiving` : p.paused ? `${size(p.free)} free · paused` : `${size(p.free)} free`;
+        return `<span class="space${low ? " low" : ""}" title="Free space on the drive of that PC's shared folder">${esc(text)}<span class="bar"><i style="width:${used.toFixed(1)}%"></i></span></span>`;
+    }
+    const gb = (bytes) => Math.round((bytes / 1073741824) * 10) / 10;
+    $("minfree-btn").addEventListener("click", () => {
+        const form = $("minfree-form");
+        form.hidden = !form.hidden;
+        if (!form.hidden) { $("minfree-gb").value = String(gb(minFree)); $("minfree-gb").select(); }
+    });
+    $("minfree-cancel").addEventListener("click", () => { $("minfree-form").hidden = true; });
+    $("minfree-form").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const value = Number($("minfree-gb").value);
+        if (!Number.isFinite(value) || value < 0) { toast("Enter a number of GB, 0 or more.", true); return; }
+        const r = await post("/api/settings/min-free", { gb: value });
+        toast(r.message ?? "", !r.ok);
+        if (r.ok) $("minfree-form").hidden = true;
+        tick();
     });
 
     $("notes").addEventListener("click", async (e) => {

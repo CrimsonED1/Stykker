@@ -93,11 +93,8 @@ public sealed class HttpPeerSource(HttpClient http, string address) : IPeerSourc
     }
 
     // Lange Abfrage: kommt zurück, sobald sich dort etwas ändert, spätestens nach timeout.
-    public async Task<long> WaitAsync(long since, TimeSpan timeout, CancellationToken ct)
-    {
-        var answer = await GetJsonAsync<Hello>($"/mesh/wait?since={since}&seconds={(int)timeout.TotalSeconds}", MaxSmallBytes, timeout + SmallTimeout, ct).ConfigureAwait(false);
-        return answer.Seq;
-    }
+    public Task<Hello> WaitAsync(long since, TimeSpan timeout, CancellationToken ct) =>
+        GetJsonAsync<Hello>($"/mesh/wait?since={since}&seconds={(int)timeout.TotalSeconds}", MaxSmallBytes, timeout + SmallTimeout, ct);
 
     private async Task<T> GetJsonAsync<T>(string pathAndQuery, long maxBytes, TimeSpan timeout, CancellationToken ct)
     {
@@ -147,4 +144,13 @@ public sealed class HttpPeerSource(HttpClient http, string address) : IPeerSourc
     }
 }
 
-public sealed record Hello(string App, string Id, string Name, long Seq);
+// Free/Total: freier und gesamter Platz auf dem Laufwerk des geteilten Ordners. Receiving: false, wenn dort weniger als
+// die eingestellte Grenze frei ist. Paused: die Downloads sind dort von Hand angehalten. Ältere Fassungen schicken sie nicht.
+public sealed record Hello(string App, string Id, string Name, long Seq, long? Free = null, long? Total = null, bool? Receiving = null, bool? Paused = null)
+{
+    public static Hello Of(MeshNode node, long seq)
+    {
+        var disk = node.Disk;
+        return new Hello("StykkerMeshShare", node.NodeId, node.NodeName, seq, disk?.Free, disk?.Total, !node.LowSpace, node.TransfersPaused);
+    }
+}

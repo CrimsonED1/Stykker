@@ -11,7 +11,8 @@ public sealed class ServerSettings
     private readonly string _file;
     private Stored _stored;
 
-    private sealed record Stored(string? Folder, List<string> Peers);
+    // MinFreeGb: unter so viel freiem Platz nimmt dieser PC nichts mehr an (fehlt: 5 GB).
+    private sealed record Stored(string? Folder, List<string> Peers, double? MinFreeGb = null);
 
     public ServerSettings(string dataDir)
     {
@@ -20,6 +21,13 @@ public sealed class ServerSettings
     }
 
     public string? Folder { get { lock (_lock) return _stored.Folder; } }
+
+    public double? MinFreeGb { get { lock (_lock) return _stored.MinFreeGb; } }
+
+    public void SetMinFreeGb(double gb)
+    {
+        lock (_lock) { _stored = _stored with { MinFreeGb = gb }; Save(); }
+    }
 
     public IReadOnlyList<string> Peers { get { lock (_lock) return _stored.Peers.ToList(); } }
 

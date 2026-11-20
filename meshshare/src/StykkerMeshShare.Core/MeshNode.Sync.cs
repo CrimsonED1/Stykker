@@ -64,7 +64,7 @@ public sealed partial class MeshNode
             while (left.Count > 0)
             {
                 ct.ThrowIfCancellationRequested();
-                if (TransfersPaused || _holdTransfers > 0) { complete = false; break; }
+                if (TransfersPaused || _holdTransfers > 0 || LowSpace) { complete = false; break; }   // angehalten, Ordnerwechsel, Platte fast voll
                 FileEntry remote;
                 lock (_queueLock) remote = byPath[Ordered(_queue.Where(q => left.Contains(q.Path))).First().Path];
                 var outcome = await ApplyAsync(remote, page.NodeName, peer, ct).ConfigureAwait(false);
@@ -85,7 +85,7 @@ public sealed partial class MeshNode
         finally
         {
             // Pausiert: die Liste bleibt sichtbar (und lässt sich umsortieren); der nächste Abruf baut sie neu.
-            lock (_queueLock) if (!TransfersPaused) _queue.Clear();
+            lock (_queueLock) if (!TransfersPaused && !LowSpace) _queue.Clear();
         }
 
         await _gate.WaitAsync(ct).ConfigureAwait(false);
@@ -140,6 +140,7 @@ public sealed partial class MeshNode
         if (plan.Kind == PlanKind.Retry) return Outcome.Retry;
         if (IsSkipped(remote.Path)) return Outcome.Nothing;        // „nicht laden“ in der Oberfläche
         if (HashOnHold(remote.Hash!)) return Outcome.Retry;        // kam eben kaputt an: eine Weile nicht neu laden
+        if (LowSpace) return Outcome.Retry;                        // Platte fast voll: später, von selbst
 
         // Laden: zuerst eine Datei mit demselben Inhalt hier am PC suchen, sonst bei der Gegenstelle. Geladen wird in
         // eine Teildatei, die einen Abbruch übersteht; SetOrder() kann diese Datei anhalten (Deferred).
@@ -345,7 +346,7 @@ public sealed partial class MeshNode
                 if (DateTime.UtcNow - _spaceWarned > TimeSpan.FromMinutes(10))
                 {
                     _spaceWarned = DateTime.UtcNow;
-                    Record(ActivityKind.Error, remote.Path, peerName, "Not enough free disk space for this file");
+                    Record(ActivityKind.Error, remote.Path, peerName, $"Not enough free disk space for this file (keeps {(MinFreeBytes / (1024 * 1024 * 1024.0)).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture)} GB free)");
                 }
                 keep = true;
                 return new(LoadStatus.Failed);
@@ -428,17 +429,6 @@ public sealed partial class MeshNode
     }
 
     // Genug Platz für den Rest der Datei, und es bleibt noch etwas übrig (die Platte soll nicht volllaufen).
-    private bool EnoughSpace(long needed)
-    {
-        try
-        {
-            var root = Path.GetPathRoot(Path.GetFullPath(_folder));
-            if (string.IsNullOrEmpty(root)) return true;
-            return new DriveInfo(root).AvailableFreeSpace >= needed + 512L * 1024 * 1024;
-        }
-        catch (Exception ex) when (ex is IOException or ArgumentException or UnauthorizedAccessException) { return true; }
-    }
-
     private bool Commit(Plan plan, FileEntry remote, string temp)
     {
         var target = plan.Target!;

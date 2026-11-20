@@ -35,6 +35,7 @@ public static class TrayNotices
         _ = Task.Run(async () =>
         {
             int held = 0;
+            bool low = false;
             while (!stopping.IsCancellationRequested)
             {
                 try { await Task.Delay(TimeSpan.FromSeconds(10), stopping).ConfigureAwait(false); }
@@ -42,6 +43,10 @@ public static class TrayNotices
                 int now = node.HeldDeletes;
                 if (now > 0 && held == 0) Show("Deletion held", $"{now} files vanished from the shared folder. Open StykkerMeshShare to confirm or undo.");
                 held = now;
+                bool lowNow = node.LowSpace;
+                if (lowNow && !low && node.Disk is { } disk)
+                    Show("Disk almost full", $"Only {(disk.Free / (1024.0 * 1024 * 1024)).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture)} GB free on {disk.Root}. StykkerMeshShare receives nothing until more is free.");
+                low = lowNow;
             }
         });
     }

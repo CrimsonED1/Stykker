@@ -8,7 +8,7 @@ public static class MeshEndpoints
 {
     public static void Map(WebApplication app, MeshNode node)
     {
-        app.MapGet("/mesh/hello", () => Results.Json(new Hello("StykkerMeshShare", node.NodeId, node.NodeName, node.Seq)));
+        app.MapGet("/mesh/hello", () => Results.Json(Hello.Of(node, node.Seq)));
         app.MapGet("/mesh/changes", (long since) => Results.Json(node.GetChanges(since)));
         app.MapGet("/mesh/file", (string path, string hash) =>
         {
@@ -22,7 +22,7 @@ public static class MeshEndpoints
             try
             {
                 var seq = await node.WaitForChangeAsync(since, timeout, ct);
-                return Results.Json(new Hello("StykkerMeshShare", node.NodeId, node.NodeName, seq));
+                return Results.Json(Hello.Of(node, seq));
             }
             catch (OperationCanceledException) { return Results.Empty; }
         });

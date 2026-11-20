@@ -60,6 +60,10 @@ public sealed class PeerManager : IHostedService, IDisposable
         public DateTime? LastSync { get; set; }
         public DateTime? OfflineSince { get; set; }
         public string? LastError { get; set; }
+        public long? Free { get; set; }            // freier Platz dort (aus Hallo und langer Abfrage)
+        public long? Total { get; set; }
+        public bool? Receiving { get; set; }       // false: dort ist weniger als die Grenze frei
+        public bool? Paused { get; set; }          // dort von Hand angehalten
         internal CancellationTokenSource Cancel { get; } = new();
         internal CancellationTokenSource? Round { get; set; }   // ein Durchgang: Hallo, Abgleich, Warten
         internal volatile bool InBackoff;                        // wartet nach einem Fehler auf den nächsten Versuch
@@ -159,6 +163,7 @@ public sealed class PeerManager : IHostedService, IDisposable
                     peer.NodeId = hello.Id;
                     peer.Name = hello.Name;
                     remoteSeq = hello.Seq;
+                    Remember(peer, hello);
                     peer.Route = await NetworkRoute.ResolveAsync(peer.Address, helloTimeout.Token).ConfigureAwait(false);
                 }
 
@@ -180,7 +185,12 @@ public sealed class PeerManager : IHostedService, IDisposable
                     long seq;
                     using (var wait = CancellationTokenSource.CreateLinkedTokenSource(rt, _wake.Token))
                     {
-                        try { seq = await source.WaitAsync(remoteSeq, WaitTimeout, wait.Token).ConfigureAwait(false); }
+                        try
+                        {
+                            var answer = await source.WaitAsync(remoteSeq, WaitTimeout, wait.Token).ConfigureAwait(false);
+                            Remember(peer, answer);
+                            seq = answer.Seq;
+                        }
                         catch (OperationCanceledException) when (!rt.IsCancellationRequested && wait.IsCancellationRequested)
                         {
                             complete = await PullAsync(peer, source, rt).ConfigureAwait(false);
@@ -236,6 +246,14 @@ public sealed class PeerManager : IHostedService, IDisposable
             }
             finally { peer.Round = null; }
         }
+    }
+
+    private static void Remember(Peer peer, Hello hello)
+    {
+        peer.Free = hello.Free;
+        peer.Total = hello.Total;
+        peer.Receiving = hello.Receiving;
+        peer.Paused = hello.Paused;
     }
 
     // Pause nach einem Fehler. null: die Schleife endet (gestoppt, oder eine gefundene Adresse wird vergessen).

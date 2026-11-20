@@ -66,6 +66,7 @@ if (!first)
 }
 
 var node = new MeshNode(new MeshOptions { Folder = folder, DataDir = dataDir, NodeName = nodeName });
+if (settings.MinFreeGb is double minFreeGb) node.MinFreeBytes = (long)(minFreeGb * 1024 * 1024 * 1024);
 
 var builder = WebApplication.CreateBuilder(new WebApplicationOptions { Args = args, ContentRootPath = AppContext.BaseDirectory });
 builder.WebHost.UseUrls(localOnly ? $"http://127.0.0.1:{port}" : $"http://*:{port}");
