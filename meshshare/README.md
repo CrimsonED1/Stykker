@@ -20,9 +20,18 @@ Start `StykkerMeshShare.exe` (window) or `StykkerMeshShare-Server.exe` (tray onl
   The progress also shows in the window title.
 - **Files**: click to open (pictures, PDFs, text, audio and video open in the browser, also on the phone; other
   files download), or use the arrow to download. Conflict copies are marked; search "conflict" lists them.
-- **Activity** and the **Trash** (files another PC replaced or deleted here, 30 days) with **Restore**.
+- **Activity** and the **Trash** (files another PC replaced or deleted here, 30 days): **Restore**, **Delete** for
+  good, or **Empty trash** (both ask first). Each PC has its own trash.
 
-The tray shows a notice for a conflict copy, a held deletion and a full disk.
+**Other PCs** in the list show, live while the page is open: what they are receiving (file, %, rate, what is left),
+their free space, whether their sync is paused, and **outdated** when they run an older StykkerMeshShare than the
+newest PC in the mesh (each PC reports when its program was built). If this PC is the outdated one, the page says so.
+
+**The window** (`StykkerMeshShare.exe`) looks like the Stykker Starter: no Windows frame, the page header is the title
+bar. It has the tray icon: Open, Open the shared folder, Quit. Closing the window asks: keep it in the tray, or quit
+("Don't ask again" is kept; the tray menu offers to ask again). **Quit also stops the server**, so syncing on this PC
+ends with the window. The window starts the server without a tray icon of its own; a second start only brings the
+window to the front. The tray also shows a notice for a conflict copy, a held deletion and a full disk.
 
 The shared folder is `%USERPROFILE%\StykkerMeshShare`. **Change folder** (on the PC itself, not from the phone) picks
 another one; it is remembered in `settings.json`, and `--folder` does the same from the command line. While typing,
@@ -33,7 +42,7 @@ the page says whether the folder works. The new folder must be empty or not exis
   reaches the other PCs. Files that existed only on this PC stay in the old folder.
 
 A whole drive, the user profile itself, Windows, the program folders, AppData and the data folder cannot be shared.
-Closing the window does not stop syncing; the tray icon has **Shut down**.
+Run on its own (`StykkerMeshShare-Server.exe`), the server has its own tray icon with **Shut down**.
 
 ## How it syncs
 

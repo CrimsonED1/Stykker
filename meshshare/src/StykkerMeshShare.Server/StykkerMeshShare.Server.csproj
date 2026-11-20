@@ -15,6 +15,11 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- Wann dieser Server gebaut wurde (UTC). Die PCs melden es einander; wer älter ist, steht als „outdated“ da. -->
+    <AssemblyMetadata Include="BuildTime" Value="$([System.DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ'))" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\StykkerMeshShare.Core\StykkerMeshShare.Core.csproj" />
     <ProjectReference Include="..\..\..\shared\src\Stykker.Shared\Stykker.Shared.csproj" />
   </ItemGroup>

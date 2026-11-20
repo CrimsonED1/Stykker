@@ -181,18 +181,35 @@
     async function loadTrash() {
         let items = [];
         try { items = await fetch("/api/trash").then((r) => r.json()); } catch { return; }
+        const total = items.reduce((sum, t) => sum + t.size, 0);
+        MS.set("trash-count", items.length ? `${items.length} file${items.length === 1 ? "" : "s"} · ${size(total)}` : "");
+        $("trash-empty").hidden = !items.length;
         html($("trash"), items.length
-            ? items.map((t) => `<div class="ms-row"><span class="nm" title="${esc(t.path)}">${esc(t.path)}</span><span class="num">${size(t.size)}</span><span class="when">${esc(ago(t.removed))}</span>
-                <button type="button" class="quiet" data-restore="${esc(t.id)}" aria-label="Restore ${esc(t.path)}">Restore</button></div>`).join("")
+            ? items.map((t) => `<div class="ms-row ms-trash-row"><span class="nm" title="${esc(t.path)}">${esc(t.path)}</span><span class="num">${size(t.size)}</span><span class="when">${esc(ago(t.removed))}</span>
+                <span class="acts"><button type="button" class="quiet" data-restore="${esc(t.id)}" aria-label="Restore ${esc(t.path)}">Restore</button>
+                <button type="button" class="quiet danger-text" data-delete="${esc(t.id)}" data-name="${esc(t.path)}" aria-label="Delete ${esc(t.path)} for good">Delete</button></span></div>`).join("")
             : `<p class="muted" style="margin:0">The trash is empty.</p>`);
     }
     $("trash-box").addEventListener("toggle", () => { if ($("trash-box").open) loadTrash(); });
     $("trash").addEventListener("click", async (e) => {
-        const button = e.target.closest("[data-restore]");
-        if (!button) return;
-        const r = await post("/api/trash/restore", { id: button.dataset.restore });
-        toast(r.message ?? "", !r.ok);
+        const restore = e.target.closest("[data-restore]");
+        const remove = e.target.closest("[data-delete]");
+        if (restore) {
+            const r = await post("/api/trash/restore", { id: restore.dataset.restore });
+            toast(r.message ?? "", !r.ok);
+        } else if (remove) {
+            // Endgültig: vorher fragen.
+            if (!confirm(`Delete "${remove.dataset.name}" for good? It cannot be restored afterwards.`)) return;
+            const r = await post("/api/trash/delete", { id: remove.dataset.delete });
+            toast(r.message ?? "", !r.ok);
+        } else return;
         loadTrash();
         tick();
+    });
+    $("trash-empty").addEventListener("click", async () => {
+        if (!confirm(`Empty the trash of this PC? ${MS.$("trash-count").textContent}. These files cannot be restored afterwards.`)) return;
+        const r = await post("/api/trash/empty");
+        toast(r.message ?? "", !r.ok);
+        loadTrash();
     });
 })();

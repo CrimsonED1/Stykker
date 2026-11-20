@@ -21,6 +21,8 @@
   <ItemGroup>
     <PackageReference Include="Photino.NET" Version="4.0.16" />
     <ProjectReference Include="..\..\..\shared\src\Stykker.Pairing\Stykker.Pairing.csproj" />
+    <!-- TrayIcon (Win32, wie beim Server und beim Starter) -->
+    <ProjectReference Include="..\..\..\shared\src\Stykker.Shared\Stykker.Shared.csproj" />
   </ItemGroup>
 
 </Project>

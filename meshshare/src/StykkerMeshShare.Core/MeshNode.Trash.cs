@@ -35,6 +35,47 @@ public sealed partial class MeshNode
         return inTrash;
     }
 
+    // Löscht eine Datei aus dem Papierkorb endgültig; null bei Erfolg, sonst der Grund. Nur hier am PC: die anderen PCs
+    // haben ihren eigenen Papierkorb.
+    public string? DeleteFromTrash(string id)
+    {
+        var relative = PathRules.Normalize(id);
+        if (relative == null || relative.IndexOf('/') <= 0) return "Not in the trash.";
+        var full = PathRules.ToFullNoLinks(TrashDir, relative);
+        if (full == null || !File.Exists(full)) return "Not in the trash any more.";
+        try { File.Delete(full); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { return ex.Message; }
+        RemoveEmptyTrashFolders();
+        return null;
+    }
+
+    // Leert den Papierkorb endgültig. Rückgabe: wie viele Dateien weg sind.
+    public int EmptyTrash()
+    {
+        if (!Directory.Exists(TrashDir)) return 0;
+        int count = 0;
+        var enumeration = new EnumerationOptions { RecurseSubdirectories = true, IgnoreInaccessible = true, AttributesToSkip = FileAttributes.ReparsePoint };
+        foreach (var full in Directory.EnumerateFiles(TrashDir, "*", enumeration).ToList())
+        {
+            try { File.Delete(full); count++; }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+        }
+        RemoveEmptyTrashFolders();
+        return count;
+    }
+
+    private void RemoveEmptyTrashFolders()
+    {
+        try
+        {
+            if (!Directory.Exists(TrashDir)) return;
+            var enumeration = new EnumerationOptions { RecurseSubdirectories = true, IgnoreInaccessible = true, AttributesToSkip = FileAttributes.ReparsePoint };
+            foreach (var dir in Directory.EnumerateDirectories(TrashDir, "*", enumeration).OrderByDescending(d => d.Length).ToList())
+                if (!Directory.EnumerateFileSystemEntries(dir).Any()) Directory.Delete(dir);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+    }
+
     // Holt eine Datei zurück; null bei Erfolg, sonst der Grund. Ist der Name belegt, kommt " (2)" usw. dazu.
     public string? Restore(string id, out string? restoredAs)
     {

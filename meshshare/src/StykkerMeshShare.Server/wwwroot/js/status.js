@@ -77,8 +77,15 @@
         else lamp("idle", `Up to date · checked ${ago(n.lastScan)}`);
 
         // Angehaltene Löschungen: erst nach Bestätigung (am PC selbst) gehen sie an die anderen PCs.
+        // Outdated: der neueste Build unter allen erreichbaren PCs ist der Maßstab. Ein PC ohne Angabe ist älter.
+        const builds = [n.build, ...st.peers.filter((p) => p.online && !p.duplicate).map((p) => p.build ?? "")].filter((b) => b);
+        newest = builds.length ? builds.reduce((a, b) => (b > a ? b : a)) : "";
+        const selfOld = newest && n.build && n.build < newest;
         // Platte fast voll: dieser PC nimmt nichts an, bis wieder genug frei ist.
-        html($("notes"), (n.heldDeletes
+        html($("notes"), (selfOld
+            ? `<div class="notice"><span><b>This PC runs an older StykkerMeshShare</b> (built ${esc(when(n.build))}; another PC has one from ${esc(when(newest))}). Update it: in the Stykker Starter, “New build and restart”.</span></div>`
+            : "")
+            + (n.heldDeletes
             ? `<div class="notice"><span><b>${n.heldDeletes} files are missing from the shared folder.</b> The deletion is held so it does not reach the other PCs by mistake (for example, a drive that is not connected).</span>${n.local ? `<button type="button" class="danger" id="allow">Delete on all PCs</button>` : `<span class="muted">Confirm on the PC itself.</span>`}</div>`
             : "")
             + (n.disk?.low
@@ -93,6 +100,10 @@
                     : p.paused ? `sync paused${p.pausedBy ? ` by ${p.pausedBy}` : ""}${via}`
                     : p.online ? `synced ${ago(p.lastSync)}${via}` : (p.error ? "offline" : "connecting…");
                 // Sync-Pause dieses PCs, von hier aus (nur wenn er erreichbar ist und sie kennt).
+                const old = p.online && !p.duplicate && newest && (!p.build || p.build < newest)
+                    ? `<span class="badge warn ms-old" title="${p.build ? `Built ${esc(when(p.build))}; the newest in the mesh is from ${esc(when(newest))}` : "An older StykkerMeshShare that does not tell its build"}">outdated</span>`
+                    : "";
+                const progress = p.online && !p.duplicate && !p.paused ? progressOf(p.progress) : "";
                 const pauseBtn = p.online && !p.duplicate && p.paused != null
                     ? `<button type="button" class="quiet sq ms-peer-pause${p.paused ? " on" : ""}" data-pause="${esc(p.address)}" data-paused="${p.paused ? "1" : ""}" title="${p.paused ? "Resume sync on" : "Pause sync on"} ${esc(p.name ?? p.address)}" aria-label="${p.paused ? "Resume sync on" : "Pause sync on"} ${esc(p.name ?? p.address)}"><svg class="ic"><use href="#${p.paused ? "i-play" : "i-stop"}" /></svg></button>`
                     : "";
@@ -100,7 +111,7 @@
                 const remove = p.manual && n.local ? `<button type="button" class="quiet sq" data-remove="${esc(p.address)}" title="Remove this PC" aria-label="Remove ${esc(p.address)}"><svg class="ic"><use href="#i-x" /></svg></button>` : "";
                 return `<div class="ms-peer${p.duplicate ? " standby" : ""}">
                     <span class="dot ${dot}" title="${p.online ? "online" : "offline"}"></span>
-                    <span class="nm"><b>${esc(p.name ?? p.address)}</b><span class="muted mono">${esc(p.address)} · ${esc(state)}</span>${p.error && !p.online ? `<span class="err">${esc(p.error)}</span>` : ""}</span>
+                    <span class="nm"><b>${esc(p.name ?? p.address)}${old}</b><span class="muted mono">${esc(p.address)} · ${esc(state)}</span>${p.error && !p.online ? `<span class="err">${esc(p.error)}</span>` : ""}${progress}</span>
                     ${space}<span class="ms-peer-acts">${pauseBtn}${remove}</span>
                 </div>`;
             }).join("")
@@ -110,6 +121,22 @@
             ? st.activity.map((a) => `<div class="ms-act"><span class="k ${esc(a.kind)}">${esc(activityText(a))}</span><span class="p" title="${esc(a.path)}">${esc(a.path)}</span><span class="t" title="${esc(new Date(a.time).toLocaleString())}">${esc(ago(a.time))}</span></div>`).join("")
             : `<p class="muted" style="margin:0">Nothing happened yet.</p>`);
     });
+
+    // ── Outdated und Fortschritt der anderen PCs ──
+    let newest = "";
+    const when = (iso) => { const d = new Date(iso); return isNaN(d) ? iso : d.toLocaleString([], { dateStyle: "short", timeStyle: "short" }); };
+    // Was ein anderer PC gerade empfängt (live, solange diese Seite offen ist).
+    function progressOf(g) {
+        if (!g) return "";
+        const pct = g.size > 0 ? Math.min(100, (g.done / g.size) * 100) : 0;
+        const parts = [];
+        if (g.file) parts.push(g.checking ? `checking ${g.file}` : `receiving ${g.file} · ${pct.toFixed(0)} %`);
+        if (g.rate > 0 && !g.checking) parts.push(`${size(g.rate)}/s`);
+        if (g.files > 0) parts.push(`${g.files} file${g.files === 1 ? "" : "s"} · ${size(g.left)} left`);
+        if (!g.file) parts.push("waiting");
+        return `<span class="ms-peer-prog"><span class="muted mono" title="${esc(parts.join(" · "))}">${esc(parts.join(" · "))}</span>`
+            + (g.file ? `<span class="bar"><i style="width:${pct.toFixed(1)}%"></i></span>` : "") + `</span>`;
+    }
 
     // ── Freier Platz ──
     let minFree = 0;

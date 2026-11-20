@@ -167,11 +167,33 @@ public sealed class HttpPeerSource(HttpClient http, string address) : IPeerSourc
 // Free/Total: freier und gesamter Platz auf dem Laufwerk des geteilten Ordners. Receiving: false, wenn dort weniger als
 // die eingestellte Grenze frei ist. Paused/PausedBy: der Sync dieses PCs ist angehalten (von welchem PC aus); dann holt
 // niemand etwas von ihm. Ältere Fassungen schicken die Felder nicht.
-public sealed record Hello(string App, string Id, string Name, long Seq, long? Free = null, long? Total = null, bool? Receiving = null, bool? Paused = null, string? PausedBy = null)
+// Build: wann der Server dort gebaut wurde (älter als ein anderer: „outdated“). Progress: was er gerade empfängt.
+public sealed record Hello(string App, string Id, string Name, long Seq, long? Free = null, long? Total = null, bool? Receiving = null, bool? Paused = null, string? PausedBy = null,
+    string? Build = null, SyncProgress? Progress = null)
 {
     public static Hello Of(MeshNode node, long seq)
     {
         var disk = node.Disk;
-        return new Hello("StykkerMeshShare", node.NodeId, node.NodeName, seq, disk?.Free, disk?.Total, !node.LowSpace, node.TransfersPaused, node.PausedBy);
+        return new Hello("StykkerMeshShare", node.NodeId, node.NodeName, seq, disk?.Free, disk?.Total, !node.LowSpace, node.TransfersPaused, node.PausedBy,
+            BuildInfo.Time, SyncProgress.Of(node));
+    }
+}
+
+// Was ein PC gerade empfängt: die laufende Datei (Name, Stand, Rate) und was danach noch kommt. null: nichts zu tun.
+public sealed record SyncProgress(string? File, long Done, long Size, double Rate, bool Checking, int Files, long Left)
+{
+    public static SyncProgress? Of(MeshNode node)
+    {
+        var current = node.Progress;
+        var queue = node.Queue;
+        if (current == null && queue.Count == 0) return null;
+        long left = 0;
+        foreach (var q in queue)
+        {
+            long done = current != null && PathRules.Comparer.Equals(q.Path, current.Path) ? current.Done : q.Done;
+            left += Math.Max(0, q.Size - done);
+        }
+        return new SyncProgress(current?.Path, current?.Done ?? 0, current?.Size ?? 0, current?.BytesPerSecond ?? 0,
+            current?.Checking ?? false, queue.Count, left);
     }
 }

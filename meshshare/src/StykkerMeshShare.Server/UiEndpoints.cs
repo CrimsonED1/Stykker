@@ -109,6 +109,12 @@ public static class UiEndpoints
         }));
         app.MapPost("/api/peers/remove", (HttpContext ctx, PeerRequest body, PeerManager peers) => LocalOnly(ctx, "PCs are removed on the PC itself.", () =>
             peers.Remove(body.Address ?? "") ? new Result(true, "Removed.") : new Result(false, "Not in the list.")));
+        // Den Server beenden: nur vom PC selbst (das Fenster ruft es bei „Quit“, damit mit der GUI auch der Abgleich endet).
+        app.MapPost("/api/shutdown", (HttpContext ctx, IHostApplicationLifetime lifetime) => LocalOnly(ctx, "Only the PC itself can shut StykkerMeshShare down.", () =>
+        {
+            _ = Task.Run(async () => { await Task.Delay(300); lifetime.StopApplication(); });   // erst antworten, dann beenden
+            return new Result(true, "StykkerMeshShare shuts down.");
+        }));
         app.MapPost("/api/open-folder", (HttpContext ctx) => LocalOnly(ctx, "The Explorer opens on the PC. Use this from the PC itself.", () =>
         {
             try { Process.Start(new ProcessStartInfo("explorer.exe", $"\"{node.Folder}\"") { UseShellExecute = true }); }
@@ -146,6 +152,14 @@ public static class UiEndpoints
             return new Result(true, body.Skip ? "This file will not be loaded." : "This file will be loaded.");
         }));
         app.MapGet("/api/trash", () => Results.Json(node.TrashItems().Select(t => new TrashDto(t.Id, t.Path, t.Removed, t.Size))));
+        // Endgültig löschen: eine Datei aus dem Papierkorb, oder alles. Nur dieser PC; die Seite fragt vorher nach.
+        app.MapPost("/api/trash/delete", (HttpContext ctx, RestoreRequest body) => LocalRequests.Guarded(ctx, () =>
+            node.DeleteFromTrash(body.Id ?? "") is { } problem ? new Result(false, problem) : new Result(true, "Deleted for good.")));
+        app.MapPost("/api/trash/empty", (HttpContext ctx) => LocalRequests.Guarded(ctx, () =>
+        {
+            int count = node.EmptyTrash();
+            return new Result(true, count == 1 ? "1 file deleted for good." : $"{count} files deleted for good.");
+        }));
         app.MapPost("/api/trash/restore", (HttpContext ctx, RestoreRequest body) => LocalRequests.Guarded(ctx, () =>
             node.Restore(body.Id ?? "", out var name) is { } problem ? new Result(false, problem) : new Result(true, $"Restored as {name}.")));
     }

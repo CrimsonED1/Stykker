@@ -65,6 +65,8 @@ public sealed class PeerManager : IHostedService, IDisposable
         public bool? Receiving { get; set; }       // false: dort ist weniger als die Grenze frei
         public bool? Paused { get; set; }          // Sync dort angehalten: nichts von dort holen
         public string? PausedBy { get; set; }
+        public string? Build { get; set; }          // wann MeshShare dort gebaut wurde (fehlt: ältere Fassung)
+        public SyncProgress? Progress { get; set; }  // was er gerade empfängt
         internal CancellationTokenSource Cancel { get; } = new();
         internal CancellationTokenSource? Round { get; set; }   // ein Durchgang: Hallo, Abgleich, Warten
         internal volatile bool InBackoff;                        // wartet nach einem Fehler auf den nächsten Versuch
@@ -76,6 +78,7 @@ public sealed class PeerManager : IHostedService, IDisposable
     public Task StartAsync(CancellationToken cancellationToken)
     {
         foreach (var peer in _peers.Values) _ = RunAsync(peer);
+        _ = Task.Run(() => WatchLoopAsync(_stop.Token));
         if (_discovery)
         {
             NetworkChange.NetworkAddressChanged += OnNetworkChanged;
@@ -270,6 +273,33 @@ public sealed class PeerManager : IHostedService, IDisposable
         peer.Receiving = hello.Receiving;
         peer.Paused = hello.Paused;
         peer.PausedBy = hello.PausedBy;
+        peer.Build = hello.Build;
+        peer.Progress = hello.Progress;
+    }
+
+    // ── Fortschritt der anderen PCs, live ──
+    // Die lange Abfrage meldet sich nur bei Änderungen (oder nach 25 s). Solange jemand die Seite ansieht (Watch),
+    // fragt dieser PC darum alle 2 Sekunden kurz bei jedem erreichbaren PC nach (Hallo: Platz, Pause, Fortschritt).
+    private long _watchedAt;
+
+    public void Watch() => Interlocked.Exchange(ref _watchedAt, Environment.TickCount64);
+
+    private async Task WatchLoopAsync(CancellationToken ct)
+    {
+        while (!ct.IsCancellationRequested)
+        {
+            try { await Task.Delay(TimeSpan.FromSeconds(2), ct).ConfigureAwait(false); }
+            catch (OperationCanceledException) { return; }
+            if (Environment.TickCount64 - Interlocked.Read(ref _watchedAt) > 10_000) continue;
+            var asks = _peers.Values.Where(p => p.Online && !p.Duplicate && !p.IsSelf).Select(async peer =>
+            {
+                using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                timeout.CancelAfter(TimeSpan.FromSeconds(3));
+                try { Remember(peer, await new HttpPeerSource(_http, peer.Address).HelloAsync(timeout.Token).ConfigureAwait(false)); }
+                catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or IOException or System.Text.Json.JsonException) { }
+            });
+            await Task.WhenAll(asks).ConfigureAwait(false);
+        }
     }
 
     // Pause nach einem Fehler. null: die Schleife endet (gestoppt, oder eine gefundene Adresse wird vergessen).

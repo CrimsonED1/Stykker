@@ -125,9 +125,25 @@ window.MS = (() => {
             label();
         });
         label();
+        // Die Frage beim Schließen (das Fenster schickt window:ask-close, wenn nichts gemerkt ist).
+        const ask = $("ask-close");
+        const answer = (choice) => {
+            ask.hidden = true;
+            send(`window:close-${choice}${$("ask-close-remember").checked ? " remember" : ""}`);
+        };
+        $("ask-close-cancel").addEventListener("click", () => { ask.hidden = true; });
+        $("ask-close-quit").addEventListener("click", () => answer("quit"));
+        $("ask-close-tray").addEventListener("click", () => answer("tray"));
+        ask.addEventListener("keydown", (e) => { if (e.key === "Escape") ask.hidden = true; });
         try {
             window.external.receiveMessage((raw) => {
-                if (typeof raw === "string" && raw.startsWith("window:state ")) show(raw.includes("maximized"));
+                if (typeof raw !== "string") return;
+                if (raw.startsWith("window:state ")) show(raw.includes("maximized"));
+                else if (raw === "window:ask-close") {
+                    $("ask-close-remember").checked = false;
+                    ask.hidden = false;
+                    $("ask-close-tray").focus();
+                }
             });
         } catch { }
         // Ziehen an der Leiste bewegt das Fenster; Knöpfe, Felder und Links nicht.

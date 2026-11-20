@@ -130,9 +130,27 @@
             <div id="activity" class="ms-activity"></div>
             <details class="ms-trash" id="trash-box">
                 <summary>Trash <span class="muted">(replaced or deleted by other PCs, kept 30 days)</span></summary>
+                <div class="ms-trash-bar"><span class="muted" id="trash-count"></span>
+                    <button type="button" class="quiet danger-text" id="trash-empty" hidden>Empty trash</button></div>
                 <div id="trash" class="ms-files"></div>
             </details>
         </section>
+    </div>
+
+    @* Nur im eigenen Fenster: die Frage beim Schließen, wie beim Starter. *@
+    <div class="ms-scrim" id="ask-close" hidden>
+        <div class="ms-dlg" role="dialog" aria-modal="true" aria-labelledby="ask-close-title">
+            <div class="head"><b>◆</b><span id="ask-close-title">CLOSE THE WINDOW</span></div>
+            <div class="body">
+                <p>Keep StykkerMeshShare running in the tray, or quit it? Quitting also stops syncing on this PC.</p>
+                <label class="ms-check"><input type="checkbox" id="ask-close-remember" /><span>Don't ask again (change it in the tray menu)</span></label>
+            </div>
+            <div class="bottom">
+                <button type="button" class="quiet" id="ask-close-cancel">Cancel</button>
+                <button type="button" id="ask-close-quit">Quit</button>
+                <button type="button" class="primary" id="ask-close-tray">Keep in tray</button>
+            </div>
+        </div>
     </div>
 
     <div class="toasts" id="toasts" role="status"></div>
