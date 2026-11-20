@@ -16,6 +16,13 @@
             <button type="button" data-theme-choice="titan" aria-pressed="false">Titan</button>
         </div>
     </div>
+    @* Nur im eigenen Fenster: Thema als ein Chip und die Fensterknöpfe, wie beim Starter. *@
+    <button type="button" class="tchip ms-win-only" id="t-theme" title="Switch the theme">Titan</button>
+    <span class="t-controls ms-win-only">
+        <button type="button" class="t-btn" id="t-min" title="Minimize" aria-label="Minimize">–</button>
+        <button type="button" class="t-btn" id="t-max" title="Maximize" aria-label="Maximize">□</button>
+        <button type="button" class="t-btn t-close" id="t-close" title="Close" aria-label="Close">✕</button>
+    </span>
 </div>
 
 <main>

@@ -23,6 +23,8 @@
         } catch { }
         const query = new URLSearchParams(location.search);
         if (query.has("shell")) document.documentElement.classList.add("shell");
+        // Im eigenen Fenster (randlos, wie der Starter): die Kopfzeile ist die Titelleiste.
+        if (query.has("window") && window.external && window.external.sendMessage) document.documentElement.classList.add("window");
         if (query.has("embed")) document.documentElement.classList.add("embed");
         if (query.get("theme") === "dark" || query.get("theme") === "titan") document.documentElement.dataset.theme = query.get("theme");
     </script>

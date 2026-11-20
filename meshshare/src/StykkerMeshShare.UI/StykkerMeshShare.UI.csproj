@@ -10,7 +10,13 @@
     <AssemblyName>StykkerMeshShare</AssemblyName>
     <RootNamespace>StykkerMeshShare.UI</RootNamespace>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <ApplicationIcon>StykkerMeshShare.ico</ApplicationIcon>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Das Symbol auch als Datei neben der Exe: Photino setzt es damit für das Fenster (Taskleiste, Alt+Tab). -->
+    <Content Include="StykkerMeshShare.ico" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Photino.NET" Version="4.0.16" />

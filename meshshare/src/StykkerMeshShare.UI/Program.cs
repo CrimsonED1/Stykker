@@ -12,8 +12,13 @@ namespace StykkerMeshShare.UI;
 // Anders als bei StykkerSYS läuft der Server nach dem Schließen des Fensters weiter: der Abgleich soll nicht mit dem
 // Fenster enden. Beenden über das Tray-Symbol („Shut down“).
 // Das Fenster zeichnet wie die anderen Werkzeuge ohne Grafikkarte (--disable-gpu); mit --gpu über die Grafikkarte.
+// Wie der Starter ist es randlos: die Titelleiste ist die Kopfzeile der Seite (?window=1), mit Marke, Thema und eigenen
+// Knöpfen. Die Seite schickt dafür einfache Nachrichten (window:minimize/maximize/restore/close, window:move dx,dy),
+// das Fenster meldet den Zustand zurück (window:state maximized|restored).
 internal static class Program
 {
+    private const string IconFile = "StykkerMeshShare.ico";
+
     [STAThread]
     private static int Main(string[] args)
     {
@@ -21,7 +26,7 @@ internal static class Program
         if (!opt.Gpu && OperatingSystem.IsWindows())
             Environment.SetEnvironmentVariable("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", "--disable-gpu --disable-gpu-compositing");
 
-        var url = $"http://127.0.0.1:{opt.Port}/" + (opt.Gpu ? "" : "?shell=1");
+        var url = $"http://127.0.0.1:{opt.Port}/?window=1" + (opt.Gpu ? "" : "&shell=1");
         // Startet der Server nicht, zeigt das Fenster den Grund, statt ohne Meldung zu verschwinden.
         string? startError = null;
         try { EnsureServer(opt.Port, opt.Server); }
@@ -30,19 +35,61 @@ internal static class Program
         var window = new PhotinoWindow()
             .SetTitle("StykkerMeshShare")
             .SetUseOsDefaultSize(false)
+            .SetUseOsDefaultLocation(false)
             .SetSize(new System.Drawing.Size(1100, 820))
             .Center()
+            .SetChromeless(true)
             .SetTemporaryFilesPath(Path.Combine(CacheDir(), "web-shell"));
+        var icon = Path.Combine(AppContext.BaseDirectory, IconFile);
+        if (File.Exists(icon)) window.SetIconFile(icon);
+        window.RegisterWebMessageReceivedHandler((_, message) => OnMessage(window, message));
+        window.RegisterMaximizedHandler((_, _) => SendState(window, true));
+        window.RegisterRestoredHandler((_, _) => SendState(window, false));
         if (startError == null) window.Load(new Uri(url));
         else window.LoadRawString(ErrorPage(startError));
         window.WaitForClose();
         return 0;
     }
 
+    // Nachrichten der Titelleiste (einfache Zeichenketten). Läuft auf dem Fensterthread.
+    private static void OnMessage(PhotinoWindow window, string message)
+    {
+        try
+        {
+            switch (message)
+            {
+                case "window:minimize": window.SetMinimized(true); return;
+                case "window:maximize": window.SetMaximized(true); return;
+                case "window:restore": window.SetMaximized(false); return;
+                case "window:close": window.Close(); return;
+                case "window:ready": SendState(window, window.Maximized); return;
+            }
+            if (message.StartsWith("window:move ", StringComparison.Ordinal))
+            {
+                var parts = message["window:move ".Length..].Split(',');
+                if (parts.Length == 2 && int.TryParse(parts[0], out var dx) && int.TryParse(parts[1], out var dy) && !window.Maximized)
+                    window.Offset(new System.Drawing.Point(dx, dy));
+            }
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or ObjectDisposedException) { }
+    }
+
+    private static void SendState(PhotinoWindow window, bool maximized)
+    {
+        try { window.SendWebMessage("window:state " + (maximized ? "maximized" : "restored")); }
+        catch (Exception ex) when (ex is InvalidOperationException or ObjectDisposedException) { }
+    }
+
+    // Randlos hat das Fenster keine Windows-Leiste: die Fehlerseite bringt eine eigene mit (Ziehen, Schließen).
     private static string ErrorPage(string message) =>
-        "<!doctype html><meta charset=\"utf-8\"><body style=\"font-family:'Segoe UI',sans-serif;margin:32px\">" +
-        "<h2>StykkerMeshShare could not start its server</h2><p>" + WebUtility.HtmlEncode(message) + "</p>" +
-        "<p>Build the solution first, or start with <code>--server &lt;path&gt;</code>.</p></body>";
+        "<!doctype html><meta charset=\"utf-8\"><body style=\"font-family:'Segoe UI',sans-serif;margin:0;background:#060916;color:#e6e9f5\">" +
+        "<div id=\"bar\" style=\"display:flex;align-items:center;height:40px;padding-left:14px;background:#0e1430;border-bottom:1px solid #1d2547;cursor:grab;user-select:none\">" +
+        "<b style=\"font-family:Consolas,monospace;letter-spacing:.14em;font-size:12px\">STYKKER <span style=\"color:#38e8ff\">MESHSHARE</span></b>" +
+        "<span style=\"flex:1\"></span><button onclick=\"window.external.sendMessage('window:close')\" style=\"width:44px;height:40px;border:0;background:none;color:inherit;cursor:pointer\">✕</button></div>" +
+        "<div style=\"margin:32px\"><h2>StykkerMeshShare could not start its server</h2><p>" + WebUtility.HtmlEncode(message) + "</p>" +
+        "<p>Build the solution first, or start with <code>--server &lt;path&gt;</code>.</p></div>" +
+        "<script>var d=false,x=0,y=0,b=document.getElementById('bar');b.onmousedown=function(e){if(e.target.closest('button'))return;d=true;x=e.screenX;y=e.screenY;};" +
+        "document.onmousemove=function(e){if(!d)return;var dx=e.screenX-x,dy=e.screenY-y;x=e.screenX;y=e.screenY;if(dx||dy)window.external.sendMessage('window:move '+dx+','+dy);};document.onmouseup=function(){d=false;};</script></body>";
 
     private static string CacheDir()
     {

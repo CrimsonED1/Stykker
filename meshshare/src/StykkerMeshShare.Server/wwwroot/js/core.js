@@ -100,7 +100,57 @@ window.MS = (() => {
         if (meta) meta.content = getComputedStyle(document.body).backgroundColor || meta.content;
     }
 
-    document.addEventListener("DOMContentLoaded", () => { themeButtons(); start(); });
+    // ── Eigenes Fenster: Titelleiste wie beim Starter ──
+    // Knöpfe und Ziehen schicken einfache Nachrichten an das Photino-Fenster (siehe StykkerMeshShare.UI).
+    function windowBar() {
+        if (!document.documentElement.classList.contains("window")) return;
+        const send = (msg) => { try { window.external.sendMessage(msg); } catch { } };
+        let maximized = false;
+        const show = (max) => {
+            maximized = max;
+            const b = $("t-max");
+            b.textContent = max ? "❐" : "□";
+            b.title = max ? "Restore" : "Maximize";
+            b.setAttribute("aria-label", b.title);
+        };
+        const toggle = () => send(maximized ? "window:restore" : "window:maximize");
+        $("t-min").addEventListener("click", () => send("window:minimize"));
+        $("t-max").addEventListener("click", toggle);
+        $("t-close").addEventListener("click", () => send("window:close"));
+        const chip = $("t-theme");
+        const label = () => { chip.textContent = document.documentElement.dataset.theme === "titan" ? "Dark" : "Titan"; };
+        chip.addEventListener("click", () => {
+            const next = document.documentElement.dataset.theme === "titan" ? "dark" : "titan";
+            document.querySelector(`.seg button[data-theme-choice="${next}"]`)?.click();
+            label();
+        });
+        label();
+        try {
+            window.external.receiveMessage((raw) => {
+                if (typeof raw === "string" && raw.startsWith("window:state ")) show(raw.includes("maximized"));
+            });
+        } catch { }
+        // Ziehen an der Leiste bewegt das Fenster; Knöpfe, Felder und Links nicht.
+        const bar = document.querySelector(".top");
+        const noDrag = "button, input, select, label, a";
+        let drag = false, x = 0, y = 0;
+        bar.addEventListener("mousedown", (e) => {
+            if (e.button !== 0 || e.target.closest(noDrag)) return;
+            drag = true; x = e.screenX; y = e.screenY;
+            e.preventDefault();
+        });
+        document.addEventListener("mousemove", (e) => {
+            if (!drag) return;
+            const dx = e.screenX - x, dy = e.screenY - y;
+            x = e.screenX; y = e.screenY;
+            if (dx || dy) send(`window:move ${dx},${dy}`);
+        });
+        document.addEventListener("mouseup", () => { drag = false; });
+        bar.addEventListener("dblclick", (e) => { if (!e.target.closest(noDrag)) toggle(); });
+        send("window:ready");
+    }
+
+    document.addEventListener("DOMContentLoaded", () => { themeButtons(); windowBar(); start(); });
 
     return {
         $, esc, post, size, ago, left, set, html, toast, tick,

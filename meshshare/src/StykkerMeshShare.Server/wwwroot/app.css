@@ -146,3 +146,23 @@
 .ms-peer .space .bar{width:90px;min-width:0;height:4px;flex:none}
 .ms-peer .space.low{color:var(--warn)}.ms-peer .space.low .bar i{background:var(--warn)}
 @media(max-width:600px){.ms-peer .space{min-width:0}.ms-peer .space .bar{width:60px}}
+
+/* Eigenes Fenster (randlos, ?window=1): die Kopfzeile ist die Titelleiste, wie beim Stykker Starter. Ziehen bewegt das
+   Fenster, Doppelklick maximiert; Thema als ein Chip, rechts die Fensterknöpfe. */
+.ms-win-only{display:none}
+html.window .ms-win-only{display:flex}
+html.window .top{height:40px;padding:0 0 0 14px;gap:0 14px;flex-wrap:nowrap;align-items:stretch;
+  background:var(--bg-top);border-bottom:1px solid var(--line);user-select:none;-webkit-user-select:none;cursor:grab}
+html.window .top:active{cursor:grabbing}
+html.window .top .brand{align-self:center;white-space:nowrap}
+html.window .top .strip{align-self:center;flex-wrap:nowrap;min-width:0;overflow:hidden}
+html.window .top .seg[aria-label="Theme"]{display:none}
+html.window .tchip{align-self:center;background:none;border:1px solid var(--line);border-radius:4px;padding:2px 8px;height:auto;
+  font-size:11px;color:var(--muted);cursor:pointer}
+html.window .tchip:hover{color:var(--ink)}
+.t-controls{align-items:stretch}
+.t-btn{width:44px;height:100%;display:grid;place-items:center;background:none;border:0;border-radius:0;color:var(--muted);
+  font-size:14px;line-height:1;cursor:pointer;padding:0;min-height:0}
+.t-btn:hover{color:var(--ink);background:color-mix(in srgb,var(--ink) 10%,transparent)}
+.t-btn.t-close:hover{color:#fff;background:var(--bad)}
+@media(max-width:640px){html.window .top{position:sticky}html.window .top .strip{order:0;flex:0 1 auto}}
