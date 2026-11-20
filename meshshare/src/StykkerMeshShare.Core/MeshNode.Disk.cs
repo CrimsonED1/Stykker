@@ -52,7 +52,9 @@ public sealed partial class MeshNode
             var root = Path.GetPathRoot(Path.GetFullPath(folder));
             if (string.IsNullOrEmpty(root)) return null;
             var drive = new DriveInfo(root);
-            return new DiskSpace(root.TrimEnd('\\', '/'), drive.AvailableFreeSpace, drive.TotalSize);
+            var name = root.TrimEnd('\\', '/');
+            if (name.Length == 2 && name[1] == ':') name = name.ToUpperInvariant();   // „s:“ eingetippt: als „S:“ zeigen
+            return new DiskSpace(name, drive.AvailableFreeSpace, drive.TotalSize);
         }
         catch (Exception ex) when (ex is IOException or ArgumentException or UnauthorizedAccessException) { return null; }
     }
