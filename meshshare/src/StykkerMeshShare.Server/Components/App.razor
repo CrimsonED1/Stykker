@@ -8,14 +8,14 @@
     <title>StykkerMeshShare</title>
     <link rel="icon" href="/ds/assets/Logos/app-icon.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="/icons/icon-180.png" />
-    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="manifest" href="@AssetVersion.Url("/manifest.webmanifest")" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="MeshShare" />
     <meta name="theme-color" content="#060916" />
-    <link rel="stylesheet" href="/ds/tokens.css" />
-    <link rel="stylesheet" href="/ds/components/bundle.css" />
-    <link rel="stylesheet" href="/app.css" />
+    <link rel="stylesheet" href="@AssetVersion.Url("/ds/tokens.css")" />
+    <link rel="stylesheet" href="@AssetVersion.Url("/ds/components/bundle.css")" />
+    <link rel="stylesheet" href="@AssetVersion.Url("/app.css")" />
     <script>
         try {
             const theme = localStorage.getItem("stykkermeshshare.theme");
@@ -31,10 +31,10 @@
 </head>
 <body>
     <Routes />
-    <script src="/ds/components/bundle.js"></script>
-    <script src="/js/core.js"></script>
-    <script src="/js/status.js"></script>
-    <script src="/js/transfers.js"></script>
-    <script src="/js/files.js"></script>
+    <script src="@AssetVersion.Url("/ds/components/bundle.js")"></script>
+    <script src="@AssetVersion.Url("/js/core.js")"></script>
+    <script src="@AssetVersion.Url("/js/status.js")"></script>
+    <script src="@AssetVersion.Url("/js/transfers.js")"></script>
+    <script src="@AssetVersion.Url("/js/files.js")"></script>
 </body>
 </html>
