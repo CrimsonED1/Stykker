@@ -48,6 +48,10 @@
         set("v-name", n.name);
         set("v-files", String(n.files));
         set("v-size", size(n.bytes));
+        const sync = $("sync-btn");
+        sync.textContent = n.transfersPaused ? "Resume sync" : "Pause sync";
+        sync.setAttribute("aria-pressed", String(n.transfersPaused));
+        sync.classList.toggle("on", n.transfersPaused);
         renderDisk(n);
         set("v-folder", n.folder);
         $("folder-btn").hidden = !n.local;
@@ -66,7 +70,7 @@
         else if (n.heldDeletes) lamp("off", `${n.heldDeletes} files vanished – deletion held`);
         else if (n.transfer) lamp("sync", n.transfer.checking ? `Checking ${n.transfer.path}` : `Receiving ${n.transfer.path}`);
         else if (syncing) lamp("sync");
-        else if (n.transfersPaused && (st.queue.length || st.paused.length)) lamp("scan", "Downloads paused");
+        else if (n.transfersPaused) lamp("scan", `Sync paused${n.pausedBy ? ` by ${n.pausedBy}` : ""}`);
         else if (n.pending) lamp("scan");
         else if (!active.length) lamp("alone");
         else if (!online) lamp("away");
@@ -86,13 +90,18 @@
                 const dot = p.syncing ? "sync" : p.online ? "" : "off";
                 const via = p.route ? ` via ${p.route}` : "";
                 const state = p.duplicate ? `standby${via}: connected over a faster way`
+                    : p.paused ? `sync paused${p.pausedBy ? ` by ${p.pausedBy}` : ""}${via}`
                     : p.online ? `synced ${ago(p.lastSync)}${via}` : (p.error ? "offline" : "connecting…");
+                // Sync-Pause dieses PCs, von hier aus (nur wenn er erreichbar ist und sie kennt).
+                const pauseBtn = p.online && !p.duplicate && p.paused != null
+                    ? `<button type="button" class="quiet sq ms-peer-pause${p.paused ? " on" : ""}" data-pause="${esc(p.address)}" data-paused="${p.paused ? "1" : ""}" title="${p.paused ? "Resume sync on" : "Pause sync on"} ${esc(p.name ?? p.address)}" aria-label="${p.paused ? "Resume sync on" : "Pause sync on"} ${esc(p.name ?? p.address)}"><svg class="ic"><use href="#${p.paused ? "i-play" : "i-stop"}" /></svg></button>`
+                    : "";
                 const space = spaceOf(p);
                 const remove = p.manual && n.local ? `<button type="button" class="quiet sq" data-remove="${esc(p.address)}" title="Remove this PC" aria-label="Remove ${esc(p.address)}"><svg class="ic"><use href="#i-x" /></svg></button>` : "";
                 return `<div class="ms-peer${p.duplicate ? " standby" : ""}">
                     <span class="dot ${dot}" title="${p.online ? "online" : "offline"}"></span>
                     <span class="nm"><b>${esc(p.name ?? p.address)}</b><span class="muted mono">${esc(p.address)} · ${esc(state)}</span>${p.error && !p.online ? `<span class="err">${esc(p.error)}</span>` : ""}</span>
-                    ${space}${remove || "<span></span>"}
+                    ${space}<span class="ms-peer-acts">${pauseBtn}${remove}</span>
                 </div>`;
             }).join("")
             : `<div class="empty"><div><b>No other PC yet</b>Start StykkerMeshShare on another PC in the home network, or add one by name.</div></div>`);
@@ -201,6 +210,18 @@
         if (r.ok) input.value = "";
         tick();
     });
+    // Sync-Pause: dieser PC (Knopf in der Kopfzeile der Karte) oder ein anderer (Knopf in seiner Zeile).
+    async function syncPause(address, paused) {
+        const r = await post("/api/sync-pause", { address, paused });
+        toast(r.message ?? "", !r.ok);
+        tick();
+    }
+    $("sync-btn").addEventListener("click", () => syncPause("", $("sync-btn").getAttribute("aria-pressed") !== "true"));
+    $("peers").addEventListener("click", (e) => {
+        const button = e.target.closest("button[data-pause]");
+        if (button) syncPause(button.dataset.pause, !button.dataset.paused);
+    });
+
     $("peers").addEventListener("click", async (e) => {
         const button = e.target.closest("button[data-remove]");
         if (!button) return;

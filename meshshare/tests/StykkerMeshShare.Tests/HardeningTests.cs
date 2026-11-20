@@ -189,24 +189,36 @@ public class HardeningTests
     }
 
     [Fact]
-    public async Task PauseStopsDownloadsButNotDeletions()
+    public async Task SyncPauseStopsEverythingUntilResumed()
     {
         using var mesh = new Mesh();
         var a = mesh.Add("A");
         var b = mesh.Add("B");
         Mesh.Write(a, "keep.txt", "k");
         await mesh.Converge();
-        b.SetPaused(true);
+        b.SetPaused(true, "NB2");
+        Assert.True(b.TransfersPaused);
+        Assert.Equal("NB2", b.PausedBy);
         Mesh.Write(a, "new.txt", "n");
         File.Delete(Path.Combine(a.Folder, "keep.txt"));
         a.Scan();
         var result = await b.PullAsync(new LocalPeer(a));
         Assert.False(result.Complete);
-        Assert.Null(Mesh.Read(b, "new.txt"));
-        Assert.Null(Mesh.Read(b, "keep.txt"));   // die Löschung kam trotzdem an
-        b.SetPaused(false);
-        await Mesh.Pull(b, a);
-        Assert.Equal("n", Mesh.Read(b, "new.txt"));
+        Assert.Null(Mesh.Read(b, "new.txt"));        // nichts herein
+        Assert.Equal("k", Mesh.Read(b, "keep.txt"));  // auch keine Löschung
+
+        // Die Pause übersteht einen Neustart, mit dem Namen dessen, der pausiert hat.
+        b.Dispose();
+        var b2 = new MeshNode(mesh.Options("B"));
+        Assert.True(b2.TransfersPaused);
+        Assert.Equal("NB2", b2.PausedBy);
+
+        b2.SetPaused(false);
+        Assert.Null(b2.PausedBy);
+        Assert.True((await b2.PullAsync(new LocalPeer(a))).Complete);
+        Assert.Equal("n", Mesh.Read(b2, "new.txt"));
+        Assert.Null(Mesh.Read(b2, "keep.txt"));
+        b2.Dispose();
     }
 
     [Fact]

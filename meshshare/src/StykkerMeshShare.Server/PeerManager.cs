@@ -63,7 +63,8 @@ public sealed class PeerManager : IHostedService, IDisposable
         public long? Free { get; set; }            // freier Platz dort (aus Hallo und langer Abfrage)
         public long? Total { get; set; }
         public bool? Receiving { get; set; }       // false: dort ist weniger als die Grenze frei
-        public bool? Paused { get; set; }          // dort von Hand angehalten
+        public bool? Paused { get; set; }          // Sync dort angehalten: nichts von dort holen
+        public string? PausedBy { get; set; }
         internal CancellationTokenSource Cancel { get; } = new();
         internal CancellationTokenSource? Round { get; set; }   // ein Durchgang: Hallo, Abgleich, Warten
         internal volatile bool InBackoff;                        // wartet nach einem Fehler auf den nächsten Versuch
@@ -97,6 +98,20 @@ public sealed class PeerManager : IHostedService, IDisposable
     {
         var previous = Interlocked.Exchange(ref _wake, new CancellationTokenSource());
         previous.Cancel();   // nicht freigeben: eine Schleife kann das alte Token gerade noch lesen
+    }
+
+    // Sync-Pause einer Gegenstelle setzen (von dieser Seite aus). Danach fragt die Schleife sofort neu nach ihrem Zustand.
+    public async Task<(bool Ok, string Message)> SetRemotePausedAsync(string address, bool paused, CancellationToken ct)
+    {
+        if (!_peers.TryGetValue(address, out var peer) || peer.IsSelf) return (false, "Not in the list.");
+        var result = await new HttpPeerSource(_http, peer.Address).SetPausedAsync(paused, _node.NodeName, ct).ConfigureAwait(false);
+        if (result.Ok)
+        {
+            peer.Paused = paused;
+            peer.PausedBy = paused ? _node.NodeName : null;
+            Wake();
+        }
+        return result;
     }
 
     public bool AddManual(string address)
@@ -254,6 +269,7 @@ public sealed class PeerManager : IHostedService, IDisposable
         peer.Total = hello.Total;
         peer.Receiving = hello.Receiving;
         peer.Paused = hello.Paused;
+        peer.PausedBy = hello.PausedBy;
     }
 
     // Pause nach einem Fehler. null: die Schleife endet (gestoppt, oder eine gefundene Adresse wird vergessen).
@@ -310,6 +326,9 @@ public sealed class PeerManager : IHostedService, IDisposable
 
     private async Task<bool> PullAsync(Peer peer, HttpPeerSource source, CancellationToken ct)
     {
+        // Dort ist der Sync angehalten: nichts holen. „Unvollständig“, damit es nach dem Fortsetzen sofort weitergeht
+        // (die lange Abfrage kehrt dann zurück).
+        if (peer.Paused == true) return false;
         await _pullGate.WaitAsync(ct).ConfigureAwait(false);
         try
         {

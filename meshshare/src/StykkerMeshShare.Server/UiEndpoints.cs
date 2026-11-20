@@ -124,11 +124,21 @@ public static class UiEndpoints
             node.SetOrder(body.Paths ?? []);
             return new Result(true, "Order saved.");
         }));
-        app.MapPost("/api/queue/pause", (HttpContext ctx, PauseRequest body) => LocalRequests.Guarded(ctx, () =>
+        // Sync-Pause: für diesen PC (address leer) oder einen anderen im Mesh. Von jeder Seite aus, auch vom Handy.
+        app.MapPost("/api/sync-pause", async (HttpContext ctx, SyncPauseRequest body, PeerManager peers, CancellationToken ct) =>
         {
-            node.SetPaused(body.Paused);
-            return new Result(true, body.Paused ? "Downloads paused. Deletions and renames still sync." : "Downloads continue.");
-        }));
+            if (!LocalRequests.SameOrigin(ctx))
+                return Results.Json(new Result(false, "Refused: that request did not come from this page."), statusCode: StatusCodes.Status403Forbidden);
+            if (string.IsNullOrEmpty(body.Address))
+            {
+                var by = NetworkAccess.IsLocal(ctx) ? node.NodeName : $"a browser at {ctx.Connection.RemoteIpAddress}";
+                node.SetPaused(body.Paused, by);
+                return Results.Json(new Result(true, body.Paused ? "Sync paused on this PC." : "Sync continues on this PC."));
+            }
+            var (ok, message) = await peers.SetRemotePausedAsync(body.Address, body.Paused, ct);
+            var result = ok ? new Result(true, body.Paused ? "Sync paused on that PC." : "Sync continues on that PC.") : new Result(false, message);
+            return Results.Json(result, statusCode: ok ? StatusCodes.Status200OK : StatusCodes.Status409Conflict);
+        });
         app.MapPost("/api/queue/skip", (HttpContext ctx, SkipRequest body) => LocalRequests.Guarded(ctx, () =>
         {
             if (string.IsNullOrEmpty(body.Path)) return new Result(false, "No file given.");
@@ -150,7 +160,7 @@ public static class UiEndpoints
 internal sealed record PeerRequest(string? Address);
 internal sealed record OrderRequest(string[]? Paths);
 internal sealed record FolderRequest(string? Path, bool Move);
-internal sealed record PauseRequest(bool Paused);
+internal sealed record SyncPauseRequest(string? Address, bool Paused);
 internal sealed record SkipRequest(string? Path, bool Skip);
 internal sealed record RestoreRequest(string? Id);
 internal sealed record MinFreeRequest(double? Gb);

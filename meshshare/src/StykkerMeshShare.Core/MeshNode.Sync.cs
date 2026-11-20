@@ -12,6 +12,8 @@ public sealed partial class MeshNode
     public async Task<PullResult> PullAsync(IPeerSource peer, CancellationToken ct = default)
     {
         Scan();
+        // Sync angehalten: gar nichts holen, auch keine Löschungen. Der Zeiger bleibt, nach dem Fortsetzen kommt alles.
+        if (TransfersPaused) return new PullResult(0, false);
         // Erst nur fragen, wer die Gegenstelle ist und wo sie steht (keine Einträge über long.MaxValue).
         var probe = await peer.GetChangesAsync(long.MaxValue, ct).ConfigureAwait(false);
         if (probe.NodeId == NodeId) return new PullResult(0, true);

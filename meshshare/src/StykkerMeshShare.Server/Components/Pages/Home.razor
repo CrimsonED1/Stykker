@@ -56,6 +56,8 @@
                     <b id="v-state" aria-live="polite">Starting…</b>
                     <span class="muted mono ms-ellipsis" id="v-folder">–</span>
                 </div>
+                @* Sync-Pause dieses PCs; bei den anderen PCs sitzt der Knopf in ihrer Zeile. Jeder PC (und das Handy) darf das. *@
+                <button type="button" class="quiet" id="sync-btn" aria-pressed="false" title="Stop all syncing of this PC: nothing comes in, nothing goes out">Pause sync</button>
                 <button type="button" class="quiet" id="folder-btn" hidden title="Choose another shared folder">Change folder</button>
             </div>
             @* Freier Platz auf dem Laufwerk des Ordners. Unter der Grenze nimmt dieser PC nichts an; die Grenze ändert man
@@ -106,7 +108,6 @@
         <div class="ms-bar">
             <h2>Transfers</h2>
             <span class="muted ms-rate" id="v-rate"></span>
-            <button type="button" class="quiet" id="pause-btn" aria-pressed="false" title="Stop all downloads; deletions and renames still sync">Pause</button>
         </div>
         <div id="total" class="ms-total" hidden><span class="bar"><i></i></span><span class="muted" id="v-total"></span></div>
         <div id="current" class="ms-current"></div>

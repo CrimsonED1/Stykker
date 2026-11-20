@@ -17,7 +17,7 @@ Start `StykkerMeshShare.exe` (window) or `StykkerMeshShare-Server.exe` (tray onl
   name or address.
 - **Transfers**: the file being received (progress, rate, time left), a bar for all files of this round, and the
   waiting files. Change the order by dragging or with the arrows; ▶ loads a file now, ✕ does not load it.
-  **Pause** stops all downloads. The progress also shows in the window title.
+  The progress also shows in the window title.
 - **Files**: click to open (pictures, PDFs, text, audio and video open in the browser, also on the phone; other
   files download), or use the arrow to download. Conflict copies are marked; search "conflict" lists them.
 - **Activity** and the **Trash** (files another PC replaced or deleted here, 30 days) with **Restore**.
@@ -91,8 +91,12 @@ Index, trash and settings live in `%APPDATA%\Stykker\MeshShare`, not in the shar
   kept in `settings.json`) a PC receives nothing: no downloads from other PCs and no uploads from the page. It still
   sends its own changes and deletions, and it continues by itself once enough is free. A download starts only if
   the limit stays free afterwards. The other PCs show "not receiving" for it, and the tray says so.
-- **Pause and skip**: "Pause" stops all downloads (deletions and renames still sync). "Don't load" skips a file until
-  you allow it again. Both are kept in `queue.json`.
+- **Sync pause, from any PC**: "Pause sync" in the status card stops all syncing of this PC; the pause button in the
+  row of another PC does the same for that PC, and so does the phone. A paused PC receives nothing (no files, no
+  deletions), and the other PCs take nothing from it. It keeps its own changes and sends them once resumed.
+  Everyone sees who paused it ("sync paused by NB2"); anyone can resume. The pause survives a restart. A PC asks
+  another one over `POST /mesh/pause` with the header `X-Stykker-Mesh: 1` (a web page cannot send it without CORS).
+- **Skip**: "Don't load" skips a file until you allow it again. Kept in `queue.json`, like the pause.
 
 ## Finding the other PCs
 

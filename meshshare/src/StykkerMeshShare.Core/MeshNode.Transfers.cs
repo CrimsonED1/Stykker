@@ -7,7 +7,7 @@ namespace StykkerMeshShare.Core;
 // - Warteschlange: die Downloads des laufenden Abrufs. Die Reihenfolge legt man in der Oberfläche fest (SetOrder);
 //   sie steht in queue.json und gilt auch nach einem Neustart. Kommt eine andere Datei vor die laufende, wird die
 //   laufende angehalten und später an derselben Stelle fortgesetzt.
-// - Alles anhalten (SetPaused) und „nicht laden“ (Skip) stehen ebenfalls in queue.json.
+// - Sync-Pause (SetPaused, von jedem PC im Mesh aus) und „nicht laden“ (Skip) stehen ebenfalls in queue.json.
 // - Fortschritt: Bytes, Rate (gleitender Mittelwert) und Restzeit der laufenden Datei.
 // - Teildateien liegen im geteilten Ordner unter .stykker\partial (wird nie abgeglichen). So liegen sie auf demselben
 //   Laufwerk wie das Ziel, und das Übernehmen ist ein Umbenennen statt einer Kopie.
@@ -23,7 +23,8 @@ public sealed partial class MeshNode
     private readonly List<QueueItem> _queue = new();          // offene Downloads des laufenden Abrufs, in Abrufreihenfolge
     private List<string> _order = new();                       // vom Nutzer festgelegte Reihenfolge (Pfade)
     private HashSet<string> _skip = new(PathRules.Comparer);   // „nicht laden“
-    private bool _paused;                                      // alle Downloads angehalten
+    private bool _paused;                                      // Sync angehalten: nichts kommt herein, nichts geht hinaus
+    private string? _pausedBy;                                 // welcher PC angehalten hat
     private readonly Dictionary<string, DateTime> _hashHold = new(StringComparer.Ordinal);
     private string? _currentPath;
     private CancellationTokenSource? _currentCancel;
@@ -44,6 +45,7 @@ public sealed partial class MeshNode
     // Der Abgleich soll sofort wieder laufen (nach „Resume“ oder „Load“): die Gegenstellen warten sonst bis zu 25 s.
     public event Action? WakeRequested;
     public bool TransfersPaused => _paused;
+    public string? PausedBy => _pausedBy;
     public IReadOnlyList<string> Skipped { get { lock (_queueLock) return _skip.Order(PathRules.Comparer).ToList(); } }
 
     // Die Warteschlange in der Reihenfolge, in der sie abgearbeitet wird (die laufende Datei zuerst).
@@ -91,13 +93,17 @@ public sealed partial class MeshNode
         Notify();
     }
 
-    // Alle Downloads anhalten oder wieder freigeben. Löschungen und schon vorhandene Inhalte gleichen weiter ab.
-    public void SetPaused(bool paused)
+    // Sync dieses PCs anhalten oder fortsetzen; by: der PC, von dem aus es geschah (jeder PC im Mesh darf das).
+    // Angehalten holt dieser PC nichts (auch keine Löschungen), und die anderen holen nichts von ihm (sie sehen es im
+    // Hallo). Seine eigenen Änderungen merkt er sich und gibt sie nach dem Fortsetzen weiter. Ein laufender Download
+    // hält an und geht danach an derselben Stelle weiter.
+    public void SetPaused(bool paused, string? by = null)
     {
         CancellationTokenSource? interrupt;
         lock (_queueLock)
         {
             _paused = paused;
+            _pausedBy = paused ? (string.IsNullOrWhiteSpace(by) ? NodeName : by.Trim()[..Math.Min(by.Trim().Length, 64)]) : null;
             SaveQueueState();
             interrupt = paused ? _currentCancel : null;
         }
@@ -167,7 +173,7 @@ public sealed partial class MeshNode
             .Select(x => x.item).ToList();
     }
 
-    private sealed record QueueState(List<string>? Order, List<string>? Skip, bool Paused);
+    private sealed record QueueState(List<string>? Order, List<string>? Skip, bool Paused, string? PausedBy = null);
 
     private void InitTransfers()
     {
@@ -184,6 +190,7 @@ public sealed partial class MeshNode
                     _order = state.Order ?? new();
                     _skip = new HashSet<string>(state.Skip ?? new(), PathRules.Comparer);
                     _paused = state.Paused;
+                    _pausedBy = state.Paused ? state.PausedBy : null;
                 }
             }
         }
@@ -242,7 +249,7 @@ public sealed partial class MeshNode
 
     private void SaveQueueState()
     {
-        try { AtomicFile.WriteJson(QueueFile, new QueueState(_order, _skip.ToList(), _paused)); }
+        try { AtomicFile.WriteJson(QueueFile, new QueueState(_order, _skip.ToList(), _paused, _pausedBy)); }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
     }
 

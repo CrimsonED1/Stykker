@@ -166,3 +166,10 @@ html.window .tchip:hover{color:var(--ink)}
 .t-btn:hover{color:var(--ink);background:color-mix(in srgb,var(--ink) 10%,transparent)}
 .t-btn.t-close:hover{color:#fff;background:var(--bad)}
 @media(max-width:640px){html.window .top{position:sticky}html.window .top .strip{order:0;flex:0 1 auto}}
+
+/* Sync-Pause */
+#sync-btn{flex:none}
+#sync-btn.on,.ms-peer-pause.on{color:var(--warn);border-color:var(--warn)}
+.ms-peer-acts{display:flex;gap:2px;align-items:center}
+.ms-head #folder-btn{margin-left:0}
+.ms-head #sync-btn{margin-left:auto}

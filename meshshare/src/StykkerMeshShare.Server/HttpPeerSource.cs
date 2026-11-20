@@ -92,6 +92,26 @@ public sealed class HttpPeerSource(HttpClient http, string address) : IPeerSourc
         return stream;
     }
 
+    // Den Sync der Gegenstelle anhalten oder fortsetzen (Sync-Pause von jedem PC aus). by: der Name dieses PCs.
+    // Der Kopf X-Stykker-Mesh zwingt einen Browser zur CORS-Vorabfrage: eine fremde Webseite kann das nicht auslösen.
+    public async Task<(bool Ok, string Message)> SetPausedAsync(bool paused, string by, CancellationToken ct)
+    {
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        cts.CancelAfter(SmallTimeout);
+        var request = new HttpRequestMessage(HttpMethod.Post, Url("/mesh/pause"))
+        {
+            Content = JsonContent.Create(new { paused, by }),
+        };
+        request.Headers.Add("X-Stykker-Mesh", "1");
+        try
+        {
+            using var response = await http.SendAsync(request, cts.Token).ConfigureAwait(false);
+            if (response.StatusCode == HttpStatusCode.NotFound) return (false, "That PC runs an older StykkerMeshShare without the sync pause.");
+            return (response.IsSuccessStatusCode, response.IsSuccessStatusCode ? "" : $"That PC answered {(int)response.StatusCode}.");
+        }
+        catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException) { return (false, "That PC does not answer."); }
+    }
+
     // Lange Abfrage: kommt zurück, sobald sich dort etwas ändert, spätestens nach timeout.
     public Task<Hello> WaitAsync(long since, TimeSpan timeout, CancellationToken ct) =>
         GetJsonAsync<Hello>($"/mesh/wait?since={since}&seconds={(int)timeout.TotalSeconds}", MaxSmallBytes, timeout + SmallTimeout, ct);
@@ -145,12 +165,13 @@ public sealed class HttpPeerSource(HttpClient http, string address) : IPeerSourc
 }
 
 // Free/Total: freier und gesamter Platz auf dem Laufwerk des geteilten Ordners. Receiving: false, wenn dort weniger als
-// die eingestellte Grenze frei ist. Paused: die Downloads sind dort von Hand angehalten. Ältere Fassungen schicken sie nicht.
-public sealed record Hello(string App, string Id, string Name, long Seq, long? Free = null, long? Total = null, bool? Receiving = null, bool? Paused = null)
+// die eingestellte Grenze frei ist. Paused/PausedBy: der Sync dieses PCs ist angehalten (von welchem PC aus); dann holt
+// niemand etwas von ihm. Ältere Fassungen schicken die Felder nicht.
+public sealed record Hello(string App, string Id, string Name, long Seq, long? Free = null, long? Total = null, bool? Receiving = null, bool? Paused = null, string? PausedBy = null)
 {
     public static Hello Of(MeshNode node, long seq)
     {
         var disk = node.Disk;
-        return new Hello("StykkerMeshShare", node.NodeId, node.NodeName, seq, disk?.Free, disk?.Total, !node.LowSpace, node.TransfersPaused);
+        return new Hello("StykkerMeshShare", node.NodeId, node.NodeName, seq, disk?.Free, disk?.Total, !node.LowSpace, node.TransfersPaused, node.PausedBy);
     }
 }

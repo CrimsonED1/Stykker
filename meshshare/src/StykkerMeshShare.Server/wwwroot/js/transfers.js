@@ -22,10 +22,6 @@
         const waiting = queue.filter((q) => !t || q.path !== t.path);
 
         // Pause
-        const pause = $("pause-btn");
-        pause.textContent = n.transfersPaused ? "Resume" : "Pause";
-        pause.setAttribute("aria-pressed", String(n.transfersPaused));
-        pause.classList.toggle("on", n.transfersPaused);
 
         // Gesamt: alles, was in dieser Runde noch kommt
         const totalSize = queue.reduce((sum, q) => sum + q.size, 0);
@@ -35,7 +31,7 @@
         $("total").hidden = queue.length < 2;
         $("total").querySelector(".bar i").style.width = `${pct.toFixed(1)}%`;
         set("v-total", `${queue.length} files · ${size(totalDone)} of ${size(totalSize)}`);
-        set("v-rate", t && !t.checking ? `${rate(t.rate)} · ${size(rest)} to go${t.rate > 0 ? " · " + left(rest / t.rate) : ""}` : (n.transfersPaused && queue.length ? "Paused" : ""));
+        set("v-rate", t && !t.checking ? `${rate(t.rate)} · ${size(rest)} to go${t.rate > 0 ? " · " + left(rest / t.rate) : ""}` : (n.transfersPaused && queue.length ? "Sync paused" : ""));
         document.title = t && totalSize > 0 ? `${pct.toFixed(0)} % · ${baseTitle}` : baseTitle;
 
         // Die laufende Datei
@@ -80,7 +76,7 @@
             <span class="acts">${kind === "skip" ? `<button type="button" class="quiet" data-unskip="${esc(q)}">Load</button>` : ""}</span></div>`;
         html($("queue"), (waiting.length ? `<div class="muted ms-q-head">Next (${waiting.length}) · drag or use the arrows to change the order</div>` : "")
             + waiting.map((q, i) => row(q, i, waiting.length)).join("")
-            + (paused.length ? `<div class="muted ms-q-head">${n.transfersPaused ? "Started; continues when you press Resume" : "Started; continues when the PC that has it is online"}</div>` + paused.map((q) => other(q, "paused")).join("") : "")
+            + (paused.length ? `<div class="muted ms-q-head">${n.transfersPaused ? "Started; continues when the sync is resumed" : "Started; continues when the PC that has it is online"}</div>` + paused.map((q) => other(q, "paused")).join("") : "")
             + (skipped.length ? `<div class="muted ms-q-head">Not loaded</div>` + skipped.map((q) => other(q, "skip")).join("") : ""));
         if (refocus) {
             const target = $("queue").querySelector(`button[data-path="${CSS.escape(refocus.path)}"][data-move="${refocus.move}"]`);
@@ -101,13 +97,6 @@
         else if (announce) set("queue-live", announce);
         tick();
     }
-
-    $("pause-btn").addEventListener("click", async () => {
-        const paused = $("pause-btn").getAttribute("aria-pressed") !== "true";
-        const r = await post("/api/queue/pause", { paused });
-        toast(r.message ?? "", !r.ok);
-        tick();
-    });
 
     const box = $("transfers");
     box.addEventListener("click", async (e) => {
