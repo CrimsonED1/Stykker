@@ -11,17 +11,26 @@ Not yet tried between two real PCs, over Tailscale or on a phone.
 
 Start `StykkerMeshShare.exe` (window) or `StykkerMeshShare-Server.exe` (tray only). The page shows:
 
-- **Drop zone**: drop files or whole folders, or choose files or a folder. "Into" picks a subfolder. They land in
-  the shared folder and reach every PC. Each upload can be cancelled; closing the page during an upload asks first.
+- **Drop zone**: drop files or whole folders, or choose files or a folder. **To** picks who gets them: *Every PC*
+  (the mirror) or only certain PCs, for example just the laptop. With certain PCs, *Remove from this PC once it
+  arrived* turns it into a move from A to B. "Into" picks a subfolder. Each upload can be cancelled; closing the page
+  during an upload asks first. The choice of PCs is remembered in the browser.
 - **Sync status**: state of this PC, the other PCs (online, last sync, LAN or Tailscale), and a field to add a PC by
   name or address.
 - **Transfers**: the file being received (progress, rate, time left), a bar for all files of this round, and the
   waiting files. Change the order by dragging or with the arrows; ▶ loads a file now, ✕ does not load it.
   The progress also shows in the window title.
-- **Files**: click to open (pictures, PDFs, text, audio and video open in the browser, also on the phone; other
-  files download), or use the arrow to download. Conflict copies are marked; search "conflict" lists them.
-- **Activity** and the **Trash** (files another PC replaced or deleted here, 30 days): **Restore**, **Delete** for
-  good, or **Empty trash** (both ask first). Each PC has its own trash.
+- **Files**: every file in the mesh, also those that only lie on other PCs. Each row shows per PC whether it has the
+  file (green), is receiving it or will get it (half), or not. Click to open (pictures, PDFs, text, audio and video
+  open in the browser, also on the phone; other files download) or use the arrow to download; a file that is not on
+  this PC shows only its name. Conflict copies are marked; search "conflict" lists them.
+  **Select** files (round checks) to manage them from any PC or the phone:
+  - **Send to…**: also to these PCs; optionally remove it from this PC once it arrived.
+  - **Rename**, **Move** into a folder (a new folder is made when needed). The other PCs move their copy instead of
+    loading it again.
+  - **Delete…** on chosen PCs. Deleted is gone for good, there is no trash: the space is free right away. Chosen on
+    every PC that has it, the file is gone everywhere.
+- **Activity**: what happened lately, including "arrived at …" for files sent from here.
 
 **Other PCs** in the list show, live while the page is open: what they are receiving (file, %, rate, what is left),
 their free space, whether their sync is paused, and **outdated** when they run an older StykkerMeshShare than the
@@ -60,7 +69,11 @@ PC A  ◀──── pull ────▶  PC B  ◀──── pull ───
 - **Conflict** (changed on two PCs at the same time): the later change keeps the name, the other becomes
   `name (conflict <PC> <date time>).ext`. Both PCs make the same copy, so nothing is lost.
 - **Changed here, deleted there**: the change wins and the file comes back.
-- **Trash**: a file that is overwritten or deleted by another PC goes to `trash\` in the data folder for 30 days.
+- **No trash**: a file that is overwritten or deleted by another PC is gone for good. MeshShare is for passing files
+  around, not for keeping them; the disks should not fill up. (A trash from an older version is emptied at start.)
+- **Targets**: each file knows the PCs that should have it (or all). A PC that is not a target does not load it. A PC
+  that has it but is not a target (the sender, or one where it was deleted) keeps it until every target has it, then
+  removes it. Each PC learns who has what from the change lists of the others.
 - **Held deletion**: if (almost) all files vanish at once, for example when a drive is not connected, the deletion
   is held and the page asks before it reaches the other PCs.
 - A new PC with files of its own merges them in. The same path with different content becomes a conflict;
@@ -68,7 +81,7 @@ PC A  ◀──── pull ────▶  PC B  ◀──── pull ───
 - Not synced: `~$*`, `*.tmp`, `*.partial`, `*.part`, `*.crdownload`, `Thumbs.db`, `desktop.ini`, `.DS_Store`,
   anything starting with `.stykker`, links and junctions (they are not followed). Empty folders are not synced.
 
-Index, trash and settings live in `%APPDATA%\Stykker\MeshShare`, not in the shared folder.
+Index and settings live in `%APPDATA%\Stykker\MeshShare`, not in the shared folder.
 
 ## Transfers
 
@@ -130,7 +143,7 @@ encrypted by Tailscale. Pairing through `Stykker.Pairing` and HTTPS come later.
 
 - **Only on the PC itself**: changing the folder, adding and removing PCs, confirming held deletions and opening the
   Explorer. Network paths (`\server\share`) and network drives cannot be the shared folder.
-- **Only from the page itself** (same origin): uploads, the queue, pause, skip and restoring from the trash.
+- **Only from the page itself** (same origin): uploads, sending, renaming, moving and deleting files, the queue, pause and skip.
 - **Host names**: the server answers only under this PC's own names: an IP address, `localhost`, the computer name
   (with the network's DNS suffix), `<computer name>.<tailnet>.ts.net`, or a name listed under `hostNames` in
   `%APPDATA%\Stykker\stykker.json`. This blocks web pages that point their own name at this PC (DNS rebinding).

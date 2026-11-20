@@ -41,10 +41,18 @@ public sealed partial class MeshNode
             .Where(x => x.Path != null && !PathRules.IsIgnored(x.Path) && Plausible(x.Entry))
             .Select(x => x.Entry with { Path = x.Path! }).ToList();
         List<FileEntry> downloads;
+        HashSet<FileEntry> moved;
         await _gate.WaitAsync(ct).ConfigureAwait(false);
-        try { downloads = entries.Where(NeedsDownload).ToList(); }
+        try
+        {
+            NotePresence(page, since == 0);
+            downloads = entries.Where(NeedsDownload).ToList();
+            // Verschoben: hier verschieben statt neu laden (der neue Pfad und der Grabstein des alten sind dann erledigt).
+            moved = ApplyMoves(entries, downloads);
+        }
         finally { _gate.Release(); }
-        var quick = entries.Except(downloads).ToList();
+        downloads = downloads.Where(d => !moved.Contains(d)).ToList();
+        var quick = entries.Except(downloads).Where(e => !moved.Contains(e)).ToList();
         lock (_queueLock)
         {
             _queue.Clear();
@@ -95,6 +103,7 @@ public sealed partial class MeshNode
         {
             // Wurde inzwischen der Ordner gewechselt („Start empty“), muss alles neu gelesen werden: Zeiger nicht setzen.
             if (complete && generation == _folderGen) _cursors[page.NodeId] = page.Seq;
+            if (Prune()) applied++;   // was hier nur auf seine Ziele gewartet hat und dort angekommen ist
             Save();
         }
         finally { _gate.Release(); }
@@ -114,10 +123,18 @@ public sealed partial class MeshNode
 
     // Grobe Vorauswahl (unter der Sperre): ein Eintrag mit Inhalt, der hier unter diesem Pfad noch fehlt und nicht
     // älter ist als der eigene. Was wirklich passiert, entscheidet Decide() erst direkt vor dem Laden.
+    // Nur, wenn diese Gegenstelle die Datei wirklich hat (nicht Away) und dieser PC ein Ziel ist.
     private bool NeedsDownload(FileEntry remote)
     {
-        if (remote.Deleted || remote.Hash == null || IsSkipped(remote.Path)) return false;
-        if (!_entries.TryGetValue(remote.Path, out var local)) return true;
+        if (remote.Deleted || remote.Away || remote.Hash == null || IsSkipped(remote.Path)) return false;
+        if (!_entries.TryGetValue(remote.Path, out var local)) return WantsHere(remote);
+        if (local.Away)
+        {
+            // Hier nur bekannt: laden, wenn dieser PC jetzt Ziel ist (nach der neueren der beiden Fassungen).
+            var meta = VersionVector.Compare(local.Version, remote.Version) is Order.Equal or Order.LocalNewer ? local : remote;
+            return WantsHere(meta) && meta.Hash == remote.Hash;
+        }
+        if (!WantsHere(remote)) return false;
         if (!local.Deleted && local.Hash == remote.Hash) return false;
         return VersionVector.Compare(local.Version, remote.Version) is not (Order.Equal or Order.LocalNewer);
     }
@@ -190,7 +207,7 @@ public sealed partial class MeshNode
     // (MainVersion) erst, wenn die Kopie wirklich angekommen ist – sonst ginge die fremde Fassung verloren.
     private sealed record Plan(PlanKind Kind, bool Changed = false, string? Target = null, Dictionary<string, long>? Version = null,
         FileEntry? ExpectedAtTarget = null, FileEntry? LoserToMove = null, string? LoserTarget = null, bool AsConflictCopy = false,
-        FileEntry? Main = null, Dictionary<string, long>? MainVersion = null);
+        FileEntry? Main = null, Dictionary<string, long>? MainVersion = null, List<string>? To = null);
 
     private Plan Decide(FileEntry remote, string peerName)
     {
@@ -207,11 +224,18 @@ public sealed partial class MeshNode
                 _entries[remote.Path] = remote with { Seq = ++_seq };
                 return new Plan(PlanKind.Done, Changed: false);
             }
-            return new Plan(PlanKind.Download, Target: remote.Path, Version: remote.Version);
+            // Nicht für diesen PC, oder die Gegenstelle hat sie selbst nicht: nur merken, dass es sie gibt.
+            if (!WantsHere(remote) || remote.Away)
+            {
+                _entries[remote.Path] = remote with { Away = true, Seq = ++_seq };
+                return new Plan(PlanKind.Done, Changed: true);
+            }
+            return new Plan(PlanKind.Download, Target: remote.Path, Version: remote.Version, To: remote.To);
         }
 
         // Die Datei auf der Platte muss noch dem Index entsprechen, sonst erst scannen.
         if (!DiskMatches(local, full)) return new Plan(PlanKind.Retry);
+        if (local.Away) return DecideAway(local, remote);
 
         switch (VersionVector.Compare(local.Version, remote.Version))
         {
@@ -224,7 +248,7 @@ public sealed partial class MeshNode
                 {
                     if (!local.Deleted)
                     {
-                        MoveToTrash(full, remote.Path);
+                        RemoveFile(full);   // endgültig, kein Papierkorb
                         Record(ActivityKind.Removed, remote.Path, peerName);
                     }
                     _entries[remote.Path] = Tombstone(local, remote.Version, remote.OriginId, remote.OriginName);
@@ -232,10 +256,20 @@ public sealed partial class MeshNode
                 }
                 if (!local.Deleted && local.Hash == remote.Hash)
                 {
-                    _entries[remote.Path] = local with { Version = remote.Version, Seq = ++_seq };
-                    return new Plan(PlanKind.Done);
+                    // Gleicher Inhalt, neue Fassung (etwa ein neues Ziel): übernehmen; gehört sie nicht mehr hierher,
+                    // gibt Prune sie frei, sobald alle Ziele sie haben.
+                    _entries[remote.Path] = local with { Version = remote.Version, To = remote.To, Seq = ++_seq };
+                    return new Plan(PlanKind.Done, Changed: true);
                 }
-                return new Plan(PlanKind.Download, Target: remote.Path, Version: remote.Version, ExpectedAtTarget: local);
+                if (!WantsHere(remote))
+                {
+                    // Neuer Inhalt, aber nicht für diesen PC: die alte Fassung hier ist überholt.
+                    if (!local.Deleted) RemoveFile(full);
+                    _entries[remote.Path] = remote with { Away = true, Seq = ++_seq };
+                    return new Plan(PlanKind.Done, Changed: true);
+                }
+                if (remote.Away) return new Plan(PlanKind.Done);   // die Gegenstelle hat ihn selbst nicht: von einer anderen
+                return new Plan(PlanKind.Download, Target: remote.Path, Version: remote.Version, ExpectedAtTarget: local, To: remote.To);
 
             default: // gleichzeitig geändert
                 var merged = VersionVector.Merge(local.Version, remote.Version);
@@ -246,7 +280,7 @@ public sealed partial class MeshNode
                 }
                 if (!local.Deleted && !remote.Deleted && local.Hash == remote.Hash)
                 {
-                    _entries[remote.Path] = local with { Version = merged, Seq = ++_seq };
+                    _entries[remote.Path] = local with { Version = merged, To = UnionTo(local.To, remote.To), Seq = ++_seq };
                     return new Plan(PlanKind.Done);
                 }
                 if (remote.Deleted)
@@ -258,8 +292,21 @@ public sealed partial class MeshNode
                 }
                 if (local.Deleted)
                 {
-                    // Hier gelöscht, dort geändert: die Änderung gewinnt, die Datei kommt zurück.
-                    return new Plan(PlanKind.Download, Target: remote.Path, Version: merged, ExpectedAtTarget: local);
+                    // Hier gelöscht, dort geändert: die Änderung gewinnt, die Datei kommt zurück (wenn sie hierher gehört).
+                    if (!WantsHere(remote) || remote.Away)
+                    {
+                        _entries[remote.Path] = remote with { Version = merged, Away = true, Seq = ++_seq };
+                        return new Plan(PlanKind.Done, Changed: true);
+                    }
+                    return new Plan(PlanKind.Download, Target: remote.Path, Version: merged, ExpectedAtTarget: local, To: remote.To);
+                }
+                if (remote.Away || !WantsHere(remote))
+                {
+                    // Dort geändert, aber nicht für diesen PC (oder dort gar nicht vorhanden): die Fassung hier bleibt
+                    // und geht mit einer neuen Nummer zurück.
+                    _entries[remote.Path] = local with { Version = VersionVector.Bump(merged, NodeId), To = UnionTo(local.To, remote.To), Seq = ++_seq };
+                    Record(ActivityKind.Kept, remote.Path, peerName);
+                    return new Plan(PlanKind.Done, Changed: true);
                 }
                 // Beide geändert: Der Gewinner bleibt unter dem Namen, der Verlierer wird Konfliktkopie. Die Regel
                 // (spätere Änderungszeit, bei Gleichstand der größere Hash) ist auf beiden Seiten dieselbe.
@@ -270,7 +317,7 @@ public sealed partial class MeshNode
                 {
                     var loserName = PathRules.ConflictName(remote.Path, local.OriginName, local.MtimeTicks, local.Hash);
                     return new Plan(PlanKind.Download, Target: remote.Path, Version: merged, ExpectedAtTarget: local,
-                        LoserToMove: local, LoserTarget: loserName);
+                        LoserToMove: local, LoserTarget: loserName, To: UnionTo(local.To, remote.To));
                 }
                 var copyName = PathRules.ConflictName(remote.Path, remote.OriginName, remote.MtimeTicks, remote.Hash);
                 if (_entries.TryGetValue(copyName, out var existingCopy) && !existingCopy.Deleted && existingCopy.Hash == remote.Hash)
@@ -283,13 +330,40 @@ public sealed partial class MeshNode
                 if (File.Exists(copyFull)) return new Plan(PlanKind.Retry);   // erst scannen
                 return new Plan(PlanKind.Download, Target: copyName,
                     Version: VersionVector.Bump(existingCopy?.Version ?? new(), NodeId),
-                    ExpectedAtTarget: existingCopy, AsConflictCopy: true, Main: local, MainVersion: merged);
+                    ExpectedAtTarget: existingCopy, AsConflictCopy: true, Main: local, MainVersion: merged, To: remote.To);
         }
     }
 
+    // Die Datei ist hier nur bekannt (Away). Neuere Angaben übernehmen; ist dieser PC jetzt Ziel, den Inhalt laden.
+    private Plan DecideAway(FileEntry local, FileEntry remote)
+    {
+        var order = VersionVector.Compare(local.Version, remote.Version);
+        if (order is Order.Equal or Order.LocalNewer)
+        {
+            if (!remote.Away && !remote.Deleted && WantsHere(local) && local.Hash == remote.Hash)
+                return new Plan(PlanKind.Download, Target: local.Path, Version: local.Version, ExpectedAtTarget: local, To: local.To);
+            return new Plan(PlanKind.Done);
+        }
+        var version = order == Order.RemoteNewer ? remote.Version : VersionVector.Merge(local.Version, remote.Version);
+        if (remote.Deleted)
+        {
+            _entries[local.Path] = Tombstone(local, version, remote.OriginId, remote.OriginName);
+            return new Plan(PlanKind.Done, Changed: true);
+        }
+        var meta = order == Order.RemoteNewer ? remote : remote with { To = UnionTo(local.To, remote.To) };
+        if (WantsHere(meta) && !remote.Away)
+            return new Plan(PlanKind.Download, Target: local.Path, Version: version, ExpectedAtTarget: local, To: meta.To);
+        _entries[local.Path] = meta with { Path = local.Path, Version = version, Away = true, Seq = ++_seq };
+        return new Plan(PlanKind.Done, Changed: true);
+    }
+
+    // Zwei Ziele zusammen: null (alle) gewinnt.
+    private static List<string>? UnionTo(List<string>? a, List<string>? b) =>
+        a == null || b == null ? null : a.Union(b, StringComparer.Ordinal).OrderBy(x => x, StringComparer.Ordinal).ToList();
+
     private bool DiskMatches(FileEntry entry, string full)
     {
-        if (entry.Deleted) return !File.Exists(full);
+        if (entry.Deleted || entry.Away) return !File.Exists(full);
         try
         {
             var info = new FileInfo(full);
@@ -314,7 +388,7 @@ public sealed partial class MeshNode
         await _gate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            var same = _entries.Values.FirstOrDefault(e => !e.Deleted && e.Hash == hash);
+            var same = _entries.Values.FirstOrDefault(e => !e.Deleted && !e.Away && e.Hash == hash);
             if (same != null)
             {
                 var full = Full(same.Path);
@@ -448,13 +522,13 @@ public sealed partial class MeshNode
                 // Die eigene Fassung wird zur Konfliktkopie; der nächste Scan nimmt sie als neue Datei auf.
                 var loserFull = Full(plan.LoserTarget);
                 if (loserFull == null) return false;
-                if (File.Exists(loserFull)) MoveToTrash(full, target);
+                if (File.Exists(loserFull)) RemoveFile(full);
                 else File.Move(full, loserFull);
                 Record(ActivityKind.Conflict, plan.LoserTarget, remote.OriginName);
             }
             else if (File.Exists(full))
             {
-                MoveToTrash(full, target);
+                File.Delete(full);   // die alte Fassung: endgültig, kein Papierkorb
             }
             Directory.CreateDirectory(Path.GetDirectoryName(full)!);
             File.Move(temp, full, overwrite: false);
@@ -470,6 +544,7 @@ public sealed partial class MeshNode
                 Seq = ++_seq,
                 OriginId = plan.AsConflictCopy ? NodeId : remote.OriginId,
                 OriginName = plan.AsConflictCopy ? NodeName : remote.OriginName,
+                To = plan.To,
             };
             if (plan is { AsConflictCopy: true, Main: not null, MainVersion: not null }
                 && _entries.TryGetValue(plan.Main.Path, out var main) && main.Seq == plan.Main.Seq)

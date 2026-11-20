@@ -9,9 +9,10 @@ namespace StykkerMeshShare.Core;
 // einer Gegenstelle alles, was sich dort seit dem letzten Abruf geändert hat, und übernimmt es nach den Regeln der
 // Versionsvektoren. Niemand schiebt Dateien zu einem anderen: jeder PC holt selbst ab.
 //
-// Sicherheitsnetze: Wird eine Datei hier überschrieben oder gelöscht, landet die alte Fassung im Papierkorb
-// (DataDir/trash). Verschwinden auf einen Schlag (fast) alle Dateien, hält der Scan die Löschung an (HeldDeletes),
-// bis jemand sie bestätigt – zum Beispiel, wenn ein Laufwerk nicht eingehängt ist.
+// Ein Austauschprogramm, kein Archiv: was ein anderer PC löscht oder überschreibt, ist hier endgültig weg (kein
+// Papierkorb, die Platten sollen nicht volllaufen). Ein Sicherheitsnetz bleibt: verschwinden auf einen Schlag (fast)
+// alle Dateien, hält der Scan die Löschung an (HeldDeletes), bis jemand sie bestätigt – zum Beispiel, wenn ein
+// Laufwerk nicht eingehängt ist.
 public sealed partial class MeshNode : IDisposable
 {
     private const int ActivityLimit = 200;
@@ -27,7 +28,7 @@ public sealed partial class MeshNode : IDisposable
     private TaskCompletionSource _changed = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private long _seq;
     private bool _allowMassDelete;
-    private DateTime _lastTrashPurge = DateTime.MinValue;
+    private DateTime _lastPurge = DateTime.MinValue;
     private readonly object _scanSerial = new();          // nur ein Scan zur Zeit
     private int _folderGen;
     private int _holdTransfers;                            // > 0: keine Downloads (Ordnerwechsel läuft)                                // zählt Ordnerwechsel: ein Abruf von vorher setzt keinen Zeiger
@@ -60,13 +61,17 @@ public sealed partial class MeshNode : IDisposable
             _seq = state.Seq;
             foreach (var entry in state.Entries) _entries[entry.Path] = entry;
             foreach (var (peer, seq) in state.Cursors) _cursors[peer] = seq;
+            LoadPresence(state.Presence, state.PeerNames);
         }
+        // Den Papierkorb früherer Fassungen gibt es nicht mehr: einmal leeren.
+        try { if (Directory.Exists(LegacyTrashDir)) Directory.Delete(LegacyTrashDir, recursive: true); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
         InitTransfers();
         Save();
     }
 
     private string StateFile => Path.Combine(_options.DataDir, "index.json");
-    public string TrashDir => Path.Combine(_options.DataDir, "trash");
+    private string LegacyTrashDir => Path.Combine(_options.DataDir, "trash");
 
     public long Seq => Interlocked.Read(ref _seq);
 
@@ -74,7 +79,19 @@ public sealed partial class MeshNode : IDisposable
     public sealed record Totals(int Files, long Bytes);
     public Totals Summary => _totals;
 
+    // Die Dateien, die auf diesem PC liegen.
     public IReadOnlyList<FileEntry> Files
+    {
+        get
+        {
+            _gate.Wait();
+            try { return _entries.Values.Where(e => !e.Deleted && !e.Away).OrderBy(e => e.Path, PathRules.Comparer).ToList(); }
+            finally { _gate.Release(); }
+        }
+    }
+
+    // Alle Dateien im Mesh, die dieser PC kennt – auch die, die woanders liegen (Away). Für die Dateiliste.
+    public IReadOnlyList<FileEntry> AllFiles
     {
         get
         {
@@ -154,7 +171,7 @@ public sealed partial class MeshNode : IDisposable
             foreach (var file in found)
             {
                 _entries.TryGetValue(file.Relative, out var entry);
-                if (entry is { Deleted: false } && entry.Size == file.Size && entry.MtimeTicks == file.MtimeTicks) continue;
+                if (entry is { Deleted: false, Away: false } && entry.Size == file.Size && entry.MtimeTicks == file.MtimeTicks) continue;
                 toHash.Add((file, entry));
             }
         }
@@ -187,11 +204,18 @@ public sealed partial class MeshNode : IDisposable
                     _entries.TryGetValue(file.Relative, out var entry);
                     // Inzwischen hat der Abgleich den Eintrag geändert, oder die Datei hat sich noch einmal geändert.
                     if (!ReferenceEquals(entry, before) || !SameOnDisk(file)) { pending = true; continue; }
-                    if (entry is { Deleted: false } && entry.Hash == hash)
+                    if (entry is { Deleted: false, Away: false } && entry.Hash == hash)
                     {
                         _entries[file.Relative] = entry with { Size = file.Size, MtimeTicks = file.MtimeTicks };
                         batchChanged = true;
                         continue;
+                    }
+                    // Wohin die Datei soll: wie bisher; neu hochgeladen mit Ziel (SendNew); sonst an alle. Liegt sie hier,
+                    // obwohl dieser PC kein Ziel war (von Hand hineingelegt), gehört er jetzt dazu.
+                    if (!TryTakePendingTo(file.Relative, out var to))
+                    {
+                        to = entry is { Deleted: false } ? entry.To : null;
+                        if (to != null && !to.Contains(NodeId)) to = [.. to, NodeId];
                     }
                     _entries[file.Relative] = new FileEntry
                     {
@@ -203,8 +227,9 @@ public sealed partial class MeshNode : IDisposable
                         Seq = ++_seq,
                         OriginId = NodeId,
                         OriginName = NodeName,
+                        To = to,
                     };
-                    Record(entry is { Deleted: false } ? ActivityKind.Changed : ActivityKind.Added, file.Relative, null);
+                    Record(entry is { Deleted: false, Away: false } ? ActivityKind.Changed : ActivityKind.Added, file.Relative, null);
                     batchChanged = true;
                 }
                 if (batchChanged && at < toHash.Count) { Save(); Notify(); }
@@ -220,8 +245,8 @@ public sealed partial class MeshNode : IDisposable
 
             // Verschwunden: nicht gesehen und auch jetzt nicht auf der Platte (eine Datei kann während des Scans vom
             // Abgleich gekommen sein).
-            var gone = _entries.Values.Where(e => !e.Deleted && !seen.Contains(e.Path) && !OnDisk(e.Path)).ToList();
-            int live = _entries.Values.Count(e => !e.Deleted);
+            var gone = _entries.Values.Where(e => !e.Deleted && !e.Away && !seen.Contains(e.Path) && !OnDisk(e.Path)).ToList();
+            int live = _entries.Values.Count(e => !e.Deleted && !e.Away);
             bool massive = gone.Count > 0 && ((live >= 3 && gone.Count == live) || (gone.Count >= 50 && gone.Count * 2 > live));
             if (massive && !_allowMassDelete)
             {
@@ -241,7 +266,8 @@ public sealed partial class MeshNode : IDisposable
 
             LastScan = DateTime.UtcNow;
             PendingRescan = pending;
-            PurgeTrash();
+            PurgePartials();
+            changed |= Prune();
             if (changed) Save();
         }
         finally { _gate.Release(); }
@@ -265,6 +291,8 @@ public sealed partial class MeshNode : IDisposable
     private FileEntry Tombstone(FileEntry entry, Dictionary<string, long> version, string? originId, string? originName) => entry with
     {
         Deleted = true,
+        Away = false,
+        To = null,
         Size = 0,
         Hash = null,
         Version = version,
@@ -294,7 +322,7 @@ public sealed partial class MeshNode : IDisposable
         _gate.Wait();
         try
         {
-            if (!_entries.TryGetValue(relative, out var entry) || entry.Deleted || entry.Hash != hash) return null;
+            if (!_entries.TryGetValue(relative, out var entry) || entry.Deleted || entry.Away || entry.Hash != hash) return null;
             var full = Full(relative);
             if (full == null || !File.Exists(full)) return null;
             // Hat sich die Datei seit dem Scan geändert, wird sie nicht ausgeliefert; der nächste Scan nimmt sie auf.
@@ -349,34 +377,39 @@ public sealed partial class MeshNode : IDisposable
         return Seq;
     }
 
-    // ── Papierkorb ──
+    // ── Löschen ──
 
-    private void MoveToTrash(string full, string relative)
+    // Löscht eine Datei endgültig (kein Papierkorb) und räumt leer gewordene Unterordner weg. Wirft bei einer offenen
+    // Datei (IOException), damit der Abgleich es später noch einmal versucht.
+    private void RemoveFile(string full)
     {
         if (!File.Exists(full)) return;
-        var day = DateTime.UtcNow.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
-        var target = Path.Combine(TrashDir, day, relative.Replace('/', Path.DirectorySeparatorChar));
-        Directory.CreateDirectory(Path.GetDirectoryName(target)!);
-        if (File.Exists(target)) target += "." + Guid.NewGuid().ToString("N")[..8];
-        File.Move(full, target);
+        File.SetAttributes(full, FileAttributes.Normal);
+        File.Delete(full);
+        RemoveEmptyFolders(Path.GetDirectoryName(full));
     }
 
-    private void PurgeTrash()
+    private void RemoveEmptyFolders(string? dir)
     {
-        if (DateTime.UtcNow - _lastTrashPurge < TimeSpan.FromHours(1)) return;
-        _lastTrashPurge = DateTime.UtcNow;
+        var root = Path.TrimEndingDirectorySeparator(_folder);
+        while (dir != null && dir.Length > root.Length && dir.StartsWith(root, StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                if (Directory.EnumerateFileSystemEntries(dir).Any()) return;
+                Directory.Delete(dir);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { return; }
+            dir = Path.GetDirectoryName(dir);
+        }
+    }
+
+    private void PurgePartials()
+    {
+        if (DateTime.UtcNow - _lastPurge < TimeSpan.FromHours(1)) return;
+        _lastPurge = DateTime.UtcNow;
         try { _partials.Purge(); }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
-        if (!Directory.Exists(TrashDir)) return;
-        foreach (var day in Directory.GetDirectories(TrashDir))
-        {
-            if (!DateTime.TryParseExact(Path.GetFileName(day), "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture,
-                    System.Globalization.DateTimeStyles.AssumeUniversal | System.Globalization.DateTimeStyles.AdjustToUniversal, out var date)) continue;
-            if (DateTime.UtcNow - date <= _options.TrashKeep) continue;
-            try { Directory.Delete(day, recursive: true); }
-            catch (IOException) { }
-            catch (UnauthorizedAccessException) { }
-        }
     }
 
     // ── Hilfen ──
@@ -427,7 +460,12 @@ public sealed partial class MeshNode : IDisposable
         previous.TrySetResult();
     }
 
-    private sealed record StoredState(string NodeId, long Seq, List<FileEntry> Entries, Dictionary<string, long> Cursors);
+    private sealed record StoredState(string NodeId, long Seq, List<FileEntry> Entries, Dictionary<string, long> Cursors)
+    {
+        // Wer welche Datei hat (je Gegenstelle: Pfad -> Hash) und wie die Gegenstellen heißen. Fehlt in älteren Dateien.
+        public Dictionary<string, Dictionary<string, string>>? Presence { get; init; }
+        public Dictionary<string, string>? PeerNames { get; init; }
+    }
 
     private StoredState? Load()
     {
@@ -454,7 +492,7 @@ public sealed partial class MeshNode : IDisposable
     {
         int files = 0;
         long bytes = 0;
-        foreach (var e in _entries.Values) if (!e.Deleted) { files++; bytes += e.Size; }
+        foreach (var e in _entries.Values) if (!e.Deleted && !e.Away) { files++; bytes += e.Size; }
         _totals = new Totals(files, bytes);
     }
 
@@ -462,7 +500,11 @@ public sealed partial class MeshNode : IDisposable
     {
         _savedAt = Environment.TickCount64;
         RefreshTotals();
-        var state = new StoredState(NodeId, _seq, _entries.Values.ToList(), new Dictionary<string, long>(_cursors));
+        var state = new StoredState(NodeId, _seq, _entries.Values.ToList(), new Dictionary<string, long>(_cursors))
+        {
+            Presence = _presence.ToDictionary(p => p.Key, p => new Dictionary<string, string>(p.Value, PathRules.Comparer)),
+            PeerNames = new Dictionary<string, string>(_peerNames),
+        };
         AtomicFile.WriteJson(StateFile, state, Json);
     }
 }

@@ -102,8 +102,8 @@ public class SyncTests
         Mesh.Write(a, "keep2.txt", "k2");
         await mesh.Converge();
         Assert.Null(Mesh.Read(b, "x.txt"));
-        // Die gelöschte Fassung liegt bei B im Papierkorb.
-        Assert.Contains(Directory.GetFiles(b.TrashDir, "x.txt", SearchOption.AllDirectories), _ => true);
+        // Endgültig weg, kein Papierkorb.
+        Assert.Empty(Directory.GetFiles(Path.Combine(mesh.Root, "B"), "x.txt", SearchOption.AllDirectories));
     }
 
     [Fact]

@@ -30,12 +30,13 @@
         switch (a.kind) {
             case "added": return "Added here";
             case "changed": return "Changed here";
-            case "deleted": return "Deleted here";
+            case "deleted": return a.message ?? "Deleted here";
             case "received": return `Received from ${a.from ?? "another PC"}`;
-            case "removed": return `Deleted${by}`;
+            case "removed": return a.message ?? `Deleted${by}`;
+            case "sent": return `Arrived at ${a.from ?? "another PC"}`;
+            case "moved": return `Moved${by} (${a.message ?? ""})`;
             case "conflict": return "Conflict copy (changed on two PCs)";
             case "kept": return `Kept: changed here, deleted${by}`;
-            case "restored": return "Restored from the trash";
             case "folder": return a.message ?? "Folder changed";
             case "error": return a.message ?? "Problem";
             default: return a.kind;

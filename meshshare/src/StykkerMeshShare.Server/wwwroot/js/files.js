@@ -1,47 +1,93 @@
-// Dateien (ansehen, herunterladen, suchen), Hochladen über Dropzone oder Auswahl (in einen Unterordner, mit
-// Abbrechen) und der Papierkorb zum Zurückholen.
+// Dateien: ansehen, herunterladen, suchen, und verwalten – auswählen, an PCs senden, umbenennen, verschieben, löschen
+// (wirkt auf allen PCs, gelöscht wird endgültig). Hochladen über Dropzone oder Auswahl, an alle PCs oder nur an
+// bestimmte (Chips), in einen Unterordner, mit Abbrechen.
 (() => {
     "use strict";
-    const { $, esc, post, size, ago, html, toast, tick } = MS;
+    const { $, esc, post, size, html, toast, tick } = MS;
     const ShowAtMost = 300;
 
-    // ── Dateien ──
+    // ── Stand ──
     let files = [];
+    let nodes = [];            // {id, name, self}
+    let status = null;
     let lastSeq = -1;
+    const selected = new Set();
+    let shown = [];            // die gerade angezeigten Dateien (für „alle auswählen“)
+
+    const self = () => nodes.find((n) => n.self);
+    const others = () => nodes.filter((n) => !n.self);
+    const nameOf = (id) => nodes.find((n) => n.id === id)?.name ?? "another PC";
+    const base = (p) => p.slice(p.lastIndexOf("/") + 1);
+    const dir = (p) => (p.includes("/") ? p.slice(0, p.lastIndexOf("/")) : "");
+    const short = (name) => (name.length > 10 ? name.slice(0, 9) + "…" : name);
+
     async function loadFiles() {
-        try { files = await fetch("/api/files").then((r) => r.json()); }
+        let answer;
+        try { answer = await fetch("/api/files").then((r) => r.json()); }
         catch { return; }
+        files = answer.files ?? [];
+        nodes = answer.nodes ?? [];
+        const paths = new Set(files.map((f) => f.path));
+        for (const p of [...selected]) if (!paths.has(p)) selected.delete(p);
+        renderChips();
         renderFiles();
         renderTargets();
     }
     MS.filesChanged = () => { lastSeq = -1; };
     MS.onStatus((st) => {
+        status = st;
         if (st.node.seq !== lastSeq) {
             lastSeq = st.node.seq;
             loadFiles();
-        }
+        } else renderFiles();   // „kommt gerade an“ ändert sich mit jedem Takt
     });
 
+    // Wie eine Datei auf einem PC steht: y hat sie, h kommt gerade an, w soll sie bekommen, "" nicht da.
+    function stateOn(f, id) {
+        if (f.on.includes(id)) return "y";
+        if (self()?.id === id) {
+            const t = status?.node?.transfer;
+            if ((t && t.path === f.path) || status?.queue?.some((q) => q.path === f.path)) return "h";
+        } else if (status?.peers?.find((p) => p.id === id)?.progress?.file === f.path) return "h";
+        if (f.to && f.to.includes(id)) return "w";
+        return "";
+    }
+
+    // ── Dateiliste ──
     function renderFiles() {
         const q = ($("q").value || "").trim().toLowerCase();
         const matching = files
             .filter((f) => !q || f.path.toLowerCase().includes(q) || (q === "conflict" && f.conflict))
             .sort((a, b) => new Date(b.modified) - new Date(a.modified));
-        const shown = matching.slice(0, ShowAtMost);
+        shown = matching.slice(0, ShowAtMost);
+        const many = nodes.length > 1;
         html($("files"), shown.length
             ? shown.map((f) => {
                 const path = encodeURIComponent(f.path);
                 const name = esc(f.path);
-                // Bilder, PDFs, Text, Audio, Video öffnen im Browser; alles andere wird heruntergeladen.
-                const open = f.viewable
-                    ? `<a href="/api/download?path=${path}&inline=1" target="_blank" rel="noopener" title="Open ${name}">${name}</a>`
-                    : `<a href="/api/download?path=${path}" title="Download ${name}">${name}</a>`;
+                const sel = selected.has(f.path);
+                // Liegt sie hier: öffnen (Bilder, PDFs, Text, Audio, Video im Browser) oder herunterladen. Sonst nur der Name.
+                const open = !f.here
+                    ? `<span title="Not on this PC">${name}</span>`
+                    : f.viewable
+                        ? `<a href="/api/download?path=${path}&inline=1" target="_blank" rel="noopener" title="Open ${name}">${name}</a>`
+                        : `<a href="/api/download?path=${path}" title="Download ${name}">${name}</a>`;
                 const badge = f.conflict ? `<span class="badge warn" title="Changed on two PCs at the same time; both versions are kept">conflict</span>` : "";
-                return `<div class="ms-row"><span class="nm">${open}${badge}${f.from ? `<span class="muted ms-from">${esc(f.from)}</span>` : ""}</span>
-                    <span class="num">${size(f.size)}</span><span class="when">${esc(ago(f.modified))}</span>
-                    <a class="quiet sq ms-dl" href="/api/download?path=${path}" download aria-label="Download ${name}" title="Download"><svg class="ic"><use href="#i-arrow-down" /></svg></a></div>`;
+                const on = many ? nodes.map((n) => {
+                    const s = stateOn(f, n.id);
+                    const what = { y: "has it", h: "receiving it now", w: "will get it", "": "not there" }[s];
+                    return `<span class="ms-pc" title="${esc(n.name)}${n.self ? " (this PC)" : ""}: ${what}"><i class="ms-dot ${s}"></i>${esc(short(n.name))}</span>`;
+                }).join("") : "";
+                const dl = f.here
+                    ? `<a class="quiet sq ms-dl" href="/api/download?path=${path}" download aria-label="Download ${name}" title="Download"><svg class="ic"><use href="#i-arrow-down" /></svg></a>`
+                    : `<span class="ms-dl"></span>`;
+                return `<div class="ms-row ms-frow${sel ? " sel" : ""}${f.here ? "" : " away"}">`
+                    + `<input type="checkbox" data-sel="${esc(f.path)}" aria-label="Select ${name}"${sel ? " checked" : ""} />`
+                    + `<span class="nm">${open}${badge}</span><span class="num">${size(f.size)}</span><span class="ms-on">${on}</span>${dl}</div>`;
             }).join("")
-            : `<p class="muted" style="margin:0">${files.length ? "No file matches." : "The shared folder is empty."}</p>`);
+            : `<p class="muted" style="margin:0">${files.length ? "No file matches." : "No files yet. Drop some above."}</p>`);
+        $("files-legend").hidden = !many || !files.length;
+        renderSelection();
         const conflicts = files.filter((f) => f.conflict).length;
         const notes = [];
         if (matching.length > ShowAtMost) notes.push(`Showing the newest ${ShowAtMost} of ${matching.length.toLocaleString()} – search to narrow.`);
@@ -50,6 +96,128 @@
         MS.set("files-note", notes.join(" "));
     }
     $("q").addEventListener("input", renderFiles);
+
+    function renderSelection() {
+        const n = selected.size;
+        MS.set("sel-count", n ? `${n} selected` : "Select all");
+        $("sel-acts").hidden = n === 0;
+        const all = $("sel-all");
+        const shownSel = shown.filter((f) => selected.has(f.path)).length;
+        all.checked = shown.length > 0 && shownSel === shown.length;
+        all.indeterminate = shownSel > 0 && shownSel < shown.length;
+    }
+    $("files").addEventListener("change", (e) => {
+        const box = e.target.closest("[data-sel]");
+        if (!box) return;
+        if (box.checked) selected.add(box.dataset.sel); else selected.delete(box.dataset.sel);
+        renderFiles();
+    });
+    $("sel-all").addEventListener("change", () => {
+        const on = $("sel-all").checked;
+        for (const f of shown) if (on) selected.add(f.path); else selected.delete(f.path);
+        renderFiles();
+    });
+
+    // ── Aktionen: ein Dialog für senden, löschen, umbenennen, verschieben ──
+    let action = null;
+    const dlg = $("act");
+    function openDialog(kind) {
+        const list = files.filter((f) => selected.has(f.path));
+        if (!list.length) return;
+        const count = list.length === 1 ? `"${esc(base(list[0].path))}"` : `${list.length} files`;
+        const body = $("act-body");
+        const ok = $("act-ok");
+        $("act-err").textContent = "";
+        ok.classList.remove("danger");
+        body.onchange = null;
+        if (kind === "send") {
+            const targets = others();
+            if (!targets.length) { toast("No other PC known yet", true); return; }
+            const anyHere = list.some((f) => f.here);
+            MS.set("act-title", "SEND TO");
+            body.innerHTML = `<p>Send ${count} to</p><div class="ms-pcs">${targets.map((n) =>
+                `<label class="ms-check"><input type="checkbox" name="pc" value="${esc(n.id)}" /><span>${esc(n.name)}</span></label>`).join("")}</div>`
+                + (anyHere ? `<label class="ms-check"><input type="checkbox" name="remove-here" /><span>Remove from ${esc(self()?.name ?? "this PC")} once it arrived</span></label>` : "");
+            ok.textContent = "Send";
+        } else if (kind === "delete") {
+            MS.set("act-title", "DELETE");
+            // Vorgewählt: die PCs, auf denen eine der Dateien liegt oder ankommen soll.
+            const related = (n) => list.some((f) => f.on.includes(n.id) || (f.to ? f.to.includes(n.id) : true));
+            body.innerHTML = `<p>Delete ${count} on</p><div class="ms-pcs">${nodes.map((n) => {
+                const has = list.some((f) => f.on.includes(n.id));
+                return `<label class="ms-check"><input type="checkbox" name="pc" value="${esc(n.id)}"${related(n) ? " checked" : ""} /><span>${esc(n.name)}${n.self ? " (this PC)" : ""}${has ? "" : ` <span class="muted">(not there)</span>`}</span></label>`;
+            }).join("")}</div><p class="muted">Deleted for good, there is no trash. The space is free right away.</p>`;
+            ok.classList.add("danger");
+            const label = () => {
+                const on = [...body.querySelectorAll("input[name=pc]:checked")].map((i) => i.value);
+                const all = nodes.map((n) => n.id);
+                const everywhere = on.length > 0 && list.every((f) => (f.to ?? all).every((id) => on.includes(id)));
+                ok.textContent = !on.length ? "Delete" : everywhere ? "Delete everywhere" : `Delete on ${on.length} PC${on.length === 1 ? "" : "s"}`;
+            };
+            body.onchange = label;
+            label();
+        } else if (kind === "rename") {
+            if (list.length !== 1) { toast("Select one file to rename", true); return; }
+            MS.set("act-title", "RENAME");
+            body.innerHTML = `<label class="ms-label" for="act-name">New name</label><div class="search"><input id="act-name" name="name" value="${esc(base(list[0].path))}" /></div>`;
+            ok.textContent = "Rename";
+        } else if (kind === "move") {
+            MS.set("act-title", "MOVE");
+            const folders = [...new Set(files.map((f) => dir(f.path)).filter(Boolean))].sort();
+            body.innerHTML = `<label class="ms-label" for="act-folder">Move ${count} into folder</label>`
+                + `<div class="search"><input id="act-folder" name="folder" list="act-folders" placeholder="empty = the shared folder itself" value="${esc(dir(list[0].path))}" /></div>`
+                + `<datalist id="act-folders">${folders.map((d) => `<option value="${esc(d)}"></option>`).join("")}</datalist>`
+                + `<span class="muted">A new folder is made when needed.</span>`;
+            ok.textContent = "Move";
+        }
+        action = { kind, list };
+        dlg.hidden = false;
+        const field = body.querySelector("input:not([type=checkbox])");
+        if (field) { field.focus(); field.select(); }
+        else body.querySelector("input")?.focus();
+    }
+    function closeDialog() { dlg.hidden = true; action = null; }
+
+    async function confirmDialog() {
+        if (!action) return;
+        const body = $("act-body");
+        const err = (text) => { $("act-err").textContent = text; };
+        const paths = action.list.map((f) => f.path);
+        const pcs = [...body.querySelectorAll("input[name=pc]:checked")].map((i) => i.value);
+        let r;
+        if (action.kind === "send") {
+            const removeHere = body.querySelector("input[name=remove-here]")?.checked ?? false;
+            if (!pcs.length) return err("Choose at least one PC.");
+            r = await post("/api/files/send", { paths, to: pcs, removeHere });
+        } else if (action.kind === "delete") {
+            if (!pcs.length) return err("Choose at least one PC.");
+            r = await post("/api/files/delete", { paths, on: pcs });
+        } else if (action.kind === "rename") {
+            const name = (body.querySelector("[name=name]").value || "").trim();
+            if (!name || name.includes("/") || name.includes("\\")) return err("Enter a name without slashes.");
+            const from = paths[0];
+            const folder = dir(from);
+            r = await post("/api/files/move", { moves: [{ from, to: folder ? `${folder}/${name}` : name }] });
+        } else if (action.kind === "move") {
+            const folder = (body.querySelector("[name=folder]").value || "").trim().replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
+            r = await post("/api/files/move", { moves: paths.map((from) => ({ from, to: folder ? `${folder}/${base(from)}` : base(from) })) });
+        }
+        if (!r?.ok) return err(r?.message ?? "That did not work.");
+        toast(r.message ?? "Done");
+        selected.clear();
+        closeDialog();
+        MS.filesChanged();
+        tick();
+    }
+    $("sel-acts").addEventListener("click", (e) => {
+        const b = e.target.closest("[data-act]");
+        if (b) openDialog(b.dataset.act);
+    });
+    $("act-cancel").addEventListener("click", closeDialog);
+    $("act-ok").addEventListener("click", confirmDialog);
+    $("act-body").addEventListener("submit", (e) => { e.preventDefault(); confirmDialog(); });
+    dlg.addEventListener("click", (e) => { if (e.target === dlg) closeDialog(); });
+    document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !dlg.hidden) closeDialog(); });
 
     // Ziel beim Hochladen: der Ordner selbst oder einer seiner Unterordner.
     function renderTargets() {
@@ -67,6 +235,32 @@
         select.innerHTML = markup;
         select.value = list.includes(keep) ? keep : "";
     }
+
+    // ── An wen: alle PCs oder bestimmte (gemerkt in diesem Browser) ──
+    let sendTo = [];
+    try { sendTo = JSON.parse(localStorage.getItem("meshshare.sendTo") || "[]"); } catch { sendTo = []; }
+    function renderChips() {
+        const targets = others();
+        if (nodes.length) sendTo = sendTo.filter((id) => targets.some((n) => n.id === id));
+        html($("to-chips"), targets.length
+            ? `<span class="muted">To</span><button type="button" class="ms-chip${sendTo.length ? "" : " on"}" data-to="" aria-pressed="${!sendTo.length}">Every PC</button>`
+                + targets.map((n) => `<button type="button" class="ms-chip${sendTo.includes(n.id) ? " on" : ""}" data-to="${esc(n.id)}" aria-pressed="${sendTo.includes(n.id)}">${esc(n.name)}</button>`).join("")
+            : "");
+        $("remove-here-box").hidden = !sendTo.length;
+        MS.set("remove-here-text", `Remove from ${self()?.name ?? "this PC"} once it arrived`);
+        MS.set("to-hint", sendTo.length
+            ? `Only ${sendTo.map(nameOf).join(" and ")} get${sendTo.length === 1 ? "s" : ""} them. The other PCs don't download them.`
+            : "They go into the shared folder and reach every PC.");
+    }
+    $("to-chips").addEventListener("click", (e) => {
+        const chip = e.target.closest("[data-to]");
+        if (!chip) return;
+        const id = chip.dataset.to;
+        if (!id) sendTo = [];
+        else sendTo = sendTo.includes(id) ? sendTo.filter((x) => x !== id) : [...sendTo, id];
+        try { localStorage.setItem("meshshare.sendTo", JSON.stringify(sendTo)); } catch { }
+        renderChips();
+    });
 
     // ── Hochladen ──
     const drop = $("drop");
@@ -90,7 +284,7 @@
         }
     }
 
-    function upload(item, index, count) {
+    function upload(item, index, count, query) {
         return new Promise((resolve) => {
             const row = document.createElement("div");
             row.className = "ms-up";
@@ -112,7 +306,7 @@
                 resolve(ok);
             };
             cancel.addEventListener("click", () => xhr.abort());
-            xhr.open("POST", `/api/upload?path=${encodeURIComponent(item.path)}`);
+            xhr.open("POST", `/api/upload?path=${encodeURIComponent(item.path)}${query}`);
             xhr.upload.onprogress = (e) => {
                 if (!e.lengthComputable) return;
                 const p = Math.round((e.loaded / e.total) * 100);
@@ -136,11 +330,14 @@
         if (!items.length) return;
         const target = $("target").value;
         if (target) items = items.map((i) => ({ ...i, path: `${target}/${i.path}` }));
+        // Das Ziel gilt für den ganzen Stapel, so wie es beim Ablegen gewählt war.
+        const query = sendTo.length ? `&to=${encodeURIComponent(sendTo.join(","))}&keep=${$("remove-here").checked ? 0 : 1}` : "";
+        const where = sendTo.length ? ` for ${sendTo.map(nameOf).join(" and ")}` : "";
         running++;
         let ok = 0;
-        for (let i = 0; i < items.length; i++) if (await upload(items[i], i, items.length)) ok++;
+        for (let i = 0; i < items.length; i++) if (await upload(items[i], i, items.length, query)) ok++;
         running--;
-        toast(ok === items.length ? `${ok} file${ok === 1 ? "" : "s"} added` : `${ok} of ${items.length} files added`, ok !== items.length);
+        toast(ok === items.length ? `${ok} file${ok === 1 ? "" : "s"} added${where}` : `${ok} of ${items.length} files added`, ok !== items.length);
         tick();
     }
     // Fenster schließen während eines Uploads: nachfragen.
@@ -175,41 +372,5 @@
     // Nicht versehentlich die Datei im Fenster öffnen, wenn sie neben der Dropzone landet.
     for (const type of ["dragover", "drop"]) window.addEventListener(type, (e) => {
         if (!drop.contains(e.target) && [...(e.dataTransfer?.types || [])].includes("Files")) e.preventDefault();
-    });
-
-    // ── Papierkorb ──
-    async function loadTrash() {
-        let items = [];
-        try { items = await fetch("/api/trash").then((r) => r.json()); } catch { return; }
-        const total = items.reduce((sum, t) => sum + t.size, 0);
-        MS.set("trash-count", items.length ? `${items.length} file${items.length === 1 ? "" : "s"} · ${size(total)}` : "");
-        $("trash-empty").hidden = !items.length;
-        html($("trash"), items.length
-            ? items.map((t) => `<div class="ms-row ms-trash-row"><span class="nm" title="${esc(t.path)}">${esc(t.path)}</span><span class="num">${size(t.size)}</span><span class="when">${esc(ago(t.removed))}</span>
-                <span class="acts"><button type="button" class="quiet" data-restore="${esc(t.id)}" aria-label="Restore ${esc(t.path)}">Restore</button>
-                <button type="button" class="quiet danger-text" data-delete="${esc(t.id)}" data-name="${esc(t.path)}" aria-label="Delete ${esc(t.path)} for good">Delete</button></span></div>`).join("")
-            : `<p class="muted" style="margin:0">The trash is empty.</p>`);
-    }
-    $("trash-box").addEventListener("toggle", () => { if ($("trash-box").open) loadTrash(); });
-    $("trash").addEventListener("click", async (e) => {
-        const restore = e.target.closest("[data-restore]");
-        const remove = e.target.closest("[data-delete]");
-        if (restore) {
-            const r = await post("/api/trash/restore", { id: restore.dataset.restore });
-            toast(r.message ?? "", !r.ok);
-        } else if (remove) {
-            // Endgültig: vorher fragen.
-            if (!confirm(`Delete "${remove.dataset.name}" for good? It cannot be restored afterwards.`)) return;
-            const r = await post("/api/trash/delete", { id: remove.dataset.delete });
-            toast(r.message ?? "", !r.ok);
-        } else return;
-        loadTrash();
-        tick();
-    });
-    $("trash-empty").addEventListener("click", async () => {
-        if (!confirm(`Empty the trash of this PC? ${MS.$("trash-count").textContent}. These files cannot be restored afterwards.`)) return;
-        const r = await post("/api/trash/empty");
-        toast(r.message ?? "", !r.ok);
-        loadTrash();
     });
 })();

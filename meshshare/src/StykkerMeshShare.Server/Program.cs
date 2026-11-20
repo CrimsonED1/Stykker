@@ -15,7 +15,7 @@ if (args.Contains("--help") || args.Contains("-h"))
 
           --port <number>     web and sync port (default 17404); the LAN search uses the same number over UDP
           --folder <folder>   the shared folder (default: %USERPROFILE%\StykkerMeshShare, or settings.json)
-          --data-dir <folder> index, trash and settings (default: %APPDATA%\Stykker\MeshShare)
+          --data-dir <folder> index and settings (default: %APPDATA%\Stykker\MeshShare)
           --name <text>       the name other PCs see (default: this computer's name)
           --peer <host[:port]>
                               another PC to sync with, in addition to settings.json (may repeat)

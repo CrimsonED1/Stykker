@@ -242,25 +242,15 @@ public class HardeningTests
     }
 
     [Fact]
-    public async Task TrashCanBeRestored()
+    public void TheOldTrashIsEmptiedAtStart()
     {
         using var mesh = new Mesh();
-        var a = mesh.Add("A");
-        var b = mesh.Add("B");
-        Mesh.Write(a, "notes/plan.txt", "v1");
-        await mesh.Converge();
-        File.Delete(Path.Combine(a.Folder, "notes", "plan.txt"));
-        await mesh.Converge();
-        Assert.Null(Mesh.Read(b, "notes/plan.txt"));
-
-        var item = Assert.Single(b.TrashItems());
-        Assert.Equal("notes/plan.txt", item.Path);
-        Assert.Null(b.Restore(item.Id, out var name));
-        Assert.Equal("notes/plan.txt", name);
-        Assert.Equal("v1", Mesh.Read(b, "notes/plan.txt"));
-        await mesh.Converge();
-        Assert.Equal("v1", Mesh.Read(a, "notes/plan.txt"));   // zurückgeholt geht wieder an alle
-        Assert.NotNull(b.Restore("../../x", out _));
+        var options = mesh.Options("A");
+        var old = Path.Combine(options.DataDir, "trash", "2026-10-01");
+        Directory.CreateDirectory(old);
+        File.WriteAllText(Path.Combine(old, "big.iso"), "old");
+        mesh.Nodes.Add(new MeshNode(options));
+        Assert.False(Directory.Exists(Path.Combine(options.DataDir, "trash")));
     }
 
     [Fact]

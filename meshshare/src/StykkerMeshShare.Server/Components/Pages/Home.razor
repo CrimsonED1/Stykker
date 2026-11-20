@@ -1,7 +1,7 @@
 @page "/"
 @* Eine Seite: links die Dropzone, rechts der Sync-Status, darunter die Übertragung, die Dateien (ansehen und
    herunterladen, auch am Handy), was zuletzt passiert ist und der Papierkorb. Statisch gerendert; die Skripte in
-   wwwroot/js holen die Werte aus /api/status, /api/files und /api/trash. *@
+   wwwroot/js holen die Werte aus /api/status und /api/files. *@
 
 <div class="top">
     <div class="brand"><span class="logo">◆</span> STYKKER <span class="acc">MESHSHARE</span></div>
@@ -36,15 +36,18 @@
                 <svg class="ic ms-drop-ic" aria-hidden="true"><use href="#i-arrow-down" /></svg>
                 <b class="ms-drop-pc">Drop files or folders here</b>
                 <b class="ms-drop-phone">Add files from this phone</b>
-                <span class="muted">They go into the shared folder and reach every PC.</span>
+                <span class="muted" id="to-hint">They go into the shared folder and reach every PC.</span>
                 <span class="ms-drop-acts">
                     <button type="button" class="primary" id="pick-btn">Choose files</button>
                     <button type="button" id="pick-dir-btn" class="ms-pc-only">Choose folder</button>
                     <button type="button" id="open-folder" hidden title="Open the shared folder in the Explorer">Open folder</button>
                 </span>
+                @* Ziel: an alle PCs (der Spiegel) oder nur an bestimmte. Die Chips füllt files.js mit den bekannten PCs. *@
+                <div class="ms-to" id="to-chips" role="group" aria-label="Send to"></div>
                 <label class="ms-target">Into
                     <select id="target" aria-label="Folder the files go into"><option value="">the shared folder</option></select>
                 </label>
+                <label class="ms-keep" id="remove-here-box" hidden><input type="checkbox" id="remove-here" checked /><span id="remove-here-text">Remove here once it arrived</span></label>
             </div>
             <div id="uploads" class="ms-uploads" aria-live="polite"></div>
         </section>
@@ -121,20 +124,38 @@
                 <h2>Files</h2>
                 <div class="search"><input id="q" placeholder="Search" aria-label="Search files" /></div>
             </div>
+            @* Auswahl: senden, umbenennen, verschieben, löschen – wirkt auf allen PCs. *@
+            <div class="ms-selbar" id="sel-bar">
+                <label class="ms-all"><input type="checkbox" id="sel-all" aria-label="Select all shown files" /><span id="sel-count">Select</span></label>
+                <span class="ms-sel-acts" id="sel-acts" hidden>
+                    <button type="button" class="quiet" data-act="send"><svg class="ic"><use href="#i-arrow-up" /></svg>Send to…</button>
+                    <button type="button" class="quiet" data-act="rename"><svg class="ic"><use href="#i-edit" /></svg>Rename</button>
+                    <button type="button" class="quiet" data-act="move"><svg class="ic"><use href="#i-open" /></svg>Move</button>
+                    <button type="button" class="quiet danger-text" data-act="delete"><svg class="ic"><use href="#i-trash" /></svg>Delete…</button>
+                </span>
+            </div>
             <div id="files" class="ms-files"></div>
+            <div class="ms-legend muted" id="files-legend" hidden><span><i class="ms-dot y"></i>has it</span><span><i class="ms-dot h"></i>arriving</span><span><i class="ms-dot"></i>not there</span></div>
             <p class="muted ms-hint" id="files-note"></p>
         </section>
 
         <section class="card">
             <h2>Activity</h2>
             <div id="activity" class="ms-activity"></div>
-            <details class="ms-trash" id="trash-box">
-                <summary>Trash <span class="muted">(replaced or deleted by other PCs, kept 30 days)</span></summary>
-                <div class="ms-trash-bar"><span class="muted" id="trash-count"></span>
-                    <button type="button" class="quiet danger-text" id="trash-empty" hidden>Empty trash</button></div>
-                <div id="trash" class="ms-files"></div>
-            </details>
         </section>
+    </div>
+
+    @* Senden, löschen, umbenennen, verschieben: ein Dialog, den files.js je nach Aktion füllt. *@
+    <div class="ms-scrim" id="act" hidden>
+        <div class="ms-dlg" role="dialog" aria-modal="true" aria-labelledby="act-title">
+            <div class="head"><b>◆</b><span id="act-title">FILES</span></div>
+            <form class="body" id="act-body" autocomplete="off"></form>
+            <div class="bottom">
+                <span class="ms-act-err" id="act-err" aria-live="polite"></span>
+                <button type="button" class="quiet" id="act-cancel">Cancel</button>
+                <button type="button" class="primary" id="act-ok">OK</button>
+            </div>
+        </div>
     </div>
 
     @* Nur im eigenen Fenster: die Frage beim Schließen, wie beim Starter. *@

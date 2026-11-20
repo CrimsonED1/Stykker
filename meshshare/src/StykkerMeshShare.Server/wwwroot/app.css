@@ -126,9 +126,6 @@
 @media(max-width:600px){.ms-q{grid-template-columns:minmax(0,1fr) auto}.ms-q .grip,.ms-q .num{display:none}}
 .ms-peer.standby{opacity:.6}
 .ms-check{font-size:var(--t-xs)}.ms-check.bad{color:var(--bad)}.ms-check.good{color:var(--good)}
-.ms-trash{margin-top:12px;border-top:1px solid var(--line);padding-top:8px}
-.ms-trash summary{cursor:pointer;font-size:var(--t-sm);font-weight:600}
-.ms-trash .ms-row{grid-template-columns:minmax(0,1fr) 70px 90px auto}
 .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 @media(pointer:coarse){.ms-q .acts .sq,.ms-dl{width:38px;height:38px}.ms-q .acts{gap:4px}}
 
@@ -179,11 +176,7 @@ html.window .tchip:hover{color:var(--ink)}
 .ms-peer-prog{display:flex;flex-direction:column;gap:3px;margin-top:3px}
 .ms-peer-prog .mono{font-size:var(--t-xs);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ms-peer-prog .bar{height:4px;min-width:0;flex:none;width:100%}
-.ms-trash-bar{display:flex;align-items:center;gap:8px;margin:8px 0 4px;font-size:var(--t-xs)}
-.ms-trash-bar #trash-empty{margin-left:auto}
 .danger-text{color:var(--bad)}
-.ms-trash-row{grid-template-columns:minmax(0,1fr) 70px 90px auto}
-.ms-trash-row .acts{display:flex;gap:4px}
 
 /* Frage beim Schließen (eigenes Fenster), wie beim Starter */
 .ms-scrim{position:fixed;inset:0;z-index:60;display:grid;place-items:center;padding:16px;background:color-mix(in srgb,var(--bg) 70%,transparent)}
@@ -195,3 +188,37 @@ html.window .tchip:hover{color:var(--ink)}
 .ms-dlg .bottom{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;padding:10px 14px;border-top:1px solid var(--line)}
 .ms-check{display:flex;gap:8px;align-items:flex-start;font-size:var(--t-sm);cursor:pointer}
 .ms-check input{margin-top:3px;accent-color:var(--acc)}
+
+/* Ziel beim Hochladen: Chips „Every PC“ und je ein PC; darunter „hier entfernen, sobald angekommen“. */
+.ms-to{display:flex;flex-wrap:wrap;gap:6px;align-items:center;justify-content:center;margin-top:8px}
+.ms-to>.muted{font-size:var(--t-xs);margin-right:2px}
+.ms-chip{border:1px solid var(--line);border-radius:999px;padding:4px 12px;background:transparent;color:var(--ink);font:inherit;font-size:var(--t-sm);cursor:pointer}
+.ms-chip:hover{border-color:var(--acc)}
+.ms-chip.on{background:color-mix(in srgb,var(--acc) 18%,transparent);border-color:var(--acc);color:var(--acc)}
+.ms-keep{display:flex;gap:8px;align-items:center;font-size:var(--t-sm);margin-top:8px;cursor:pointer}
+
+/* Dateiliste mit Auswahl und „wo liegt sie“ je PC */
+.ms-selbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-height:36px;padding:2px 2px 6px;border-bottom:1px solid var(--line)}
+.ms-all{display:flex;gap:8px;align-items:center;font-size:var(--t-sm);cursor:pointer}
+.ms-sel-acts{display:flex;gap:4px;flex-wrap:wrap;margin-left:auto}
+.ms-sel-acts button{display:inline-flex;gap:5px;align-items:center}
+.ms-frow{grid-template-columns:20px minmax(0,1fr) 70px auto 28px;padding:6px 2px}
+.ms-frow.sel{background:color-mix(in srgb,var(--acc) 7%,transparent)}
+.ms-frow.away .nm>span{color:var(--muted)}
+.ms-on{display:flex;gap:10px;font-size:var(--t-xs);color:var(--muted);white-space:nowrap;justify-content:flex-end}
+.ms-pc{display:inline-flex;gap:4px;align-items:center}
+.ms-dot{display:inline-block;flex:none;width:9px;height:9px;border-radius:50%;border:1.5px solid color-mix(in srgb,var(--muted) 70%,transparent)}
+.ms-dot.y{background:var(--good);border-color:var(--good)}
+.ms-dot.h{background:linear-gradient(90deg,var(--acc) 50%,transparent 50%);border-color:var(--acc)}
+.ms-dot.w{border-color:var(--acc);border-style:dashed}
+.ms-legend{display:flex;gap:14px;flex-wrap:wrap;font-size:var(--t-xs);margin-top:8px}
+.ms-legend span{display:inline-flex;gap:5px;align-items:center}
+.ms-pcs{display:grid;gap:10px}
+.ms-act-err{color:var(--bad);font-size:var(--t-xs);margin-right:auto;align-self:center}
+#act-ok.danger{background:var(--bad);border-color:var(--bad);color:#fff}
+@media (max-width:700px){
+  .ms-frow{grid-template-columns:22px minmax(0,1fr) 60px;row-gap:2px}
+  .ms-frow .ms-on{grid-column:2/4;justify-content:flex-start}
+  .ms-frow .ms-dl{display:none}
+  .ms-sel-acts{margin-left:0;width:100%}
+}

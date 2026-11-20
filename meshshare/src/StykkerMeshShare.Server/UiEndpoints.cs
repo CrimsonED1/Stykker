@@ -11,8 +11,8 @@ namespace StykkerMeshShare.Server;
 // Was die Seite braucht. Zwei Sorten Aktionen:
 //  - nur am PC selbst (IsLocal): Ordner, Gegenstellen, Löschungen bestätigen, Explorer. Bis zur Kopplung darf das
 //    niemand aus dem Netz.
-//  - von der eigenen Seite, auch am Handy (Guarded: gleiche Herkunft): hochladen, Reihenfolge, pausieren,
-//    überspringen, Papierkorb.
+//  - von der eigenen Seite, auch am Handy (Guarded: gleiche Herkunft): hochladen (auch an bestimmte PCs), Dateien
+//    senden, löschen und verschieben (wirkt auf allen PCs, endgültig), Reihenfolge, pausieren, überspringen.
 public static class UiEndpoints
 {
     // Inhalte, die im Browser geöffnet werden dürfen (statt herunterzuladen). Kein HTML, kein SVG: die liefen sonst als
@@ -31,12 +31,30 @@ public static class UiEndpoints
 
         app.MapGet("/api/status", (HttpContext ctx, PeerManager peers) => Results.Json(Status.Build(node, peers, NetworkAccess.IsLocal(ctx), localOnly)));
 
+        // Alle Dateien im Mesh (auch die, die nur auf anderen PCs liegen), dazu die bekannten PCs. here: liegt auf diesem
+        // PC; to: Ziel-PCs (null = alle); on: wo sie liegt.
         app.MapGet("/api/files", () =>
         {
             var conflict = " (conflict ";
-            return Results.Json(node.Files.Select(f => new FileDto(f.Path, f.Size, new DateTime(f.MtimeTicks, DateTimeKind.Utc), f.OriginName,
-                f.Path.Contains(conflict, StringComparison.Ordinal), Viewable.Contains(Path.GetExtension(f.Path)))));
+            var (nodes, files) = node.Overview();
+            return Results.Json(new FilesDto(
+                nodes.Select(n => new NodeRefDto(n.Id, n.Name, n.Self)).ToArray(),
+                files.Select(v => new FileDto(v.Entry.Path, v.Entry.Size, new DateTime(v.Entry.MtimeTicks, DateTimeKind.Utc), v.Entry.OriginName,
+                    v.Entry.Path.Contains(conflict, StringComparison.Ordinal), Viewable.Contains(Path.GetExtension(v.Entry.Path)),
+                    !v.Entry.Away, v.Entry.To?.ToArray(), v.Holders.ToArray())).ToArray()));
         });
+
+        // An bestimmte PCs senden (zusätzlich), löschen auf bestimmten PCs, verschieben/umbenennen. Von jedem PC und vom
+        // Handy; die anderen PCs übernehmen es beim nächsten Abgleich. Gelöscht wird endgültig.
+        app.MapPost("/api/files/send", (HttpContext ctx, SendRequest body) => LocalRequests.Guarded(ctx, () =>
+            node.Send(body.Paths ?? [], body.To ?? [], body.RemoveHere) is { } problem ? new Result(false, problem)
+                : new Result(true, Count(body.Paths, "file") + " on the way")));
+        app.MapPost("/api/files/delete", (HttpContext ctx, DeleteRequest body) => LocalRequests.Guarded(ctx, () =>
+            node.DeleteOn(body.Paths ?? [], body.On ?? []) is { } problem ? new Result(false, problem)
+                : new Result(true, Count(body.Paths, "file") + " deleted")));
+        app.MapPost("/api/files/move", (HttpContext ctx, MoveRequest body) => LocalRequests.Guarded(ctx, () =>
+            node.Move((body.Moves ?? []).Where(m => m.From != null && m.To != null).Select(m => (m.From!, m.To!)).ToList()) is { } problem
+                ? new Result(false, problem) : new Result(true, Count(body.Moves, "file") + " moved")));
 
         // Herunterladen, oder mit inline=1 im Browser ansehen (nur sichere Arten, ohne Skripte).
         app.MapGet("/api/download", (HttpContext ctx, string path, int? inline) =>
@@ -59,7 +77,7 @@ public static class UiEndpoints
 
         // Hochladen: eine Datei je Anfrage, der Rumpf ist der Inhalt. path ist der Pfad im Ordner (mit Unterordnern beim
         // Ablegen eines Ordners). Nur von der eigenen Seite (Origin), damit keine fremde Seite Dateien hineinlegt.
-        app.MapPost("/api/upload", async (HttpContext ctx, string path, FolderWatcher watcher, CancellationToken ct) =>
+        app.MapPost("/api/upload", async (HttpContext ctx, string path, string? to, int? keep, FolderWatcher watcher, CancellationToken ct) =>
         {
             if (!LocalRequests.SameOrigin(ctx)) return Results.Json(new { ok = false, message = "Refused: that request did not come from this page." }, statusCode: 403);
             // Platte fast voll: nichts annehmen (auch nicht, wenn die Datei die Grenze erst unterschreiten würde).
@@ -67,7 +85,9 @@ public static class UiEndpoints
                 return Results.Json(new { ok = false, message = $"Not enough free space on this PC: {Gb(disk.Free)} free, it keeps at least {Gb(node.MinFreeBytes)} free." }, statusCode: StatusCodes.Status507InsufficientStorage);
             var feature = ctx.Features.Get<IHttpMaxRequestBodySizeFeature>();
             if (feature is { IsReadOnly: false }) feature.MaxRequestBodySize = null;   // nur hier: große Dateien
-            var name = await node.AddFileAsync(path, ctx.Request.Body, ct);
+            // to: Ziel-PCs, durch Komma getrennt (leer = alle); keep=0: dieser PC gibt die Datei frei, sobald sie dort ist.
+            var targets = (to ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            var name = await node.AddFileAsync(path, ctx.Request.Body, ct, targets, keep != 0);
             if (name == null) return Results.Json(new { ok = false, message = "This name is not allowed in the shared folder." }, statusCode: 400);
             watcher.Soon(200);
             return Results.Json(new { ok = true, path = name });
@@ -151,17 +171,12 @@ public static class UiEndpoints
             node.Skip(body.Path, body.Skip);
             return new Result(true, body.Skip ? "This file will not be loaded." : "This file will be loaded.");
         }));
-        app.MapGet("/api/trash", () => Results.Json(node.TrashItems().Select(t => new TrashDto(t.Id, t.Path, t.Removed, t.Size))));
-        // Endgültig löschen: eine Datei aus dem Papierkorb, oder alles. Nur dieser PC; die Seite fragt vorher nach.
-        app.MapPost("/api/trash/delete", (HttpContext ctx, RestoreRequest body) => LocalRequests.Guarded(ctx, () =>
-            node.DeleteFromTrash(body.Id ?? "") is { } problem ? new Result(false, problem) : new Result(true, "Deleted for good.")));
-        app.MapPost("/api/trash/empty", (HttpContext ctx) => LocalRequests.Guarded(ctx, () =>
-        {
-            int count = node.EmptyTrash();
-            return new Result(true, count == 1 ? "1 file deleted for good." : $"{count} files deleted for good.");
-        }));
-        app.MapPost("/api/trash/restore", (HttpContext ctx, RestoreRequest body) => LocalRequests.Guarded(ctx, () =>
-            node.Restore(body.Id ?? "", out var name) is { } problem ? new Result(false, problem) : new Result(true, $"Restored as {name}.")));
+    }
+
+    private static string Count<T>(IReadOnlyCollection<T>? items, string what)
+    {
+        int n = items?.Count ?? 0;
+        return n == 1 ? $"1 {what}" : $"{n} {what}s";
     }
 
     private static string Gb(long bytes) => (bytes / (1024.0 * 1024 * 1024)).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture) + " GB";
@@ -176,7 +191,12 @@ internal sealed record OrderRequest(string[]? Paths);
 internal sealed record FolderRequest(string? Path, bool Move);
 internal sealed record SyncPauseRequest(string? Address, bool Paused);
 internal sealed record SkipRequest(string? Path, bool Skip);
-internal sealed record RestoreRequest(string? Id);
+internal sealed record SendRequest(string[]? Paths, string[]? To, bool RemoveHere);
+internal sealed record DeleteRequest(string[]? Paths, string[]? On);
+internal sealed record MoveRequest(MoveItem[]? Moves);
+internal sealed record MoveItem(string? From, string? To);
 internal sealed record MinFreeRequest(double? Gb);
-internal sealed record FileDto(string Path, long Size, DateTime Modified, string? From, bool Conflict, bool Viewable);
-internal sealed record TrashDto(string Id, string Path, DateTime Removed, long Size);
+internal sealed record FilesDto(NodeRefDto[] Nodes, FileDto[] Files);
+internal sealed record NodeRefDto(string Id, string Name, bool Self);
+internal sealed record FileDto(string Path, long Size, DateTime Modified, string? From, bool Conflict, bool Viewable,
+    bool Here, string[]? To, string[] On);

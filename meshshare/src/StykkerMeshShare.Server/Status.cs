@@ -32,7 +32,7 @@ public static class Status
                 // Ordner, Gegenstellen und angehaltene Löschungen ändert man nur am PC selbst.
                 local),
             peers.Peers.Select(p => new PeerDto(p.Address, p.Name, p.Online, p.Syncing, p.Manual, p.Duplicate,
-                p.NodeId == null ? null : NetworkRoute.Label(p.Route), p.LastSync, p.LastError, p.Free, p.Total, p.Receiving, p.Paused, p.PausedBy, p.Build, p.Progress)).ToArray(),
+                p.NodeId == null ? null : NetworkRoute.Label(p.Route), p.LastSync, p.LastError, p.Free, p.Total, p.Receiving, p.Paused, p.PausedBy, p.Build, p.Progress, p.NodeId)).ToArray(),
             queue.Select(q => new QueueDto(q.Path, q.Size, q.From, q.Done)).ToArray(),
             node.PausedFiles(queue).Select(q => new QueueDto(q.Path, q.Size, null, q.Done)).ToArray(),
             node.Skipped.ToArray(),
@@ -52,7 +52,7 @@ public sealed record TransferDto(string Path, string From, long Size, long Done,
 
 public sealed record PeerDto(string Address, string? Name, bool Online, bool Syncing, bool Manual, bool Duplicate, string? Route,
     DateTime? LastSync, string? Error, long? Free, long? Total, bool? Receiving, bool? Paused, string? PausedBy,
-    string? Build, SyncProgress? Progress);
+    string? Build, SyncProgress? Progress, string? Id);
 
 public sealed record QueueDto(string Path, long Size, string? From, long Done);
 

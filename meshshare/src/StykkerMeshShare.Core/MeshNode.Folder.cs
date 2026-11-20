@@ -131,7 +131,9 @@ public sealed partial class MeshNode
     // ── Hochladen aus der Oberfläche ──
 
     // Legt eine Datei in den Ordner (über eine Temp-Datei). Eine vorhandene Datei gleichen Namens bekommt " (2)" usw.
-    public async Task<string?> AddFileAsync(string relativePath, Stream content, CancellationToken ct)
+    // to: nur an diese PCs (leer oder null = an alle); keepHere: dieser PC behält die Datei (siehe MeshNode.Manage.cs).
+    public async Task<string?> AddFileAsync(string relativePath, Stream content, CancellationToken ct,
+        IReadOnlyCollection<string>? to = null, bool keepHere = true)
     {
         var relative = PathRules.Normalize(relativePath);
         if (relative == null || PathRules.IsIgnored(relative)) return null;
@@ -149,6 +151,8 @@ public sealed partial class MeshNode
                 var full = Full(name);
                 if (full == null) return null;
                 Directory.CreateDirectory(Path.GetDirectoryName(full)!);
+                // Das Ziel steht fest, bevor der Scan die Datei sehen kann.
+                if (to is { Count: > 0 }) SetPendingTo(name, to, keepHere);
                 File.Move(temp, full);
                 return name;
             }
@@ -161,7 +165,7 @@ public sealed partial class MeshNode
     {
         var full = Full(relative);
         if (full == null) return null;
-        if (!File.Exists(full) && !Directory.Exists(full)) return relative;
+        if (!File.Exists(full) && !Directory.Exists(full) && !KnownElsewhere(relative)) return relative;
         var slash = relative.LastIndexOf('/');
         var dir = slash >= 0 ? relative[..(slash + 1)] : "";
         var name = relative[(slash + 1)..];
@@ -172,7 +176,7 @@ public sealed partial class MeshNode
         {
             var candidate = $"{dir}{stem} ({i}){ext}";
             var candidateFull = Full(candidate);
-            if (candidateFull != null && !File.Exists(candidateFull)) return candidate;
+            if (candidateFull != null && !File.Exists(candidateFull) && !KnownElsewhere(candidate)) return candidate;
         }
         return null;
     }
