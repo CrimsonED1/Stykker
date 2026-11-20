@@ -275,7 +275,10 @@ public sealed class WindowsPlatform : IPlatform
         return list;
     }
 
-    public GpuSample? ReadGpu() => _nvml.Read();
+    public GpuSample? ReadGpu() => _nvml.Read() is { } g
+        ? new GpuSample(g.Name, g.Util, g.MemUsedGb, g.MemTotalGb, g.PowerW, g.PowerLimitW, g.TempC, g.MemUtil, g.GfxMhz, g.GfxMaxMhz,
+            g.MemMhz, g.MemMaxMhz, g.ThrottleBits)
+        : null;
 
     public string? GpuDriver => _nvml.DriverVersion;
 

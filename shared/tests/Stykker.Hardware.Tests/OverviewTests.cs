@@ -1,9 +1,9 @@
 using System.Diagnostics;
 using Stykker.Shared.Gpu;
 using Stykker.Shared.Windows;
-using StykkerSys.Core;
+using Stykker.Hardware;
 
-namespace StykkerSys.Tests;
+namespace Stykker.Hardware.Tests;
 
 // Die Übersicht: die Aufbereitung der Werte (ohne Windows) und die Messung mit einer festen Sonde
 public class OverviewTests

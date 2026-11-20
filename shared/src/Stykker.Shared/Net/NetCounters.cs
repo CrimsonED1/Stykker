@@ -29,8 +29,10 @@ public sealed class NetCounters
         {
             foreach (var ni in NetworkInterface.GetAllNetworkInterfaces())
             {
-                if (ni.NetworkInterfaceType is NetworkInterfaceType.Loopback or NetworkInterfaceType.Tunnel) continue;
+                // Tunnel und VPNs (Tailscale meldet sich teils als „Unknown“): ihr Verkehr läuft auch über einen echten Adapter
+                if (ni.NetworkInterfaceType == NetworkInterfaceType.Loopback || NetAdapters.KindOf(ni) == NetAdapterKind.Tunnel) continue;
                 if (ni.OperationalStatus != OperationalStatus.Up) continue;
+                if (NetAdapters.IsFilter(ni.Name)) continue;   // Filter-Treiber zählten denselben Verkehr noch einmal
                 try
                 {
                     var stats = ni.GetIPStatistics();

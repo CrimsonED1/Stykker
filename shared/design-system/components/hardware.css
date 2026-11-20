@@ -5,6 +5,8 @@
 
 .hw-card{position:relative;min-width:0;background:var(--card,#111a33);border:1px solid var(--border,var(--line,#24325a));
   border-radius:var(--radius,12px);padding:var(--space-card-y,14px) var(--space-card-x,16px);margin-bottom:16px;color:var(--ink,#e8eeff)}
+/* Sprungziel (#gpu, #drives …): unter einer festen Kopfzeile bleibt der Kopf der Karte sichtbar */
+.hw-card[id]{scroll-margin-top:110px}
 .hw-head{display:flex;align-items:baseline;flex-wrap:wrap;gap:4px 10px;margin:0 0 10px;font-size:15px;font-weight:600}
 .hw-head .hw-sub{font-weight:400;font-size:12px}
 .hw-more{margin-left:auto;font-size:12px;font-weight:400;color:var(--acc,#4fe3ff);text-decoration:none;white-space:nowrap}

@@ -3,6 +3,8 @@ using Stykker.Shared;
 using Stykker.Shared.Config;
 using Stykker.Shared.Web;
 using Stykker.Shared.Windows;
+using Stykker.Hardware;
+using Stykker.Hardware.Windows;
 using StykkerSys.Core;
 using StykkerSys.Platform.Windows;
 using StykkerSys.Server.Components;
@@ -33,7 +35,7 @@ if (args.Contains("--help") || args.Contains("-h"))
 
         Endpoints: / (web interface), /overview (processor, memory, GPU and drives at a glance),
         /disks (the drives and the disk traffic per program), /api/snapshot (the process list as JSON),
-        /api/overview and /api/disks (as JSON), and the local-only
+        /api/disks (as JSON), and the local-only
         POST /api/process/end, /api/process/priority, /api/process/open.
 
         The server binds the port immediately and reads nothing until a viewer appears: the list starts
@@ -74,10 +76,10 @@ builder.Services.AddSingleton<SysService>();
 builder.Services.AddSingleton<IDiskProbe>(_ => CreateDiskProbe(basic));
 builder.Services.AddSingleton(sp => new DiskSampler(sp.GetRequiredService<IDiskProbe>()));
 builder.Services.AddSingleton<DiskService>();
-builder.Services.AddSingleton<IHardwareProbe>(_ => CreateHardwareProbe(basic));
-builder.Services.AddSingleton(sp => new OverviewSampler(sp.GetRequiredService<IHardwareProbe>()));
-builder.Services.AddSingleton<OverviewService>();
-builder.Services.AddRazorComponents();
+// Die Übersicht (/overview) ist die gemeinsame Hardware-Seite (Stykker.Hardware), dieselbe wie in StykkerLLM. Sie misst
+// nur, solange sie offen ist, und läuft als einzige Seite interaktiv (InteractiveServer); die übrigen bleiben statisch.
+builder.Services.AddSingleton(_ => HardwareMonitor.Create(basic));
+builder.Services.AddRazorComponents().AddInteractiveServerComponents();
 // Alle Zahlen der Antworten auf eine Nachkommastelle (siehe OneDecimalJson).
 builder.Services.ConfigureHttpJsonOptions(options => options.SerializerOptions.Converters.Add(new OneDecimalJson()));
 
@@ -99,10 +101,6 @@ app.UseAntiforgery();
 app.MapGet("/api/snapshot", (SysService service) => Results.Json(service.Snapshot()));
 // Die Laufwerke (Seite /disks): dieselbe Schleife wie bei den Prozessen, nur sichtbar, solange jemand die Seite ansieht
 app.MapGet("/api/disks", (DiskService service) => Results.Json(service.Snapshot()));
-// Die Übersicht (Seite /overview): Prozessor, Speicher, GPU und größte Programme, dazu die Laufwerke – eine Abfrage je Takt.
-// Beide Messschleifen laufen nur, solange diese Seite abgefragt wird.
-app.MapGet("/api/overview", (OverviewService overview, DiskService disks) =>
-    Results.Json(new OverviewResponse(overview.Snapshot(), disks.Snapshot())));
 
 // ── Aktionen ──
 // Drei Türen, alle nur für diese Maschine und nur für die eigene Seite: der Rumpf muss JSON sein (ein fremdes
@@ -126,7 +124,7 @@ app.MapPost("/api/process/open", (HttpContext ctx, ProcessOpenRequest body, IPro
     return Shell.RevealFile(path) ? new ActionResult(true, $"Shown in the Explorer: {path}") : new ActionResult(false, "The Explorer did not take the request.");
 }));
 
-app.MapRazorComponents<App>();
+app.MapRazorComponents<App>().AddInteractiveServerRenderMode();
 
 try { await app.StartAsync(); }
 catch (IOException ex)
@@ -177,13 +175,6 @@ static IDiskProbe CreateDiskProbe(bool basic)
     return new WindowsDiskProbe();
 }
 
-// Und für die Übersicht: Prozessor, Speicher und GPU nur unter Windows
-static IHardwareProbe CreateHardwareProbe(bool basic)
-{
-    if (basic) return new BasicHardwareProbe();
-    if (!OperatingSystem.IsWindows()) return new BasicHardwareProbe();
-    return new WindowsHardwareProbe();
-}
 
 internal sealed record ProcessEndRequest(int Pid, bool Tree);
 internal sealed record ProcessPriorityRequest(int Pid, string? Level);

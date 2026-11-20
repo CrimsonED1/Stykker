@@ -1,8 +1,8 @@
 using Stykker.Shared.Disk;
 using Stykker.Shared.Windows;
-using StykkerSys.Core;
+using Stykker.Hardware;
 
-namespace StykkerSys.Platform.Windows;
+namespace Stykker.Hardware.Windows;
 
 // Die Windows-Sonde der Laufwerkseite: DiskCounters aus Stykker.Shared (Volumes, Datenträger, Platten-E/A je Prozess).
 // Fehlen die Zähler, liefert sie null – die Seite zeigt „–", nie eine erfundene Zahl.

@@ -1,0 +1,393 @@
+@implements IDisposable
+@inject HardwareMonitor Monitor
+
+@* Die gemeinsame Hardware-Seite von StykkerLLM und StykkerSYS: Prozessor und Speicher, Grafikkarte, Laufwerke und
+   Netzwerk auf einer Seite, mit Verlauf seit dem Öffnen (höchstens fünf Minuten). Markup und Stil: die Hardware-Bausteine
+   des Design-Systems (hw-*, shared/design-system/components/Hardware). Der Baustein muss interaktiv laufen
+   (InteractiveServer); er fragt jede Sekunde nach, und nur solange er offen ist, wird gemessen (HardwareMonitor).
+   Die Abschnitte haben Anker (#cpu, #gpu, #drives, #network), damit die Hardware-Leiste direkt dorthin springt. *@
+
+@if (_s is not { } s)
+{
+    <section class="hw-card"><span class="hw-sub">Measuring…</span></section>
+    return;
+}
+
+@{
+    var o = s.Overview;
+    var sys = o.System;
+    var hist = s.History;
+    var notes = o.Notes.Concat(s.Disks.Notes).ToList();
+}
+
+@foreach (var note in notes)
+{
+    <p class="hw-hint">@note</p>
+}
+
+@* ── Prozessor und Speicher ── *@
+<section class="hw-card" id="cpu">
+    <div class="hw-head">Processor and memory<span class="hw-sub">@s.At.ToString("HH:mm:ss", CultureInfo.InvariantCulture)</span></div>
+    @if (sys == null)
+    {
+        <span class="hw-sub">No processor and memory values.</span>
+    }
+    else
+    {
+        double ramFrac = sys.RamTotalGb > 0 ? sys.RamUsedGb / sys.RamTotalGb : 0;
+        double commitFrac = sys.CommitLimitGb > 0 ? sys.CommitUsedGb / sys.CommitLimitGb : 0;
+        <div class="hw-meters">
+            <HwMeter Label="Processor" Value="@(sys.CpuPercent is double c ? HwFormat.Num(c) : HwFormat.Dash)" Unit="%" Fraction="@(sys.CpuPercent / 100)" Na="@(sys.CpuPercent == null)"
+                     Note="@($"{sys.Cores} logical cores")" />
+            <HwMeter Label="Memory" Value="@HwFormat.Gb(sys.RamUsedGb)" Unit="@($"/ {HwFormat.Num(sys.RamTotalGb)} GB")" Fraction="@ramFrac"
+                     Note="@($"{HwFormat.Gb(Math.Max(0, sys.RamTotalGb - sys.RamUsedGb))} GB free")" />
+            <HwMeter Label="Commit" Value="@HwFormat.Gb(sys.CommitUsedGb)" Unit="@($"/ {HwFormat.Num(sys.CommitLimitGb)} GB")" Fraction="@commitFrac"
+                     Note="@(commitFrac >= .85 ? "Little reserve left: memory and page file promised to programs" : "Memory and page file promised to programs")" NoteWarn="@(commitFrac >= .85)" />
+        </div>
+        @if (sys.CoreLoads is { Length: > 0 } cores)
+        {
+            <div class="hw-subh">Cores</div>
+            <div class="hw-cores">
+                @for (int i = 0; i < cores.Length; i++)
+                {
+                    <i style="--h:@HwFormat.Css(Math.Max(.02, cores[i] / 100))" title="Core @(i + 1): @HwFormat.Num(cores[i]) %"></i>
+                }
+            </div>
+        }
+    }
+
+    @if (o.TopByRam.Count > 0 && sys != null)
+    {
+        double total = Math.Max(sys.RamUsedGb, o.TopByRam.Sum(p => p.RamMb) / 1024);
+        double rest = sys.RamUsedGb - o.TopByRam.Sum(p => p.RamMb) / 1024;
+        <div class="hw-sep">
+            <div class="hw-subh">Largest programs by memory</div>
+            <div class="hw-stack">
+                @for (int i = 0; i < o.TopByRam.Count; i++)
+                {
+                    var p = o.TopByRam[i];
+                    <i style="width:@HwFormat.Css(total > 0 ? p.RamMb / 1024 / total : 0);--c:@HwFormat.Palette[i % HwFormat.Palette.Length]" title="@p.Name"></i>
+                }
+                @if (rest > .05 && total > 0)
+                {
+                    <i style="width:@HwFormat.Css(rest / total);--c:color-mix(in srgb,var(--muted) 45%,transparent)" title="Other programs"></i>
+                }
+            </div>
+            <div class="hw-legend">
+                @for (int i = 0; i < o.TopByRam.Count; i++)
+                {
+                    var p = o.TopByRam[i];
+                    var (v, u) = HwFormat.Mem(p.RamMb);
+                    <div title="@p.Name"><i style="--c:@HwFormat.Palette[i % HwFormat.Palette.Length]"></i><span>@p.Name@(p.Count > 1 ? $" ×{p.Count}" : "")</span><span class="hw-val"><b>@v</b><small>@u</small></span></div>
+                }
+            </div>
+        </div>
+    }
+
+    @if (o.TopByCpu.Count > 0)
+    {
+        <div class="hw-sep">
+            <div class="hw-subh">Largest programs by processor</div>
+            <p class="hw-sub hw-hint-line">Share of the whole processor, measured every second while this page is open.</p>
+            <div class="hw-scroll">
+                <table class="hw-table">
+                    <tr><th>Program</th><th class="num">CPU</th><th class="num">Memory</th><th class="num">Processes</th></tr>
+                    @foreach (var p in o.TopByCpu)
+                    {
+                        var (v, u) = HwFormat.Mem(p.RamMb);
+                        <tr>
+                            <td class="hw-name" title="@p.Name">@p.Name</td>
+                            <td class="num">@(p.CpuPercent is double c ? c.ToString("0.0", CultureInfo.InvariantCulture) + " %" : HwFormat.Dash)</td>
+                            <td class="num">@v @u</td>
+                            <td class="num">@p.Count</td>
+                        </tr>
+                    }
+                </table>
+            </div>
+        </div>
+    }
+
+    @if (sys != null)
+    {
+        <div class="hw-sep">
+            <div class="hw-subh">History</div>
+            <div class="hw-sparks">
+                <Spark Title="Processor · max 100 %" Values="@hist.Select(h => h.CpuPercent).ToList()" Max="100" />
+                <Spark Title="@($"Memory · max {HwFormat.Num(sys.RamTotalGb)} GB")" Values="@hist.Select(h => h.RamUsedGb).ToList()" Max="@Math.Max(1, sys.RamTotalGb)" Kind="second" />
+            </div>
+        </div>
+    }
+</section>
+
+@* ── Grafikkarte: NVML (NVIDIA) wenn möglich, sonst die Windows-Zähler ── *@
+<section class="hw-card" id="gpu">
+    @{
+        var n = s.Nvidia;
+        var wg = o.Gpu;
+    }
+    @if (n != null)
+    {
+        <div class="hw-head">@n.Name<span class="hw-sub">@HwFormat.Num(n.MemTotalGb) GB · NVIDIA</span></div>
+        <div class="hw-meters">
+            <HwMeter Label="Load" Value="@HwFormat.Num(n.Util)" Unit="%" Fraction="@(n.Util / 100)" />
+            <HwMeter Label="Graphics memory" Value="@HwFormat.Num(n.MemUsedGb, "0.0")" Unit="@($"/ {HwFormat.Num(n.MemTotalGb)} GB")" Fraction="@(n.MemUsedGb / Math.Max(1, n.MemTotalGb))"
+                     Note="@($"{HwFormat.Num(Math.Max(0, n.MemFreeGb), "0.0")} GB free")" />
+            <HwMeter Label="Power" Value="@HwFormat.Num(n.PowerW)" Unit="@($"/ {HwFormat.Num(n.PowerLimitW)} W")" Fraction="@(n.PowerW / Math.Max(1, n.PowerLimitW))" />
+            <HwMeter Label="Temperature" Value="@HwFormat.Num(n.TempC)" Unit="°C" Fraction="@Math.Clamp(n.TempC / 90.0, 0, 1)"
+                     Note="@(n.Throttled ? "Clocks limited: " + n.ThrottleText() : "Clocks not limited")" NoteWarn="@n.Throttled" Tip="@n.ThrottleText()" />
+        </div>
+        <div class="hw-scroll">
+            <table class="hw-table">
+                <tr><th>Property</th><th class="num">Value</th></tr>
+                <tr><td>Graphics clock</td><td class="num">@HwFormat.Mhz(n.GfxMhz) / @HwFormat.Mhz(n.GfxMaxMhz)</td></tr>
+                <tr><td>Memory clock</td><td class="num">@HwFormat.Mhz(n.MemMhz) / @HwFormat.Mhz(n.MemMaxMhz)</td></tr>
+                <tr><td>Memory controller</td><td class="num">@HwFormat.Num(n.MemUtil) %</td></tr>
+                <tr><td>Throttling</td><td class="num">@n.ThrottleText()</td></tr>
+            </table>
+        </div>
+    }
+    else if (wg != null)
+    {
+        <div class="hw-head">Graphics card<span class="hw-sub">Windows GPU counters</span></div>
+        <div class="hw-meters">
+            <HwMeter Label="Load" Value="@(wg.UtilPercent is double u ? HwFormat.Num(u) : HwFormat.Dash)" Unit="%" Fraction="@(wg.UtilPercent / 100)" Na="@(wg.UtilPercent == null)" Note="busiest engine" />
+            <HwMeter Label="Graphics memory" Value="@(wg.VramUsedMb is double mb ? HwFormat.Num(mb / 1024, "0.0") : HwFormat.Dash)" Unit="GB used" Na="@(wg.VramUsedMb == null)"
+                     Note="Total not reported by the counters" />
+        </div>
+    }
+    else
+    {
+        <div class="hw-head">Graphics card</div>
+        <span class="hw-sub">No graphics card values – neither NVIDIA (NVML) nor the Windows GPU counters answered.</span>
+    }
+
+    @if (wg is { Engines.Count: > 0 })
+    {
+        <div class="hw-sep">
+            <div class="hw-subh">Engines</div>
+            <p class="hw-sub hw-hint-line">Engines run side by side; the load above is the busiest one.</p>
+            <div class="hw-meters">
+                @foreach (var e in wg.Engines.OrderByDescending(e => e.Percent))
+                {
+                    <HwMeter Label="@e.Engine" Value="@HwFormat.Num(e.Percent)" Unit="%" Fraction="@(e.Percent / 100)" />
+                }
+            </div>
+        </div>
+    }
+
+    @if (wg is { Programs.Count: > 0 })
+    {
+        <div class="hw-sep">
+            <div class="hw-subh">Programs on the graphics card</div>
+            <div class="hw-scroll">
+                <table class="hw-table">
+                    <tr><th>Program</th><th class="num">GPU</th><th class="num">Graphics memory</th></tr>
+                    @foreach (var p in wg.Programs)
+                    {
+                        <tr>
+                            <td class="hw-name" title="@p.Name">@p.Name@(p.Count > 1 ? $" ×{p.Count}" : "")</td>
+                            <td class="num @(p.GpuPercent >= 50 ? "good-text" : "")">@HwFormat.Pct(p.GpuPercent)</td>
+                            <td class="num">@(p.VramMb is double mb ? HwFormat.Size(mb * 1024 * 1024) : HwFormat.Dash)</td>
+                        </tr>
+                    }
+                </table>
+            </div>
+        </div>
+    }
+
+    @if (n != null || wg != null)
+    {
+        double vramMax = n?.MemTotalGb ?? Math.Max(1, hist.Max(h => h.VramUsedGb ?? 0));
+        <div class="hw-sep">
+            <div class="hw-subh">History</div>
+            <div class="hw-sparks">
+                <Spark Title="Load · max 100 %" Values="@hist.Select(h => h.GpuPercent).ToList()" Max="100" />
+                <Spark Title="@($"Graphics memory · max {HwFormat.Num(vramMax, "0.0")} GB")" Values="@hist.Select(h => h.VramUsedGb).ToList()" Max="@Math.Max(.1, vramMax)" Kind="second" />
+                @if (n != null)
+                {
+                    <Spark Title="@($"Power · max {HwFormat.Num(n.PowerLimitW)} W")" Values="@hist.Select(h => h.PowerW).ToList()" Max="@Math.Max(1, n.PowerLimitW)" />
+                    <Spark Title="Temperature · max 90 °C" Values="@hist.Select(h => h.TempC).ToList()" Max="90" Kind="warn" />
+                }
+            </div>
+        </div>
+    }
+</section>
+
+@* ── Laufwerke ── *@
+<section class="hw-card" id="drives">
+    <div class="hw-head">Drives</div>
+    @{ var dk = s.Disks.Disks; }
+    @if (dk == null || dk.Volumes.Count == 0)
+    {
+        <span class="hw-sub">No drive values.</span>
+    }
+    else
+    {
+        @foreach (var v in dk.Volumes)
+        {
+            double used = v.TotalBytes > 0 ? Math.Clamp(v.UsedBytes / v.TotalBytes, 0, 1) : 0;
+            var reads = hist.Select(h => h.Volumes.TryGetValue(v.Letter, out var r) ? r.Read : null).ToList();
+            var writes = hist.Select(h => h.Volumes.TryGetValue(v.Letter, out var r) ? r.Write : null).ToList();
+            var busy = hist.Select(h => h.Volumes.TryGetValue(v.Letter, out var r) ? r.Busy : null).ToList();
+            double readTop = Sparkline.Scale(reads, 1024 * 1024), writeTop = Sparkline.Scale(writes, 1024 * 1024);
+            <div class="hw-vol">
+                <div class="hw-vol-top">
+                    <span class="hw-letter">@v.Letter:</span>
+                    <span class="hw-kind" data-k="@v.Kind">@DiskKinds.Label(v.Kind)</span>
+                    <span class="hw-sub">@v.Label @v.FileSystem</span>
+                    <span class="hw-free">@HwFormat.Size(v.UsedBytes) used · @HwFormat.Size(v.FreeBytes) free · @HwFormat.Size(v.TotalBytes)</span>
+                </div>
+                <div class="hw-bar @(used > .92 ? "hot" : "")"><i style="--w:@HwFormat.Css(used)"></i></div>
+                <div class="hw-io">
+                    <span>Read <b>@HwFormat.Rate(v.ReadBytesPerSec)</b></span>
+                    <span>Write <b>@HwFormat.Rate(v.WriteBytesPerSec)</b></span>
+                    <span>Busy <b>@HwFormat.Pct(v.BusyPercent)</b></span>
+                    <span>Queue <b>@(v.QueueLength is double q ? q.ToString("0.00", CultureInfo.InvariantCulture) : HwFormat.Dash)</b></span>
+                </div>
+                @if (hist.Count >= 2)
+                {
+                    <div class="hw-sparks">
+                        <Spark Title="@($"Read · max {HwFormat.Rate(readTop)}")" Values="@reads" Max="@readTop" />
+                        <Spark Title="@($"Write · max {HwFormat.Rate(writeTop)}")" Values="@writes" Max="@writeTop" Kind="second" />
+                        <Spark Title="Busy · max 100 %" Values="@busy" Max="100" Kind="warn" />
+                    </div>
+                }
+            </div>
+        }
+        @if (dk.Disks.Count > 0)
+        {
+            <div class="hw-sep">
+                <div class="hw-subh">Physical drives</div>
+                <div class="hw-scroll">
+                    <table class="hw-table">
+                        <tr><th>#</th><th>Type</th><th>Model</th><th class="num">Read</th><th class="num">Write</th><th class="num">Busy</th><th class="num">Queue</th></tr>
+                        @foreach (var p in dk.Disks)
+                        {
+                            <tr>
+                                <td>@p.Number</td>
+                                <td>@DiskKinds.Label(p.Kind)</td>
+                                <td class="hw-name" title="@p.Model">@p.Model</td>
+                                <td class="num">@HwFormat.Rate(p.ReadBytesPerSec)</td>
+                                <td class="num">@HwFormat.Rate(p.WriteBytesPerSec)</td>
+                                <td class="num">@HwFormat.Pct(p.BusyPercent)</td>
+                                <td class="num">@(p.QueueLength is double q ? q.ToString("0.00", CultureInfo.InvariantCulture) : HwFormat.Dash)</td>
+                            </tr>
+                        }
+                    </table>
+                </div>
+            </div>
+        }
+    }
+    @if (s.Disks.Processes.Count > 0)
+    {
+        <div class="hw-sep">
+            <div class="hw-subh">Programs with the most disk traffic</div>
+            <p class="hw-sub hw-hint-line">All file traffic of a program, not only the disk; refreshed every few seconds.</p>
+            <div class="hw-scroll">
+                <table class="hw-table">
+                    <tr><th>Program</th><th class="num">PID</th><th class="num">Read</th><th class="num">Write</th></tr>
+                    @foreach (var p in s.Disks.Processes)
+                    {
+                        <tr>
+                            <td class="hw-name" title="@p.Name">@p.Name</td>
+                            <td class="num">@p.Pid</td>
+                            <td class="num">@HwFormat.Rate(p.ReadBytesPerSec)</td>
+                            <td class="num">@HwFormat.Rate(p.WriteBytesPerSec)</td>
+                        </tr>
+                    }
+                </table>
+            </div>
+        </div>
+    }
+</section>
+
+@* ── Netzwerk ── *@
+<section class="hw-card" id="network">
+    <div class="hw-head">Network<span class="hw-sub">connected adapters</span></div>
+    @if (s.Network is not { Count: > 0 } adapters)
+    {
+        <span class="hw-sub">No network values.</span>
+    }
+    else
+    {
+        var counted = adapters.Where(a => a.CountsInTotal).ToList();
+        double? rx = counted.Any(a => a.RxBytesPerSec != null) ? counted.Sum(a => a.RxBytesPerSec ?? 0) : null;
+        double? tx = counted.Any(a => a.TxBytesPerSec != null) ? counted.Sum(a => a.TxBytesPerSec ?? 0) : null;
+        double link = counted.Sum(a => a.LinkBytesPerSec);
+        <div class="hw-meters">
+            <HwMeter Label="Receive" Value="@HwFormat.Rate(rx)" Fraction="@(link > 0 && rx is double r ? r / link : null)" Na="@(rx == null)" />
+            <HwMeter Label="Send" Value="@HwFormat.Rate(tx)" Fraction="@(link > 0 && tx is double t ? t / link : null)" Na="@(tx == null)"
+                     Note="@(link > 0 ? $"of {HwFormat.Rate(link)} link speed" : "link speed unknown")" />
+        </div>
+        <div class="hw-scroll">
+            <table class="hw-table">
+                <tr><th>Adapter</th><th>Kind</th><th class="num">Link</th><th class="num">Receive</th><th class="num">Send</th></tr>
+                @foreach (var a in adapters)
+                {
+                    <tr title="@a.Description">
+                        <td class="hw-name">@a.Name</td>
+                        <td>@KindText(a.Kind)</td>
+                        <td class="num">@(a.LinkBytesPerSec > 0 ? LinkText(a.LinkBytesPerSec) : HwFormat.Dash)</td>
+                        <td class="num">@HwFormat.Rate(a.RxBytesPerSec)</td>
+                        <td class="num">@HwFormat.Rate(a.TxBytesPerSec)</td>
+                    </tr>
+                }
+            </table>
+        </div>
+        @if (adapters.Any(a => !a.CountsInTotal))
+        {
+            <p class="hw-sub hw-hint-line">VPN and tunnel adapters (Tailscale and the like) carry traffic that also runs over a real adapter; they are not added to the totals.</p>
+        }
+        @if (hist.Count >= 2)
+        {
+            var rxs = hist.Select(h => h.NetRx).ToList();
+            var txs = hist.Select(h => h.NetTx).ToList();
+            double rxTop = Sparkline.Scale(rxs, 128 * 1024), txTop = Sparkline.Scale(txs, 128 * 1024);
+            <div class="hw-sep">
+                <div class="hw-subh">History</div>
+                <div class="hw-sparks">
+                    <Spark Title="@($"Receive · max {HwFormat.Rate(rxTop)}")" Values="@rxs" Max="@rxTop" />
+                    <Spark Title="@($"Send · max {HwFormat.Rate(txTop)}")" Values="@txs" Max="@txTop" Kind="second" />
+                </div>
+            </div>
+        }
+    }
+</section>
+
+@code {
+    private HardwareSnapshot? _s;
+    private Timer? _timer;
+
+    protected override void OnInitialized() => _s = Read();
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        // Erst nach dem ersten Zeichnen (im interaktiven Lauf) jede Sekunde nachfragen.
+        if (firstRender && RendererInfo.IsInteractive)
+            _timer = new Timer(_ => InvokeAsync(() => { _s = Read(); StateHasChanged(); }), null, 1000, 1000);
+    }
+
+    private HardwareSnapshot? Read()
+    {
+        try { return Monitor.Snapshot(); }
+        catch (Exception ex) when (ex is InvalidOperationException or ObjectDisposedException) { return _s; }
+    }
+
+    public void Dispose() => _timer?.Dispose();
+
+    private static string KindText(NetAdapterKind kind) => kind switch
+    {
+        NetAdapterKind.Ethernet => "LAN",
+        NetAdapterKind.Wifi => "Wi-Fi",
+        NetAdapterKind.Tunnel => "VPN / tunnel",
+        _ => "other",
+    };
+
+    // Verbindungsgeschwindigkeit wie üblich in Bit je Sekunde
+    private static string LinkText(double bytesPerSec)
+    {
+        double bits = bytesPerSec * 8;
+        return bits >= 1e9 ? (bits / 1e9).ToString("0.#", CultureInfo.InvariantCulture) + " Gbit/s"
+            : (bits / 1e6).ToString("0", CultureInfo.InvariantCulture) + " Mbit/s";
+    }
+}

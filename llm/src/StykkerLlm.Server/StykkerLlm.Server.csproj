@@ -19,6 +19,8 @@
   <ItemGroup>
     <ProjectReference Include="..\StykkerLlm.Core\StykkerLlm.Core.csproj" />
     <ProjectReference Include="..\StykkerLlm.Platform.Windows\StykkerLlm.Platform.Windows.csproj" />
+    <!-- Die gemeinsame Hardware-Seite (/hardware), dieselbe wie die Übersicht in StykkerSYS -->
+    <ProjectReference Include="..\..\..\shared\src\Stykker.Hardware\Stykker.Hardware.csproj" />
   </ItemGroup>
 
   <!-- Das Design-System kommt beim Veröffentlichen neben die exe (Ordner design-system), damit die Seite auch ohne die

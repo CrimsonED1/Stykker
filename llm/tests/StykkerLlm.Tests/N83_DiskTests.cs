@@ -1,4 +1,5 @@
 using Stykker.Shared.Disk;
+using Stykker.Shared.Sampling;
 using StykkerLlm.Core;
 
 namespace StykkerLlm.Tests;

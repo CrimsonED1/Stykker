@@ -16,7 +16,9 @@ The rule for what belongs here: code that two tools use, or that would otherwise
 | `Hardware/SystemMath.cs` | The arithmetic of processor load, per-core load and the top list of programs, without Windows. | StykkerLLM |
 | `Disk/` | `DiskRows.cs`: the records of the drives (physical disks with type NVMe, SSD, HDD, USB or unknown; volumes; programs with disk traffic; a sample). `DiskMath.cs`: the conversion and the mapping of the raw counter values, without Windows. | StykkerLLM, StykkerSYS |
 | `Windows/DiskCounters.cs` | Drives and disk traffic from Windows: volumes (`DriveInfo`), counters (PDH `PhysicalDisk`, `LogicalDisk`, `Process`), type and model per disk and the volume-to-disk mapping (`DeviceIoControl`). Read only, no administrator rights; a missing value stays `null`. | StykkerLLM, StykkerSYS |
-| `Net/` | `NetRates.cs`: `NetSample` (received, sent, link speed in bytes per second) and `NetRateMeter` (rate from two counter readings, starts over when a counter goes back). `NetCounters.cs`: the byte counters of all connected adapters without loopback and tunnels, IPv4 and IPv6, with .NET only. | StykkerHUD, StykkerLLM |
+| `Net/` | `NetRates.cs`: `NetSample` (received, sent, link speed in bytes per second) and `NetRateMeter` (rate from two counter readings, starts over when a counter goes back). `NetCounters.cs`: the byte counters of all connected adapters without loopback, tunnels and VPNs (Tailscale is recognized by name) and without the filter drivers Windows lists as extra adapters ("…-QoS Packet Scheduler-0000", "…-WFP … Filter-0000"), which would count the same traffic again; IPv4 and IPv6, with .NET only. `NetAdapters.cs`: the same per adapter, with its kind (LAN, Wi-Fi, VPN/tunnel) and link speed. | StykkerHUD, StykkerLLM, Stykker.Hardware |
+| `Gpu/NvidiaGpu.cs`, `Windows/Nvml.cs` | NVIDIA cards through `nvml.dll`: load, graphics memory with its total, power, temperature, clocks and the reasons the card is throttling. No NVIDIA driver: `null`. | StykkerLLM, Stykker.Hardware |
+| `Sampling/Sparkline.cs` | The points of a history line in the 300 × 70 box of the hardware blocks; a missing value leaves a gap. | StykkerLLM, Stykker.Hardware |
 | `Windows/TrayIcon.cs` | Tray icon with a context menu, on a message-only window in its own thread. | StykkerHUD, StykkerSYS |
 | `Web/DesignSystemHost.cs` | Serves the design system under `/ds` from a folder: `--design-system`, the environment variable, or the default `shared/design-system`. | StykkerHUD, StykkerSYS |
 | `Web/LocalRequests.cs` | Guard for local actions: same-origin check (403), failed action (409), done (200). | StykkerSYS |
@@ -70,3 +72,21 @@ Last run on 2026-11-18: 333 of 333 tests passed in `Stykker.Shared.Tests` and 10
 The tool's own solution lists the project under a `/shared/` folder, so it builds with the tool.
 
 License: Apache-2.0 (see [`LICENSE`](LICENSE)).
+
+## Stykker.Hardware: the shared hardware page
+
+`src/Stykker.Hardware` is a second library, a Razor class library on top of Stykker.Shared: the hardware page that
+StykkerLLM (`/hardware`) and StykkerSYS (`/overview`) both show. One page with processor and memory (cores, commit,
+largest programs by memory and by processor), the graphics card (NVML for NVIDIA cards with clocks, power,
+temperature and throttling, otherwise the Windows GPU counters; engines; programs on the card), the drives (each
+volume with read, write and busy history, the physical drives, the programs with the most disk traffic) and the
+network (each adapter with its kind and link speed; VPNs such as Tailscale are listed but not added to the totals).
+Every block keeps its history since the page was opened, up to five minutes.
+
+- `HardwareSampler` puts one measurement together; `HardwareMonitor` measures only while someone looks (`ViewerLoop`).
+  `HardwareMonitor.Create()` picks the Windows probes, or none (`basic`, or not Windows): then the page shows `–`.
+- `<HardwarePanel />` is the page content in the markup of the design system's hardware blocks (`hw-*`). It must run
+  interactively (`InteractiveServer`); each tool adds its own header and navigation. The sections have the anchors
+  `#cpu`, `#gpu`, `#drives` and `#network`.
+- The measuring of the overview and of the drives came from StykkerSYS (`Overview.cs`, `DiskSampler.cs`, the Windows
+  probes); NVML came from StykkerLLM. Tests: `tests/Stykker.Hardware.Tests`.

@@ -258,7 +258,7 @@
 </div>
 </div>
 <aside class="mon-side">
-@* Hardware (U5): GPU und System in einer Karte, je Programm als gestapelter Balken mit Legende; Details auf /gpu.
+@* Hardware (U5): GPU und System in einer Karte, je Programm als gestapelter Balken mit Legende; Details auf /hardware.
    Aussehen und Markup: die Hardware-Bausteine des Design-Systems (hw-*), dieselben wie in StykkerSYS. *@
 @if (e.Gpu != null || e.Sys != null || e.Disks != null)
 {
@@ -267,7 +267,7 @@
     <section class="hw-card">
         @if (e.Gpu is { } g)
         {
-            <div class="hw-head">@Strings.Gpu <span class="hw-sub">@g.Name · @g.MemTotalGb.ToString("0", CultureInfo.InvariantCulture) GB</span><a class="hw-more" href="gpu" title="@Strings.GpuDetails">@Strings.HwDetails <Icon Name="open" /></a></div>
+            <div class="hw-head">@Strings.Gpu <span class="hw-sub">@g.Name · @g.MemTotalGb.ToString("0", CultureInfo.InvariantCulture) GB</span><a class="hw-more" href="hardware#gpu" title="@Strings.HardwareTitle">@Strings.HwDetails <Icon Name="open" /></a></div>
             <div class="hw-meters">
                 <HwMeter Label="@Strings.GpuLoad" Value="@g.Util.ToString("0", CultureInfo.InvariantCulture)" Unit="%" Fraction="@(g.Util / 100)" />
                 <HwMeter Label="@Strings.GpuVram" Value="@g.MemUsedGb.ToString("0.0", CultureInfo.InvariantCulture)" Unit="@("/ " + g.MemTotalGb.ToString("0", CultureInfo.InvariantCulture) + " GB")" Fraction="@(g.MemUsedGb / Math.Max(1, g.MemTotalGb))" Note="@Strings.HwFree(Math.Max(0, g.MemTotalGb - g.MemUsedGb))" />
@@ -305,7 +305,7 @@
     {
         var hints = DiskHints.Lines(DiskHints.ServersOf(e.Servers), e.DiskProcesses, dk.Volumes);
         <section class="hw-card">
-            <div class="hw-head">@Strings.DisksCard <span class="hw-sub">@dk.Volumes.Count @Strings.DisksVolumes</span><a class="hw-more" href="disks" title="@Strings.DisksPageTitle">@Strings.DisksDetails <Icon Name="open" /></a></div>
+            <div class="hw-head">@Strings.DisksCard <span class="hw-sub">@dk.Volumes.Count @Strings.DisksVolumes</span><a class="hw-more" href="hardware#drives" title="@Strings.HardwareTitle">@Strings.DisksDetails <Icon Name="open" /></a></div>
             @foreach (var v in dk.Volumes)
             {
                 double used = v.TotalBytes > 0 ? Math.Clamp(v.UsedBytes / v.TotalBytes, 0, 1) : 0;

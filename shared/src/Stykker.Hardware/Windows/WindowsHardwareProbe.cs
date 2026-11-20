@@ -1,8 +1,8 @@
 using Stykker.Shared.Gpu;
 using Stykker.Shared.Windows;
-using StykkerSys.Core;
+using Stykker.Hardware;
 
-namespace StykkerSys.Platform.Windows;
+namespace Stykker.Hardware.Windows;
 
 // Die Windows-Sonde der Übersicht: Prozessor und Speicher (SystemCounters), GPU je Engine und je Prozess und der belegte
 // Grafikspeicher aller Adapter (Leistungsindikatoren). Jeder Teil ist verzichtbar: fehlt er, liefert er null – die Seite
@@ -13,6 +13,7 @@ public sealed class WindowsHardwareProbe : IHardwareProbe
     private readonly GpuUtilQuery? _gpuUtil;
     private readonly GpuProcessMemoryQuery? _gpuMem;
     private readonly GpuAdapterMemoryQuery? _adapterMem;
+    private readonly Nvml _nvml = new();
 
     public WindowsHardwareProbe()
     {
@@ -31,12 +32,14 @@ public sealed class WindowsHardwareProbe : IHardwareProbe
     public GpuUtilSample? ReadGpuUtil() => _gpuUtil?.Read();
     public IReadOnlyList<GpuProcRow>? ReadGpuMemory() => _gpuMem?.Read();
     public double? ReadGpuMemoryUsedMb() => _adapterMem?.ReadMb();
+    public NvidiaGpu? ReadNvidia() => _nvml.Read();
 
     public void Dispose()
     {
         _gpuUtil?.Dispose();
         _gpuMem?.Dispose();
         _adapterMem?.Dispose();
+        _nvml.Dispose();
     }
 }
 

@@ -1,10 +1,11 @@
 using System.Runtime.InteropServices;
 using System.Text;
-using StykkerLlm.Core;
+using Stykker.Shared.Gpu;
 
-namespace StykkerLlm.Platform.Windows;
+namespace Stykker.Shared.Windows;
 
-// Liest GPU-Werte direkt über NVIDIAs nvml.dll (kein nvidia-smi-Prozess pro Sekunde).
+// Liest GPU-Werte direkt über NVIDIAs nvml.dll (kein nvidia-smi-Prozess pro Sekunde). Ohne NVIDIA-Treiber: Available = false,
+// Read() liefert null. Gebraucht von StykkerLLM und der gemeinsamen Hardware-Seite.
 public sealed class Nvml : IDisposable
 {
     [StructLayout(LayoutKind.Sequential)] private struct Utilization { public uint Gpu; public uint Memory; }
@@ -49,7 +50,7 @@ public sealed class Nvml : IDisposable
         catch (EntryPointNotFoundException) { }
     }
 
-    public GpuSample? Read()
+    public NvidiaGpu? Read()
     {
         if (!Available) return null;
         nvmlDeviceGetUtilizationRates(_device, out var u);
@@ -68,7 +69,7 @@ public sealed class Nvml : IDisposable
             try { if (nvmlThrottleOld(_device, out reasons) != 0) reasons = 0; } catch (EntryPointNotFoundException) { }
         }
         const double gb = 1024.0 * 1024 * 1024;
-        return new GpuSample(_name, u.Gpu, m.Used / gb, m.Total / gb, p / 1000.0, pl / 1000.0, t,
+        return new NvidiaGpu(_name, u.Gpu, m.Used / gb, m.Total / gb, p / 1000.0, pl / 1000.0, t,
             u.Memory, gfx, gfxMax, mem, memMax, reasons);
     }
 

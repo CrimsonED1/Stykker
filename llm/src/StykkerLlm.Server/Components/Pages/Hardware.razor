@@ -1,0 +1,12 @@
+@page "/hardware"
+
+@* Hardware: Prozessor und Speicher, Grafikkarte, Laufwerke und Netzwerk auf einer Seite – der gemeinsame Baustein
+   aus shared/src/Stykker.Hardware, derselbe wie die Übersicht in StykkerSYS. Er misst nur, solange die Seite offen
+   ist. Die Hardware-Leiste springt mit #cpu, #gpu, #drives und #network auf den passenden Abschnitt. *@
+
+<div class="hw-head">
+    <span>@Strings.HardwareTitle</span>
+    <a class="hw-more" href="">@Strings.BackToMonitor</a>
+</div>
+
+<HardwarePanel />

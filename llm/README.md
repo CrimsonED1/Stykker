@@ -24,9 +24,11 @@ any browser or your phone; keep an eye on it in the terminal. Nothing leaves you
 - **Live view**: tokens/s per slot, prompt reading vs. writing, context bar, queue, a glowing sparkline, a card that lights
   up while a model is writing.
 - **GPU and system**: load, VRAM, power, temperature, clocks, throttling, and VRAM and RAM **per program** as a stacked bar.
+  The **Hardware** page (`/hardware`) shows processor and memory, the graphics card, the drives and the network on one
+  page, each with its history; it is the same page as the overview of StykkerSYS (`shared/src/Stykker.Hardware`).
   **Free VRAM** stops local llama.cpp servers and unloads Ollama models in one click.
 - **Hardware bar** on every page except the monitor: VRAM, GPU, CPU, RAM, fullest drive, disk I/O, network and GPU
-  temperature, each with a faint line of the last minute; a click opens the matching detail page.
+  temperature, each with a faint line of the last minute; a click opens its section of the Hardware page.
 - **What the model is doing**: on a server's details page, its layers on the GPU or CPU, for mixture-of-experts models
   how many experts work per token and how many parameters are active, and live whether it reads, thinks, answers or
   calls a tool. *Storage* shows whether the model sits in memory or pages in from the SSD while it writes, and how much

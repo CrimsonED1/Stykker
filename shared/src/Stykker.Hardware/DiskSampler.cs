@@ -1,7 +1,7 @@
 using Stykker.Shared.Disk;
 using Stykker.Shared.Sampling;
 
-namespace StykkerSys.Core;
+namespace Stykker.Hardware;
 
 // Die Betriebssystem-Seite der Laufwerke: die Zahlen liefert die Windows-Sonde (Stykker.Shared: DiskCounters). Die Sonde
 // ist austauschbar, damit die Messung ohne Windows prüfbar bleibt; BasicDiskProbe antwortet nichts.

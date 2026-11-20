@@ -4,11 +4,11 @@ using Stykker.Shared.Gpu;
 using Stykker.Shared.Sampling;
 using Stykker.Shared.Windows;
 
-namespace StykkerSys.Core;
+namespace Stykker.Hardware;
 
-// Die Übersicht (Seite /overview): Prozessor und Arbeitsspeicher des ganzen Rechners, die GPU und die größten Programme.
-// Die Laufwerke kommen aus der Messschleife der Laufwerkseite (DiskService); /api/overview liest beide. Die Sonde
-// (IHardwareProbe) liefert die Zähler von außen; die Windows-Sonde steht in StykkerSys.Platform.Windows.
+// Die Übersicht: Prozessor und Arbeitsspeicher des ganzen Rechners, die GPU und die größten Programme. Teil der
+// gemeinsamen Hardware-Seite (HardwareSampler). Die Sonde (IHardwareProbe) liefert die Zähler von außen; die
+// Windows-Sonde steht in Windows/WindowsHardwareProbe.cs.
 public interface IHardwareProbe : IDisposable
 {
     // Gesamtwerte des Prozessors und des Speichers; null, wenn Windows sie nicht nennt.
@@ -22,6 +22,9 @@ public interface IHardwareProbe : IDisposable
 
     // Grafikspeicher, der auf allen Adaptern dediziert belegt ist, in MB. null, wenn der Zähler fehlt.
     double? ReadGpuMemoryUsedMb();
+
+    // Die NVIDIA-Karte über NVML (Takte, Leistung, Temperatur, gesamter Speicher); null ohne NVIDIA-Treiber.
+    NvidiaGpu? ReadNvidia() => null;
 }
 
 // Ohne Windows oder mit --basic: keine Zahl, überall „–".
@@ -56,8 +59,6 @@ public sealed record ProcessMeasure(int Pid, string Name, double RamMb, double? 
 public sealed record OverviewSnapshot(DateTime At, OverviewSystem? System, OverviewGpu? Gpu,
     IReadOnlyList<ProgramLoad> TopByRam, IReadOnlyList<ProgramLoad> TopByCpu, string[] Notes);
 
-// Die Antwort von /api/overview: die Übersicht und die Laufwerke, aus einer Abfrage.
-public sealed record OverviewResponse(OverviewSnapshot Hardware, DiskSnapshot Disks);
 
 // Die Umrechnung der Übersicht ohne Windows-Aufrufe (testbar mit Testdaten).
 public static class OverviewMath
@@ -195,7 +196,7 @@ public sealed class OverviewSampler : ISampler<OverviewSnapshot>
             if (system == null) notes.Add("No processor and memory values – the Windows counters did not answer.");
             if (!gpuAnswered) notes.Add("No GPU values – the Windows GPU counters did not answer.");
             if (unreadable > 0)
-                notes.Add($"Not listed: {unreadable} of {processes.Count + unreadable} processes. Windows does not show their CPU time to StykkerSYS (system processes and protected services).");
+                notes.Add($"Not listed: {unreadable} of {processes.Count + unreadable} processes. Windows does not show their CPU time to this program (system processes and protected services; running it as administrator shows them).");
 
             return new OverviewSnapshot(now, system, gpu,
                 OverviewMath.TopByRam(programs, ProgramCount), OverviewMath.TopByCpu(programs, ProgramCount), notes.ToArray());
@@ -241,8 +242,3 @@ public sealed class OverviewSampler : ISampler<OverviewSnapshot>
     }
 }
 
-// Die Messschleife der Übersicht (siehe ViewerLoop): sie liest nur, solange jemand die Seite ansieht.
-public sealed class OverviewService : ViewerLoop<OverviewSnapshot>
-{
-    public OverviewService(OverviewSampler sampler) : base(sampler) { }
-}

@@ -64,7 +64,7 @@
         @if (Host.Engine.Gpu is { } g)
         {
             var frac = g.MemTotalGb > 0 ? Math.Clamp(g.MemUsedGb / g.MemTotalGb, 0, 1) : 0;
-            <a class="hchip @(frac > .92 ? "warn" : "")" href="gpu" title="@g.Name · @Strings.GpuHeadline(g.MemUsedGb, g.MemTotalGb)">
+            <a class="hchip @(frac > .92 ? "warn" : "")" href="hardware#gpu" title="@g.Name · @Strings.GpuHeadline(g.MemUsedGb, g.MemTotalGb)">
                 <Icon Name="vram" /><span class="mini"><i style="width:@((int)(frac * 100))%"></i></span>
                 <b>@g.MemUsedGb.ToString("0.0", CultureInfo.InvariantCulture)</b><span class="muted hchip-unit tight">/@g.MemTotalGb.ToString("0", CultureInfo.InvariantCulture) GB</span>
             </a>
@@ -111,7 +111,7 @@
             <NavLink href="catalog">@Strings.EvalCatalog</NavLink>
             <NavLink href="models">@Strings.EvalModels</NavLink>
             <span class="grp">@Strings.GroupTools</span>
-            <NavLink href="gpu">@Strings.GpuDetails</NavLink>
+            <NavLink href="hardware">@Strings.HardwareTitle</NavLink>
             <NavLink href="compare">@Strings.BtnCompare</NavLink>
             <span class="grp">@Strings.GroupView</span>
             <NavLink href="hosts">@Strings.HostsTitle</NavLink>
@@ -193,7 +193,7 @@ else if (Viewer.Known && Viewer.IsViewer)
     private bool _miniBar = true;            // Hardware-Minibar oben (Schalter im ☰ → Ansicht, an ist der Standard)
     private string _notify = "off";          // Absturz-Meldung im Browser: on | off | blocked | unsupported (ui.js)
     // Seiten, die nicht als Hauptpunkt in der Kopfzeile stehen, sondern im ☰
-    private static readonly string[] MorePages = { "runs", "catalog", "models", "gpu", "compare", "hosts", "nodes", "phone", "settings", "bugreport", "serverdetail" };
+    private static readonly string[] MorePages = { "runs", "catalog", "models", "hardware", "compare", "hosts", "nodes", "phone", "settings", "bugreport", "serverdetail" };
 
     private ActivityEvent? _seenActivity;    // der neueste Eintrag, der schon bekannt war (für die Meldungen)
 
@@ -297,14 +297,13 @@ else if (Viewer.Known && Viewer.IsViewer)
         "runs" => Strings.EvalRuns,
         "catalog" => Strings.EvalCatalog,
         "models" => Strings.EvalModels,
-        "gpu" => Strings.GpuDetails,
+        "hardware" => Strings.HardwareTitle,
         "prompt" => Strings.BtnPrompt,
         "compare" => Strings.BtnCompare,
         "hosts" => Strings.HostsTitle,
         "phone" => Strings.RemoteTitle,
         "settings" => Strings.SettingsTitle,
         "bugreport" => Strings.BugReportTitle,
-        "disks" => Strings.DisksPageTitle,
         // Detailseiten tragen einen kodierten Schlüssel im Weg – der gehört weder neben die Marke noch in den Tab-Titel
         _ when RelPath().StartsWith("serverdetail", StringComparison.Ordinal) => Strings.NavMonitor,
         _ when RelPath().StartsWith("history/", StringComparison.Ordinal) => Strings.SectionHistory,

@@ -1,8 +1,8 @@
 using System.Text.Json;
 using Stykker.Shared.Disk;
-using StykkerSys.Core;
+using Stykker.Hardware;
 
-namespace StykkerSys.Tests;
+namespace Stykker.Hardware.Tests;
 
 // Die Laufwerkseite: die Messung mit einer festen Sonde, ohne echte Laufwerke
 public class DiskSamplerTests

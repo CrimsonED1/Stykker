@@ -101,6 +101,8 @@ SimHost? sim = null;
 sim?.World.Start();
 builder.Services.AddSingleton<EngineHost>(sp => new EngineHost(paths, platform, sim, pairingFile));
 builder.Services.AddSingleton(sp => new EvalQueue(paths));
+// Die Hardware-Seite (/hardware, Stykker.Hardware): misst nur, solange sie offen ist (unabhängig vom Monitor-Takt).
+builder.Services.AddSingleton(_ => Stykker.Hardware.HardwareMonitor.Create());
 builder.Services.AddSingleton(sp => new ActionContext
 {
     Engine = sp.GetRequiredService<EngineHost>().Engine,

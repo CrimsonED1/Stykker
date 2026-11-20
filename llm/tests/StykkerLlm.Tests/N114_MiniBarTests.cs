@@ -120,17 +120,18 @@ public class N114_MiniBarTests
     // ── Links, Telefon, Verlauf ──
 
     [TestMethod]
-    public void CellsLinkToTheirPageAndTheNetworkHasNone()
+    public void EveryCellLinksToItsSectionOfTheHardwarePage()
     {
         var cells = MiniBar.Build(Gpu(), Sys(), Disks(Vol("C", 1e12, 3e11)), new NetSample(1, 1, 0)).ToDictionary(c => c.Key, c => c.Href);
-        Assert.AreEqual("gpu", cells["vram"]);
-        Assert.AreEqual("gpu", cells["gpu"]);
-        Assert.AreEqual("gpu", cells["temp"]);
-        Assert.AreEqual("./#hw", cells["cpu"]);
-        Assert.AreEqual("./#hw", cells["ram"]);
-        Assert.AreEqual("disks", cells["disk"]);
-        Assert.AreEqual("disks", cells["io"]);
-        Assert.IsNull(cells["net"]);
+        Assert.AreEqual("hardware#gpu", cells["vram"]);
+        Assert.AreEqual("hardware#gpu", cells["gpu"]);
+        Assert.AreEqual("hardware#gpu", cells["temp"]);
+        Assert.AreEqual("hardware#cpu", cells["cpu"]);
+        Assert.AreEqual("hardware#cpu", cells["ram"]);
+        Assert.AreEqual("hardware#drives", cells["disk"]);
+        Assert.AreEqual("hardware#drives", cells["io"]);
+        Assert.AreEqual("hardware#network", cells["net"]);
+        Assert.IsNull(MiniBar.Href("unknown"));
     }
 
     [TestMethod]

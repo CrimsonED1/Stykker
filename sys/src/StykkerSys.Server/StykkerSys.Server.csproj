@@ -20,6 +20,8 @@
     <ProjectReference Include="..\StykkerSys.Core\StykkerSys.Core.csproj" />
     <ProjectReference Include="..\StykkerSys.Platform.Windows\StykkerSys.Platform.Windows.csproj" />
     <ProjectReference Include="..\..\..\shared\src\Stykker.Shared\Stykker.Shared.csproj" />
+    <!-- Die gemeinsame Hardware-Seite (/overview), dieselbe wie in StykkerLLM -->
+    <ProjectReference Include="..\..\..\shared\src\Stykker.Hardware\Stykker.Hardware.csproj" />
   </ItemGroup>
 
   <!-- Das Design-System wird nicht kopiert: der Server liefert es zur Laufzeit unter /ds aus seiner Quelle (Vorgabe

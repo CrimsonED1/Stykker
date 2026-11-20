@@ -1,6 +1,6 @@
 # Hardware
 
-The hardware blocks of StykkerLLM and StykkerSYS: the graphics card, the processor and memory, and the drives. Both apps show them the same way, so a figure looks the same in the monitor and in the process list.
+The hardware blocks of StykkerLLM and StykkerSYS: the graphics card, the processor and memory, the drives and the network. Both apps show them the same way, so a figure looks the same in the monitor and in the process list. The whole hardware page (`/hardware` in StykkerLLM, `/overview` in StykkerSYS) is one shared Razor component built from these blocks: `<HardwarePanel />` in `shared/src/Stykker.Hardware`.
 
 Load `components/hardware.css` after `tokens.css`. Every class has the prefix `hw-` and no rule touches an element on its own, so the blocks cannot restyle the rest of a page. Colours come from the tokens (`--acc`, `--second`, `--good`, `--warn`, `--bad`, `--ink`, `--muted`, `--track`, `--line`, `--card`); a missing token falls back to the Dark value.
 

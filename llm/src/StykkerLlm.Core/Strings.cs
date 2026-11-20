@@ -72,6 +72,7 @@ public static partial class Strings
         GpuThrottling = "Throttling", GpuClocksLimited = "Clocks limited", GpuClocksFree = "Clocks free", VramFree = "VRAM free";
     public const string GpuConsumers = "VRAM per process (all programs)";
     public const string GpuDetails = "GPU details";
+    public const string HardwareTitle = "Hardware";
     // Gestapelte Speicherbalken (VRAM bzw. RAM je Prozess) mit Tooltips
     public const string MemOther = "other", MemFree = "free";
     public const string RamConsumers = "RAM per process (all programs)";

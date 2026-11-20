@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk.Razor">
+
+  <!-- Stykker.Hardware: die gemeinsame Hardware-Seite von StykkerLLM und StykkerSYS. Messen (Prozessor und Speicher,
+       Grafikkarte über NVML und die Windows-Zähler, Laufwerke, Netzwerk je Adapter, größte Programme, Verlauf) und die
+       Razor-Bausteine der Seite im Markup der Hardware-Bausteine des Design-Systems (hw-*). Jedes Programm gibt Kopf
+       und Rahmen selbst dazu und bindet den Baustein <HardwarePanel /> ein. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>Stykker.Hardware</AssemblyName>
+    <RootNamespace>Stykker.Hardware</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Stykker.Shared\Stykker.Shared.csproj" />
+  </ItemGroup>
+
+</Project>

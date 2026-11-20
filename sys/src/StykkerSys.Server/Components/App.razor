@@ -25,11 +25,13 @@
         if (query.get("theme") === "dark" || query.get("theme") === "titan") document.documentElement.dataset.theme = query.get("theme");
     </script>
 </head>
-<body>
+@* data-enhance-nav="false": Links laden die Seite neu, wie bisher. Sonst tauschte Blazor nur den Inhalt, und die Skripte
+   der statischen Seiten (Prozesse, Laufwerke) liefen nicht neu an. blazor.web.js braucht nur die Übersicht (interaktiv). *@
+<body data-enhance-nav="false">
     <Routes />
     <script src="/ds/components/bundle.js"></script>
     <script src="/sys.js"></script>
     <script src="/disks.js"></script>
-    <script src="/overview.js"></script>
+    <script src="_framework/blazor.web.js"></script>
 </body>
 </html>

@@ -66,12 +66,13 @@ public static class MiniBar
     // Auf dem Telefon zugeklappt stehen nur diese drei: der Speicher, die Last und die Hitze der Grafikkarte
     public static readonly IReadOnlyList<string> PhoneKeys = new[] { "vram", "gpu", "temp" };
 
-    // Wohin ein Klick auf das Feld führt: GPU-Seite, Hardware-Karte im Monitor, Laufwerksseite; das Netzwerk hat keine Seite
+    // Wohin ein Klick auf das Feld führt: der passende Abschnitt der Hardware-Seite (Stykker.Hardware)
     public static string? Href(string key) => key switch
     {
-        "vram" or "gpu" or "temp" => "gpu",
-        "cpu" or "ram" => "./#hw",
-        "disk" or "io" => "disks",
+        "vram" or "gpu" or "temp" => "hardware#gpu",
+        "cpu" or "ram" => "hardware#cpu",
+        "disk" or "io" => "hardware#drives",
+        "net" => "hardware#network",
         _ => null,
     };
 

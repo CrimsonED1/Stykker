@@ -11,5 +11,6 @@
   <Folder Name="/shared/">
     <Project Path="../shared/src/Stykker.Shared/Stykker.Shared.csproj" />
     <Project Path="../shared/src/Stykker.Pairing/Stykker.Pairing.csproj" />
+    <Project Path="../shared/src/Stykker.Hardware/Stykker.Hardware.csproj" />
   </Folder>
 </Solution>
