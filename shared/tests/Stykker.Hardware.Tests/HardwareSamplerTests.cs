@@ -97,4 +97,33 @@ public class HardwareSamplerTests
         Assert.Equal("50%", HwFormat.Css(.5));
         Assert.Equal("100%", HwFormat.Css(3));
     }
+
+    [Fact]
+    public void ASeedFillsTheHistoryAfterAPause()
+    {
+        var seed = Enumerable.Range(0, 400).Select(i => new HistoryPoint(DateTime.Now.AddSeconds(i - 400), null, null, i, null, null, null,
+            null, null, new Dictionary<string, VolumeRate>())).ToArray();
+        var sampler = new HardwareSampler(new Probe(), new Disks(), seed: () => seed);
+        sampler.Resume();
+        var s = sampler.Sample();
+        Assert.Equal(HardwareSampler.HistoryLength, s.History.Count);   // gekürzt, der neue Punkt kommt hinten dazu
+        Assert.Equal(399, s.History[^2].GpuPercent);
+    }
+
+    [Fact]
+    public void AFailingSeedDoesNotStopTheMeasuring()
+    {
+        var sampler = new HardwareSampler(new Probe(), new Disks(), seed: () => throw new InvalidOperationException());
+        sampler.Resume();
+        Assert.Single(sampler.Sample().History);
+    }
+
+    [Fact]
+    public void WithoutNetworkNoAdaptersAreRead()
+    {
+        var sampler = new HardwareSampler(new Probe(), new Disks(), network: false);
+        sampler.Resume();
+        sampler.Sample();
+        Assert.Null(sampler.Sample().Network);
+    }
 }

@@ -1,14 +1,14 @@
 @* Eine Verlaufslinie der Hardware-Seite (Markup: hw-sparks im Design-System). Der neueste Wert steht rechts, fehlende
-   Werte fallen aus der Linie heraus. Unter zwei Punkten steht ein Hinweis statt einer leeren Fläche. *@
+   Werte fallen aus der Linie heraus. Unter zwei Punkten steht ein Hinweis in derselben Höhe (nichts springt). *@
 <div>
     <div class="hw-spark-hd">@Title</div>
     @if (Values.Count(v => v != null) < 2)
     {
-        <div class="hw-sub">Collecting…</div>
+        <div class="hw-sub hw-spark-wait">Collecting…</div>
     }
     else
     {
-        <svg class="hw-spark" viewBox="0 0 300 70" preserveAspectRatio="none"><polyline class="line @Kind" fill="none" points="@Sparkline.Points(Values, Max)" /></svg>
+        <svg class="hw-spark" role="img" aria-label="@Title" viewBox="0 0 300 70" preserveAspectRatio="none"><polyline class="line @Kind" fill="none" points="@Sparkline.Points(Values, Max)" /></svg>
     }
 </div>
 

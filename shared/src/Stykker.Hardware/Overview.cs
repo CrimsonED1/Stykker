@@ -25,15 +25,20 @@ public interface IHardwareProbe : IDisposable
 
     // Die NVIDIA-Karte über NVML (Takte, Leistung, Temperatur, gesamter Speicher); null ohne NVIDIA-Treiber.
     NvidiaGpu? ReadNvidia() => null;
+
+    // Ob die Programme (Prozessliste) gelesen werden. In einer Simulation nicht: dort stehen keine echten Programmnamen.
+    bool ListsProcesses => true;
 }
 
 // Ohne Windows oder mit --basic: keine Zahl, überall „–".
-public sealed class BasicHardwareProbe : IHardwareProbe
+// isolated: auch die Prozessliste nicht lesen (Simulation, Doku-Bilder: nichts vom echten Rechner).
+public sealed class BasicHardwareProbe(bool isolated = false) : IHardwareProbe
 {
     public SystemLoad? ReadSystem() => null;
     public GpuUtilSample? ReadGpuUtil() => null;
     public IReadOnlyList<GpuProcRow>? ReadGpuMemory() => null;
     public double? ReadGpuMemoryUsedMb() => null;
+    public bool ListsProcesses => !isolated;
     public void Dispose() { }
 }
 
@@ -138,6 +143,7 @@ public static class OverviewMath
 public sealed class OverviewSampler : ISampler<OverviewSnapshot>
 {
     private const int ProgramCount = 8;
+    private const int GpuProgramCount = 32;   // die GPU-Karte zeigt mehr Programme als die Prozessor- und Speicherlisten
     private const int MemoryEveryTicks = 3;   // die Abfragen über alle Grafikprozesse sind teuer
 
     private readonly IHardwareProbe _probe;
@@ -175,21 +181,21 @@ public sealed class OverviewSampler : ISampler<OverviewSnapshot>
                 _gpuMem = _probe.ReadGpuMemory();
                 _vramUsedMb = _probe.ReadGpuMemoryUsedMb();
             }
-            var processes = ReadProcesses(now, out int unreadable);
+            var names = new Dictionary<int, string>(256);
+            int unreadable = 0;
+            var processes = _probe.ListsProcesses ? ReadProcesses(now, names, out unreadable) : new List<ProcessMeasure>();
             _tick++;
 
             OverviewSystem? system = load == null ? null
                 : new OverviewSystem(first ? null : load.CpuPercent, load.Cores, load.CoreLoads,
                     load.RamUsedGb, load.RamTotalGb, load.CommitUsedGb, load.CommitLimitGb);
 
-            var names = new Dictionary<int, string>(processes.Count);
-            foreach (var p in processes) names[p.Pid] = p.Name;
             var programs = OverviewMath.ByName(processes);
 
             bool gpuAnswered = util != null || _gpuMem != null || _vramUsedMb != null;
             OverviewGpu? gpu = gpuAnswered
                 ? new OverviewGpu(OverviewMath.UtilTotal(util), util?.Engines ?? Array.Empty<GpuEngineRow>(), _vramUsedMb,
-                    OverviewMath.GpuByName(util, _gpuMem, names, ProgramCount))
+                    OverviewMath.GpuByName(util, _gpuMem, names, GpuProgramCount))
                 : null;
 
             var notes = new List<string>(3);
@@ -204,8 +210,8 @@ public sealed class OverviewSampler : ISampler<OverviewSnapshot>
     }
 
     // Alle Prozesse mit Speicher und Prozessorzeit. Die Zeit je Prozess als Differenz zur letzten Messung. Zählt zugleich
-    // die Prozesse, deren Zeit Windows nicht herausgibt.
-    private List<ProcessMeasure> ReadProcesses(DateTime now, out int unreadable)
+    // die Prozesse, deren Zeit Windows nicht herausgibt. names bekommt jeden Namen, auch den geschützter Prozesse (für die GPU).
+    private List<ProcessMeasure> ReadProcesses(DateTime now, Dictionary<int, string> names, out int unreadable)
     {
         var list = new List<ProcessMeasure>(256);
         var alive = new HashSet<int>();
@@ -216,6 +222,7 @@ public sealed class OverviewSampler : ISampler<OverviewSnapshot>
             {
                 int pid = p.Id;
                 alive.Add(pid);
+                try { names[pid] = p.ProcessName; } catch (InvalidOperationException) { }
                 long cpuMs = (long)p.TotalProcessorTime.TotalMilliseconds;
                 double? cpu = null;
                 if (_prev.TryGetValue(pid, out var prev))

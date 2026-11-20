@@ -11,15 +11,22 @@ public interface ISampler<T>
 // zusieht: der erste Abruf (Seite oder Fenster) wirft sie an, und wenn 15 Sekunden niemand mehr gefragt hat, hält sie
 // wieder an. So kostet eine geschlossene Anwendung nichts, und der Server startet davon unabhängig sofort,
 // weil er beim Start nichts messen muss.
+//
+// Gemessen wird außerhalb des Schlosses, das Abrufe nehmen: ein Abruf bekommt sofort die letzte Messung und wartet nie
+// auf eine laufende (eine Messung kann Hunderte Millisekunden dauern, ein Abruf kommt etwa aus einer Blazor-Verbindung).
+// Nur der allererste Abruf misst selbst. Es misst immer nur einer zugleich (_sampleGate); ein Takt, der eine laufende
+// Messung antrifft, fällt aus. Wirft die erste Messung, bleibt die Schleife aus und der nächste Abruf versucht es neu.
 public class ViewerLoop<T> : IDisposable where T : class
 {
     private readonly ISampler<T> _sampler;
     private readonly TimeSpan _idleStop;
     private readonly Timer _timer;
-    private readonly object _gate = new();
+    private readonly object _gate = new();         // _current, _lastViewer, _running – nur kurz gehalten
+    private readonly object _sampleGate = new();   // eine Messung zur Zeit
     private T? _current;
     private DateTime _lastViewer = DateTime.MinValue;
     private bool _running;
+    private bool _disposed;
 
     // idleStop: wie lange nach dem letzten Abruf noch gemessen wird. Vorgabe: 15 Sekunden.
     public ViewerLoop(ISampler<T> sampler, TimeSpan? idleStop = null)
@@ -35,34 +42,67 @@ public class ViewerLoop<T> : IDisposable where T : class
         lock (_gate)
         {
             _lastViewer = DateTime.Now;
-            if (_running) return _current ??= _sampler.Sample();
-
-            // Anfang (oder Wiederanfang nach einer Pause): Grundwerte neu setzen, damit die erste Zahl stimmt.
-            _running = true;
-            _sampler.Resume();
-            _current = _sampler.Sample();
-            _timer.Change(TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
-            return _current;
+            if (_running && _current != null) return _current;
+        }
+        // Anfang (oder Wiederanfang nach einer Pause): selbst messen, mit neuen Grundwerten, damit die erste Zahl stimmt.
+        lock (_sampleGate)
+        {
+            bool resume;
+            lock (_gate)
+            {
+                if (_running && _current != null) return _current;   // ein anderer Abruf war schneller
+                resume = !_running;
+            }
+            if (resume) _sampler.Resume();
+            var value = _sampler.Sample();   // wirft sie, bleibt die Schleife aus; der nächste Abruf versucht es neu
+            lock (_gate)
+            {
+                _current = value;
+                if (!_running && !_disposed)
+                {
+                    _running = true;
+                    _timer.Change(TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
+                }
+                return value;
+            }
         }
     }
 
     private void Tick()
     {
-        try
+        lock (_gate)
         {
-            lock (_gate)
+            if (!_running) return;
+            if (DateTime.Now - _lastViewer > _idleStop)
             {
-                if (DateTime.Now - _lastViewer > _idleStop)
-                {
-                    _running = false;
-                    _timer.Change(Timeout.Infinite, Timeout.Infinite);
-                    return;
-                }
-                _current = _sampler.Sample();
+                _running = false;
+                _current = null;   // nach der Pause keine alte Zahl zeigen
+                if (!_disposed) _timer.Change(Timeout.Infinite, Timeout.Infinite);
+                return;
             }
         }
+        // Läuft noch eine Messung (länger als ein Takt), fällt dieser Takt aus.
+        if (!Monitor.TryEnter(_sampleGate)) return;
+        try
+        {
+            var value = _sampler.Sample();
+            lock (_gate) if (_running) _current = value;
+        }
         catch (Exception) { /* eine ausgefallene Messung darf die Schleife nicht anhalten */ }
+        finally { Monitor.Exit(_sampleGate); }
     }
 
-    public void Dispose() => _timer.Dispose();
+    // Hält die Schleife an und gibt den Sampler frei, wenn er etwas hält (Zähler, Treiber).
+    public void Dispose()
+    {
+        lock (_gate)
+        {
+            if (_disposed) return;
+            _disposed = true;
+            _running = false;
+        }
+        _timer.Dispose();
+        lock (_sampleGate) (_sampler as IDisposable)?.Dispose();
+        GC.SuppressFinalize(this);
+    }
 }

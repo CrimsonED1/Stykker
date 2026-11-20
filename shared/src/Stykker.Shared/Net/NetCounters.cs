@@ -30,7 +30,8 @@ public sealed class NetCounters
             foreach (var ni in NetworkInterface.GetAllNetworkInterfaces())
             {
                 // Tunnel und VPNs (Tailscale meldet sich teils als „Unknown“): ihr Verkehr läuft auch über einen echten Adapter
-                if (ni.NetworkInterfaceType == NetworkInterfaceType.Loopback || NetAdapters.KindOf(ni) == NetAdapterKind.Tunnel) continue;
+                // ebenso Adapter, die nur virtuelle Maschinen auf diesem PC erreichen (VirtualBox Host-Only, Hyper-V Default Switch …)
+                if (ni.NetworkInterfaceType == NetworkInterfaceType.Loopback || NetAdapters.KindOf(ni) is NetAdapterKind.Tunnel or NetAdapterKind.Virtual) continue;
                 if (ni.OperationalStatus != OperationalStatus.Up) continue;
                 if (NetAdapters.IsFilter(ni.Name)) continue;   // Filter-Treiber zählten denselben Verkehr noch einmal
                 try

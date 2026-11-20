@@ -53,7 +53,7 @@ any browser or your phone; keep an eye on it in the terminal. Nothing leaves you
   light; *System* switches with the light/dark setting of the device. Symbols instead of words, `Ctrl+K` for every page
   and action.
 
-| Model tests | GPU details |
+| Model tests | GPU (older picture; today the GPU section of the Hardware page) |
 |---|---|
 | ![model test ranking](docs/images/model-tests.png) | ![GPU details](docs/images/gpu.png) |
 

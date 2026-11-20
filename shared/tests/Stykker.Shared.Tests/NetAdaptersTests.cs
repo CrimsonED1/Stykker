@@ -3,7 +3,7 @@ using Stykker.Shared.Net;
 
 namespace Stykker.Shared.Tests;
 
-// Netzwerk je Adapter: Filter-Treiber zählen nicht, VPNs (Tailscale) sind Tunnel und gehen nicht in die Summe.
+// Netzwerk je Adapter: Filter-Treiber zählen nicht; VPNs (Tailscale) und Adapter nur zu VMs gehen nicht in die Summe.
 public class NetAdaptersTests
 {
     [Theory]
@@ -26,6 +26,11 @@ public class NetAdaptersTests
     [InlineData(NetworkInterfaceType.Wireless80211, "WLAN", "Intel Wi-Fi 6", NetAdapterKind.Wifi)]
     [InlineData(NetworkInterfaceType.Ethernet, "Ethernet", "Realtek PCIe GbE", NetAdapterKind.Ethernet)]
     [InlineData(NetworkInterfaceType.Ppp, "Modem", "Dial-up", NetAdapterKind.Other)]
+    [InlineData(NetworkInterfaceType.Ethernet, "Ethernet 2", "VirtualBox Host-Only Ethernet Adapter", NetAdapterKind.Virtual)]
+    [InlineData(NetworkInterfaceType.Ethernet, "VMware Network Adapter VMnet8", "VMware Virtual Ethernet Adapter for VMnet8", NetAdapterKind.Virtual)]
+    [InlineData(NetworkInterfaceType.Ethernet, "vEthernet (Default Switch)", "Hyper-V Virtual Ethernet Adapter", NetAdapterKind.Virtual)]
+    [InlineData(NetworkInterfaceType.Ethernet, "vEthernet (WSL (Hyper-V firewall))", "Hyper-V Virtual Ethernet Adapter #2", NetAdapterKind.Virtual)]
+    [InlineData(NetworkInterfaceType.Ethernet, "vEthernet (External)", "Hyper-V Virtual Ethernet Adapter #3", NetAdapterKind.Ethernet)]
     public void KindOfAdapter(NetworkInterfaceType type, string name, string description, NetAdapterKind kind) =>
         Assert.Equal(kind, NetAdapters.KindOf(type, name, description));
 
@@ -34,6 +39,7 @@ public class NetAdaptersTests
     {
         Assert.False(new NetAdapterRow("1", "Tailscale", "Tailscale Tunnel", NetAdapterKind.Tunnel, 0, 10, 10).CountsInTotal);
         Assert.True(new NetAdapterRow("2", "Ethernet", "Realtek", NetAdapterKind.Ethernet, 125e6, 10, 10).CountsInTotal);
+        Assert.False(new NetAdapterRow("4", "Ethernet 2", "VirtualBox Host-Only", NetAdapterKind.Virtual, 125e6, 10, 10).CountsInTotal);
     }
 
     [Fact]

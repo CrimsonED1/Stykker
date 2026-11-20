@@ -24,6 +24,8 @@ jedem Browser oder auf dem Handy; im Terminal behältst du alles im Blick. Nicht
 - **Live-Ansicht**: Tokens/s je Slot, Prompt lesen oder schreiben, Kontextbalken, Warteschlange, eine leuchtende
   Verlaufskurve; die Karte leuchtet, solange ein Modell schreibt.
 - **GPU und System**: Last, VRAM, Leistung, Temperatur, Takt, Drosselung, dazu VRAM und RAM **je Programm** als Balken.
+  Die Seite **Hardware** (`/hardware`) zeigt Prozessor und Speicher, Grafikkarte, Laufwerke und Netzwerk auf einer Seite,
+  jeweils mit Verlauf; es ist dieselbe Seite wie die Übersicht von StykkerSYS (`shared/src/Stykker.Hardware`).
   **Free VRAM** stoppt lokale llama.cpp-Server und entlädt Ollama-Modelle mit einem Klick.
 - **Profile und Verlauf**: einen laufenden Server als Profil speichern und später wieder starten (mit Vorprüfung: Port frei,
   Modelldatei da, VRAM-Schätzung); auf Wunsch Neustart nach Absturz und Entladen nach Leerlauf.
@@ -43,7 +45,7 @@ jedem Browser oder auf dem Handy; im Terminal behältst du alles im Blick. Nicht
 - **Zwei Themen**: *Dark* mit weichem Leuchten und *Spacepunk Titan*, ein mattes helles Thema wie eine Schiffskonsole
   bei Arbeitslicht; *System* folgt Hell/Dunkel des Geräts. Symbole statt Wörter, `Ctrl+K` für jede Seite und Aktion.
 
-| Modelltests | GPU-Details |
+| Modelltests | GPU (älteres Bild; heute der GPU-Abschnitt der Hardware-Seite) |
 |---|---|
 | ![Rangliste der Modelltests](docs/images/model-tests.png) | ![GPU-Details](docs/images/gpu.png) |
 

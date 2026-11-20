@@ -102,7 +102,16 @@ sim?.World.Start();
 builder.Services.AddSingleton<EngineHost>(sp => new EngineHost(paths, platform, sim, pairingFile));
 builder.Services.AddSingleton(sp => new EvalQueue(paths));
 // Die Hardware-Seite (/hardware, Stykker.Hardware): misst nur, solange sie offen ist (unabhängig vom Monitor-Takt).
-builder.Services.AddSingleton(_ => Stykker.Hardware.HardwareMonitor.Create());
+// --platform basic: nur, was .NET selbst liest (wie unter Linux). --sim: nichts vom echten Rechner (Doku-Bilder),
+// also keine echten Programm- oder Adapternamen und kein Vorlauf aus der echten Messung.
+bool hardwareBasic = platform is BasicPlatform;
+// Der Verlauf, den der Monitor ohnehin führt (GPU, Laufwerke), füllt die Kurven beim Öffnen gleich vor.
+builder.Services.AddSingleton(sp =>
+{
+    var engine = sp.GetRequiredService<EngineHost>().Engine;
+    return Stykker.Hardware.HardwareMonitor.Create(hardwareBasic, () => HardwareSeed.From(engine.GpuHistory, engine.DiskHistory),
+        isolated: sim != null);
+});
 builder.Services.AddSingleton(sp => new ActionContext
 {
     Engine = sp.GetRequiredService<EngineHost>().Engine,

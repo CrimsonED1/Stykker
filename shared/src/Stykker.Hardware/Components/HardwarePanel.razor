@@ -1,5 +1,6 @@
-@implements IDisposable
+@implements IAsyncDisposable
 @inject HardwareMonitor Monitor
+@inject IJSRuntime JS
 
 @* Die gemeinsame Hardware-Seite von StykkerLLM und StykkerSYS: Prozessor und Speicher, Grafikkarte, Laufwerke und
    Netzwerk auf einer Seite, mit Verlauf seit dem Öffnen (höchstens fünf Minuten). Markup und Stil: die Hardware-Bausteine
@@ -17,7 +18,11 @@
     var o = s.Overview;
     var sys = o.System;
     var hist = s.History;
-    var notes = o.Notes.Concat(s.Disks.Notes).ToList();
+    // Oben stehen nur Hinweise, die etwas Fehlendes erklären. „Not listed …“ betrifft nur die Programmlisten und steht
+    // leise in der Prozessor-Karte; „No GPU values“ entfällt, wenn NVML die Karte liefert.
+    var hidden = o.Notes.FirstOrDefault(n => n.StartsWith("Not listed", StringComparison.Ordinal));
+    var notes = o.Notes.Where(n => n != hidden && !(s.Nvidia != null && n.StartsWith("No GPU values", StringComparison.Ordinal)))
+        .Concat(s.Disks.Notes).ToList();
 }
 
 @foreach (var note in notes)
@@ -117,6 +122,10 @@
             </div>
         </div>
     }
+    @if (hidden != null)
+    {
+        <p class="hw-sub hw-hint-line">@hidden</p>
+    }
 </section>
 
 @* ── Grafikkarte: NVML (NVIDIA) wenn möglich, sonst die Windows-Zähler ── *@
@@ -165,7 +174,9 @@
     {
         <div class="hw-sep">
             <div class="hw-subh">Engines</div>
-            <p class="hw-sub hw-hint-line">Engines run side by side; the load above is the busiest one.</p>
+            <p class="hw-sub hw-hint-line">@(n == null
+                ? "Engines run side by side; the load above is the busiest one."
+                : "Windows GPU counters over all graphics adapters (an integrated GPU included); the load above is the NVIDIA card's own.")</p>
             <div class="hw-meters">
                 @foreach (var e in wg.Engines.OrderByDescending(e => e.Percent))
                 {
@@ -217,12 +228,16 @@
 <section class="hw-card" id="drives">
     <div class="hw-head">Drives</div>
     @{ var dk = s.Disks.Disks; }
-    @if (dk == null || dk.Volumes.Count == 0)
+    @if (dk == null || (dk.Volumes.Count == 0 && dk.Disks.Count == 0))
     {
         <span class="hw-sub">No drive values.</span>
     }
     else
     {
+        @if (dk.Volumes.Count == 0)
+        {
+            <span class="hw-sub">No volume values – only the physical drives answered.</span>
+        }
         @foreach (var v in dk.Volumes)
         {
             double used = v.TotalBytes > 0 ? Math.Clamp(v.UsedBytes / v.TotalBytes, 0, 1) : 0;
@@ -244,14 +259,12 @@
                     <span>Busy <b>@HwFormat.Pct(v.BusyPercent)</b></span>
                     <span>Queue <b>@(v.QueueLength is double q ? q.ToString("0.00", CultureInfo.InvariantCulture) : HwFormat.Dash)</b></span>
                 </div>
-                @if (hist.Count >= 2)
-                {
-                    <div class="hw-sparks">
-                        <Spark Title="@($"Read · max {HwFormat.Rate(readTop)}")" Values="@reads" Max="@readTop" />
-                        <Spark Title="@($"Write · max {HwFormat.Rate(writeTop)}")" Values="@writes" Max="@writeTop" Kind="second" />
-                        <Spark Title="Busy · max 100 %" Values="@busy" Max="100" Kind="warn" />
-                    </div>
-                }
+                @* immer zeigen: die Kurven warten mit fester Höhe auf zwei Punkte, damit nichts springt *@
+                <div class="hw-sparks">
+                    <Spark Title="@($"Read · max {HwFormat.Rate(readTop)}")" Values="@reads" Max="@readTop" />
+                    <Spark Title="@($"Write · max {HwFormat.Rate(writeTop)}")" Values="@writes" Max="@writeTop" Kind="second" />
+                    <Spark Title="Busy · max 100 %" Values="@busy" Max="100" Kind="warn" />
+                </div>
             </div>
         }
         @if (dk.Disks.Count > 0)
@@ -277,6 +290,13 @@
                 </div>
             </div>
         }
+    }
+    @if (s.Disks.Processes.Count == 0 && dk != null)
+    {
+        <div class="hw-sep">
+            <div class="hw-subh">Programs with the most disk traffic</div>
+            <span class="hw-sub">No program reads or writes right now (or Windows does not name them).</span>
+        </div>
     }
     @if (s.Disks.Processes.Count > 0)
     {
@@ -336,50 +356,81 @@
         </div>
         @if (adapters.Any(a => !a.CountsInTotal))
         {
-            <p class="hw-sub hw-hint-line">VPN and tunnel adapters (Tailscale and the like) carry traffic that also runs over a real adapter; they are not added to the totals.</p>
+            <p class="hw-sub hw-hint-line">Not added to the totals: VPN and tunnel adapters (Tailscale and the like; their traffic also runs over a real adapter) and virtual adapters that only reach virtual machines on this PC.</p>
         }
-        @if (hist.Count >= 2)
-        {
-            var rxs = hist.Select(h => h.NetRx).ToList();
-            var txs = hist.Select(h => h.NetTx).ToList();
-            double rxTop = Sparkline.Scale(rxs, 128 * 1024), txTop = Sparkline.Scale(txs, 128 * 1024);
-            <div class="hw-sep">
-                <div class="hw-subh">History</div>
-                <div class="hw-sparks">
-                    <Spark Title="@($"Receive · max {HwFormat.Rate(rxTop)}")" Values="@rxs" Max="@rxTop" />
-                    <Spark Title="@($"Send · max {HwFormat.Rate(txTop)}")" Values="@txs" Max="@txTop" Kind="second" />
-                </div>
+        @* immer zeigen (feste Höhe, siehe Spark) *@
+        var rxs = hist.Select(h => h.NetRx).ToList();
+        var txs = hist.Select(h => h.NetTx).ToList();
+        double rxTop = Sparkline.Scale(rxs, 128 * 1024), txTop = Sparkline.Scale(txs, 128 * 1024);
+        <div class="hw-sep">
+            <div class="hw-subh">History</div>
+            <div class="hw-sparks">
+                <Spark Title="@($"Receive · max {HwFormat.Rate(rxTop)}")" Values="@rxs" Max="@rxTop" />
+                <Spark Title="@($"Send · max {HwFormat.Rate(txTop)}")" Values="@txs" Max="@txTop" Kind="second" />
             </div>
-        }
+        </div>
     }
 </section>
 
 @code {
     private HardwareSnapshot? _s;
     private Timer? _timer;
+    private volatile bool _visible = true;
+    private DotNetObjectReference<HardwarePanel>? _self;
+    private IJSObjectReference? _module, _watch;
 
     protected override void OnInitialized() => _s = Read();
 
-    protected override void OnAfterRender(bool firstRender)
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        // Erst nach dem ersten Zeichnen (im interaktiven Lauf) jede Sekunde nachfragen.
-        if (firstRender && RendererInfo.IsInteractive)
-            _timer = new Timer(_ => InvokeAsync(() => { _s = Read(); StateHasChanged(); }), null, 1000, 1000);
+        // Erst nach dem ersten Zeichnen (im interaktiven Lauf) jede Sekunde nachfragen – nur solange die Seite sichtbar ist.
+        if (!firstRender || !RendererInfo.IsInteractive) return;
+        _timer = new Timer(_ => { if (_visible) InvokeAsync(Refresh); }, null, 1000, 1000);
+        try
+        {
+            _self = DotNetObjectReference.Create(this);
+            _module = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/Stykker.Hardware/hardware-panel.js");
+            _watch = await _module.InvokeAsync<IJSObjectReference>("watch", _self);
+            _visible = await _module.InvokeAsync<bool>("visible");
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException or TaskCanceledException or InvalidOperationException) { }
+    }
+
+    private void Refresh() { _s = Read(); StateHasChanged(); }
+
+    // Aus dem Skript: der Tab oder das Fenster wurde verborgen oder wieder gezeigt
+    [JSInvokable]
+    public async Task Visible(bool visible)
+    {
+        _visible = visible;
+        if (visible) await InvokeAsync(Refresh);   // gleich den aktuellen Stand, nicht erst im nächsten Takt
     }
 
     private HardwareSnapshot? Read()
     {
+        // Eine ausgefallene Messung darf weder das Vorab-Rendern (500) noch die Verbindung beenden: den letzten Stand behalten.
         try { return Monitor.Snapshot(); }
-        catch (Exception ex) when (ex is InvalidOperationException or ObjectDisposedException) { return _s; }
+        catch (Exception) { return _s; }
     }
 
-    public void Dispose() => _timer?.Dispose();
+    public async ValueTask DisposeAsync()
+    {
+        _timer?.Dispose();
+        try
+        {
+            if (_watch != null) { await _watch.InvokeVoidAsync("stop"); await _watch.DisposeAsync(); }
+            if (_module != null) await _module.DisposeAsync();
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException or TaskCanceledException) { }
+        _self?.Dispose();
+    }
 
     private static string KindText(NetAdapterKind kind) => kind switch
     {
         NetAdapterKind.Ethernet => "LAN",
         NetAdapterKind.Wifi => "Wi-Fi",
         NetAdapterKind.Tunnel => "VPN / tunnel",
+        NetAdapterKind.Virtual => "virtual (VMs)",
         _ => "other",
     };
 

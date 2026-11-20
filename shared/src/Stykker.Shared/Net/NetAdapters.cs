@@ -8,10 +8,12 @@ namespace Stykker.Shared.Net;
 public sealed record NetAdapterRow(string Id, string Name, string Description, NetAdapterKind Kind, double LinkBytesPerSec,
     double? RxBytesPerSec, double? TxBytesPerSec)
 {
-    public bool CountsInTotal => Kind != NetAdapterKind.Tunnel;
+    public bool CountsInTotal => Kind is not (NetAdapterKind.Tunnel or NetAdapterKind.Virtual);
 }
 
-public enum NetAdapterKind { Ethernet, Wifi, Tunnel, Other }
+// Virtual: ein Adapter, der nur virtuelle Maschinen auf diesem PC erreicht (VirtualBox Host-Only, VMware VMnet, Hyper-V
+// „Default Switch“, WSL). Ein Hyper-V-Switch nach außen („vEthernet (External…)“) trägt dagegen den echten Verkehr und zählt.
+public enum NetAdapterKind { Ethernet, Wifi, Tunnel, Other, Virtual }
 
 // Liest die verbundenen Adapter einzeln (ohne Loopback) und rechnet je Adapter den Durchsatz seit dem letzten Aufruf.
 // Nur .NET-Bordmittel. Darf von mehreren Threads gerufen werden.
@@ -86,6 +88,9 @@ public sealed class NetAdapters
             || text.Contains("Wintun", StringComparison.OrdinalIgnoreCase) || text.Contains("WireGuard", StringComparison.OrdinalIgnoreCase)
             || text.Contains("VPN", StringComparison.OrdinalIgnoreCase))
             return NetAdapterKind.Tunnel;
+        if (text.Contains("Host-Only", StringComparison.OrdinalIgnoreCase) || text.Contains("VMware Virtual Ethernet", StringComparison.OrdinalIgnoreCase)
+            || text.Contains("(Default Switch)", StringComparison.OrdinalIgnoreCase) || text.Contains("(WSL", StringComparison.OrdinalIgnoreCase))
+            return NetAdapterKind.Virtual;
         if (type == NetworkInterfaceType.Wireless80211) return NetAdapterKind.Wifi;
         if (type is NetworkInterfaceType.Ethernet or NetworkInterfaceType.GigabitEthernet or NetworkInterfaceType.FastEthernetT
             or NetworkInterfaceType.FastEthernetFx or NetworkInterfaceType.Ethernet3Megabit) return NetAdapterKind.Ethernet;

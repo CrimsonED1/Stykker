@@ -20,20 +20,29 @@ public readonly record struct VolumeRate(double? Read, double? Write, double? Bu
 
 // Setzt die Messung aus den Teilen zusammen und führt den Verlauf. Die Grafikkarte aus NVML, wenn es eine NVIDIA-Karte
 // gibt (genauer, mit Gesamtgröße, Leistung, Temperatur); sonst die Windows-Zähler.
-public sealed class HardwareSampler : ISampler<HardwareSnapshot>
+public sealed class HardwareSampler : ISampler<HardwareSnapshot>, IDisposable
 {
     public const int HistoryLength = 300;   // fünf Minuten im Sekundentakt
 
     private readonly IHardwareProbe _probe;
+    private readonly IDiskProbe _diskProbe;
+    private bool _disposed;
     private readonly OverviewSampler _overview;
     private readonly DiskSampler _disks;
-    private readonly NetAdapters _net = new();
+    private readonly NetAdapters? _net;
+    private readonly Func<IReadOnlyList<HistoryPoint>>? _seed;   // null: keine Adapter lesen (basic, Simulation)
     private readonly Queue<HistoryPoint> _history = new();
     private readonly object _gate = new();
 
-    public HardwareSampler(IHardwareProbe probe, IDiskProbe disks)
+    // network: false liest keine Netzwerkadapter (ohne Systemzugriff oder in einer Simulation keine echten Namen zeigen).
+    // seed: ein Verlauf, den das Werkzeug ohnehin führt (LLM misst GPU und Laufwerke dauernd); er steht nach einer Pause
+    // gleich wieder in den Kurven, statt dass sie leer anfangen. Ältester Punkt zuerst.
+    public HardwareSampler(IHardwareProbe probe, IDiskProbe disks, bool network = true, Func<IReadOnlyList<HistoryPoint>>? seed = null)
     {
+        _seed = seed;
         _probe = probe;
+        _net = network ? new NetAdapters() : null;
+        _diskProbe = disks;
         _overview = new OverviewSampler(probe);
         _disks = new DiskSampler(disks);
     }
@@ -45,8 +54,15 @@ public sealed class HardwareSampler : ISampler<HardwareSnapshot>
         {
             _overview.Resume();
             _disks.Resume();
-            _net.Reset();
+            _net?.Reset();
             _history.Clear();
+            if (_seed != null)
+            {
+                IReadOnlyList<HistoryPoint> seeded;
+                try { seeded = _seed(); }
+                catch (Exception) { seeded = Array.Empty<HistoryPoint>(); }   // ein fehlender Vorlauf darf die Messung nicht stoppen
+                foreach (var p in seeded.Skip(Math.Max(0, seeded.Count - (HistoryLength - 1)))) _history.Enqueue(p);
+            }
         }
     }
 
@@ -57,11 +73,23 @@ public sealed class HardwareSampler : ISampler<HardwareSnapshot>
             var overview = _overview.Sample();
             var disks = _disks.Sample();
             var nvidia = _probe.ReadNvidia();
-            var net = _net.Read();
+            var net = _net?.Read();
             var point = Point(overview, nvidia, disks, net);
             _history.Enqueue(point);
             while (_history.Count > HistoryLength) _history.Dequeue();
             return new HardwareSnapshot(point.At, overview, nvidia, disks, net, _history.ToArray());
+        }
+    }
+
+    // Gibt die Sonden frei (Leistungsindikatoren, NVML: nvmlShutdown zählt mit, darum genau einmal).
+    public void Dispose()
+    {
+        lock (_gate)
+        {
+            if (_disposed) return;
+            _disposed = true;
+            _probe.Dispose();
+            _diskProbe.Dispose();
         }
     }
 
@@ -93,16 +121,15 @@ public sealed class HardwareMonitor : ViewerLoop<HardwareSnapshot>
 {
     public HardwareMonitor(HardwareSampler sampler) : base(sampler) { }
 
-    // Die Sonden für dieses System: unter Windows die Leistungsindikatoren und NVML, sonst (oder mit basic) keine Werte.
-    public static HardwareMonitor Create(bool basic = false)
+    // Die Sonden für dieses System: unter Windows die Leistungsindikatoren und NVML. Ohne Windows oder mit basic nur,
+    // was .NET selbst liest (Programme, Netzwerk), sonst „–". isolated (Simulation, Doku-Bilder): gar nichts vom echten
+    // Rechner, also auch keine Programm- oder Adapternamen.
+    public static HardwareMonitor Create(bool basic = false, Func<IReadOnlyList<HistoryPoint>>? seed = null, bool isolated = false)
     {
-        IHardwareProbe probe = new BasicHardwareProbe();
-        IDiskProbe disks = new BasicDiskProbe();
-        if (!basic && OperatingSystem.IsWindows())
-        {
-            probe = new Windows.WindowsHardwareProbe();
-            disks = new Windows.WindowsDiskProbe();
-        }
-        return new HardwareMonitor(new HardwareSampler(probe, disks));
+        if (isolated)
+            return new HardwareMonitor(new HardwareSampler(new BasicHardwareProbe(isolated: true), new BasicDiskProbe(), network: false));
+        if (basic || !OperatingSystem.IsWindows())
+            return new HardwareMonitor(new HardwareSampler(new BasicHardwareProbe(), new BasicDiskProbe(), seed: seed));
+        return new HardwareMonitor(new HardwareSampler(new Windows.WindowsHardwareProbe(), new Windows.WindowsDiskProbe(), seed: seed));
     }
 }

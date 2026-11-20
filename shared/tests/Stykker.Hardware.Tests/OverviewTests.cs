@@ -178,4 +178,15 @@ public class OverviewTests
         Assert.Null(snapshot.Gpu);
         Assert.NotEmpty(snapshot.TopByRam);
     }
+
+    [Fact]
+    public void InEinerSimulationWerdenKeineProgrammeGelesen()
+    {
+        var sampler = new OverviewSampler(new BasicHardwareProbe(isolated: true));
+        sampler.Sample();
+        var s = sampler.Sample();
+        Assert.Empty(s.TopByRam);
+        Assert.Empty(s.TopByCpu);
+        Assert.DoesNotContain(s.Notes, n => n.StartsWith("Not listed", StringComparison.Ordinal));
+    }
 }

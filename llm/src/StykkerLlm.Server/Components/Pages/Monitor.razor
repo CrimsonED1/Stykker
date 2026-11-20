@@ -275,7 +275,7 @@
                 <HwMeter Label="@Strings.GpuTemp" Value="@g.TempC.ToString("0", CultureInfo.InvariantCulture)" Unit="°C" Fraction="@Math.Clamp(g.TempC / 90.0, 0, 1)" Note="@(g.Throttled ? g.ThrottleText() : Strings.GpuClocksFree)" NoteWarn="@g.Throttled" />
             </div>
             <div class="hw-subh">@Strings.GpuConsumers</div>
-            <HwStack Items="e.VramTop" UsedGb="g.MemUsedGb" TotalGb="g.MemTotalGb" MoreHref="gpu" />
+            <HwStack Items="e.VramTop" UsedGb="g.MemUsedGb" TotalGb="g.MemTotalGb" MoreHref="hardware#gpu" />
         }
         @if (e.Sys is { } sy)
         {

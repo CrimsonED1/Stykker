@@ -124,7 +124,12 @@ app.MapPost("/api/process/open", (HttpContext ctx, ProcessOpenRequest body, IPro
     return Shell.RevealFile(path) ? new ActionResult(true, $"Shown in the Explorer: {path}") : new ActionResult(false, "The Explorer did not take the request.");
 }));
 
-app.MapRazorComponents<App>().AddInteractiveServerRenderMode();
+app.MapStaticAssets();   // liefert _framework/blazor.web.js auch aus dem veröffentlichten Ordner
+// Blazor setzt von sich aus "frame-ancestors 'self'". Mit Zentrale kommt der Kopf von oben (FrameAncestors), sonst bleibt die Vorgabe.
+app.MapRazorComponents<App>().AddInteractiveServerRenderMode(options =>
+{
+    if (hubPort > 0) options.ContentSecurityFrameAncestorsPolicy = null;
+});
 
 try { await app.StartAsync(); }
 catch (IOException ex)

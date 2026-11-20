@@ -60,4 +60,53 @@ public class ViewerLoopTests
         Assert.True(sampler.Samples >= 2, $"samples: {sampler.Samples}");
         Assert.Equal(1, sampler.Resumes);
     }
+
+    // Eine Messung, die beim ersten Mal wirft, dann langsam ist; sie zählt, ob sie freigegeben wurde.
+    private sealed class MoodySampler : ISampler<Reading>, IDisposable
+    {
+        public bool FailFirst = true;
+        public int SlowMs;
+        public int Samples, Disposes;
+        public void Resume() { }
+        public Reading Sample()
+        {
+            if (FailFirst) { FailFirst = false; throw new InvalidOperationException("counters not ready"); }
+            if (SlowMs > 0) Thread.Sleep(SlowMs);
+            return new(Interlocked.Increment(ref Samples));
+        }
+        public void Dispose() => Disposes++;
+    }
+
+    [Fact]
+    public void AFailedFirstReadingDoesNotFreezeTheLoop()
+    {
+        var sampler = new MoodySampler();
+        using var loop = new ViewerLoop<Reading>(sampler);
+        Assert.Throws<InvalidOperationException>(() => loop.Snapshot());
+        Assert.Equal(1, loop.Snapshot().Number);   // der nächste Abruf misst neu und startet die Schleife
+    }
+
+    [Fact]
+    public async Task AskingDoesNotWaitForASlowReading()
+    {
+        var sampler = new MoodySampler { FailFirst = false };
+        using var loop = new ViewerLoop<Reading>(sampler);
+        loop.Snapshot();
+        sampler.SlowMs = 1500;                      // die Takte messen ab jetzt langsam
+        await Task.Delay(1200);                      // ein Takt hat begonnen
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        loop.Snapshot();
+        Assert.True(watch.ElapsedMilliseconds < 300, $"waited {watch.ElapsedMilliseconds} ms");
+    }
+
+    [Fact]
+    public void DisposeReleasesTheSamplerOnce()
+    {
+        var sampler = new MoodySampler { FailFirst = false };
+        var loop = new ViewerLoop<Reading>(sampler);
+        loop.Snapshot();
+        loop.Dispose();
+        loop.Dispose();
+        Assert.Equal(1, sampler.Disposes);
+    }
 }
