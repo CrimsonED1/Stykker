@@ -43,6 +43,7 @@ public sealed class PeerManager : IHostedService, IDisposable
         _discovery = discovery;
         foreach (var address in settings.Peers.Concat(extraPeers)) Track(address, manual: true);
         node.FolderChanged += _ => Wake();
+        node.WakeRequested += Wake;
     }
 
     public sealed class Peer

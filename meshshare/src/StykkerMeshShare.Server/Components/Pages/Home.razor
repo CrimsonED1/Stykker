@@ -1,16 +1,18 @@
 @page "/"
-@* Eine Seite: links die Dropzone, rechts der Sync-Status, darunter die Dateien (zum Herunterladen, auch am Handy)
-   und was zuletzt passiert ist. Statisch gerendert; meshshare.js holt die Werte aus /api/status und /api/files. *@
+@* Eine Seite: links die Dropzone, rechts der Sync-Status, darunter die Übertragung, die Dateien (ansehen und
+   herunterladen, auch am Handy), was zuletzt passiert ist und der Papierkorb. Statisch gerendert; die Skripte in
+   wwwroot/js holen die Werte aus /api/status, /api/files und /api/trash. *@
 
 <div class="top">
     <div class="brand"><span class="logo">◆</span> STYKKER <span class="acc">MESHSHARE</span></div>
     <div class="strip">
-        <span class="stat" title="Files in the shared folder">Files <b id="v-files">–</b></span>
-        <span class="stat" title="Size of the shared folder">Size <b id="v-size">–</b></span>
+        <span class="stat" title="The PC this page belongs to">This PC <b id="v-name">–</b></span>
+        <span class="stat hide-s" title="Files in the shared folder">Files <b id="v-files">–</b></span>
+        <span class="stat hide-s" title="Size of the shared folder">Size <b id="v-size">–</b></span>
         <span class="stat" id="v-peers-chip" title="Other PCs online">PCs <b id="v-peers">–</b></span>
         <div class="seg" role="group" aria-label="Theme">
-            <button type="button" data-theme-choice="dark" class="on">Dark</button>
-            <button type="button" data-theme-choice="titan">Titan</button>
+            <button type="button" data-theme-choice="dark" class="on" aria-pressed="true">Dark</button>
+            <button type="button" data-theme-choice="titan" aria-pressed="false">Titan</button>
         </div>
     </div>
 </div>
@@ -19,25 +21,31 @@
     <div id="notes"></div>
 
     <div class="ms-grid">
-        <section class="card ms-drop" id="drop" tabindex="0" role="button" aria-label="Drop files here, or choose files">
+        <section class="card ms-drop" id="drop" aria-label="Add files">
             <input type="file" id="pick" multiple hidden />
+            <input type="file" id="pick-dir" webkitdirectory multiple hidden />
             <div class="ms-drop-inner">
                 <svg class="ic ms-drop-ic" aria-hidden="true"><use href="#i-arrow-down" /></svg>
-                <b>Drop files or folders here</b>
+                <b class="ms-drop-pc">Drop files or folders here</b>
+                <b class="ms-drop-phone">Add files from this phone</b>
                 <span class="muted">They go into the shared folder and reach every PC.</span>
                 <span class="ms-drop-acts">
                     <button type="button" class="primary" id="pick-btn">Choose files</button>
-                    <button type="button" id="open-folder" title="Open the shared folder in the Explorer">Open folder</button>
+                    <button type="button" id="pick-dir-btn" class="ms-pc-only">Choose folder</button>
+                    <button type="button" id="open-folder" hidden title="Open the shared folder in the Explorer">Open folder</button>
                 </span>
+                <label class="ms-target">Into
+                    <select id="target" aria-label="Folder the files go into"><option value="">the shared folder</option></select>
+                </label>
             </div>
-            <div id="uploads" class="ms-uploads"></div>
+            <div id="uploads" class="ms-uploads" aria-live="polite"></div>
         </section>
 
         <section class="card ms-status">
             <div class="ms-head">
                 <span class="st" id="v-lamp" data-s="idle" title="Idle" aria-label="Idle"><svg class="ic"><use id="v-lamp-ic" href="#s-idle" /></svg></span>
                 <div class="ms-state">
-                    <b id="v-state">Starting…</b>
+                    <b id="v-state" aria-live="polite">Starting…</b>
                     <span class="muted mono ms-ellipsis" id="v-folder">–</span>
                 </div>
                 <button type="button" class="quiet" id="folder-btn" hidden title="Choose another shared folder">Change folder</button>
@@ -45,12 +53,12 @@
             @* Ordner wechseln: nur am PC selbst (der Server blendet den Knopf sonst aus). *@
             <form id="folder-form" class="ms-folder" hidden autocomplete="off">
                 <label class="ms-label" for="folder-path">New shared folder</label>
-                <div class="search"><input id="folder-path" class="mono" placeholder="D:\Shared" aria-label="New shared folder" /></div>
+                <div class="search"><input id="folder-path" class="mono" placeholder="D:\Shared" aria-describedby="folder-check" /></div>
+                <span class="ms-check muted" id="folder-check" aria-live="polite">The new folder must be empty or not exist yet.</span>
                 <label class="ms-choice"><input type="radio" name="folder-mode" value="move" checked />
                     <span><b>Move the files there</b><span class="muted">Everything moves to the new folder. The other PCs notice nothing.</span></span></label>
                 <label class="ms-choice"><input type="radio" name="folder-mode" value="fresh" />
                     <span><b>Start empty</b><span class="muted">The new folder gets all files from the other PCs. The old folder stays as it is; nothing is deleted anywhere.</span></span></label>
-                <p class="muted ms-hint">The new folder must be empty or not exist yet.</p>
                 <span class="ms-folder-acts">
                     <button type="submit" class="primary" id="folder-apply">Change</button>
                     <button type="button" class="quiet" id="folder-cancel">Cancel</button>
@@ -58,7 +66,7 @@
             </form>
             <div class="sec">Other PCs <span class="n" id="v-peer-count">0</span></div>
             <div id="peers" class="ms-peers"></div>
-            <form id="add-peer" class="ms-add" autocomplete="off">
+            <form id="add-peer" class="ms-add" autocomplete="off" hidden>
                 <div class="search"><input id="peer-address" placeholder="Add a PC: name or address" aria-label="Name or address of another PC" /></div>
                 <button type="submit">Add</button>
             </form>
@@ -67,14 +75,17 @@
     </div>
 
     @* Übertragung: die laufende Datei mit Rate und Restzeit, darunter die Warteschlange. Die Reihenfolge legt man per
-       Ziehen fest (am Handy mit „Nach oben“); eine nach vorn gezogene Datei hält die laufende an, die später weiterlädt. *@
+       Ziehen fest oder mit den Pfeilen (Tastatur, Handy); „Load now“ hält die laufende Datei an, sie lädt später weiter. *@
     <section class="card ms-transfers" id="transfers">
         <div class="ms-bar">
             <h2>Transfers</h2>
             <span class="muted ms-rate" id="v-rate"></span>
+            <button type="button" class="quiet" id="pause-btn" aria-pressed="false" title="Stop all downloads; deletions and renames still sync">Pause</button>
         </div>
+        <div id="total" class="ms-total" hidden><span class="bar"><i></i></span><span class="muted" id="v-total"></span></div>
         <div id="current" class="ms-current"></div>
-        <div id="queue" class="ms-queue" aria-label="Waiting files. Drag to change the order."></div>
+        <div id="queue" class="ms-queue" role="list" aria-label="Waiting files"></div>
+        <div id="queue-live" class="sr-only" aria-live="polite"></div>
     </section>
 
     <div class="ms-grid">
@@ -84,13 +95,18 @@
                 <div class="search"><input id="q" placeholder="Search" aria-label="Search files" /></div>
             </div>
             <div id="files" class="ms-files"></div>
+            <p class="muted ms-hint" id="files-note"></p>
         </section>
 
         <section class="card">
             <h2>Activity</h2>
             <div id="activity" class="ms-activity"></div>
+            <details class="ms-trash" id="trash-box">
+                <summary>Trash <span class="muted">(replaced or deleted by other PCs, kept 30 days)</span></summary>
+                <div id="trash" class="ms-files"></div>
+            </details>
         </section>
     </div>
 
-    <div class="toasts" id="toasts"></div>
+    <div class="toasts" id="toasts" role="status"></div>
 </main>

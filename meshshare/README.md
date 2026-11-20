@@ -9,16 +9,24 @@ Not yet tried between two real PCs, over Tailscale or on a phone.
 
 ## Use
 
-Start `StykkerMeshShare.exe` (window) or `StykkerMeshShare-Server.exe` (tray only). The page has two parts:
+Start `StykkerMeshShare.exe` (window) or `StykkerMeshShare-Server.exe` (tray only). The page shows:
 
-- **Drop zone**: drop files or whole folders, or choose files. They land in the shared folder and reach every PC.
-- **Sync status**: state of this PC, the other PCs (online, last sync), and a field to add a PC by name or address.
+- **Drop zone**: drop files or whole folders, or choose files or a folder. "Into" picks a subfolder. They land in
+  the shared folder and reach every PC. Each upload can be cancelled; closing the page during an upload asks first.
+- **Sync status**: state of this PC, the other PCs (online, last sync, LAN or Tailscale), and a field to add a PC by
+  name or address.
+- **Transfers**: the file being received (progress, rate, time left), a bar for all files of this round, and the
+  waiting files. Change the order by dragging or with the arrows; ▶ loads a file now, ✕ does not load it.
+  **Pause** stops all downloads. The progress also shows in the window title.
+- **Files**: click to open (pictures, PDFs, text, audio and video open in the browser, also on the phone; other
+  files download), or use the arrow to download. Conflict copies are marked; search "conflict" lists them.
+- **Activity** and the **Trash** (files another PC replaced or deleted here, 30 days) with **Restore**.
 
-Below are the files (click to download) and what happened recently.
+The tray shows a notice for a conflict copy, a held deletion and a full disk.
 
 The shared folder is `%USERPROFILE%\StykkerMeshShare`. **Change folder** (on the PC itself, not from the phone) picks
-another one; it is remembered in `settings.json`, and `--folder` does the same from the command line. The new folder
-must be empty or not exist yet:
+another one; it is remembered in `settings.json`, and `--folder` does the same from the command line. While typing,
+the page says whether the folder works. The new folder must be empty or not exist yet:
 
 - **Move the files there**: everything moves (times are kept). The other PCs notice nothing.
 - **Start empty**: the new folder gets all files from the other PCs. The old folder stays as it is, and no deletion
@@ -120,7 +128,8 @@ Windows asks once whether the program may use the network; allow it for private 
 
 Open `http://<pc>:17404/` in Safari. "Add to Home Screen" puts it on the home screen. Installing it as a real web
 app needs HTTPS, which is not there yet. Safari cannot offer a web page in the Share menu of other apps, so on the
-iPhone files are added with **Choose files** on the page.
+iPhone files are added with **Choose files** on the page. Pictures, PDFs and videos open directly in Safari.
+On the phone the page cannot change the folder, add or remove PCs or confirm held deletions (only on the PC itself).
 
 ## Switches
 
@@ -150,3 +159,6 @@ dotnet test meshshare/tests/StykkerMeshShare.Tests -c Release
 - Tombstones are kept forever; a cleanup after a long time is still missing.
 - The queue shows only the files of the PC being synced right now, not those still waiting on other PCs.
 - Tile in the hub (`/api/module`).
+- Choosing the folder in a dialog (today the path is typed; the page checks it while typing).
+- Finding a file with the same content already here is a scan over the index for every download (fine for tens of
+  thousands of files, slow for millions).

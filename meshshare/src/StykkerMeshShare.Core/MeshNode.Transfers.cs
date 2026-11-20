@@ -41,6 +41,8 @@ public sealed partial class MeshNode
     private string TempDir => Path.Combine(WorkDir(_folder), "tmp");
 
     public TransferProgress? Progress => _progress;
+    // Der Abgleich soll sofort wieder laufen (nach „Resume“ oder „Load“): die Gegenstellen warten sonst bis zu 25 s.
+    public event Action? WakeRequested;
     public bool TransfersPaused => _paused;
     public IReadOnlyList<string> Skipped { get { lock (_queueLock) return _skip.Order(PathRules.Comparer).ToList(); } }
 
@@ -101,6 +103,7 @@ public sealed partial class MeshNode
         }
         Cancel(interrupt);
         Notify();
+        if (!paused) WakeRequested?.Invoke();
     }
 
     // „Nicht laden“: die Datei wird übergangen, bis sie wieder freigegeben wird. Freigeben liest alle Gegenstellen von
@@ -127,6 +130,7 @@ public sealed partial class MeshNode
             _gate.Wait();
             try { _cursors.Clear(); Save(); }
             finally { _gate.Release(); }
+            WakeRequested?.Invoke();
         }
         Notify();
     }

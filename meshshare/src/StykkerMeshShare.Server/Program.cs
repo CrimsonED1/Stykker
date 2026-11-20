@@ -127,5 +127,6 @@ if (OperatingSystem.IsWindows() && !args.Contains("--no-tray") && TrayIcon.Possi
 }
 
 await app.WaitForShutdownAsync();
+node.Dispose();   // offene Teildateien schließen, Index speichern
 if (tray != null && OperatingSystem.IsWindows()) tray.Dispose();
 
