@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Checkbox</title>
+<link rel="stylesheet" href="../../tokens.css">
+<link rel="stylesheet" href="../bundle.css">
+<style>body{padding:24px;display:grid;gap:14px}label{display:flex;gap:10px;align-items:center}</style>
+</head>
+<body>
+<label><input type="checkbox"> Not chosen</label>
+<label><input type="checkbox" checked> Chosen</label>
+<label><input type="checkbox" id="some"> Some of a group</label>
+<label><input type="checkbox" disabled> Not available</label>
+<label><input type="checkbox" checked disabled> Chosen, not changeable</label>
+<label class="switch"><input type="checkbox" checked><span></span></label>
+<button type="button" onclick="document.documentElement.dataset.theme=document.documentElement.dataset.theme==='dark'?'titan':'dark'">Theme</button>
+<script>document.getElementById('some').indeterminate=true</script>
+</body>
+</html>

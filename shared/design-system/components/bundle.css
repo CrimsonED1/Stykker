@@ -694,6 +694,21 @@ a.btn.disabled{pointer-events:none}
 .switch input:checked+span{background:color-mix(in srgb,var(--good) 30%,transparent);border-color:color-mix(in srgb,var(--good) 55%,transparent)}
 .switch input:checked+span::after{transform:translateX(16px);background:var(--good)}
 .switch input:focus-visible+span{outline:2px solid var(--acc);outline-offset:2px}
+/* Checkbox: runder Haken wie in iOS, für jede <input type="checkbox"> außer im Switch. Leer ein Ring, gewählt gefüllt
+   in der Akzentfarbe mit Haken. Auch in Titan rund (der Haken ist das Erkennungszeichen). Siehe components/Checkbox. */
+input[type=checkbox]:not(.switch input){appearance:none;-webkit-appearance:none;flex:none;width:20px;height:20px;margin:0;
+  border-radius:50%;border:1.5px solid color-mix(in srgb,var(--muted) 75%,transparent);background:transparent;
+  display:inline-grid;place-content:center;vertical-align:-5px;cursor:pointer;transition:background .15s,border-color .15s}
+input[type=checkbox]:not(.switch input)::before{content:"";width:11px;height:11px;background:var(--bg);transform:scale(0);transition:transform .15s;
+  -webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2 6.3l2.6 2.6L10 3.4' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/contain no-repeat;
+  mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2 6.3l2.6 2.6L10 3.4' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/contain no-repeat}
+input[type=checkbox]:not(.switch input):checked{background:var(--acc);border-color:var(--acc)}
+input[type=checkbox]:not(.switch input):checked::before{transform:scale(1)}
+input[type=checkbox]:not(.switch input):indeterminate{background:var(--acc);border-color:var(--acc)}
+input[type=checkbox]:not(.switch input):indeterminate::before{transform:scale(1);height:2px;-webkit-mask:none;mask:none;border-radius:1px}
+input[type=checkbox]:not(.switch input):hover:not(:disabled){border-color:var(--acc)}
+input[type=checkbox]:not(.switch input):focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+input[type=checkbox]:not(.switch input):disabled{opacity:.4;cursor:default}
 .stat .ic{width:14px;height:14px}
 .stat.off{color:var(--muted);border-color:var(--line)}
 .dens{margin-top:6px}
