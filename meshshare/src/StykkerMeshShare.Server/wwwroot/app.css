@@ -1,5 +1,8 @@
 /* StykkerMeshShare — nur was das Design-System nicht hergibt: das Raster der Seite, die Dropzone, die Zeilen der
    Gegenstellen, Dateien und Aktivität. Farben, Maße und Schriften kommen aus tokens.css/bundle.css. */
+/* hidden muss gewinnen: das Design-System setzt display auf Knöpfen und Formularen (sonst sähe das Handy Knöpfe,
+   die nur am PC selbst gehen). */
+[hidden]{display:none !important}
 .ms-grid{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:var(--gap);margin-bottom:var(--gap);align-items:start}
 @media(max-width:900px){.ms-grid{grid-template-columns:minmax(0,1fr)}}
 

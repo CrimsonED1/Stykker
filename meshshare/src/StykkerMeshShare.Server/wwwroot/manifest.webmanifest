@@ -1,7 +1,9 @@
 {
   "name": "StykkerMeshShare",
   "short_name": "MeshShare",
+  "id": "/",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#060916",
   "theme_color": "#060916",

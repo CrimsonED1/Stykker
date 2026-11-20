@@ -126,10 +126,25 @@ Windows asks once whether the program may use the network; allow it for private 
 
 ## Phone
 
-Open `http://<pc>:17404/` in Safari. "Add to Home Screen" puts it on the home screen. Installing it as a real web
-app needs HTTPS, which is not there yet. Safari cannot offer a web page in the Share menu of other apps, so on the
-iPhone files are added with **Choose files** on the page. Pictures, PDFs and videos open directly in Safari.
-On the phone the page cannot change the folder, add or remove PCs or confirm held deletions (only on the PC itself).
+The phone uses the page as a web app. For that it needs HTTPS, which Tailscale provides on this PC (the PCs among
+each other stay on plain HTTP on 17404):
+
+```powershell
+tailscale serve --bg --https=17444 http://127.0.0.1:17404
+```
+
+Then open `https://<pc>.<tailnet>.ts.net:17444/` in Safari and choose "Add to Home Screen". Tailscale keeps this
+setting across restarts; `tailscale serve --https=17444 off` removes it. Only devices in your tailnet reach it.
+
+The server recognizes requests that `tailscale serve` passes on (from 127.0.0.1 with `X-Forwarded-For` and
+`X-Forwarded-Proto`, trusted only from 127.0.0.1): the phone's real address counts, so the phone is never treated as
+"the PC itself", and the page works over https. Port 17444 and not 17404, because on 17404 the PCs talk to each other
+over Tailscale in plain HTTP; a serve on that port would take those connections.
+
+Without Tailscale, `http://<pc>:17404/` works in the home network, but only as a bookmark, not as a web app.
+Safari cannot offer a web page in the Share menu of other apps, so on the iPhone files are added with
+**Choose files** on the page. Pictures, PDFs and videos open directly in Safari. On the phone the page cannot change
+the folder, add or remove PCs or confirm held deletions (only on the PC itself).
 
 ## Switches
 

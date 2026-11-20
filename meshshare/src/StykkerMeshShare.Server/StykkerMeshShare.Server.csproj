@@ -19,4 +19,14 @@
     <ProjectReference Include="..\..\..\shared\src\Stykker.Shared\Stykker.Shared.csproj" />
   </ItemGroup>
 
+  <!-- Beim Veröffentlichen kommt das Design-System als Ordner design-system neben das Programm. Der Starter kopiert
+       den Programmordner nach %LOCALAPPDATA%; dort fände der Server die Monorepo nicht mehr (DesignSystemHost sucht
+       zuerst neben dem Programm). Beim Entwickeln gilt weiter die Fassung aus shared/design-system. -->
+  <Target Name="CopyDesignSystemOnPublish" AfterTargets="Publish">
+    <ItemGroup>
+      <DesignSystemFile Include="..\..\..\shared\design-system\**\*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(DesignSystemFile)" DestinationFiles="@(DesignSystemFile->'$(PublishDir)design-system\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+  </Target>
+
 </Project>

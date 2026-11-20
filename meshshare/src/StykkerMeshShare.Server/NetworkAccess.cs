@@ -58,6 +58,24 @@ public static class NetworkAccess
 
     public static void Use(WebApplication app) => app.Use(async (context, next) =>
     {
+        // HTTPS über „tailscale serve“ (für die Web-App am Handy): Tailscale nimmt TLS auf diesem PC an und reicht die
+        // Anfrage von 127.0.0.1 weiter, mit der echten Adresse in X-Forwarded-For und dem Schema in
+        // X-Forwarded-Proto. Geglaubt wird das nur von 127.0.0.1. Ab hier zählt die echte Adresse: das Handy ist damit
+        // nie „der PC selbst“ (IsLocal), und die Herkunftsprüfung sieht https.
+        if (context.Connection.RemoteIpAddress is { } remote && IPAddress.IsLoopback(remote)
+            && context.Request.Headers.TryGetValue("X-Forwarded-Proto", out var proto))
+        {
+            var forwarded = context.Request.Headers["X-Forwarded-For"].ToString().Split(',')[0].Trim();
+            if (!IPAddress.TryParse(forwarded, out var real) || IPAddress.IsLoopback(real))
+            {
+                context.Response.StatusCode = StatusCodes.Status400BadRequest;
+                await context.Response.WriteAsync("Forwarded request without a valid client address.");
+                return;
+            }
+            context.Connection.RemoteIpAddress = real;
+            if (proto.ToString().Equals("https", StringComparison.OrdinalIgnoreCase)) context.Request.Scheme = "https";
+        }
+
         if (!Allowed(context.Connection.RemoteIpAddress))
         {
             context.Response.StatusCode = StatusCodes.Status403Forbidden;

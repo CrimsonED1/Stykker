@@ -11,4 +11,5 @@ public static class StykkerPorts
     public const int Llm = 17401;   // StykkerLLM: Web und API
     public const int Sys = 17402;   // StykkerSYS
     public const int MeshShare = 17404;   // StykkerMeshShare: Web, API und der Abgleich zwischen den PCs (TCP), Suche im LAN (UDP)
+    public const int MeshShareHttps = 17444;   // StykkerMeshShare über HTTPS (tailscale serve, für die Web-App am Handy)
 }
